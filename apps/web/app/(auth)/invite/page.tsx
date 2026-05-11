@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -24,7 +24,7 @@ function PasswordRule({ met, label }: { met: boolean; label: string }) {
   )
 }
 
-export default function InvitePage() {
+function InvitePageContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const token        = searchParams.get('token') ?? ''
@@ -248,5 +248,17 @@ export default function InvitePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function InvitePage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
+        <div style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Loading…</div>
+      </div>
+    }>
+      <InvitePageContent />
+    </Suspense>
   )
 }
