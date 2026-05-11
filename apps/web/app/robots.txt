@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /api/
+Disallow: /onboarding
+Disallow: /dashboard
+Disallow: /transactions
+Disallow: /programs
+Disallow: /kyb
+Disallow: /settings
+Allow: /login
+Allow: /signup

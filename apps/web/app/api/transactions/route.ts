@@ -1,0 +1,181 @@
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdmin } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+
+const adminClient = createAdmin(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
+const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
+
+export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData } = await adminClient
+    .from('users')
+    .select('id, role, org_id, bank_id')
+    .eq('id', user.id)
+    .single()
+
+  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  let query = adminClient
+    .from('transactions')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (SUPPLIER_ROLES.includes(userData.role)) {
+    if (!userData.org_id) return NextResponse.json({ transactions: [] })
+    query = query.eq('supplier_id', userData.org_id)
+  } else if (ANCHOR_ROLES.includes(userData.role)) {
+    if (!userData.org_id) return NextResponse.json({ transactions: [] })
+    query = query.eq('anchor_id', userData.org_id)
+  } else if (BANK_ROLES.includes(userData.role)) {
+    if (!userData.bank_id) return NextResponse.json({ transactions: [] })
+    query = query.eq('bank_id', userData.bank_id)
+  } else {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { data: transactions, error } = await query
+  if (error) return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 })
+
+  return NextResponse.json({ transactions: transactions ?? [] })
+}
+
+export async function POST(request: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData } = await adminClient
+    .from('users')
+    .select('id, role, org_id')
+    .eq('id', user.id)
+    .single()
+
+  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  if (!SUPPLIER_ROLES.includes(userData.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  if (!userData.org_id) {
+    return NextResponse.json({ error: 'Supplier organization not set up' }, { status: 400 })
+  }
+
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const {
+    program_id,
+    invoice_number,
+    invoice_date,
+    invoice_due_date,
+    invoice_amount,
+    financing_amount_requested,
+    goods_services_description,
+  } = body
+
+  if (!program_id || !invoice_number || !invoice_date || !invoice_amount || !financing_amount_requested || !goods_services_description) {
+    return NextResponse.json(
+      { error: 'Missing required fields: program_id, invoice_number, invoice_date, invoice_amount, financing_amount_requested, goods_services_description' },
+      { status: 400 }
+    )
+  }
+
+  const invoiceAmt   = Number(invoice_amount)
+  const financingAmt = Number(financing_amount_requested)
+
+  if (isNaN(invoiceAmt) || isNaN(financingAmt)) {
+    return NextResponse.json({ error: 'invoice_amount and financing_amount_requested must be numbers' }, { status: 400 })
+  }
+
+  if (financingAmt > invoiceAmt) {
+    return NextResponse.json({ error: 'financing_amount_requested cannot exceed invoice_amount' }, { status: 400 })
+  }
+
+  // Verify supplier is enrolled and get anchor_org_id
+  const { data: enrollment } = await adminClient
+    .from('program_enrollments')
+    .select('program_id, org_id, anchor_org_id, status')
+    .eq('program_id', program_id as string)
+    .eq('org_id', userData.org_id)
+    .eq('status', 'active')
+    .single()
+
+  if (!enrollment) {
+    return NextResponse.json({ error: 'Supplier is not enrolled in this program' }, { status: 403 })
+  }
+
+  // Reject duplicate invoice numbers for the same anchor+supplier relationship
+  const { data: existing } = await adminClient
+    .from('transactions')
+    .select('id')
+    .eq('anchor_id', enrollment.anchor_org_id)
+    .eq('supplier_id', userData.org_id)
+    .eq('invoice_number', String(invoice_number))
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json(
+      { error: 'Invoice number already exists for this anchor relationship. Please use a unique invoice number.' },
+      { status: 400 }
+    )
+  }
+
+  // Get program for bank_id and type
+  const { data: program } = await adminClient
+    .from('programs')
+    .select('id, bank_id, financing_types, status')
+    .eq('id', program_id as string)
+    .single()
+
+  if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 404 })
+  if (program.status !== 'active') return NextResponse.json({ error: 'Program is not active' }, { status: 400 })
+
+  const { data: transaction, error: txnError } = await adminClient
+    .from('transactions')
+    .insert({
+      program_id:                  program_id as string,
+      bank_id:                     program.bank_id,
+      anchor_id:                   enrollment.anchor_org_id,
+      supplier_id:                 userData.org_id,
+      created_by_user_id:          user.id,
+      type:                        (program.financing_types as string[])[0] ?? 'factoring',
+      status:                      'pending_anchor_approval',
+      invoice_number:              String(invoice_number),
+      invoice_date:                String(invoice_date),
+      invoice_due_date:            invoice_due_date ? String(invoice_due_date) : null,
+      invoice_amount:              invoiceAmt,
+      financing_amount_requested:  financingAmt,
+      goods_services_description:  String(goods_services_description),
+    })
+    .select()
+    .single()
+
+  if (txnError || !transaction) {
+    return NextResponse.json({ error: 'Failed to create transaction' }, { status: 500 })
+  }
+
+  await adminClient.from('transaction_events').insert({
+    transaction_id: transaction.id,
+    event_type:     'created',
+    from_status:    null,
+    to_status:      'pending_anchor_approval',
+    actor_id:       user.id,
+    actor_type:     'supplier',
+    notes:          null,
+  })
+
+  return NextResponse.json({ transaction_id: transaction.id, transaction }, { status: 201 })
+}
