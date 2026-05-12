@@ -63,7 +63,7 @@ export async function GET() {
           .from('transactions')
           .select('*', { count: 'exact', head: true })
           .in('program_id', programIds)
-          .in('status', ['pending_anchor_approval', 'pending_bank_review', 'financing_approved', 'funded']),
+          .in('status', ['pending_anchor_approval', 'pending_bank_review', 'financing_approved', 'funded', 'pending_supplier_counter_review']),
         adminClient
           .from('program_enrollments')
           .select('org_id', { count: 'exact', head: true })

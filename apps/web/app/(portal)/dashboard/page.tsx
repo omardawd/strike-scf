@@ -16,6 +16,17 @@ interface RouteState {
   programId?: string
 }
 
+interface BankSnapshot   { role: 'bank';     monthly_volume: Array<{ label: string; count: number; volume: number }> }
+interface AnchorSnapshot { role: 'anchor';   monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }> }
+interface SupplierSnapshot { role: 'supplier'; monthly_volume: Array<{ label: string; count: number; total_financed: number }> }
+type ReportingSnapshot = BankSnapshot | AnchorSnapshot | SupplierSnapshot
+
+function fmtCurrency(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`
+  return `$${Math.round(n).toLocaleString('en-US')}`
+}
+
 // ============== Icon ==============
 function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {
   return (
@@ -252,17 +263,19 @@ function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number 
   )
 }
 
-function ScreenBankDashboard({ navigate: _navigate, data }: { navigate: (r: RouteState) => void; data: BankData | null }) {
+function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: BankData | null; reportingSnap: ReportingSnapshot | null }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
+  const bankMonthly = reportingSnap?.role === 'bank' ? reportingSnap.monthly_volume.map(m => m.count) : []
+
   const kpis = [
-    { label: 'Active Programs', value: data ? String(data.active_program_count) : '—', delta: data ? `${data.program_count} total` : 'Loading',                                                          deltaClass: 'kpi-delta-mut',                                                                       color: 'var(--color-accent)' },
-    { label: 'Enrolled Orgs',   value: data ? String(data.enrolled_org_count) : '—',   delta: 'Across programs',                                                                                         deltaClass: 'kpi-delta-mut',                                                                       color: 'var(--color-green)' },
-    { label: 'KYB Pending',     value: data ? String(data.kyb_pending) : '—',          delta: 'Awaiting review',                                                                                         deltaClass: (data?.kyb_pending ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',                    color: 'var(--color-amber)' },
-    { label: 'Pending Review',  value: data ? String(data.pending_bank_review) : '—',  delta: (data?.pending_bank_review ?? 0) > 0 ? 'Needs review' : 'None pending',                                  deltaClass: (data?.pending_bank_review ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',           color: 'var(--color-amber)' },
-    { label: 'Active Deals',    value: data ? String(data.active_transactions) : '—',  delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',                                    deltaClass: 'kpi-delta-mut',                                                                       color: 'var(--color-ink-4)' },
+    { label: 'Active Programs', value: data ? String(data.active_program_count) : '—', delta: data ? `${data.program_count} total` : 'Loading',                                                          deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-accent)', sparkData: [] as number[] },
+    { label: 'Enrolled Orgs',   value: data ? String(data.enrolled_org_count) : '—',   delta: 'Across programs',                                                                                         deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-green)',  sparkData: [] as number[] },
+    { label: 'KYB Pending',     value: data ? String(data.kyb_pending) : '—',          delta: 'Awaiting review',                                                                                         deltaClass: (data?.kyb_pending ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',                         color: 'var(--color-amber)',  sparkData: [] as number[] },
+    { label: 'Pending Review',  value: data ? String(data.pending_bank_review) : '—',  delta: (data?.pending_bank_review ?? 0) > 0 ? 'Needs review' : 'None pending',                                  deltaClass: (data?.pending_bank_review ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',              color: 'var(--color-amber)',  sparkData: [] as number[] },
+    { label: 'Active Deals',    value: data ? String(data.active_transactions) : '—',  delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',                                    deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-ink-4)', sparkData: bankMonthly },
   ]
 
   return (
@@ -286,7 +299,7 @@ function ScreenBankDashboard({ navigate: _navigate, data }: { navigate: (r: Rout
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className={`kpi-delta ${k.deltaClass}`}>{k.delta}</div>
-              <Sparkline data={[]} color={k.color} fill />
+              <Sparkline data={k.sparkData} color={k.color} fill />
             </div>
           ))}
         </div>
@@ -352,10 +365,15 @@ function ScreenBankDashboard({ navigate: _navigate, data }: { navigate: (r: Rout
 }
 
 // ============== ANCHOR DASHBOARD ==============
-function ScreenAnchorDashboard({ navigate: _navigate, data }: { navigate: (r: RouteState) => void; data: AnchorData | null }) {
+function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: AnchorData | null; reportingSnap: ReportingSnapshot | null }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
+
+  const anchorSnap = reportingSnap?.role === 'anchor' ? reportingSnap : null
+  const anchorMonthly = anchorSnap?.monthly_volume?.map(m => m.total_invoice_amount) ?? []
+  const lastMonth = anchorSnap?.monthly_volume?.length ? anchorSnap.monthly_volume[anchorSnap.monthly_volume.length - 1] : null
+  const currentMonthFinanced = lastMonth?.total_invoice_amount ?? null
 
   return (
     <>
@@ -371,16 +389,16 @@ function ScreenAnchorDashboard({ navigate: _navigate, data }: { navigate: (r: Ro
 
         <div className="kpi-strip-4" style={{ marginTop: 24 }}>
           {[
-            { label: 'Payables financed',   value: '—',                                                          delta: 'No data yet',                                                                                 color: 'var(--color-anchor)' },
-            { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',            delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',                  color: 'var(--color-amber)' },
-            { label: 'Financed this month', value: '—',                                                          delta: 'No data yet',                                                                                 color: 'var(--color-green)' },
-            { label: 'Due in 30 days',      value: '—',                                                          delta: 'No data yet',                                                                                 color: 'var(--color-amber)' },
+            { label: 'Payables financed',   value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-anchor)', sparkData: anchorMonthly },
+            { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',                                          delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',  color: 'var(--color-amber)',  sparkData: [] as number[] },
+            { label: 'Financed this month', value: currentMonthFinanced != null && currentMonthFinanced > 0 ? fmtCurrency(currentMonthFinanced) : '—', delta: currentMonthFinanced != null && currentMonthFinanced > 0 ? 'This month' : 'No data yet', color: 'var(--color-green)',  sparkData: anchorMonthly },
+            { label: 'Due in 30 days',      value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-amber)',  sparkData: [] as number[] },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark">
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className="kpi-delta kpi-delta-mut">{k.delta}</div>
-              <Sparkline data={[]} color={k.color} fill />
+              <Sparkline data={k.sparkData} color={k.color} fill />
             </div>
           ))}
         </div>
@@ -389,9 +407,21 @@ function ScreenAnchorDashboard({ navigate: _navigate, data }: { navigate: (r: Ro
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Invoice approvals</h3></div>
-              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                No invoices awaiting approval
-              </div>
+              {(data?.pending_approval ?? 0) > 0 ? (
+                <div className="action-list">
+                  <button className="action-row" data-tone="amber" onClick={() => router.push('/transactions')}>
+                    <div>
+                      <div className="action-label">{data!.pending_approval} invoice{data!.pending_approval !== 1 ? 's' : ''} awaiting approval</div>
+                      <div className="action-sub">Review and approve or reject</div>
+                    </div>
+                    <Icon name="chev-right" size={14} className="action-chev" />
+                  </button>
+                </div>
+              ) : (
+                <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
+                  No invoices awaiting approval
+                </div>
+              )}
             </div>
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Financing volume · last 6 months</h3></div>
@@ -435,10 +465,14 @@ function ScreenAnchorDashboard({ navigate: _navigate, data }: { navigate: (r: Ro
 }
 
 // ============== SUPPLIER DASHBOARD ==============
-function ScreenSupplierDashboard({ navigate: _navigate, data }: { navigate: (r: RouteState) => void; data: SupplierData | null }) {
+function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: SupplierData | null; reportingSnap: ReportingSnapshot | null }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
+
+  const supplierSnap = reportingSnap?.role === 'supplier' ? reportingSnap : null
+  const supplierMonthly = supplierSnap?.monthly_volume?.map(m => m.total_financed) ?? []
+  const financedYTD = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
 
   return (
     <>
@@ -454,16 +488,16 @@ function ScreenSupplierDashboard({ navigate: _navigate, data }: { navigate: (r: 
 
         <div className="kpi-strip-4" style={{ marginTop: 24 }}>
           {[
-            { label: 'Financed YTD',        value: '—',                                                            delta: 'No data yet',                                                                              color: 'var(--color-green)' },
-            { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',          delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',                color: 'var(--color-ink-3)' },
-            { label: 'Avg net proceeds',     value: '—',                                                            delta: 'No data yet',                                                                              color: 'var(--color-green)' },
-            { label: 'Acceptance rate',      value: '—',                                                            delta: 'No data yet',                                                                              color: 'var(--color-green)' },
+            { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
+            { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--color-ink-3)', sparkData: [] as number[] },
+            { label: 'Avg net proceeds',     value: '—',                                                                      delta: 'No data yet',                                                                 color: 'var(--color-green)', sparkData: [] as number[] },
+            { label: 'Acceptance rate',      value: '—',                                                                      delta: 'No data yet',                                                                 color: 'var(--color-green)', sparkData: [] as number[] },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark">
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className="kpi-delta kpi-delta-mut">{k.delta}</div>
-              <Sparkline data={[]} color={k.color} fill />
+              <Sparkline data={k.sparkData} color={k.color} fill />
             </div>
           ))}
         </div>
@@ -476,9 +510,21 @@ function ScreenSupplierDashboard({ navigate: _navigate, data }: { navigate: (r: 
             </div>
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Active transactions</h3></div>
-              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                No active transactions
-              </div>
+              {(data?.active_transactions ?? 0) > 0 ? (
+                <div className="action-list">
+                  <button className="action-row" onClick={() => router.push('/transactions')}>
+                    <div>
+                      <div className="action-label">{data!.active_transactions} transaction{data!.active_transactions !== 1 ? 's' : ''} in progress</div>
+                      <div className="action-sub">View and manage your transactions</div>
+                    </div>
+                    <Icon name="chev-right" size={14} className="action-chev" />
+                  </button>
+                </div>
+              ) : (
+                <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
+                  No active transactions
+                </div>
+              )}
             </div>
           </div>
 
@@ -540,6 +586,7 @@ const noNavigate = (_r: RouteState) => {}
 export default function DashboardPage() {
   const portal = usePortal()
   const [dashData, setDashData] = useState<DashData | null>(null)
+  const [reportingSnap, setReportingSnap] = useState<ReportingSnapshot | null>(null)
 
   useEffect(() => {
     fetch('/api/dashboard')
@@ -549,11 +596,15 @@ export default function DashboardPage() {
         if (d) setDashData(d)
       })
       .catch(() => {})
+    fetch('/api/reporting')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.monthly_volume) setReportingSnap(d as ReportingSnapshot) })
+      .catch(() => {})
   }, [])
 
   if (portal === 'bank')
-    return <ScreenBankDashboard     navigate={noNavigate} data={dashData?.portal === 'bank'     ? dashData : null} />
+    return <ScreenBankDashboard     navigate={noNavigate} data={dashData?.portal === 'bank'     ? dashData : null} reportingSnap={reportingSnap} />
   if (portal === 'anchor')
-    return <ScreenAnchorDashboard   navigate={noNavigate} data={dashData?.portal === 'anchor'   ? dashData : null} />
-  return   <ScreenSupplierDashboard navigate={noNavigate} data={dashData?.portal === 'supplier' ? dashData : null} />
+    return <ScreenAnchorDashboard   navigate={noNavigate} data={dashData?.portal === 'anchor'   ? dashData : null} reportingSnap={reportingSnap} />
+  return   <ScreenSupplierDashboard navigate={noNavigate} data={dashData?.portal === 'supplier' ? dashData : null} reportingSnap={reportingSnap} />
 }

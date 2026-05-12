@@ -123,7 +123,7 @@ export async function GET() {
       .slice(0, 5)
 
     // ── Portfolio summary ──
-    const activeDealStatuses = new Set(['pending_anchor_approval', 'pending_bank_review', 'more_info_requested', 'financing_approved', 'funded'])
+    const activeDealStatuses = new Set(['pending_anchor_approval', 'pending_bank_review', 'more_info_requested', 'financing_approved', 'funded', 'pending_supplier_counter_review'])
     let active_deals = 0, outstanding_balance = 0, total_repaid = 0, rateSum = 0, rateCount = 0
     for (const t of txns) {
       if (activeDealStatuses.has(t.status)) {

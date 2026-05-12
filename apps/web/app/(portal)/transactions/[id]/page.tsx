@@ -1388,39 +1388,47 @@ export default function TransactionDetailPage() {
                   </div>
                 )}
 
-                {/* Documents — visible to all roles when docs exist */}
-                {documents.length > 0 && (
+                {/* Documents — always visible to bank/anchor, supplier sees when populated */}
+                {(portal !== 'supplier' || documents.length > 0) && (
                   <div className="card">
                     <div className="card-head">
                       <h3 className="t-card-head">Documents</h3>
                     </div>
-                    <div className="kv-rows">
-                      {documents.map((doc) => (
-                        <div key={doc.id} className="doc-row">
-                          <span className="doc-icon">
-                            <svg width="14" height="14" viewBox="0 0 16 16">
-                              <use href="#i-doc" />
-                            </svg>
-                          </span>
-                          <span className="doc-name">{doc.name}</span>
-                          <span className="doc-date">
-                            {new Date(doc.created_at).toLocaleDateString('en-US', {
-                              month: 'short', day: 'numeric', year: 'numeric',
-                            })}
-                          </span>
-                          {doc.signed_url && (
-                            <a
-                              href={doc.signed_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="doc-link"
-                            >
-                              Download
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    {documents.length === 0 ? (
+                      <div className="card-body">
+                        <p style={{ fontSize: 13, color: 'var(--color-ink-4)', margin: 0 }}>
+                          No documents uploaded
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="kv-rows">
+                        {documents.map((doc) => (
+                          <div key={doc.id} className="doc-row">
+                            <span className="doc-icon">
+                              <svg width="14" height="14" viewBox="0 0 16 16">
+                                <use href="#i-doc" />
+                              </svg>
+                            </span>
+                            <span className="doc-name">{doc.name}</span>
+                            <span className="doc-date">
+                              {new Date(doc.created_at).toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric', year: 'numeric',
+                              })}
+                            </span>
+                            {doc.signed_url && (
+                              <a
+                                href={doc.signed_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="doc-link"
+                              >
+                                Download
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1513,46 +1521,28 @@ export default function TransactionDetailPage() {
                   )}
 
                   {portal === 'bank' && (
-                    isRF ? (
-                      <BankActionPanel
-                        transaction={txn}
-                        onAction={handleAction}
-                        acting={acting}
-                        txnId={id}
-                        onRefresh={load}
-                      />
-                    ) : (
-                      <div className="action-passive muted">
-                        This financing type&apos;s workflow is coming soon.
-                      </div>
-                    )
+                    <BankActionPanel
+                      transaction={txn}
+                      onAction={handleAction}
+                      acting={acting}
+                      txnId={id}
+                      onRefresh={load}
+                    />
                   )}
                   {portal === 'anchor' && (
-                    isRF ? (
-                      <AnchorActionPanel
-                        transaction={txn}
-                        onAction={handleAction}
-                        acting={acting}
-                        onSuccess={handleSuccess}
-                      />
-                    ) : (
-                      <div className="action-passive muted">
-                        This financing type&apos;s workflow is coming soon.
-                      </div>
-                    )
+                    <AnchorActionPanel
+                      transaction={txn}
+                      onAction={handleAction}
+                      acting={acting}
+                      onSuccess={handleSuccess}
+                    />
                   )}
                   {portal === 'supplier' && (
-                    isRF ? (
-                      <SupplierActionPanel
-                        transaction={txn}
-                        onAction={handleAction}
-                        acting={acting}
-                      />
-                    ) : (
-                      <div className="action-passive muted">
-                        This financing type&apos;s workflow is coming soon.
-                      </div>
-                    )
+                    <SupplierActionPanel
+                      transaction={txn}
+                      onAction={handleAction}
+                      acting={acting}
+                    />
                   )}
                 </div>
               </div>
