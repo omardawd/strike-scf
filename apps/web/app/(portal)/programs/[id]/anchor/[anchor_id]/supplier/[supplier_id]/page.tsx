@@ -16,8 +16,8 @@ interface OrgDetail {
   ein?: string | null
   city?: string | null
   state?: string | null
-  industry?: string | null
-  annual_revenue?: number | null
+  business_type?: string | null
+  annual_revenue_range?: number | null
   primary_contact_name?: string | null
   primary_contact_email?: string | null
   credit_reviewed_at?: string | null
@@ -316,9 +316,14 @@ export default function SupplierDetailPage() {
   const [showAddColl, setShowAddColl]   = useState(false)
   const [collVersion, setCollVersion]   = useState(0)
 
-  const [anchorCrumbName] = useState(() =>
-    typeof window !== 'undefined' ? sessionStorage.getItem('breadcrumb_anchor') ?? 'Anchor' : 'Anchor'
-  )
+  const [anchorCrumbName, setAnchorCrumbName] = useState('Anchor')
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('breadcrumb_anchor')
+      if (stored) setAnchorCrumbName(stored)
+    } catch {}
+  }, [])
 
   const load = useCallback(async () => {
     setError(null)
@@ -489,8 +494,8 @@ export default function SupplierDetailPage() {
                   {org?.primary_contact_name && (
                     <div className="kv-row"><span className="k">Primary contact</span><span className="v plain">{org.primary_contact_name}</span></div>
                   )}
-                  {org?.industry && (
-                    <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.industry}</span></div>
+                  {org?.business_type && (
+                    <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
                   )}
                   {org?.created_at && (
                     <div className="kv-row"><span className="k">Member since</span><span className="v plain">{fmtDate(org.created_at)}</span></div>
@@ -673,6 +678,7 @@ export default function SupplierDetailPage() {
               <div className="card-head"><h3 className="t-card-head">Organization</h3></div>
               <div className="kv-rows">
                 <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
+                {org?.business_type && <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>}
                 {org?.ein && <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>}
                 {(org?.city || org?.state) && (
                   <div className="kv-row">
@@ -680,9 +686,8 @@ export default function SupplierDetailPage() {
                     <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
                   </div>
                 )}
-                {org?.industry && <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.industry}</span></div>}
-                {org?.annual_revenue != null && (
-                  <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue)}</span></div>
+                {org?.annual_revenue_range != null && (
+                  <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
                 )}
                 {org?.primary_contact_name && (
                   <div className="kv-row"><span className="k">Contact</span><span className="v plain">{org.primary_contact_name}</span></div>

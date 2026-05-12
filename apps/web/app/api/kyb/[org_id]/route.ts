@@ -19,13 +19,14 @@ export async function GET(
 
   const { data: me } = await adminClient
     .from('users')
-    .select('role, bank_id')
+    .select('role, bank_id, org_id')
     .eq('id', user.id)
     .single()
 
-  if (!me || (me.role !== 'bank_admin' && me.role !== 'bank_credit_officer')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+  const ORG_ROLES  = ['anchor_admin', 'anchor_member', 'supplier_admin', 'supplier_member']
 
   const { data: org } = await adminClient
     .from('organizations')
@@ -34,7 +35,14 @@ export async function GET(
     .single()
 
   if (!org) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (BANK_ROLES.includes(me.role)) {
+    if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  } else if (ORG_ROLES.includes(me.role)) {
+    if (me.org_id !== org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  } else {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const [{ data: rawDocs }, { data: credit_score }, { data: latest_decision }] = await Promise.all([
     adminClient

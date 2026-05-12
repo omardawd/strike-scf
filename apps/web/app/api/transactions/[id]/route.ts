@@ -54,13 +54,37 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: events } = await adminClient
-    .from('transaction_events')
-    .select('*')
-    .eq('transaction_id', id)
-    .order('created_at', { ascending: true })
+  const [
+    { data: events },
+    { data: supplierOrg },
+    { data: anchorOrg },
+    { data: bank },
+    { data: program },
+  ] = await Promise.all([
+    adminClient.from('transaction_events').select('*').eq('transaction_id', id).order('created_at', { ascending: true }),
+    transaction.supplier_id
+      ? adminClient.from('organizations').select('legal_name').eq('id', transaction.supplier_id).single()
+      : Promise.resolve({ data: null }),
+    transaction.anchor_id
+      ? adminClient.from('organizations').select('legal_name').eq('id', transaction.anchor_id).single()
+      : Promise.resolve({ data: null }),
+    transaction.bank_id
+      ? adminClient.from('banks').select('name').eq('id', transaction.bank_id).single()
+      : Promise.resolve({ data: null }),
+    transaction.program_id
+      ? adminClient.from('programs').select('name').eq('id', transaction.program_id).single()
+      : Promise.resolve({ data: null }),
+  ])
 
-  return NextResponse.json({ transaction, events: events ?? [] })
+  const enriched = {
+    ...transaction,
+    supplier_name: (supplierOrg as { legal_name?: string } | null)?.legal_name ?? null,
+    anchor_name:   (anchorOrg  as { legal_name?: string } | null)?.legal_name ?? null,
+    bank_name:     (bank       as { name?: string }       | null)?.name        ?? null,
+    program_name:  (program    as { name?: string }       | null)?.name        ?? null,
+  }
+
+  return NextResponse.json({ transaction: enriched, events: events ?? [] })
 }
 
 export async function PATCH(
@@ -260,28 +284,36 @@ export async function PATCH(
       return NextResponse.json({ transaction: updated })
     }
 
-    // counter_offer: only when pending_bank_review
+    // counter_offer: pending_bank_review or more_info_requested
     if (action === 'counter_offer') {
-      if (transaction.status !== 'pending_bank_review') {
+      if (transaction.status !== 'pending_bank_review' && transaction.status !== 'more_info_requested') {
         return NextResponse.json({ error: 'Transaction is not awaiting bank review' }, { status: 400 })
       }
 
       const rateApr        = body.financing_rate_apr        ? Number(body.financing_rate_apr)        : null
       const amountApproved = body.financing_amount_approved ? Number(body.financing_amount_approved) : null
       const counterNotes   = body.counter_offer_notes       ? String(body.counter_offer_notes)       : null
+      const tenorDays      = body.tenor_days      != null   ? Number(body.tenor_days)                : null
+      const feeAmount      = body.fee_amount      != null   ? Number(body.fee_amount)                : null
+      const netProceeds    = body.net_proceeds    != null   ? Number(body.net_proceeds)              : null
 
       if (!rateApr || !amountApproved) {
         return NextResponse.json({ error: 'financing_rate_apr and financing_amount_approved are required' }, { status: 400 })
       }
 
+      const counterPayload: Record<string, unknown> = {
+        status:                    'pending_supplier_counter_review',
+        financing_rate_apr:        rateApr,
+        financing_amount_approved: amountApproved,
+        updated_at:                new Date().toISOString(),
+      }
+      if (tenorDays   != null) counterPayload.tenor_days   = tenorDays
+      if (feeAmount   != null) counterPayload.fee_amount   = feeAmount
+      if (netProceeds != null) counterPayload.net_proceeds = netProceeds
+
       const { data: updated, error } = await adminClient
         .from('transactions')
-        .update({
-          status:                    'pending_supplier_counter_review',
-          financing_rate_apr:        rateApr,
-          financing_amount_approved: amountApproved,
-          updated_at:                new Date().toISOString(),
-        })
+        .update(counterPayload)
         .eq('id', id)
         .select()
         .single()
@@ -298,15 +330,16 @@ export async function PATCH(
         notes:          counterNotes,
       })
 
-      const { data: supplierAdmin } = await adminClient
-        .from('users')
-        .select('email, full_name')
-        .eq('org_id', transaction.supplier_id)
-        .eq('role', 'supplier_admin')
-        .limit(1)
-        .maybeSingle()
+      const invoiceRef = transaction.invoice_number ?? id
+
+      const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
+        adminClient.from('users').select('email, full_name')
+          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
+        adminClient.from('users').select('email, full_name')
+          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
+      ])
+
       if (supplierAdmin?.email) {
-        const invoiceRef = transaction.invoice_number ?? id
         await sendEmail({
           to:      supplierAdmin.email,
           subject: `Counter-offer on invoice ${invoiceRef}`,
@@ -317,12 +350,23 @@ export async function PATCH(
           }),
         })
       }
+      if (anchorAdmin?.email) {
+        await sendEmail({
+          to:      anchorAdmin.email,
+          subject: `Counter-offer submitted for invoice ${invoiceRef}`,
+          html:    transactionStatusEmailHtml({
+            recipientName: anchorAdmin.full_name ?? 'Anchor Admin',
+            eventBody:     `The bank has submitted a counter-offer on invoice ${invoiceRef} (${fmtMoney(amountApproved)} at ${rateApr}%). Awaiting supplier response.`,
+            transactionId: id,
+          }),
+        })
+      }
 
       return NextResponse.json({ transaction: updated })
     }
 
-    // approve / reject / request_info: only when pending_bank_review
-    if (transaction.status !== 'pending_bank_review') {
+    // approve / reject / request_info: pending_bank_review or more_info_requested
+    if (transaction.status !== 'pending_bank_review' && transaction.status !== 'more_info_requested') {
       return NextResponse.json({ error: 'Transaction is not awaiting bank review' }, { status: 400 })
     }
 
@@ -372,6 +416,8 @@ export async function PATCH(
         : body.rejection_reason ? String(body.rejection_reason) : null,
     })
 
+    const invoiceRef2 = transaction.invoice_number ?? id
+
     if (action === 'approve') {
       const { data: supplierAdmin } = await adminClient
         .from('users')
@@ -381,13 +427,44 @@ export async function PATCH(
         .limit(1)
         .maybeSingle()
       if (supplierAdmin?.email) {
-        const invoiceRef = transaction.invoice_number ?? id
         await sendEmail({
           to:      supplierAdmin.email,
-          subject: `Financing approved: Invoice ${invoiceRef}`,
+          subject: `Financing approved: Invoice ${invoiceRef2}`,
           html:    transactionStatusEmailHtml({
             recipientName: supplierAdmin.full_name ?? 'Supplier Admin',
-            eventBody:     `Your financing request for invoice ${invoiceRef} has been approved. Amount: ${fmtMoney(updated?.financing_amount_approved ?? transaction.financing_amount_approved)}.`,
+            eventBody:     `Your financing request for invoice ${invoiceRef2} has been approved. Amount: ${fmtMoney(updated?.financing_amount_approved ?? transaction.financing_amount_approved)}.`,
+            transactionId: id,
+          }),
+        })
+      }
+    }
+
+    if (action === 'reject') {
+      const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
+        adminClient.from('users').select('email, full_name')
+          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
+        adminClient.from('users').select('email, full_name')
+          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
+      ])
+      const rejectReason = body.rejection_reason ? String(body.rejection_reason) : null
+      if (supplierAdmin?.email) {
+        await sendEmail({
+          to:      supplierAdmin.email,
+          subject: `Financing declined: Invoice ${invoiceRef2}`,
+          html:    transactionStatusEmailHtml({
+            recipientName: supplierAdmin.full_name ?? 'Supplier Admin',
+            eventBody:     `Your financing request for invoice ${invoiceRef2} has been declined by the bank.${rejectReason ? `\n\nReason: ${rejectReason}` : ''}`,
+            transactionId: id,
+          }),
+        })
+      }
+      if (anchorAdmin?.email) {
+        await sendEmail({
+          to:      anchorAdmin.email,
+          subject: `Invoice ${invoiceRef2} declined by bank`,
+          html:    transactionStatusEmailHtml({
+            recipientName: anchorAdmin.full_name ?? 'Anchor Admin',
+            eventBody:     `Invoice ${invoiceRef2} has been declined by the bank.${rejectReason ? `\n\nReason: ${rejectReason}` : ''}`,
             transactionId: id,
           }),
         })

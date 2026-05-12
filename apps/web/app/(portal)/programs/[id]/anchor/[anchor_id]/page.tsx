@@ -16,9 +16,9 @@ interface OrgDetail {
   ein?: string | null
   city?: string | null
   state?: string | null
-  industry?: string | null
-  annual_revenue?: number | null
-  naics?: string | null
+  business_type?: string | null
+  annual_revenue_range?: number | null
+  industry_naics?: string | null
   primary_contact_name?: string | null
   primary_contact_email?: string | null
   credit_reviewed_at?: string | null
@@ -451,6 +451,9 @@ export default function AnchorDetailPage() {
                 <div className="card-head"><h3 className="t-card-head">Organization</h3></div>
                 <div className="kv-rows">
                   <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
+                  {org?.business_type && (
+                    <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
+                  )}
                   {org?.ein && (
                     <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>
                   )}
@@ -460,14 +463,12 @@ export default function AnchorDetailPage() {
                       <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
                     </div>
                   )}
-                  {org?.industry && (
-                    <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.industry}</span></div>
+                  
+                  {org?.annual_revenue_range != null && (
+                    <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
                   )}
-                  {org?.annual_revenue != null && (
-                    <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue)}</span></div>
-                  )}
-                  {org?.naics && (
-                    <div className="kv-row"><span className="k">NAICS</span><span className="v mono">{org.naics}</span></div>
+                  {org?.industry_naics && (
+                    <div className="kv-row"><span className="k">NAICS</span><span className="v mono">{org.industry_naics}</span></div>
                   )}
                   {org?.primary_contact_name && (
                     <div className="kv-row"><span className="k">Contact</span><span className="v plain">{org.primary_contact_name}</span></div>
@@ -765,8 +766,8 @@ export default function AnchorDetailPage() {
                     <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
                   </div>
                 )}
-                {org?.industry && (
-                  <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.industry}</span></div>
+                {org?.business_type && (
+                  <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
                 )}
                 {org?.primary_contact_name && (
                   <div className="kv-row"><span className="k">Primary contact</span><span className="v plain">{org.primary_contact_name}</span></div>

@@ -417,7 +417,7 @@ function BankActionPanel({
     )
   }
 
-  if (status !== 'pending_bank_review') {
+  if (status !== 'pending_bank_review' && status !== 'more_info_requested') {
     return (
       <div className="action-passive muted">
         {status === 'rejected'   ? 'This transaction was rejected.'

@@ -18,7 +18,7 @@ interface RouteState {
 
 interface BankSnapshot   { role: 'bank';     monthly_volume: Array<{ label: string; count: number; volume: number }> }
 interface AnchorSnapshot { role: 'anchor';   monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }> }
-interface SupplierSnapshot { role: 'supplier'; monthly_volume: Array<{ label: string; count: number; total_financed: number }> }
+interface SupplierSnapshot { role: 'supplier'; monthly_volume: Array<{ label: string; count: number; total_financed: number }>; receivables?: { outstanding_count: number; outstanding_balance: number } }
 type ReportingSnapshot = BankSnapshot | AnchorSnapshot | SupplierSnapshot
 
 function fmtCurrency(n: number): string {
@@ -249,6 +249,58 @@ function EmptyChart({ height = 160, message = 'No data yet' }: { height?: number
   )
 }
 
+function DashBarChart({ items, height = 140 }: {
+  items: Array<{ label: string; value: number; count: number }>
+  height?: number
+}) {
+  const [hovered, setHovered] = React.useState<number | null>(null)
+  const safeItems = items ?? []
+  const maxVal    = Math.max(...safeItems.map(i => i.value), 1)
+  const hasData   = safeItems.some(i => i.value > 0)
+
+  if (!hasData) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
+        No data yet
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height, padding: '0 4px' }}>
+      {safeItems.map((m, i) => {
+        const pct  = maxVal > 0 ? (m.value / maxVal) * 100 : 0
+        const barH = Math.max(pct, m.value > 0 ? 3 : 0)
+        return (
+          <div
+            key={i}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end', position: 'relative', cursor: 'default' }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+          >
+            {hovered === i && m.value > 0 && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 4,
+                background: 'var(--color-ink-1)', color: 'white', padding: '3px 7px', borderRadius: 5,
+                fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
+              }}>
+                {fmtCurrency(m.value)}
+                {m.count > 0 && ` · ${m.count} deal${m.count !== 1 ? 's' : ''}`}
+              </div>
+            )}
+            <div style={{
+              width: '100%', height: `${barH}%`, minHeight: m.value > 0 ? 2 : 0,
+              background: hovered === i ? 'var(--color-accent)' : m.value > 0 ? 'rgba(37,99,235,0.3)' : 'var(--color-border)',
+              borderRadius: '3px 3px 0 0', transition: 'background 0.1s',
+            }} />
+            <div style={{ fontSize: 10, color: 'var(--color-ink-4)', whiteSpace: 'nowrap' }}>{m.label}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ============== BANK DASHBOARD ==============
 function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number }) {
   return (
@@ -268,7 +320,9 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
-  const bankMonthly = reportingSnap?.role === 'bank' ? reportingSnap.monthly_volume.map(m => m.count) : []
+  const bankSnap    = reportingSnap?.role === 'bank' ? reportingSnap : null
+  const bankMonthly = bankSnap?.monthly_volume.map(m => m.count) ?? []
+  const bankVolItems = (bankSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))
 
   const kpis = [
     { label: 'Active Programs', value: data ? String(data.active_program_count) : '—', delta: data ? `${data.program_count} total` : 'Loading',                                                          deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-accent)', sparkData: [] as number[] },
@@ -306,8 +360,10 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
 
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Portfolio exposure · trailing 12 months</h3></div>
-            <EmptyChart height={180} message="No portfolio data yet" />
+            <div className="card-head"><h3 className="t-card-head">Monthly volume · last 6 months</h3></div>
+            <div className="card-body">
+              <DashBarChart items={bankVolItems} height={160} />
+            </div>
           </div>
           <div className="card">
             <div className="card-head"><h3 className="t-card-head">Action required</h3></div>
@@ -343,20 +399,64 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
 
         <div className="grid-1-1-1" style={{ marginTop: 24 }}>
           <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Repayment timeline · next 30 days</h3></div>
-            <EmptyChart height={100} message="No repayments scheduled" />
-          </div>
-          <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Program utilization</h3></div>
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-              {(data?.program_count ?? 0) === 0 ? 'No programs yet' : 'No utilization data yet'}
+            <div className="card-head"><h3 className="t-card-head">Deal count · last 6 months</h3></div>
+            <div className="card-body">
+              <DashBarChart
+                items={(bankSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.count, count: m.count }))}
+                height={100}
+              />
             </div>
           </div>
           <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Recent activity</h3></div>
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-              No recent activity
-            </div>
+            <div className="card-head"><h3 className="t-card-head">Status breakdown</h3></div>
+            {(bankSnap?.status_breakdown ?? []).length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
+                No transactions yet
+              </div>
+            ) : (
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(bankSnap!.status_breakdown ?? []).slice(0, 5).map(row => {
+                  const total = bankSnap!.status_breakdown.reduce((s, r) => s + r.count, 0)
+                  const pct   = total > 0 ? Math.round((row.count / total) * 100) : 0
+                  const STATUS_LABELS: Record<string, string> = {
+                    pending_anchor_approval: 'Anchor Review', pending_bank_review: 'Bank Review',
+                    financing_approved: 'Approved', funded: 'Funded', completed: 'Completed', rejected: 'Rejected',
+                  }
+                  return (
+                    <div key={row.status}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 11, color: 'var(--color-ink-2)' }}>{STATUS_LABELS[row.status] ?? row.status}</span>
+                        <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{row.count} ({pct}%)</span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', width: `${pct}%`, borderRadius: 2, transition: 'width 0.4s',
+                          background: row.status === 'completed' ? 'var(--color-green)' : row.status === 'rejected' ? 'var(--color-red)' : 'var(--color-accent)',
+                        }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          <div className="card">
+            <div className="card-head"><h3 className="t-card-head">Portfolio summary</h3></div>
+            {bankSnap ? (
+              <div className="card-body">
+                <div className="kv-rows">
+                  <div className="kv-row"><span className="k">Total transactions</span><span className="v">{bankSnap.portfolio.total_transactions}</span></div>
+                  <div className="kv-row"><span className="k">Active deals</span><span className="v">{bankSnap.portfolio.active_deals}</span></div>
+                  <div className="kv-row"><span className="k">Outstanding</span><span className="v">{fmtCurrency(bankSnap.portfolio.outstanding_balance)}</span></div>
+                  <div className="kv-row"><span className="k">Total repaid</span><span className="v">{fmtCurrency(bankSnap.portfolio.total_repaid)}</span></div>
+                  {bankSnap.portfolio.avg_rate != null && (
+                    <div className="kv-row"><span className="k">Avg rate</span><span className="v">{bankSnap.portfolio.avg_rate}%</span></div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>No data yet</div>
+            )}
           </div>
         </div>
       </div>
@@ -370,10 +470,12 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
-  const anchorSnap = reportingSnap?.role === 'anchor' ? reportingSnap : null
-  const anchorMonthly = anchorSnap?.monthly_volume?.map(m => m.total_invoice_amount) ?? []
-  const lastMonth = anchorSnap?.monthly_volume?.length ? anchorSnap.monthly_volume[anchorSnap.monthly_volume.length - 1] : null
+  const anchorSnap           = reportingSnap?.role === 'anchor' ? reportingSnap : null
+  const anchorMonthly        = anchorSnap?.monthly_volume?.map(m => m.total_invoice_amount) ?? []
+  const anchorVolItems       = (anchorSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_invoice_amount, count: m.count }))
+  const lastMonth            = anchorSnap?.monthly_volume?.length ? anchorSnap.monthly_volume[anchorSnap.monthly_volume.length - 1] : null
   const currentMonthFinanced = lastMonth?.total_invoice_amount ?? null
+  const totalPayablesFinanced = anchorSnap?.monthly_volume?.reduce((s, m) => s + m.total_invoice_amount, 0) ?? null
 
   return (
     <>
@@ -389,7 +491,7 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
 
         <div className="kpi-strip-4" style={{ marginTop: 24 }}>
           {[
-            { label: 'Payables financed',   value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-anchor)', sparkData: anchorMonthly },
+            { label: 'Payables financed',   value: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? fmtCurrency(totalPayablesFinanced) : '—', delta: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? 'Last 6 months' : 'No data yet', color: 'var(--color-anchor)', sparkData: anchorMonthly },
             { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',                                          delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',  color: 'var(--color-amber)',  sparkData: [] as number[] },
             { label: 'Financed this month', value: currentMonthFinanced != null && currentMonthFinanced > 0 ? fmtCurrency(currentMonthFinanced) : '—', delta: currentMonthFinanced != null && currentMonthFinanced > 0 ? 'This month' : 'No data yet', color: 'var(--color-green)',  sparkData: anchorMonthly },
             { label: 'Due in 30 days',      value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-amber)',  sparkData: [] as number[] },
@@ -424,8 +526,10 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
               )}
             </div>
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Financing volume · last 6 months</h3></div>
-              <EmptyChart height={140} message="No financing volume data yet" />
+              <div className="card-head"><h3 className="t-card-head">Invoice volume · last 6 months</h3></div>
+              <div className="card-body">
+                <DashBarChart items={anchorVolItems} height={140} />
+              </div>
             </div>
           </div>
 
@@ -470,9 +574,13 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
-  const supplierSnap = reportingSnap?.role === 'supplier' ? reportingSnap : null
-  const supplierMonthly = supplierSnap?.monthly_volume?.map(m => m.total_financed) ?? []
-  const financedYTD = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
+  const supplierSnap     = reportingSnap?.role === 'supplier' ? reportingSnap : null
+  const supplierMonthly  = supplierSnap?.monthly_volume?.map(m => m.total_financed) ?? []
+  const supplierVolItems = (supplierSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))
+  const financedYTD      = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
+  const avgNetProceeds   = supplierSnap?.receivables?.outstanding_count > 0
+    ? supplierSnap.receivables.outstanding_balance / supplierSnap.receivables.outstanding_count
+    : null
 
   return (
     <>
@@ -490,7 +598,7 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
           {[
             { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
             { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--color-ink-3)', sparkData: [] as number[] },
-            { label: 'Avg net proceeds',     value: '—',                                                                      delta: 'No data yet',                                                                 color: 'var(--color-green)', sparkData: [] as number[] },
+            { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
             { label: 'Acceptance rate',      value: '—',                                                                      delta: 'No data yet',                                                                 color: 'var(--color-green)', sparkData: [] as number[] },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark">
@@ -505,8 +613,10 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Cash flow · next 8 weeks</h3></div>
-              <EmptyChart height={160} message="No transaction data yet" />
+              <div className="card-head"><h3 className="t-card-head">Financing activity · last 6 months</h3></div>
+              <div className="card-body">
+                <DashBarChart items={supplierVolItems} height={160} />
+              </div>
             </div>
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Active transactions</h3></div>
