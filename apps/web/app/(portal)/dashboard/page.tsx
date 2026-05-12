@@ -16,7 +16,23 @@ interface RouteState {
   programId?: string
 }
 
-interface BankSnapshot   { role: 'bank';     monthly_volume: Array<{ label: string; count: number; volume: number }> }
+interface BankSnapshot {
+  role: 'bank'
+  monthly_volume: Array<{ label: string; count: number; volume: number }>
+
+  status_breakdown: Array<{
+    status: string
+    count: number
+  }>
+
+  portfolio: {
+    total_transactions: number
+    active_deals: number
+    outstanding_balance: number
+    total_repaid: number
+    avg_rate?: number | null
+  }
+}
 interface AnchorSnapshot { role: 'anchor';   monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }> }
 interface SupplierSnapshot { role: 'supplier'; monthly_volume: Array<{ label: string; count: number; total_financed: number }>; receivables?: { outstanding_count: number; outstanding_balance: number } }
 type ReportingSnapshot = BankSnapshot | AnchorSnapshot | SupplierSnapshot
@@ -574,13 +590,17 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
-  const supplierSnap     = reportingSnap?.role === 'supplier' ? reportingSnap : null
+  function isSupplierSnapshot(s: ReportingSnapshot | null): s is SupplierSnapshot {
+    return s?.role === 'supplier'
+  }
+  
+  const supplierSnap = isSupplierSnapshot(reportingSnap) ? reportingSnap : null
+  const outstandingCount = supplierSnap?.receivables?.outstanding_count ?? 0
+  const outstandingBalance = supplierSnap?.receivables?.outstanding_balance ?? 0
   const supplierMonthly  = supplierSnap?.monthly_volume?.map(m => m.total_financed) ?? []
   const supplierVolItems = (supplierSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))
   const financedYTD      = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
-  const avgNetProceeds   = supplierSnap?.receivables?.outstanding_count > 0
-    ? supplierSnap.receivables.outstanding_balance / supplierSnap.receivables.outstanding_count
-    : null
+  const avgNetProceeds = outstandingCount > 0 ? outstandingBalance / outstandingCount : null
 
   return (
     <>
