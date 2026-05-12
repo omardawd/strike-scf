@@ -40,9 +40,7 @@ function HStepper({ step }: { step: number }) {
           <React.Fragment key={i}>
             {i > 0 && <div className={`h-stepper-line${done ? ' done' : ''}`} />}
             <div className="h-stepper-step">
-              <div
-                className={`h-stepper-dot${done ? ' state-done' : current ? ' state-current' : ''}`}
-              >
+              <div className={`h-stepper-dot${done ? ' state-done' : current ? ' state-current' : ''}`}>
                 {done ? '✓' : i + 1}
               </div>
               <div className="h-stepper-label">{label}</div>
@@ -54,15 +52,16 @@ function HStepper({ step }: { step: number }) {
   )
 }
 
-interface Step1Props {
+function StepPrograms({ programs, loading, onSelect }: {
   programs: Program[]
   loading: boolean
   onSelect: (p: Program) => void
-}
-
-function StepPrograms({ programs, loading, onSelect }: Step1Props) {
+}) {
+  const rfPrograms = programs.filter(p =>
+    (p.financing_types ?? []).includes('reverse_factoring')
+  )
   if (loading) return <p style={{ color: 'var(--color-text-2)' }}>Loading programs…</p>
-  if (!programs.length) {
+  if (!rfPrograms.length) {
     return (
       <p style={{ color: 'var(--color-text-2)' }}>
         No programs available. Contact your anchor to enroll.
@@ -71,7 +70,7 @@ function StepPrograms({ programs, loading, onSelect }: Step1Props) {
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 640 }}>
-      {programs.map((p) => (
+      {rfPrograms.map((p) => (
         <div
           key={p.id}
           onClick={() => onSelect(p)}
@@ -95,7 +94,7 @@ function StepPrograms({ programs, loading, onSelect }: Step1Props) {
                 borderRadius: 20,
                 background: p.status === 'active' ? 'var(--color-green-subtle, #e6f9f0)' : 'var(--color-surface-2, #f4f4f5)',
                 color: p.status === 'active' ? 'var(--color-green, #16a34a)' : 'var(--color-ink-4, #9ca3af)',
-                textTransform: 'uppercase',
+                textTransform: 'uppercase' as const,
                 letterSpacing: '0.04em',
               }}>
                 {p.status}
@@ -106,17 +105,11 @@ function StepPrograms({ programs, loading, onSelect }: Step1Props) {
             <div style={{ fontSize: 12, color: 'var(--color-text-2)', marginBottom: 10 }}>{p.bank_name}</div>
           )}
           <div style={{ borderTop: '1px solid var(--color-border)', marginBottom: 10 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--color-text-2)', marginBottom: 2 }}>Type</div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>
                 {(p.financing_types ?? []).map(fmtFinancingType).join(', ') || '—'}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-2)', marginBottom: 2 }}>Tenor</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>
-                {p.standard_tenor_days ? `${p.standard_tenor_days} days` : '—'}
               </div>
             </div>
             <div>
@@ -132,30 +125,21 @@ function StepPrograms({ programs, loading, onSelect }: Step1Props) {
   )
 }
 
-interface Step2Props {
+function StepInvoice({
+  invoiceNumber, invoiceDate, invoiceDueDate, invoiceAmount, offerRate, description, errors, onChange,
+}: {
   invoiceNumber: string
   invoiceDate: string
   invoiceDueDate: string
   invoiceAmount: string
-  financingAmount: string
+  offerRate: string
   description: string
   errors: Record<string, string>
   onChange: (field: string, value: string) => void
-}
-
-function StepInvoice({
-  invoiceNumber,
-  invoiceDate,
-  invoiceDueDate,
-  invoiceAmount,
-  financingAmount,
-  description,
-  errors,
-  onChange,
-}: Step2Props) {
+}) {
   const invoiceAmt = parseFloat(invoiceAmount) || 0
-  const financingAmt = parseFloat(financingAmount) || 0
-  const estimatedNet = financingAmt
+  const rate = parseFloat(offerRate) || 0
+  const advanceAmount = invoiceAmt * (rate / 100)
 
   return (
     <div className="form-split">
@@ -183,7 +167,7 @@ function StepInvoice({
             {errors.invoiceDate && <div style={errStyle}>{errors.invoiceDate}</div>}
           </div>
           <div className="form-field">
-            <label className="form-label">Due Date</label>
+            <label className="form-label">Invoice Due Date</label>
             <input
               className="form-input"
               type="date"
@@ -194,33 +178,46 @@ function StepInvoice({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="form-field">
-            <label className="form-label">Invoice Amount ($)</label>
+        <div className="form-field">
+          <label className="form-label">Invoice Amount ($)</label>
+          <input
+            className="form-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={invoiceAmount}
+            onChange={(e) => onChange('invoiceAmount', e.target.value)}
+            placeholder="100000"
+          />
+          {errors.invoiceAmount && <div style={errStyle}>{errors.invoiceAmount}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Your Offer (Advance Rate %)</label>
+          <div style={{ position: 'relative' }}>
             <input
               className="form-input"
               type="number"
-              min="0"
-              step="0.01"
-              value={invoiceAmount}
-              onChange={(e) => onChange('invoiceAmount', e.target.value)}
-              placeholder="100000"
+              min="1"
+              max="100"
+              step="0.1"
+              value={offerRate}
+              onChange={(e) => onChange('offerRate', e.target.value)}
+              placeholder="95"
+              style={{ paddingRight: 36 }}
             />
-            {errors.invoiceAmount && <div style={errStyle}>{errors.invoiceAmount}</div>}
+            <span style={{
+              position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+              color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none',
+            }}>%</span>
           </div>
-          <div className="form-field">
-            <label className="form-label">Financing Requested ($)</label>
-            <input
-              className="form-input"
-              type="number"
-              min="0"
-              step="0.01"
-              value={financingAmount}
-              onChange={(e) => onChange('financingAmount', e.target.value)}
-              placeholder="95000"
-            />
-            {errors.financingAmount && <div style={errStyle}>{errors.financingAmount}</div>}
-          </div>
+          {errors.offerRate && <div style={errStyle}>{errors.offerRate}</div>}
+          {invoiceAmt > 0 && rate > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 6 }}>
+              You will receive approximately:{' '}
+              <strong style={{ color: 'var(--color-green)' }}>{fmtMoney(advanceAmount)}</strong>
+            </div>
+          )}
         </div>
 
         <div className="form-field">
@@ -245,50 +242,40 @@ function StepInvoice({
             <span>{invoiceAmt > 0 ? fmtMoney(invoiceAmt) : '—'}</span>
           </div>
           <div className="calc-row">
-            <span>Financing Requested</span>
-            <span>{financingAmt > 0 ? fmtMoney(financingAmt) : '—'}</span>
-          </div>
-          <div className="calc-row">
-            <span>Estimated Fee</span>
-            <span>$0</span>
+            <span>Advance Rate</span>
+            <span>{rate > 0 ? `${rate}%` : '—'}</span>
           </div>
           <div style={{ borderTop: '1px solid var(--color-border)', margin: '10px 0' }} />
           <div className="calc-row" style={{ fontWeight: 600 }}>
-            <span>Est. Net Proceeds</span>
-            <span>{financingAmt > 0 ? fmtMoney(estimatedNet) : '—'}</span>
+            <span>You receive upfront</span>
+            <span style={{ color: 'var(--color-green)' }}>
+              {advanceAmount > 0 ? fmtMoney(advanceAmount) : '—'}
+            </span>
           </div>
         </div>
         <p style={{ fontSize: 12, color: 'var(--color-text-2)', marginTop: 10 }}>
-          Fee and rate are set by your bank upon approval.
+          Final rate and fee are set by the bank upon approval.
         </p>
       </div>
     </div>
   )
 }
 
-interface Step3Props {
+function StepReview({
+  program, invoiceNumber, invoiceDueDate, invoiceAmount, offerRate, description, docFiles, submitError,
+}: {
   program: Program
   invoiceNumber: string
-  invoiceDate: string
   invoiceDueDate: string
   invoiceAmount: string
-  financingAmount: string
+  offerRate: string
   description: string
+  docFiles: File[]
   submitError: string | null
-}
-
-function StepReview({
-  program,
-  invoiceNumber,
-  invoiceDate,
-  invoiceDueDate,
-  invoiceAmount,
-  financingAmount,
-  description,
-  submitError,
-}: Step3Props) {
+}) {
   const invoiceAmt = parseFloat(invoiceAmount) || 0
-  const financingAmt = parseFloat(financingAmount) || 0
+  const rate = parseFloat(offerRate) || 0
+  const advanceAmount = invoiceAmt * (rate / 100)
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -301,38 +288,72 @@ function StepReview({
           </div>
           <div className="kv-row">
             <span className="k">Type</span>
-            <span className="v plain">{(program.financing_types ?? []).join(', ')}</span>
+            <span className="v plain">{(program.financing_types ?? []).map(fmtFinancingType).join(', ')}</span>
           </div>
+          {program.bank_name && (
+            <div className="kv-row">
+              <span className="k">Bank</span>
+              <span className="v plain">{program.bank_name}</span>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-head"><span className="t-card-head">Invoice details</span></div>
+        <div className="card-head"><span className="t-card-head">Invoice</span></div>
         <div className="kv-rows">
           <div className="kv-row">
             <span className="k">Invoice #</span>
             <span className="v">{invoiceNumber}</span>
           </div>
           <div className="kv-row">
-            <span className="k">Invoice date</span>
-            <span className="v plain">{invoiceDate}</span>
-          </div>
-          <div className="kv-row">
-            <span className="k">Due date</span>
-            <span className="v plain">{invoiceDueDate}</span>
-          </div>
-          <div className="kv-row">
-            <span className="k">Invoice amount</span>
+            <span className="k">Invoice Amount</span>
             <span className="v">{fmtMoney(invoiceAmt)}</span>
           </div>
           <div className="kv-row">
-            <span className="k">Financing requested</span>
-            <span className="v">{fmtMoney(financingAmt)}</span>
+            <span className="k">Due Date</span>
+            <span className="v plain">{invoiceDueDate}</span>
           </div>
           {description && (
             <div className="kv-row" style={{ alignItems: 'flex-start' }}>
               <span className="k" style={{ paddingTop: 2 }}>Description</span>
               <span className="v plain" style={{ textAlign: 'right', maxWidth: '60%' }}>{description}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-head"><span className="t-card-head">Your Offer</span></div>
+        <div className="kv-rows">
+          <div className="kv-row">
+            <span className="k">Advance Rate</span>
+            <span className="v">{rate}%</span>
+          </div>
+          <div className="kv-row">
+            <span className="k">Amount Requested</span>
+            <span className="v">{fmtMoney(advanceAmount)}</span>
+          </div>
+          <div className="kv-row">
+            <span className="k">You receive upfront</span>
+            <span className="v" style={{ color: 'var(--color-green)', fontWeight: 600 }}>{fmtMoney(advanceAmount)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-head"><span className="t-card-head">Document</span></div>
+        <div className="kv-rows">
+          {docFiles.length > 0 ? (
+            docFiles.map((f, i) => (
+              <div key={i} className="kv-row">
+                <span className="k">Invoice document</span>
+                <span className="v plain" style={{ maxWidth: '65%', textAlign: 'right', wordBreak: 'break-all' }}>{f.name}</span>
+              </div>
+            ))
+          ) : (
+            <div className="kv-row">
+              <span className="k" style={{ color: 'var(--color-ink-3)' }}>No document attached</span>
             </div>
           )}
         </div>
@@ -360,7 +381,7 @@ export default function NewTransactionPage() {
   const [invoiceDate, setInvoiceDate] = React.useState('')
   const [invoiceDueDate, setInvoiceDueDate] = React.useState('')
   const [invoiceAmount, setInvoiceAmount] = React.useState('')
-  const [financingAmount, setFinancingAmount] = React.useState('')
+  const [offerRate, setOfferRate] = React.useState('')
   const [description, setDescription] = React.useState('')
 
   const [errors, setErrors] = React.useState<Record<string, string>>({})
@@ -400,28 +421,28 @@ export default function NewTransactionPage() {
       return next
     })
     switch (field) {
-      case 'invoiceNumber':   setInvoiceNumber(value);   break
-      case 'invoiceDate':     setInvoiceDate(value);     break
-      case 'invoiceDueDate':  setInvoiceDueDate(value);  break
-      case 'invoiceAmount':   setInvoiceAmount(value);   break
-      case 'financingAmount': setFinancingAmount(value); break
-      case 'description':     setDescription(value);     break
+      case 'invoiceNumber':  setInvoiceNumber(value);  break
+      case 'invoiceDate':    setInvoiceDate(value);    break
+      case 'invoiceDueDate': setInvoiceDueDate(value); break
+      case 'invoiceAmount':  setInvoiceAmount(value);  break
+      case 'offerRate':      setOfferRate(value);      break
+      case 'description':    setDescription(value);    break
     }
   }
 
   function validateStep2(): boolean {
     const e: Record<string, string> = {}
     const invoiceAmt = parseFloat(invoiceAmount) || 0
-    const financingAmt = parseFloat(financingAmount) || 0
+    const rate = parseFloat(offerRate) || 0
 
     if (!invoiceNumber.trim()) e.invoiceNumber = 'Invoice number is required'
     if (!invoiceDate) e.invoiceDate = 'Invoice date is required'
     if (!invoiceDueDate) e.invoiceDueDate = 'Due date is required'
     if (!invoiceAmount || invoiceAmt <= 0) e.invoiceAmount = 'Invoice amount must be greater than 0'
-    if (!financingAmount || financingAmt <= 0) {
-      e.financingAmount = 'Financing amount must be greater than 0'
-    } else if (financingAmt > invoiceAmt) {
-      e.financingAmount = 'Financing amount cannot exceed invoice amount'
+    if (!offerRate || rate <= 0) {
+      e.offerRate = 'Advance rate is required'
+    } else if (rate > 100) {
+      e.offerRate = 'Advance rate cannot exceed 100%'
     }
     if (!description.trim()) e.description = 'Description is required'
 
@@ -432,6 +453,9 @@ export default function NewTransactionPage() {
   async function handleSubmit() {
     setSubmitting(true)
     setSubmitError(null)
+    const invoiceAmt = parseFloat(invoiceAmount)
+    const rate = parseFloat(offerRate)
+    const financingAmtRequested = parseFloat((invoiceAmt * (rate / 100)).toFixed(2))
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
@@ -441,8 +465,8 @@ export default function NewTransactionPage() {
           invoice_number: invoiceNumber.trim(),
           invoice_date: invoiceDate,
           invoice_due_date: invoiceDueDate,
-          invoice_amount: parseFloat(invoiceAmount),
-          financing_amount_requested: parseFloat(financingAmount),
+          invoice_amount: invoiceAmt,
+          financing_amount_requested: financingAmtRequested,
           goods_services_description: description.trim(),
         }),
       })
@@ -457,7 +481,7 @@ export default function NewTransactionPage() {
           docFiles.map((file) => {
             const form = new FormData()
             form.append('file', file)
-            form.append('document_kind', 'supporting_document')
+            form.append('document_kind', 'invoice_pdf')
             return fetch(`/api/transactions/${txnId}/documents`, { method: 'POST', body: form })
           })
         )
@@ -513,16 +537,16 @@ export default function NewTransactionPage() {
               invoiceDate={invoiceDate}
               invoiceDueDate={invoiceDueDate}
               invoiceAmount={invoiceAmount}
-              financingAmount={financingAmount}
+              offerRate={offerRate}
               description={description}
               errors={errors}
               onChange={handleFieldChange}
             />
 
             <div style={{ marginTop: 24, maxWidth: 640 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Supporting Documents</div>
+              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Invoice Document</div>
               <p style={{ fontSize: 12, color: 'var(--color-text-2)', marginBottom: 12 }}>
-                Optional. Attach invoice PDF, purchase order, or delivery confirmation.
+                Attach your invoice PDF or supporting document.
               </p>
               <input
                 ref={fileInputRef}
@@ -583,9 +607,7 @@ export default function NewTransactionPage() {
               <button
                 className="btn btn-primary"
                 type="button"
-                onClick={() => {
-                  if (validateStep2()) setStep(2)
-                }}
+                onClick={() => { if (validateStep2()) setStep(2) }}
               >
                 Continue to Review
               </button>
@@ -598,11 +620,11 @@ export default function NewTransactionPage() {
             <StepReview
               program={selectedProgram}
               invoiceNumber={invoiceNumber}
-              invoiceDate={invoiceDate}
               invoiceDueDate={invoiceDueDate}
               invoiceAmount={invoiceAmount}
-              financingAmount={financingAmount}
+              offerRate={offerRate}
               description={description}
+              docFiles={docFiles}
               submitError={submitError}
             />
             <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
@@ -620,7 +642,7 @@ export default function NewTransactionPage() {
                 onClick={handleSubmit}
                 disabled={submitting}
               >
-                {submitting ? 'Submitting…' : 'Submit for Anchor Approval'}
+                {submitting ? 'Submitting…' : 'Submit to anchor for approval'}
               </button>
             </div>
           </>

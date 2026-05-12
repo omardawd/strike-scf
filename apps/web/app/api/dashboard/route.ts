@@ -38,28 +38,47 @@ export async function GET() {
       { count: program_count },
       { count: active_program_count },
       { count: kyb_pending },
-      { count: pending_bank_review },
-      { count: active_transactions },
       { data: bankPrograms },
     ] = await Promise.all([
       adminClient.from('programs').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id),
       adminClient.from('programs').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).eq('status', 'active'),
       adminClient.from('organizations').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).eq('kyb_status', 'submitted'),
-      adminClient.from('transactions').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).eq('status', 'pending_bank_review'),
-      adminClient.from('transactions').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).in('status', ['pending_anchor_approval', 'pending_bank_review', 'financing_approved', 'funded']),
       adminClient.from('programs').select('id').eq('bank_id', userData.bank_id),
     ])
 
+    // Transactions link via program_id, not bank_id directly at early stages
     const programIds = (bankPrograms ?? []).map((p: { id: string }) => p.id)
+    let pending_bank_review = 0
+    let active_transactions = 0
     let enrolled_org_count = 0
+
     if (programIds.length > 0) {
-      const { count: enrolledCount } = await adminClient
-        .from('program_enrollments')
-        .select('org_id', { count: 'exact', head: true })
-        .in('program_id', programIds)
-        .eq('status', 'active')
-      enrolled_org_count = enrolledCount ?? 0
+      const [reviewResult, activeResult, enrolledResult] = await Promise.all([
+        adminClient
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .in('program_id', programIds)
+          .eq('status', 'pending_bank_review'),
+        adminClient
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .in('program_id', programIds)
+          .in('status', ['pending_anchor_approval', 'pending_bank_review', 'financing_approved', 'funded']),
+        adminClient
+          .from('program_enrollments')
+          .select('org_id', { count: 'exact', head: true })
+          .in('program_id', programIds)
+          .eq('status', 'active'),
+      ])
+      pending_bank_review = reviewResult.count ?? 0
+      active_transactions = activeResult.count ?? 0
+      enrolled_org_count  = enrolledResult.count ?? 0
     }
+
+    console.log('Bank dashboard raw:', {
+      kyb_pending, pending_bank_review, active_transactions,
+      programIds, program_count, active_program_count, enrolled_org_count,
+    })
 
     return NextResponse.json({
       portal: 'bank',
@@ -68,8 +87,8 @@ export async function GET() {
       active_program_count: active_program_count ?? 0,
       enrolled_org_count,
       kyb_pending:          kyb_pending          ?? 0,
-      pending_bank_review:  pending_bank_review  ?? 0,
-      active_transactions:  active_transactions  ?? 0,
+      pending_bank_review,
+      active_transactions,
     })
   }
 

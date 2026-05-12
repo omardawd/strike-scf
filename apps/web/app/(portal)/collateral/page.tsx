@@ -4,7 +4,17 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 
-const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
+const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+
+const STATUS_LABELS: Record<string, string> = {
+  pending:   'Required by bank',
+  submitted: 'Acknowledged by supplier',
+  accepted:  'Accepted',
+  waived:    'Waived',
+  rejected:  'Not accepted — resubmit required',
+  released:  'Released',
+}
 
 const COLLATERAL_TYPE_LABELS: Record<string, string> = {
   post_dated_cheque:         'Post-dated Cheque',
@@ -45,6 +55,7 @@ interface CollateralItem {
   id: string
   level: string
   org_id: string | null
+  org_name: string | null
   transaction_id: string | null
   collateral_type: string
   description: string
@@ -87,9 +98,8 @@ export default function CollateralPage() {
   const [formError, setFormError]   = useState<string | null>(null)
   const [formSaving, setFormSaving] = useState(false)
 
-  // Redirect non-bank users
   useEffect(() => {
-    if (user && !BANK_ROLES.includes(user.role)) {
+    if (user && !BANK_ROLES.includes(user.role) && !SUPPLIER_ROLES.includes(user.role)) {
       router.replace('/dashboard')
     }
   }, [user, router])
@@ -107,6 +117,26 @@ export default function CollateralPage() {
   const filtered = filter === 'All'
     ? collateral
     : collateral.filter(c => c.status === filter.toLowerCase())
+
+  const isBank     = BANK_ROLES.includes(user?.role ?? '')
+  const isSupplier = SUPPLIER_ROLES.includes(user?.role ?? '')
+
+  async function handleAction(id: string, action: string) {
+    try {
+      const res  = await fetch(`/api/collateral/${id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setAlert({ kind: 'success', msg: `Collateral ${action}d` })
+      load()
+      setTimeout(() => setAlert(null), 3000)
+    } catch (err) {
+      setAlert({ kind: 'error', msg: err instanceof Error ? err.message : 'Action failed' })
+    }
+  }
 
   async function handleAdd() {
     setFormSaving(true)
@@ -166,7 +196,7 @@ export default function CollateralPage() {
         actions={
           <>
             <NotifBell />
-            {!showForm && (
+            {!showForm && isBank && (
               <button
                 className="btn btn-primary"
                 type="button"
@@ -342,11 +372,13 @@ export default function CollateralPage() {
               <thead>
                 <tr>
                   <th>Type</th>
+                  <th>Organization</th>
                   <th>Description</th>
                   <th>Level</th>
                   <th>Required value</th>
                   <th>Deadline</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -355,7 +387,10 @@ export default function CollateralPage() {
                   return (
                     <tr key={item.id}>
                       <td>{formatCollateralType(item.collateral_type)}</td>
-                      <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ fontSize: 12 }}>
+                        {item.org_name ?? (item.org_id ? item.org_id.slice(0, 8) + '…' : '—')}
+                      </td>
+                      <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.description.length > 40 ? item.description.slice(0, 40) + '…' : item.description}
                       </td>
                       <td>
@@ -369,8 +404,24 @@ export default function CollateralPage() {
                       </td>
                       <td>
                         <span className={`badge ${statusBadge(item.status)}`}>
-                          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                          {STATUS_LABELS[item.status] ?? item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                         </span>
+                      </td>
+                      <td>
+                        {isSupplier && item.status === 'pending' && (
+                          <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'submit')}>
+                            Acknowledge
+                          </button>
+                        )}
+                        {isBank && item.status === 'submitted' && (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'accept')}>Accept</button>
+                            <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'reject')}>Reject</button>
+                          </div>
+                        )}
+                        {isBank && item.status === 'accepted' && (
+                          <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'release')}>Release</button>
+                        )}
                       </td>
                     </tr>
                   )

@@ -200,7 +200,9 @@ export default function ReportingPage() {
         setError(d.error ?? 'Failed to load reporting data')
         return
       }
-      setData(await res.json() as ReportingData)
+      const reportingData = await res.json() as ReportingData
+      console.log('Reporting data:', reportingData)
+      setData(reportingData)
     } catch {
       setError('Failed to load reporting data')
     } finally {

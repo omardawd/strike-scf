@@ -13,6 +13,7 @@ interface Transaction {
   financing_amount_requested: number | null
   financing_amount_approved: number | null
   apr: number | null
+  financing_rate_apr: number | null
   tenor_days: number | null
   fee_amount: number | null
   net_proceeds: number | null
@@ -24,6 +25,7 @@ interface Transaction {
   invoice_date: string | null
   invoice_due_date: string | null
   description: string | null
+  bank_approval_notes: string | null
   program_id: string | null
   program_name: string | null
   supplier_id: string | null
@@ -69,6 +71,18 @@ interface CollateralItem {
   updated_at: string
 }
 
+interface WireInfo {
+  bank_name?: string
+  account_number?: string
+  routing_number?: string
+  reference?: string
+}
+
+function parseWireInfo(raw: string | null): WireInfo | null {
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+
 function formatCollateralType(type: string): string {
   const labels: Record<string, string> = {
     post_dated_cheque:         'Post-dated Cheque',
@@ -93,25 +107,26 @@ function collateralStatusBadge(status: string): string {
   }
 }
 
-const STEPPER_STEPS = [
-  { key: 'submitted',               label: 'Submitted' },
-  { key: 'pending_anchor_approval', label: 'Anchor Review' },
-  { key: 'pending_bank_review',     label: 'Bank Review' },
-  { key: 'financing_approved',      label: 'Approved' },
-  { key: 'funded',                  label: 'Funded' },
-  { key: 'completed',               label: 'Completed' },
+// RF stepper: includes counter-offer step
+const RF_STEPPER_STEPS = [
+  { key: 'pending_anchor_approval',          label: 'Anchor Review' },
+  { key: 'pending_bank_review',              label: 'Bank Review' },
+  { key: 'pending_supplier_counter_review',  label: 'Supplier Review' },
+  { key: 'financing_approved',               label: 'Approved' },
+  { key: 'funded',                           label: 'Disbursed' },
+  { key: 'completed',                        label: 'Repaid' },
 ]
 
-const STATUS_ORDER = STEPPER_STEPS.map(s => s.key)
+const RF_STATUS_ORDER = RF_STEPPER_STEPS.map(s => s.key)
 
-function stepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
-  let effectiveStatus = status
-  if (status === 'more_info_requested') effectiveStatus = 'pending_bank_review'
-  if (status === 'rejected')            effectiveStatus = 'pending_bank_review'
+function rfStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
+  let eff = status
+  if (status === 'rejected') eff = 'pending_bank_review'
 
-  const stepIdx    = STATUS_ORDER.indexOf(stepKey)
-  const currentIdx = STATUS_ORDER.indexOf(effectiveStatus)
+  const stepIdx    = RF_STATUS_ORDER.indexOf(stepKey)
+  const currentIdx = RF_STATUS_ORDER.indexOf(eff)
 
+  if (currentIdx === -1) return 'todo'
   if (stepIdx < currentIdx)  return 'done'
   if (stepIdx === currentIdx) return 'current'
   return 'todo'
@@ -119,27 +134,29 @@ function stepperState(stepKey: string, status: string): 'done' | 'current' | 'to
 
 function statusBadge(status: string): string {
   switch (status) {
-    case 'pending_anchor_approval': return 'badge-pending'
-    case 'pending_bank_review':     return 'badge-active'
-    case 'more_info_requested':     return 'badge-pending'
-    case 'financing_approved':      return 'badge-funded'
-    case 'funded':                  return 'badge-funded'
-    case 'completed':               return 'badge-completed'
-    case 'rejected':                return 'badge-rejected'
-    default:                        return 'badge-draft'
+    case 'pending_anchor_approval':         return 'badge-pending'
+    case 'pending_bank_review':             return 'badge-active'
+    case 'pending_supplier_counter_review': return 'badge-pending'
+    case 'more_info_requested':             return 'badge-pending'
+    case 'financing_approved':              return 'badge-funded'
+    case 'funded':                          return 'badge-funded'
+    case 'completed':                       return 'badge-completed'
+    case 'rejected':                        return 'badge-rejected'
+    default:                                return 'badge-draft'
   }
 }
 
 function statusLabel(status: string): string {
   switch (status) {
-    case 'pending_anchor_approval': return 'Pending Approval'
-    case 'pending_bank_review':     return 'Pending Bank Review'
-    case 'more_info_requested':     return 'More Info Needed'
-    case 'financing_approved':      return 'Approved'
-    case 'funded':                  return 'Funded'
-    case 'completed':               return 'Completed'
-    case 'rejected':                return 'Rejected'
-    default:                        return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    case 'pending_anchor_approval':         return 'Pending Approval'
+    case 'pending_bank_review':             return 'Pending Bank Review'
+    case 'pending_supplier_counter_review': return 'Counter-offer Pending'
+    case 'more_info_requested':             return 'More Info Needed'
+    case 'financing_approved':              return 'Approved'
+    case 'funded':                          return 'Funded'
+    case 'completed':                       return 'Completed'
+    case 'rejected':                        return 'Rejected'
+    default:                                return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   }
 }
 
@@ -167,17 +184,23 @@ function humanizeType(t: string | null): string {
 
 function humanizeEvent(e: TransactionEvent): string {
   switch (e.event_type) {
-    case 'transaction_submitted':  return 'Submitted transaction'
-    case 'anchor_approved':        return 'Approved invoice'
-    case 'anchor_rejected':        return 'Rejected invoice'
-    case 'bank_approved':          return 'Approved financing'
-    case 'bank_rejected':          return 'Rejected transaction'
-    case 'bank_requested_info':    return 'Requested more information'
-    case 'more_info_provided':     return 'Provided additional information'
-    case 'disbursed':              return 'Disbursed funds to supplier'
-    case 'repaid':                 return 'Recorded repayment'
-    case 'funded':                 return 'Transaction funded'
-    case 'completed':              return 'Transaction completed'
+    case 'transaction_submitted':    return 'Submitted transaction'
+    case 'created':                  return 'Transaction created'
+    case 'anchor_approved':          return 'Approved invoice'
+    case 'anchor_rejected':          return 'Rejected invoice'
+    case 'bank_approved':            return 'Approved financing'
+    case 'bank_rejected':            return 'Rejected transaction'
+    case 'bank_requested_info':      return 'Requested more information'
+    case 'more_info_provided':       return 'Provided additional information'
+    case 'counter_offer_submitted':  return 'Submitted counter-offer'
+    case 'counter_offer_accepted':   return 'Accepted counter-offer'
+    case 'counter_offer_rejected':   return 'Declined counter-offer'
+    case 'repayment_info_sent':      return 'Sent repayment instructions to anchor'
+    case 'disbursed':                return 'Disbursed funds to supplier'
+    case 'repaid':                   return 'Recorded repayment'
+    case 'funded':                   return 'Transaction funded'
+    case 'completed':                return 'Transaction completed'
+    case 'document_uploaded':        return 'Uploaded document'
     case 'status_changed':
       return e.to_status ? `Status updated to ${statusLabel(e.to_status)}` : 'Status updated'
     default:
@@ -185,7 +208,7 @@ function humanizeEvent(e: TransactionEvent): string {
   }
 }
 
-// ── Action panels ──────────────────────────────────────────────────────────
+// ── Bank action panel (reverse factoring) ──────────────────────────────────
 
 function BankActionPanel({
   transaction,
@@ -200,43 +223,45 @@ function BankActionPanel({
   txnId: string
   onRefresh: () => void
 }) {
-  // pending_bank_review state
-  const [rate, setRate]         = useState(transaction.apr?.toString() ?? '8.50')
-  const [tenor, setTenor]       = useState(transaction.tenor_days?.toString() ?? '60')
-  const [amount, setAmount]     = useState(
-    (transaction.financing_amount_approved ?? transaction.financing_amount_requested ?? 0).toString()
-  )
-  const [notes, setNotes]           = useState('')
-  const [mode, setMode]             = useState<'idle' | 'request_info' | 'reject'>('idle')
-  const [infoNote, setInfoNote]     = useState('')
-  const [rejectNote, setRejectNote] = useState('')
-
-  // financing_approved (disburse) state
-  const [disbRef, setDisbRef]       = useState('')
-  const [disbursing, setDisbursing] = useState(false)
-  const [disbError, setDisbError]   = useState<string | null>(null)
-
-  // funded (repay) state
-  const [repayRef, setRepayRef]   = useState('')
-  const [earlyRepay, setEarlyRepay] = useState(false)
-  const [actualFee, setActualFee] = useState(transaction.fee_amount?.toString() ?? '')
-  const [repaying, setRepaying]   = useState(false)
-  const [repayError, setRepayError] = useState<string | null>(null)
-
   const { status } = transaction
+  const invoiceAmt = transaction.invoice_amount ?? 0
+  const supplierRatePct = invoiceAmt > 0 && transaction.financing_amount_requested
+    ? ((transaction.financing_amount_requested / invoiceAmt) * 100).toFixed(1)
+    : '0'
 
-  // ── financing_approved: disburse ──────────────────────────────────────────
+  const [mode, setMode]             = useState<'idle' | 'counter' | 'reject'>('idle')
+  const [rfRate, setRfRate]         = useState(supplierRatePct)
+  const [rfDiscount, setRfDiscount] = useState('')
+  const [wireInfo, setWireInfo]     = useState({ bank_name: '', account_number: '', routing_number: '', reference: '' })
+  const [rejectNote, setRejectNote] = useState('')
+  const [counterNotes, setCounterNotes] = useState('')
+
+  const [disbRef, setDisbRef]         = useState('')
+  const [disbursing, setDisbursing]   = useState(false)
+  const [disbError, setDisbError]     = useState<string | null>(null)
+
+  const [repaymentAmount, setRepaymentAmount]           = useState('')
+  const [repaymentDueDate, setRepaymentDueDate]         = useState('')
+  const [repaymentInstructions, setRepaymentInstructions] = useState('')
+  const [sendingRepayment, setSendingRepayment]         = useState(false)
+  const [repaymentError, setRepaymentError]             = useState<string | null>(null)
+  const [repaymentSent, setRepaymentSent]               = useState(false)
+
+  const rfRateNum    = parseFloat(rfRate) || 0
+  const disburseAmt  = invoiceAmt * (rfRateNum / 100)
+  const rfDiscountNum = parseFloat(rfDiscount) || 0
+
   if (status === 'financing_approved') {
     const handleDisburse = async () => {
       setDisbursing(true)
       setDisbError(null)
       try {
-        const body: Record<string, unknown> = {}
-        if (disbRef.trim()) body.disbursement_reference = disbRef.trim()
+        const b: Record<string, unknown> = {}
+        if (disbRef.trim()) b.disbursement_reference = disbRef.trim()
         const res = await fetch(`/api/transactions/${txnId}/disburse`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(b),
         })
         const data = await res.json()
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
@@ -251,34 +276,28 @@ function BankActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
-          Ready to disburse
+          Offer approved — disbursement pending
         </p>
         <div className="calc-panel">
           <div className="calc-row">
             <span>Approved amount</span>
             <span>{fmtAmt(transaction.financing_amount_approved)}</span>
           </div>
-          {transaction.apr != null && (
+          {(transaction.apr ?? transaction.financing_rate_apr) != null && (
             <div className="calc-row">
-              <span>Rate</span>
-              <span>{transaction.apr}% APR</span>
+              <span>Advance rate</span>
+              <span>{transaction.apr ?? transaction.financing_rate_apr}%</span>
             </div>
           )}
           {transaction.fee_amount != null && (
             <div className="calc-row">
-              <span>Fee</span>
+              <span>Discount fee</span>
               <span>{fmtAmt(transaction.fee_amount)}</span>
             </div>
           )}
-          <div className="calc-row">
-            <span>Net proceeds to supplier</span>
-            <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(transaction.net_proceeds)}</strong>
-          </div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-            Reference / wire number (optional)
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Reference / wire number (optional)</div>
           <input
             className="input"
             placeholder="e.g. WIRE-20240509-001"
@@ -287,154 +306,123 @@ function BankActionPanel({
             style={{ width: '100%' }}
           />
         </div>
-        {disbError && (
-          <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{disbError}</div>
-        )}
-        <button
-          className="btn btn-primary btn-full"
-          type="button"
-          disabled={disbursing}
-          onClick={handleDisburse}
-        >
+        {disbError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{disbError}</div>}
+        <button className="btn btn-primary btn-full" type="button" disabled={disbursing} onClick={handleDisburse}>
           {disbursing ? 'Processing…' : 'Mark as disbursed'}
         </button>
       </div>
     )
   }
 
-  // ── funded: repayment ─────────────────────────────────────────────────────
   if (status === 'funded') {
-    const handleRepay = async () => {
-      setRepaying(true)
-      setRepayError(null)
+    const repaymentAlreadySent = !!transaction.repayment_due_date
+
+    const handleSendRepayment = async () => {
+      setSendingRepayment(true)
+      setRepaymentError(null)
       try {
-        const body: Record<string, unknown> = { early_repayment: earlyRepay }
-        if (repayRef.trim()) body.repayment_reference = repayRef.trim()
-        const feeNum = parseFloat(actualFee)
-        if (!isNaN(feeNum) && actualFee.trim() !== '') body.actual_fee_amount = feeNum
-        const res = await fetch(`/api/transactions/${txnId}/repay`, {
-          method: 'POST',
+        const res = await fetch(`/api/transactions/${txnId}`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            action: 'send_repayment_info',
+            repayment_amount: repaymentAmount ? parseFloat(repaymentAmount) : null,
+            repayment_due_date: repaymentDueDate || null,
+            repayment_instructions: repaymentInstructions || null,
+          }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        setRepaymentSent(true)
         onRefresh()
       } catch (err) {
-        setRepayError(err instanceof Error ? err.message : 'Failed to record repayment')
+        setRepaymentError(err instanceof Error ? err.message : 'Failed to send')
       } finally {
-        setRepaying(false)
+        setSendingRepayment(false)
       }
+    }
+
+    if (repaymentAlreadySent || repaymentSent) {
+      return (
+        <div className="action-block">
+          <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-green)', margin: 0 }}>
+            Repayment instructions sent to anchor
+          </p>
+          <div className="calc-panel">
+            {transaction.repayment_due_date && (
+              <div className="calc-row">
+                <span>Due date</span>
+                <span>{fmtDate(transaction.repayment_due_date)}</span>
+              </div>
+            )}
+            {transaction.bank_approval_notes && (
+              <div className="calc-row" style={{ alignItems: 'flex-start' }}>
+                <span>Instructions</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
+                  {transaction.bank_approval_notes}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )
     }
 
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
-          Mark repayment received
+          Send repayment instructions to anchor
         </p>
-        <div className="calc-panel">
-          <div className="calc-row">
-            <span>Expected repayment</span>
-            <span>{fmtAmt(transaction.financing_amount_approved)}</span>
-          </div>
-          <div className="calc-row">
-            <span>Due date</span>
-            <span>{fmtDate(transaction.repayment_due_date)}</span>
-          </div>
-        </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-            Reference number (optional)
-          </div>
-          <input
-            className="input"
-            placeholder="e.g. ACH-20240509-001"
-            value={repayRef}
-            onChange={e => setRepayRef(e.target.value)}
-            style={{ width: '100%' }}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-            Actual fee collected (optional)
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment amount ($)</div>
           <input
             className="input mono"
             placeholder="0.00"
-            value={actualFee}
-            onChange={e => setActualFee(e.target.value)}
+            value={repaymentAmount}
+            onChange={e => setRepaymentAmount(e.target.value)}
             style={{ width: '100%' }}
           />
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment due date</div>
           <input
-            type="checkbox"
-            checked={earlyRepay}
-            onChange={e => setEarlyRepay(e.target.checked)}
+            type="date"
+            className="input"
+            value={repaymentDueDate}
+            onChange={e => setRepaymentDueDate(e.target.value)}
+            style={{ width: '100%' }}
           />
-          Early repayment
-        </label>
-        {repayError && (
-          <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repayError}</div>
-        )}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Instructions / wire details</div>
+          <textarea
+            className="form-input"
+            rows={3}
+            placeholder="IBAN, wire instructions, or payment reference…"
+            value={repaymentInstructions}
+            onChange={e => setRepaymentInstructions(e.target.value)}
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </div>
+        {repaymentError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaymentError}</div>}
         <button
           className="btn btn-primary btn-full"
           type="button"
-          disabled={repaying}
-          onClick={handleRepay}
+          disabled={sendingRepayment || !repaymentDueDate}
+          onClick={handleSendRepayment}
         >
-          {repaying ? 'Processing…' : 'Mark as repaid'}
+          {sendingRepayment ? 'Sending…' : 'Send to anchor'}
         </button>
       </div>
     )
   }
 
-  // ── Passive for non-actionable statuses ───────────────────────────────────
   if (status !== 'pending_bank_review') {
     return (
       <div className="action-passive muted">
-        {status === 'rejected'
-          ? 'This transaction was rejected.'
-          : status === 'more_info_requested'
-          ? 'More information requested — awaiting supplier response.'
-          : status === 'completed'
-          ? 'Transaction completed.'
+        {status === 'rejected'   ? 'This transaction was rejected.'
+          : status === 'completed' ? 'Transaction completed.'
           : `Awaiting ${status.replace(/_/g, ' ')}`}
-      </div>
-    )
-  }
-
-  // ── pending_bank_review: review / approve / reject form ───────────────────
-  if (mode === 'request_info') {
-    return (
-      <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
-          Describe what additional information is needed from the supplier.
-        </p>
-        <textarea
-          className="form-input"
-          rows={4}
-          placeholder="Explain what is needed (min 10 characters)…"
-          value={infoNote}
-          onChange={e => setInfoNote(e.target.value)}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-        <button
-          className="btn btn-secondary btn-full"
-          type="button"
-          disabled={acting || infoNote.trim().length < 10}
-          onClick={() => onAction({ action: 'request_info', notes: infoNote.trim() })}
-        >
-          {acting ? 'Sending…' : 'Send request'}
-        </button>
-        <button
-          className="btn btn-ghost btn-full"
-          type="button"
-          disabled={acting}
-          onClick={() => { setMode('idle'); setInfoNote('') }}
-        >
-          Cancel
-        </button>
       </div>
     )
   }
@@ -442,9 +430,7 @@ function BankActionPanel({
   if (mode === 'reject') {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
-          Rejection reason
-        </p>
+        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
         <textarea
           className="form-input"
           rows={4}
@@ -457,116 +443,171 @@ function BankActionPanel({
           className="btn btn-danger btn-full"
           type="button"
           disabled={acting || rejectNote.trim().length < 10}
-          onClick={() => onAction({ action: 'reject', notes: rejectNote.trim() })}
+          onClick={() => onAction({ action: 'reject', rejection_reason: rejectNote.trim() })}
         >
           {acting ? 'Processing…' : 'Confirm rejection'}
         </button>
-        <button
-          className="btn btn-ghost btn-full"
-          type="button"
-          disabled={acting}
-          onClick={() => { setMode('idle'); setRejectNote('') }}
-        >
+        <button className="btn btn-ghost btn-full" type="button" onClick={() => { setMode('idle'); setRejectNote('') }}>
           Cancel
         </button>
       </div>
     )
   }
 
-  const rateNum  = parseFloat(rate) || 0
-  const tenorNum = parseInt(tenor, 10) || 0
-  const amtNum   = parseFloat(amount.replace(/[^0-9.]/g, '')) || 0
-  const fee      = amtNum * (rateNum / 100) * (tenorNum / 365)
-  const net      = amtNum - fee
+  const isCounter = mode === 'counter'
 
   return (
     <div className="action-block">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+        {isCounter ? 'Counter-offer' : 'Review financing offer'}
+      </p>
+
+      {!isCounter && (
+        <div className="calc-panel">
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
+          <div className="calc-row">
+            <span>Invoice amount</span>
+            <span>{fmtAmt(transaction.invoice_amount)}</span>
+          </div>
+          <div className="calc-row">
+            <span>Requested advance rate</span>
+            <span>{supplierRatePct}%</span>
+          </div>
+          <div className="calc-row">
+            <span>Requested amount</span>
+            <span>{fmtAmt(transaction.financing_amount_requested)}</span>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
+          {isCounter ? 'Counter advance rate (%)' : 'Advance rate (%)'}
+        </div>
+        <div style={{ position: 'relative' }}>
+          <input
+            className="form-input mono"
+            style={{ width: '100%', paddingRight: 32 }}
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={rfRate}
+            onChange={e => setRfRate(e.target.value)}
+          />
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+        </div>
+      </div>
+
+      {rfRateNum > 0 && (
+        <div className="calc-row">
+          <span>Amount to disburse</span>
+          <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(disburseAmt.toFixed(2)))}</strong>
+        </div>
+      )}
+
+      {!isCounter && (
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Rate (% APR)</div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Discount fee ($)</div>
           <input
             className="form-input mono"
             style={{ width: '100%' }}
-            value={rate}
-            onChange={e => setRate(e.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            value={rfDiscount}
+            onChange={e => setRfDiscount(e.target.value)}
+            placeholder={rfRateNum > 0 ? (invoiceAmt - disburseAmt).toFixed(2) : '0.00'}
           />
         </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Tenor (days)</div>
-          <input
-            className="form-input mono"
-            value={tenor}
-            onChange={e => setTenor(e.target.value)}
-          />
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Approved amount</div>
-        <input
-          className="form-input mono"
-          style={{ width: '100%' }}
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-        />
-      </div>
-      {amtNum > 0 && (
+      )}
+
+      {!isCounter && (
         <>
-          <div className="calc-row">
-            <span>Fee</span>
-            <span>{fmtAmt(fee)}</span>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginTop: 4 }}>
+            Wire transfer info
           </div>
-          <div className="calc-row">
-            <span>Net proceeds</span>
-            <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(net)}</strong>
-          </div>
+          {(['bank_name', 'account_number', 'routing_number', 'reference'] as const).map(field => (
+            <div key={field}>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
+                {field === 'bank_name'       ? 'Bank name'
+                  : field === 'account_number' ? 'Account number'
+                  : field === 'routing_number' ? 'Routing number'
+                  : 'Reference / memo'}
+              </div>
+              <input
+                className="form-input"
+                style={{ width: '100%' }}
+                value={wireInfo[field]}
+                onChange={e => setWireInfo(w => ({ ...w, [field]: e.target.value }))}
+              />
+            </div>
+          ))}
         </>
       )}
-      <div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
-        <textarea
-          className="form-input"
-          rows={2}
-          placeholder="Approval notes…"
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </div>
-      <button
-        className="btn btn-primary btn-full"
-        type="button"
-        disabled={acting || !amtNum || !rateNum || !tenorNum}
-        onClick={() => onAction({
-          action: 'approve',
-          financing_rate_apr: rateNum,
-          financing_amount_approved: amtNum,
-          tenor_days: tenorNum,
-          fee_amount: parseFloat(fee.toFixed(2)),
-          net_proceeds: parseFloat(net.toFixed(2)),
-          ...(notes.trim() ? { bank_approval_notes: notes.trim() } : {}),
-        })}
-      >
-        {acting ? 'Processing…' : 'Approve financing'}
-      </button>
-      <button
-        className="btn btn-secondary btn-full"
-        type="button"
-        disabled={acting}
-        onClick={() => setMode('request_info')}
-      >
-        Request more info
-      </button>
-      <button
-        className="btn btn-danger btn-full"
-        type="button"
-        disabled={acting}
-        onClick={() => setMode('reject')}
-      >
-        Reject
-      </button>
+
+      {isCounter && (
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+          <textarea
+            className="form-input"
+            rows={2}
+            value={counterNotes}
+            onChange={e => setCounterNotes(e.target.value)}
+            style={{ width: '100%', resize: 'vertical' }}
+            placeholder="Reason for counter-offer…"
+          />
+        </div>
+      )}
+
+      {isCounter ? (
+        <>
+          <button
+            className="btn btn-primary btn-full"
+            type="button"
+            disabled={acting || !rfRateNum}
+            onClick={() => onAction({
+              action: 'counter_offer',
+              financing_rate_apr: rfRateNum,
+              financing_amount_approved: parseFloat(disburseAmt.toFixed(2)),
+              ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
+            })}
+          >
+            {acting ? 'Sending…' : 'Send counter-offer'}
+          </button>
+          <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            className="btn btn-primary btn-full"
+            type="button"
+            disabled={acting || !rfRateNum}
+            onClick={() => onAction({
+              action: 'approve',
+              financing_rate_apr: rfRateNum,
+              financing_amount_approved: parseFloat(disburseAmt.toFixed(2)),
+              ...(rfDiscountNum ? { discount_fee: rfDiscountNum } : {}),
+              wire_transfer_info: wireInfo,
+            })}
+          >
+            {acting ? 'Processing…' : 'Approve offer'}
+          </button>
+          <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>
+            Counter-offer
+          </button>
+          <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>
+            Reject
+          </button>
+        </>
+      )}
     </div>
   )
 }
+
+// ── Anchor action panel ────────────────────────────────────────────────────
 
 function AnchorActionPanel({
   transaction,
@@ -582,17 +623,51 @@ function AnchorActionPanel({
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason]     = useState('')
 
+  if (transaction.status === 'funded') {
+    return (
+      <div className="action-block">
+        <div className="action-passive muted">Transaction funded.</div>
+        {transaction.repayment_due_date ? (
+          <div className="calc-panel" style={{ marginTop: 8 }}>
+            <div className="calc-row">
+              <span>Repayment due</span>
+              <span>{fmtDate(transaction.repayment_due_date)}</span>
+            </div>
+            {transaction.financing_amount_approved != null && (
+              <div className="calc-row">
+                <span>Amount</span>
+                <span>{fmtAmt(transaction.financing_amount_approved)}</span>
+              </div>
+            )}
+            {transaction.bank_approval_notes && (
+              <div className="calc-row" style={{ alignItems: 'flex-start' }}>
+                <span>Instructions</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
+                  {transaction.bank_approval_notes}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 8 }}>
+            Awaiting repayment instructions from bank
+          </p>
+        )}
+      </div>
+    )
+  }
+
   if (transaction.status !== 'pending_anchor_approval') {
     return (
       <div className={`action-passive ${transaction.status === 'rejected' ? '' : 'muted'}`}>
         {transaction.status === 'rejected'
           ? 'This transaction was rejected.'
-          : transaction.status === 'pending_bank_review' || transaction.status === 'more_info_requested'
+          : transaction.status === 'pending_bank_review'
+            || transaction.status === 'more_info_requested'
+            || transaction.status === 'pending_supplier_counter_review'
           ? 'Invoice approved — awaiting bank review.'
           : transaction.status === 'financing_approved'
-          ? 'Bank has approved financing.'
-          : transaction.status === 'funded'
-          ? 'Transaction funded.'
+          ? 'Financing approved — supplier will receive payment shortly.'
           : transaction.status === 'completed'
           ? 'Transaction completed.'
           : 'Awaiting next step.'}
@@ -608,9 +683,7 @@ function AnchorActionPanel({
   if (showRejectForm) {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
-          Rejection reason
-        </p>
+        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
         <textarea
           className="form-input"
           rows={4}
@@ -644,111 +717,135 @@ function AnchorActionPanel({
       <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
         Review and confirm this invoice before it is sent to the bank for financing.
       </p>
-      <button
-        className="btn btn-primary btn-full"
-        type="button"
-        disabled={acting}
-        onClick={handleApprove}
-      >
+      <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleApprove}>
         {acting ? 'Processing…' : 'Approve invoice'}
       </button>
-      <button
-        className="btn btn-danger btn-full"
-        type="button"
-        disabled={acting}
-        onClick={() => setShowRejectForm(true)}
-      >
+      <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
         Reject
       </button>
     </div>
   )
 }
 
-function SupplierActionPanel({ transaction }: { transaction: Transaction }) {
+// ── Supplier action panel ──────────────────────────────────────────────────
+
+function SupplierActionPanel({
+  transaction,
+  onAction,
+  acting,
+}: {
+  transaction: Transaction
+  onAction: (body: Record<string, unknown>) => Promise<void>
+  acting: boolean
+}) {
   switch (transaction.status) {
     case 'pending_anchor_approval':
-      return <div className="action-passive muted">Awaiting anchor approval</div>
+      return <div className="action-passive muted">Waiting for anchor to review</div>
+
     case 'pending_bank_review':
-      return <div className="action-passive muted">Awaiting bank review</div>
-    case 'more_info_requested':
+      return <div className="action-passive muted">Anchor approved — awaiting bank review</div>
+
+    case 'pending_supplier_counter_review': {
+      const rate = transaction.apr ?? transaction.financing_rate_apr
       return (
         <div className="action-block">
-          <p style={{ fontSize: 12.5, color: 'var(--color-amber)', margin: 0 }}>
-            The bank has requested additional information for this transaction.
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+            Bank has made a counter-offer
           </p>
-          <button className="btn btn-primary btn-full" type="button" disabled>
-            Add information
+          <div className="calc-panel">
+            {rate != null && (
+              <div className="calc-row">
+                <span>Advance rate</span>
+                <span>{rate}%</span>
+              </div>
+            )}
+            {transaction.financing_amount_approved != null && (
+              <div className="calc-row">
+                <span>Amount you&apos;ll receive</span>
+                <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(transaction.financing_amount_approved)}</strong>
+              </div>
+            )}
+            {transaction.fee_amount != null && (
+              <div className="calc-row">
+                <span>Discount fee</span>
+                <span>{fmtAmt(transaction.fee_amount)}</span>
+              </div>
+            )}
+          </div>
+          <button
+            className="btn btn-primary btn-full"
+            type="button"
+            disabled={acting}
+            onClick={() => onAction({ action: 'accept_counter' })}
+          >
+            {acting ? 'Processing…' : 'Accept offer'}
+          </button>
+          <button
+            className="btn btn-ghost btn-full"
+            type="button"
+            disabled={acting}
+            onClick={() => onAction({ action: 'reject_counter' })}
+          >
+            Decline offer
           </button>
         </div>
       )
-    case 'financing_approved':
+    }
+
+    case 'financing_approved': {
+      const wireInfo = parseWireInfo(transaction.disbursement_reference)
+      const hasWire  = wireInfo && Object.values(wireInfo).some(Boolean)
       return (
         <div className="action-block">
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-            Financing approved at{' '}
-            <strong style={{ color: 'var(--color-ink-1)' }}>
-              {transaction.apr != null ? `${transaction.apr}% APR` : '—'}
-            </strong>
-            {' '}· Net proceeds:{' '}
-            <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(transaction.net_proceeds)}</strong>
-          </div>
-          <button className="btn btn-secondary btn-full" type="button" disabled>
-            View agreement
-          </button>
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-green)', margin: 0 }}>
+            Payment details
+          </p>
+          {hasWire ? (
+            <div className="calc-panel">
+              {wireInfo!.bank_name       && <div className="calc-row"><span>Bank</span><span>{wireInfo!.bank_name}</span></div>}
+              {wireInfo!.account_number  && <div className="calc-row"><span>Account</span><span className="mono">{wireInfo!.account_number}</span></div>}
+              {wireInfo!.routing_number  && <div className="calc-row"><span>Routing</span><span className="mono">{wireInfo!.routing_number}</span></div>}
+              {wireInfo!.reference       && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
+            </div>
+          ) : null}
+          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
+            Payment will be sent to your account
+          </p>
         </div>
       )
+    }
+
     case 'funded':
       return (
         <div className="action-block">
           <div className="action-passive green" style={{ marginBottom: 8 }}>
             <Icon name="check" size={14} />
-            Payment disbursed to your account
+            Payment disbursed
           </div>
-          <div className="calc-panel">
-            <div className="calc-row">
-              <span>Amount disbursed</span>
-              <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(transaction.net_proceeds)}</strong>
-            </div>
-            {transaction.disbursed_at && (
+          {transaction.disbursed_at && (
+            <div className="calc-panel">
               <div className="calc-row">
                 <span>Disbursed on</span>
                 <span>{fmtDate(transaction.disbursed_at)}</span>
               </div>
-            )}
-            {transaction.disbursement_reference && (
-              <div className="calc-row">
-                <span>Reference</span>
-                <span className="mono" style={{ fontSize: 12 }}>{transaction.disbursement_reference}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )
-    case 'completed':
-      return (
-        <div className="action-block">
-          <div className="action-passive muted" style={{ marginBottom: 8 }}>
-            <Icon name="check" size={14} />
-            Transaction completed
-          </div>
-          {transaction.repaid_at && (
-            <div className="calc-panel">
-              <div className="calc-row">
-                <span>Repaid on</span>
-                <span>{fmtDate(transaction.repaid_at)}</span>
-              </div>
-              {transaction.fee_amount != null && (
-                <div className="calc-row">
-                  <span>Final fee</span>
-                  <span>{fmtAmt(transaction.fee_amount)}</span>
-                </div>
-              )}
             </div>
           )}
         </div>
       )
+
+    case 'completed':
+      return (
+        <div className="action-block">
+          <div className="action-passive muted">
+            <Icon name="check" size={14} />
+            Transaction completed
+          </div>
+        </div>
+      )
+
     case 'rejected':
       return <div className="action-passive" style={{ color: 'var(--color-red)' }}>Transaction rejected.</div>
+
     default:
       return <div className="action-passive muted">Awaiting update</div>
   }
@@ -789,8 +886,6 @@ export default function TransactionDetailPage() {
 
   const [backPath, setBackPath] = useState('/transactions')
 
-  // Do not remove storage here — Strict Mode runs this twice in dev; first run would clear
-  // before remount and lose the referrer. Clear on back instead (and stash overwrites on next open).
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(TRANSACTION_REFERRER_KEY)
@@ -906,21 +1001,28 @@ export default function TransactionDetailPage() {
   }, [id, addCollForm, refreshCollateral])
 
   const txn = transaction
+  const isRF = txn?.financing_type === 'reverse_factoring'
 
   const typeLabel = humanizeType(txn?.financing_type ?? null)
-
   const subtitle = txn
-    ? [txn.supplier_name, txn.anchor_name, txn.program_name, txn.bank_name]
-        .filter(Boolean).join(' · ')
+    ? [txn.supplier_name, txn.anchor_name, txn.program_name, txn.bank_name].filter(Boolean).join(' · ')
     : ''
+
+  // Advance rate: use stored apr, else derive from amounts
+  const displayAdvanceRate = txn
+    ? (txn.apr ?? txn.financing_rate_apr)
+      ?? (txn.invoice_amount && txn.financing_amount_requested
+          ? parseFloat(((txn.financing_amount_requested / txn.invoice_amount) * 100).toFixed(1))
+          : null)
+    : null
+
+  const wireInfoForSummary = txn ? parseWireInfo(txn.disbursement_reference) : null
 
   return (
     <PortalShell activeSection="transactions">
       <Topbar
         onBack={() => {
-          try {
-            sessionStorage.removeItem(TRANSACTION_REFERRER_KEY)
-          } catch {}
+          try { sessionStorage.removeItem(TRANSACTION_REFERRER_KEY) } catch {}
           router.push(backPath)
         }}
         crumbs={[
@@ -971,37 +1073,46 @@ export default function TransactionDetailPage() {
                       <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
                     </div>
                     <div className="fs-cell">
-                      <span className="fs-label">Financing requested</span>
-                      <span className="fs-value">{fmtAmt(txn.financing_amount_requested)}</span>
-                    </div>
-                    <div className="fs-cell">
-                      <span className="fs-label">APR</span>
-                      <span className="fs-value">{txn.apr != null ? `${txn.apr}%` : '—'}</span>
-                    </div>
-                    <div className="fs-cell">
-                      <span className="fs-label">Net proceeds</span>
-                      <span className={`fs-value ${txn.net_proceeds != null ? 'green' : ''}`}>
-                        {fmtAmt(txn.net_proceeds)}
+                      <span className="fs-label">Advance rate</span>
+                      <span className="fs-value">
+                        {displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
                       </span>
                     </div>
+                    <div className="fs-cell">
+                      <span className="fs-label">Amount disbursed</span>
+                      <span className={`fs-value ${txn.financing_amount_approved != null ? 'green' : ''}`}>
+                        {fmtAmt(txn.financing_amount_approved)}
+                      </span>
+                    </div>
+                    <div className="fs-cell">
+                      <span className="fs-label">Discount fee</span>
+                      <span className="fs-value">{fmtAmt(txn.fee_amount)}</span>
+                    </div>
                   </div>
-                  {txn.financing_amount_approved != null && (
-                    <div className="fs-extra-row">
-                      <span className="k">Approved amount</span>
-                      <span className="v">{fmtAmt(txn.financing_amount_approved)}</span>
-                    </div>
-                  )}
-                  {txn.tenor_days != null && (
-                    <div className="fs-extra-row">
-                      <span className="k">Tenor</span>
-                      <span className="v">{txn.tenor_days} days</span>
-                    </div>
-                  )}
-                  {txn.fee_amount != null && (
-                    <div className="fs-extra-row">
-                      <span className="k">Fee</span>
-                      <span className="v">{fmtAmt(txn.fee_amount)}</span>
-                    </div>
+                  {/* Wire info in summary for supplier at financing_approved */}
+                  {portal === 'supplier' && wireInfoForSummary && Object.values(wireInfoForSummary).some(Boolean) && (
+                    <>
+                      {wireInfoForSummary.bank_name && (
+                        <div className="fs-extra-row">
+                          <span className="k">Wire bank</span>
+                          <span className="v">{wireInfoForSummary.bank_name}</span>
+                        </div>
+                      )}
+                      {wireInfoForSummary.account_number && (
+                        <div className="fs-extra-row">
+                          <span className="k">Account</span>
+                          <span className="v mono">
+                            {'••••' + wireInfoForSummary.account_number.slice(-4)}
+                          </span>
+                        </div>
+                      )}
+                      {wireInfoForSummary.reference && (
+                        <div className="fs-extra-row">
+                          <span className="k">Reference</span>
+                          <span className="v mono">{wireInfoForSummary.reference}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -1277,51 +1388,43 @@ export default function TransactionDetailPage() {
                   </div>
                 )}
 
-                {/* Documents — always visible to bank/anchor, supplier sees only when populated */}
-                {(portal !== 'supplier' || documents.length > 0) && (
+                {/* Documents — visible to all roles when docs exist */}
+                {documents.length > 0 && (
                   <div className="card">
                     <div className="card-head">
                       <h3 className="t-card-head">Documents</h3>
                     </div>
-                    {documents.length === 0 ? (
-                      <div className="card-body">
-                        <p style={{ fontSize: 13, color: 'var(--color-ink-4)', margin: 0 }}>
-                          No documents uploaded
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="kv-rows">
-                        {documents.map((doc) => (
-                          <div key={doc.id} className="doc-row">
-                            <span className="doc-icon">
-                              <svg width="14" height="14" viewBox="0 0 16 16">
-                                <use href="#i-doc" />
-                              </svg>
-                            </span>
-                            <span className="doc-name">{doc.name}</span>
-                            <span className="doc-date">
-                              {new Date(doc.created_at).toLocaleDateString('en-US', {
-                                month: 'short', day: 'numeric', year: 'numeric',
-                              })}
-                            </span>
-                            {doc.signed_url && (
-                              <a
-                                href={doc.signed_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="doc-link"
-                              >
-                                Download
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="kv-rows">
+                      {documents.map((doc) => (
+                        <div key={doc.id} className="doc-row">
+                          <span className="doc-icon">
+                            <svg width="14" height="14" viewBox="0 0 16 16">
+                              <use href="#i-doc" />
+                            </svg>
+                          </span>
+                          <span className="doc-name">{doc.name}</span>
+                          <span className="doc-date">
+                            {new Date(doc.created_at).toLocaleDateString('en-US', {
+                              month: 'short', day: 'numeric', year: 'numeric',
+                            })}
+                          </span>
+                          {doc.signed_url && (
+                            <a
+                              href={doc.signed_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="doc-link"
+                            >
+                              Download
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Event history / timeline */}
+                {/* Event history */}
                 <div className="card">
                   <div className="card-head">
                     <h3 className="t-card-head">History</h3>
@@ -1373,8 +1476,8 @@ export default function TransactionDetailPage() {
                   </div>
 
                   <div className="stepper">
-                    {STEPPER_STEPS.map((step, i) => {
-                      const state = stepperState(step.key, txn.status)
+                    {RF_STEPPER_STEPS.map((step, i) => {
+                      const state = rfStepperState(step.key, txn.status)
                       return (
                         <div key={step.key} className={`step ${state}`}>
                           <span className={`step-circle ${state}`}>
@@ -1410,36 +1513,48 @@ export default function TransactionDetailPage() {
                   )}
 
                   {portal === 'bank' && (
-                    <BankActionPanel
-                      transaction={txn}
-                      onAction={handleAction}
-                      acting={acting}
-                      txnId={id}
-                      onRefresh={load}
-                    />
+                    isRF ? (
+                      <BankActionPanel
+                        transaction={txn}
+                        onAction={handleAction}
+                        acting={acting}
+                        txnId={id}
+                        onRefresh={load}
+                      />
+                    ) : (
+                      <div className="action-passive muted">
+                        This financing type&apos;s workflow is coming soon.
+                      </div>
+                    )
                   )}
                   {portal === 'anchor' && (
-                    <AnchorActionPanel
-                      transaction={txn}
-                      onAction={handleAction}
-                      acting={acting}
-                      onSuccess={handleSuccess}
-                    />
+                    isRF ? (
+                      <AnchorActionPanel
+                        transaction={txn}
+                        onAction={handleAction}
+                        acting={acting}
+                        onSuccess={handleSuccess}
+                      />
+                    ) : (
+                      <div className="action-passive muted">
+                        This financing type&apos;s workflow is coming soon.
+                      </div>
+                    )
                   )}
                   {portal === 'supplier' && (
-                    <SupplierActionPanel transaction={txn} />
+                    isRF ? (
+                      <SupplierActionPanel
+                        transaction={txn}
+                        onAction={handleAction}
+                        acting={acting}
+                      />
+                    ) : (
+                      <div className="action-passive muted">
+                        This financing type&apos;s workflow is coming soon.
+                      </div>
+                    )
                   )}
                 </div>
-
-                {/* <div style={{ marginTop: 12 }}>
-                  <button
-                    className="btn btn-ghost btn-full"
-                    type="button"
-                    onClick={() => router.push(backPath)}
-                  >
-                    ← Back
-                  </button>
-                </div> */}
               </div>
             </div>
           </>

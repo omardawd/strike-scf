@@ -34,19 +34,31 @@ export async function GET(request: Request) {
   let query: any
 
   if (BANK_ROLES.includes(userData.role)) {
-    // Bank sees all collateral they created (by any user in their bank)
-    const { data: bankUsers } = await adminClient
-      .from('users')
+    const { data: bankPrograms } = await adminClient
+      .from('programs')
       .select('id')
       .eq('bank_id', userData.bank_id)
 
-    const bankUserIds = (bankUsers ?? []).map((u: { id: string }) => u.id)
-    if (bankUserIds.length === 0) return NextResponse.json({ collateral: [] })
+    const bankProgramIds = (bankPrograms ?? []).map((p: { id: string }) => p.id)
+    if (bankProgramIds.length === 0) return NextResponse.json({ collateral: [] })
+
+    const [enrollmentResult, txnResult] = await Promise.all([
+      adminClient.from('program_enrollments').select('org_id').in('program_id', bankProgramIds),
+      adminClient.from('transactions').select('id').in('program_id', bankProgramIds),
+    ])
+
+    const enrolledOrgIds = [...new Set((enrollmentResult.data ?? []).map((e: { org_id: string }) => e.org_id))]
+    const bankTxnIds     = (txnResult.data ?? []).map((t: { id: string }) => t.id)
+
+    const orParts: string[] = []
+    if (enrolledOrgIds.length > 0) orParts.push(`org_id.in.(${enrolledOrgIds.join(',')})`)
+    if (bankTxnIds.length > 0)     orParts.push(`transaction_id.in.(${bankTxnIds.join(',')})`)
+    if (orParts.length === 0) return NextResponse.json({ collateral: [] })
 
     query = adminClient
       .from('collateral_requirements')
       .select('*')
-      .in('required_by_user_id', bankUserIds)
+      .or(orParts.join(','))
 
   } else if (SUPPLIER_ROLES.includes(userData.role)) {
     // Supplier sees collateral for their org or their transactions
@@ -95,7 +107,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to fetch collateral' }, { status: 500 })
   }
 
-  return NextResponse.json({ collateral: collateral ?? [] })
+  // Enrich with org names
+  const items = collateral ?? []
+  const rawOrgIds = [...new Set(
+    items.map((c: { org_id: string | null }) => c.org_id).filter((id: string | null): id is string => id != null)
+  )]
+  const orgNameMap: Record<string, string> = {}
+  if (rawOrgIds.length > 0) {
+    const { data: orgs } = await adminClient
+      .from('organizations')
+      .select('id, legal_name')
+      .in('id', rawOrgIds)
+    for (const org of orgs ?? []) {
+      const o = org as { id: string; legal_name: string }
+      orgNameMap[o.id] = o.legal_name
+    }
+  }
+
+  const enriched = items.map((c: Record<string, unknown>) => ({
+    ...c,
+    org_name: c.org_id ? (orgNameMap[c.org_id as string] ?? null) : null,
+  }))
+
+  return NextResponse.json({ collateral: enriched })
 }
 
 export async function POST(request: Request) {
