@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data: userData } = await adminClient
     .from('users')
-    .select('id, email, full_name, role, bank_id, org_id, job_title')
+    .select('id, email, full_name, role, bank_id, org_id')
     .eq('id', user.id)
     .single()
 
@@ -37,9 +37,9 @@ export async function PATCH(request: Request) {
 
   const update: Record<string, unknown> = {}
   if (body.full_name !== undefined) update.full_name = String(body.full_name)
-  if (body.job_title !== undefined) update.job_title = String(body.job_title)
+  update.updated_at = new Date().toISOString()
 
-  if (Object.keys(update).length === 0) {
+  if (!body.full_name && Object.keys(update).length <= 1) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
 
@@ -47,10 +47,13 @@ export async function PATCH(request: Request) {
     .from('users')
     .update(update)
     .eq('id', user.id)
-    .select('id, email, full_name, role, bank_id, org_id, job_title')
+    .select('id, email, full_name, role, bank_id, org_id')
     .single()
 
-  if (error) return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 })
+  if (error) {
+    console.error('Profile update error:', error)
+    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 })
+  }
 
   return NextResponse.json({ user: userData })
 }

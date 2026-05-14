@@ -122,11 +122,32 @@ export async function PATCH(
   const hasAccess = await verifyAccess(item, userData)
   if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  // Parse body — submit uses multipart/form-data (may include a file); all other
+  // actions use application/json.
+  let body: Record<string, unknown> = {}
+  let uploadedFile: File | null = null
+
+  const contentType = request.headers.get('content-type') ?? ''
+  if (contentType.includes('multipart/form-data')) {
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch {
+      return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
+    }
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File && value.size > 0) {
+        uploadedFile = value
+      } else {
+        body[key] = value
+      }
+    }
+  } else {
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
   }
 
   const { action } = body
@@ -140,6 +161,36 @@ export async function PATCH(
       return NextResponse.json({ error: 'Collateral is not pending' }, { status: 400 })
     }
 
+    const submissionNotes = body.submission_notes ? String(body.submission_notes) : null
+
+    // Upload supporting document to the existing transaction-documents bucket
+    if (uploadedFile) {
+      const storagePath = `collateral/${id}/${uploadedFile.name}`
+      const arrayBuffer = await uploadedFile.arrayBuffer()
+      const { error: uploadError } = await adminClient.storage
+        .from('transaction-documents')
+        .upload(storagePath, arrayBuffer, { contentType: uploadedFile.type, upsert: true })
+
+      if (uploadError) {
+        console.error('[collateral submit] file upload error:', uploadError)
+        return NextResponse.json({ error: 'File upload failed: ' + uploadError.message }, { status: 500 })
+      }
+
+      // Record in documents table so it appears in the transaction's document list
+      if (item.transaction_id) {
+        await adminClient.from('documents').insert({
+          name:                uploadedFile.name,
+          storage_path:        storagePath,
+          mime_type:           uploadedFile.type,
+          size_bytes:          uploadedFile.size,
+          uploaded_by_user_id: user.id,
+          entity_type:         'transaction',
+          entity_id:           item.transaction_id as string,
+          document_kind:       'supporting_document',
+        })
+      }
+    }
+
     const { data: updated, error: updateError } = await adminClient
       .from('collateral_requirements')
       .update({ status: 'submitted', submitted_at: new Date().toISOString() })
@@ -147,7 +198,21 @@ export async function PATCH(
       .select()
       .single()
 
-    if (updateError) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    if (updateError) {
+      console.error('[collateral submit] update error:', updateError)
+      return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    }
+
+    // Insert transaction event if linked to a transaction
+    if (item.transaction_id) {
+      await adminClient.from('transaction_events').insert({
+        transaction_id: item.transaction_id as string,
+        event_type:     'collateral_updated',
+        actor_id:       user.id,
+        actor_type:     'supplier',
+        notes:          submissionNotes ?? `Collateral submitted: ${item.description}`,
+      })
+    }
 
     // Email bank admin — fire and forget
     ;(async () => {
@@ -218,7 +283,10 @@ export async function PATCH(
       .select()
       .single()
 
-    if (updateError) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    if (updateError) {
+      console.error('[collateral review] update error:', updateError)
+      return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    }
 
     // Email supplier admin — fire and forget
     ;(async () => {
@@ -273,7 +341,10 @@ export async function PATCH(
       .select()
       .single()
 
-    if (updateError) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    if (updateError) {
+      console.error('[collateral release] update error:', updateError)
+      return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    }
     return NextResponse.json({ collateral: updated })
   }
 

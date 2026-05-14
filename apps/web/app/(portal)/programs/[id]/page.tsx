@@ -3,7 +3,8 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
-import { PortalShell, Topbar, Icon, fmtMoney } from '@/components/portal-shell'
+import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
+import { VolumeChart, PeriodToggle, type Period } from '@/components/charts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -21,13 +22,14 @@ interface Program {
   bank_id: string
 }
 
-interface SupplierEntry { id: string; legal_name: string; kyb_status: string; status: string }
+interface SupplierEntry { id: string; legal_name: string; kyb_status: string; status: string; enrolled_at?: string | null }
 
 interface AnchorEntry {
   id: string
   legal_name: string
   kyb_status: string
   status: string
+  enrolled_at?: string | null
   suppliers: SupplierEntry[]
   supplier_count: number
   pending_kyb_count: number
@@ -39,6 +41,7 @@ interface SupplierNetEntry {
   legal_name: string
   kyb_status: string
   status: string
+  enrolled_at?: string | null
   transaction_count: number
   latest_transaction_status: string | null
 }
@@ -104,29 +107,6 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// ── BarChart ──────────────────────────────────────────────────────────────────
-function BarChart({ items }: { items: Array<{ label: string; value: number; count: number }> }) {
-  const max = Math.max(...items.map(i => i.value), 1)
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 88 }}>
-      {items.map((item, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div
-            title={`${item.count} txns`}
-            style={{
-              width: '100%',
-              height: Math.max(Math.round((item.value / max) * 60), item.value > 0 ? 3 : 1),
-              background: 'var(--color-accent)',
-              borderRadius: '3px 3px 0 0',
-              opacity: 0.85,
-            }}
-          />
-          <div style={{ fontSize: 10, color: 'var(--color-ink-4)' }}>{item.label}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 // ── NetworkCard ────────────────────────────────────────────────────────────────
 function NetworkCard({
@@ -212,6 +192,7 @@ export default function ProgramDetailPage() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [networkVersion, setNetworkVersion] = useState(0)
+  const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteRole, setInviteRole]           = useState<'anchor' | 'supplier'>('anchor')
@@ -231,7 +212,7 @@ export default function ProgramDetailPage() {
         fetch(`/api/programs/${id}`),
         fetch(`/api/programs/${id}/network`),
       ]
-      if (portal === 'bank') fetches.push(fetch(`/api/programs/${id}/analytics`))
+      if (portal === 'bank') fetches.push(fetch(`/api/programs/${id}/analytics?period=${volPeriod}`))
 
       const results = await Promise.all(fetches)
       if (!results[0]!.ok) throw new Error(`HTTP ${results[0]!.status}`)
@@ -254,7 +235,7 @@ export default function ProgramDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [id, portal])
+  }, [id, portal, volPeriod])
 
   useEffect(() => { load() }, [load, networkVersion])
 
@@ -292,11 +273,15 @@ export default function ProgramDetailPage() {
   }
 
   async function cancelAnchorInvite(invId: string) {
-    await fetch(`/api/programs/${id}/invite`, {
+    const res = await fetch(`/api/programs/${id}/invite`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ invitation_id: invId, action: 'cancel' }),
     })
+    if (!res.ok) {
+      console.error('Cancel error:', await res.text())
+      return
+    }
     setNetworkVersion(v => v + 1)
   }
 
@@ -310,6 +295,7 @@ export default function ProgramDetailPage() {
         <Topbar
           onBack={() => router.push('/programs')}
           crumbs={[{ label: portalLabel }, { label: 'My Programs', onClick: () => router.push('/programs') }, { label: '…' }]}
+          actions={<NotifBell />}
         />
         <div className="page">
           <div className="page-header">
@@ -342,6 +328,7 @@ export default function ProgramDetailPage() {
                 <Icon name="plus" size={14} /> Invite Supplier
               </button>
             )}
+            <NotifBell />
           </>
         }
       />
@@ -423,9 +410,12 @@ export default function ProgramDetailPage() {
 
                 {analytics && (
                   <div className="card" style={{ marginBottom: 24 }}>
-                    <div className="card-head"><h3 className="t-card-head">Program analytics</h3></div>
+                    <div className="card-head">
+                      <h3 className="t-card-head">Program analytics</h3>
+                      <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+                    </div>
                     <div className="card-body">
-                      <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
+                      <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
                         <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
                           <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Total Transactions</div>
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
@@ -439,6 +429,7 @@ export default function ProgramDetailPage() {
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? analytics.avg_financing_rate.toFixed(1) + '%' : '—'}</div>
                         </div>
                       </div>
+                      <VolumeChart data={analytics.monthly_volume ?? []} height={140} color="#2563EB" />
                     </div>
                   </div>
                 )}
@@ -453,7 +444,6 @@ export default function ProgramDetailPage() {
                   <div className="kv-row"><span className="k">Offered By</span><span className="v plain">{program.name}</span></div>
                   <div className="kv-row"><span className="k">Started on</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
                   <div className="kv-row"><span className="k">Type</span><span className="v plain">{typeLabel}</span></div>
-                  <div className="kv-row"><span className="k">Tenor</span><span className="v plain">{program.standard_tenor_days} days</span></div>
                   <div className="kv-row">
                     <span className="k">Status</span>
                     <span className="v">
@@ -491,6 +481,7 @@ export default function ProgramDetailPage() {
                           { label: 'Suppliers',    value: anchor.supplier_count },
                           { label: 'Transactions', value: anchor.transaction_count },
                           { label: 'KYB Pending',  value: anchor.pending_kyb_count, red: anchor.pending_kyb_count > 0 },
+                          { label: 'Joined',       value: anchor.enrolled_at ? fmtDate(anchor.enrolled_at) : '—' },
                         ]}
                         onClick={() => router.push(`/programs/${id}/anchor/${anchor.id}`)}
                       />
@@ -574,8 +565,9 @@ export default function ProgramDetailPage() {
                       name={s.legal_name}
                       kybStatus={s.kyb_status}
                       stats={[
-                        { label: 'Transactions', value: s.transaction_count },
+                        { label: 'Transactions',  value: s.transaction_count },
                         { label: 'Latest status', value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
+                        { label: 'Joined',        value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
                       ]}
                       onClick={() => router.push(`/programs/${id}/anchor/${user?.org_id}/supplier/${s.id}`)}
                     />

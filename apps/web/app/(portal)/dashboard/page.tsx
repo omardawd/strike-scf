@@ -1,8 +1,9 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
+import { VolumeChart, ProgramPieChart, PeriodToggle, type Period } from '@/components/charts'
 
 // ============== Types ==============
 interface DashProgram { id: string; name: string; financing_types: string[]; status: string }
@@ -19,12 +20,8 @@ interface RouteState {
 interface BankSnapshot {
   role: 'bank'
   monthly_volume: Array<{ label: string; count: number; volume: number }>
-
-  status_breakdown: Array<{
-    status: string
-    count: number
-  }>
-
+  status_breakdown: Array<{ status: string; count: number }>
+  program_breakdown?: Array<{ name: string; volume: number }>
   portfolio: {
     total_transactions: number
     active_deals: number
@@ -33,8 +30,18 @@ interface BankSnapshot {
     avg_rate?: number | null
   }
 }
-interface AnchorSnapshot { role: 'anchor';   monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }> }
-interface SupplierSnapshot { role: 'supplier'; monthly_volume: Array<{ label: string; count: number; total_financed: number }>; receivables?: { outstanding_count: number; outstanding_balance: number } }
+interface AnchorSnapshot {
+  role: 'anchor'
+  monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }>
+  program_breakdown?: Array<{ name: string; volume: number }>
+}
+interface SupplierSnapshot {
+  role: 'supplier'
+  monthly_volume: Array<{ label: string; count: number; total_financed: number }>
+  receivables?: { outstanding_count: number; outstanding_balance: number }
+  acceptance_rate?: number | null
+  program_breakdown?: Array<{ name: string; volume: number }>
+}
 type ReportingSnapshot = BankSnapshot | AnchorSnapshot | SupplierSnapshot
 
 function fmtCurrency(n: number): string {
@@ -257,66 +264,6 @@ function Sparkline({ data, color = 'var(--color-green)', height = 36, fill = fal
   )
 }
 
-function EmptyChart({ height = 160, message = 'No data yet' }: { height?: number; message?: string }) {
-  return (
-    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
-      {message}
-    </div>
-  )
-}
-
-function DashBarChart({ items, height = 140 }: {
-  items: Array<{ label: string; value: number; count: number }>
-  height?: number
-}) {
-  const [hovered, setHovered] = React.useState<number | null>(null)
-  const safeItems = items ?? []
-  const maxVal    = Math.max(...safeItems.map(i => i.value), 1)
-  const hasData   = safeItems.some(i => i.value > 0)
-
-  if (!hasData) {
-    return (
-      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
-        No data yet
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height, padding: '0 4px' }}>
-      {safeItems.map((m, i) => {
-        const pct  = maxVal > 0 ? (m.value / maxVal) * 100 : 0
-        const barH = Math.max(pct, m.value > 0 ? 3 : 0)
-        return (
-          <div
-            key={i}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end', position: 'relative', cursor: 'default' }}
-            onMouseEnter={() => setHovered(i)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            {hovered === i && m.value > 0 && (
-              <div style={{
-                position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 4,
-                background: 'var(--color-ink-1)', color: 'white', padding: '3px 7px', borderRadius: 5,
-                fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
-              }}>
-                {fmtCurrency(m.value)}
-                {m.count > 0 && ` · ${m.count} deal${m.count !== 1 ? 's' : ''}`}
-              </div>
-            )}
-            <div style={{
-              width: '100%', height: `${barH}%`, minHeight: m.value > 0 ? 2 : 0,
-              background: hovered === i ? 'var(--color-accent)' : m.value > 0 ? 'rgba(37,99,235,0.3)' : 'var(--color-border)',
-              borderRadius: '3px 3px 0 0', transition: 'background 0.1s',
-            }} />
-            <div style={{ fontSize: 10, color: 'var(--color-ink-4)', whiteSpace: 'nowrap' }}>{m.label}</div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // ============== BANK DASHBOARD ==============
 function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number }) {
   return (
@@ -331,7 +278,7 @@ function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number 
   )
 }
 
-function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: BankData | null; reportingSnap: ReportingSnapshot | null }) {
+function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: BankData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
@@ -339,6 +286,7 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
   const bankSnap    = reportingSnap?.role === 'bank' ? reportingSnap : null
   const bankMonthly = bankSnap?.monthly_volume.map(m => m.count) ?? []
   const bankVolItems = (bankSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))
+  const bankProgramBreakdown = bankSnap?.program_breakdown ?? []
 
   const kpis = [
     { label: 'Active Programs', value: data ? String(data.active_program_count) : '—', delta: data ? `${data.program_count} total` : 'Loading',                                                          deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-accent)', sparkData: [] as number[] },
@@ -376,9 +324,12 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
 
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Monthly volume · last 6 months</h3></div>
+            <div className="card-head">
+              <h3 className="t-card-head">Volume · last 6 months</h3>
+              <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+            </div>
             <div className="card-body">
-              <DashBarChart items={bankVolItems} height={160} />
+              <VolumeChart data={bankVolItems} height={160} color="#2563EB" />
             </div>
           </div>
           <div className="card">
@@ -415,12 +366,9 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
 
         <div className="grid-1-1-1" style={{ marginTop: 24 }}>
           <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Deal count · last 6 months</h3></div>
+            <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
             <div className="card-body">
-              <DashBarChart
-                items={(bankSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.count, count: m.count }))}
-                height={100}
-              />
+              <ProgramPieChart segments={bankProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
             </div>
           </div>
           <div className="card">
@@ -481,7 +429,7 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap }: { nav
 }
 
 // ============== ANCHOR DASHBOARD ==============
-function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: AnchorData | null; reportingSnap: ReportingSnapshot | null }) {
+function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: AnchorData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
@@ -492,6 +440,7 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
   const lastMonth            = anchorSnap?.monthly_volume?.length ? anchorSnap.monthly_volume[anchorSnap.monthly_volume.length - 1] : null
   const currentMonthFinanced = lastMonth?.total_invoice_amount ?? null
   const totalPayablesFinanced = anchorSnap?.monthly_volume?.reduce((s, m) => s + m.total_invoice_amount, 0) ?? null
+  const anchorProgramBreakdown = anchorSnap?.program_breakdown ?? []
 
   return (
     <>
@@ -542,14 +491,23 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
               )}
             </div>
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Invoice volume · last 6 months</h3></div>
+              <div className="card-head">
+                <h3 className="t-card-head">Invoice volume · last 6 months</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+              </div>
               <div className="card-body">
-                <DashBarChart items={anchorVolItems} height={140} />
+                <VolumeChart data={anchorVolItems} height={140} color="#0F766E" />
               </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card">
+              <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
+              <div className="card-body">
+                <ProgramPieChart segments={anchorProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
+              </div>
+            </div>
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">My programs</h3></div>
               <div className="prog-mini-list">
@@ -585,7 +543,7 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap }: { n
 }
 
 // ============== SUPPLIER DASHBOARD ==============
-function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: { navigate: (r: RouteState) => void; data: SupplierData | null; reportingSnap: ReportingSnapshot | null }) {
+function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: SupplierData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
@@ -593,7 +551,7 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
   function isSupplierSnapshot(s: ReportingSnapshot | null): s is SupplierSnapshot {
     return s?.role === 'supplier'
   }
-  
+
   const supplierSnap = isSupplierSnapshot(reportingSnap) ? reportingSnap : null
   const outstandingCount = supplierSnap?.receivables?.outstanding_count ?? 0
   const outstandingBalance = supplierSnap?.receivables?.outstanding_balance ?? 0
@@ -601,6 +559,8 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
   const supplierVolItems = (supplierSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))
   const financedYTD      = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
   const avgNetProceeds = outstandingCount > 0 ? outstandingBalance / outstandingCount : null
+  const acceptanceRate = supplierSnap?.acceptance_rate ?? null
+  const supplierProgramBreakdown = supplierSnap?.program_breakdown ?? []
 
   return (
     <>
@@ -619,7 +579,7 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
             { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
             { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--color-ink-3)', sparkData: [] as number[] },
             { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
-            { label: 'Acceptance rate',      value: '—',                                                                      delta: 'No data yet',                                                                 color: 'var(--color-green)', sparkData: [] as number[] },
+            { label: 'Acceptance rate',      value: acceptanceRate != null ? `${acceptanceRate}%` : '—',                   delta: acceptanceRate != null ? 'Of submitted txns' : 'No data yet',            color: 'var(--color-green)', sparkData: [] as number[] },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark">
               <div className="kpi-label">{k.label}</div>
@@ -633,9 +593,12 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Financing activity · last 6 months</h3></div>
+              <div className="card-head">
+                <h3 className="t-card-head">Financing activity · last 6 months</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+              </div>
               <div className="card-body">
-                <DashBarChart items={supplierVolItems} height={160} />
+                <VolumeChart data={supplierVolItems} height={160} color="#059669" />
               </div>
             </div>
             <div className="card">
@@ -660,9 +623,9 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap }: {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Pending offers</h3></div>
-              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                No pending offers
+              <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
+              <div className="card-body">
+                <ProgramPieChart segments={supplierProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
               </div>
             </div>
             <div className="card">
@@ -717,24 +680,31 @@ export default function DashboardPage() {
   const portal = usePortal()
   const [dashData, setDashData] = useState<DashData | null>(null)
   const [reportingSnap, setReportingSnap] = useState<ReportingSnapshot | null>(null)
+  const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        console.log('Dashboard data:', d)
-        if (d) setDashData(d)
-      })
-      .catch(() => {})
-    fetch('/api/reporting')
+  const fetchReporting = useCallback((period: Period) => {
+    fetch(`/api/reporting?period=${period}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.monthly_volume) setReportingSnap(d as ReportingSnapshot) })
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setDashData(d) })
+      .catch(() => {})
+    fetchReporting('monthly')
+  }, [fetchReporting])
+
+  function handlePeriodChange(p: Period) {
+    setVolPeriod(p)
+    fetchReporting(p)
+  }
+
   if (portal === 'bank')
-    return <ScreenBankDashboard     navigate={noNavigate} data={dashData?.portal === 'bank'     ? dashData : null} reportingSnap={reportingSnap} />
+    return <ScreenBankDashboard     navigate={noNavigate} data={dashData?.portal === 'bank'     ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
   if (portal === 'anchor')
-    return <ScreenAnchorDashboard   navigate={noNavigate} data={dashData?.portal === 'anchor'   ? dashData : null} reportingSnap={reportingSnap} />
-  return   <ScreenSupplierDashboard navigate={noNavigate} data={dashData?.portal === 'supplier' ? dashData : null} reportingSnap={reportingSnap} />
+    return <ScreenAnchorDashboard   navigate={noNavigate} data={dashData?.portal === 'anchor'   ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
+  return   <ScreenSupplierDashboard navigate={noNavigate} data={dashData?.portal === 'supplier' ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
 }

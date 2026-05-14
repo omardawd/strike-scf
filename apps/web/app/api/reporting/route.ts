@@ -7,18 +7,37 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function buildMonths(): { label: string; year: number; month: number }[] {
+type Period = 'daily' | 'weekly' | 'monthly'
+type Bucket = { label: string; start: Date; end: Date }
+
+function buildBuckets(period: Period): Bucket[] {
   const now = new Date()
-  const months: { label: string; year: number; month: number }[] = []
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    months.push({
-      label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-      year:  d.getFullYear(),
-      month: d.getMonth(),
+  if (period === 'daily') {
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(now)
+      d.setDate(d.getDate() - (29 - i))
+      d.setHours(0, 0, 0, 0)
+      const end = new Date(d)
+      end.setDate(end.getDate() + 1)
+      return { label: `${d.getMonth() + 1}/${d.getDate()}`, start: d, end }
     })
   }
-  return months
+  if (period === 'weekly') {
+    return Array.from({ length: 12 }, (_, i) => {
+      const end = new Date(now)
+      end.setDate(end.getDate() - (11 - i) * 7)
+      end.setHours(23, 59, 59, 999)
+      const start = new Date(end)
+      start.setDate(start.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+      return { label: `Wk ${i + 1}`, start, end }
+    })
+  }
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const end = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1)
+    return { label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), start: d, end }
+  })
 }
 
 async function fetchOrgNames(ids: string[]): Promise<Map<string, string>> {
@@ -30,7 +49,10 @@ async function fetchOrgNames(ids: string[]): Promise<Map<string, string>> {
   return new Map((data ?? []).map((o: { id: string; legal_name: string }) => [o.id, o.legal_name]))
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const url    = new URL(request.url)
+  const period = (url.searchParams.get('period') ?? 'monthly') as Period
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -49,13 +71,13 @@ export async function GET() {
 
     const { data: bankPrograms } = await adminClient
       .from('programs')
-      .select('id')
+      .select('id, name')
       .eq('bank_id', bankId)
 
     const programIds = (bankPrograms ?? []).map((p: { id: string }) => p.id)
 
     if (programIds.length === 0) {
-      const emptyMonths = buildMonths().map(m => ({ label: m.label, count: 0, volume: 0 }))
+      const emptyMonths = buildBuckets(period).map(b => ({ label: b.label, count: 0, volume: 0 }))
       return NextResponse.json({
         role: 'bank',
         monthly_volume:   emptyMonths,
@@ -68,7 +90,7 @@ export async function GET() {
     const [txnResult, supplierTxnResult] = await Promise.all([
       adminClient
         .from('transactions')
-        .select('id, status, financing_amount_approved, financing_amount_requested, financing_rate_apr, created_at, repaid_at, supplier_id')
+        .select('id, status, financing_amount_approved, financing_amount_requested, financing_rate_apr, created_at, repaid_at, supplier_id, program_id')
         .in('program_id', programIds),
       adminClient
         .from('transactions')
@@ -80,24 +102,19 @@ export async function GET() {
     const txns         = txnResult.data         ?? []
     const supplierTxns = supplierTxnResult.data  ?? []
 
-    // ── Monthly volume (last 6 months) ──
-    const months = buildMonths()
-    const monthlyMap = new Map<string, { count: number; volume: number }>()
-    for (const m of months) monthlyMap.set(`${m.year}-${m.month}`, { count: 0, volume: 0 })
-    for (const t of txns) {
-      const d   = new Date(t.created_at)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      const bucket = monthlyMap.get(key)
-      if (bucket) {
-        bucket.count  += 1
-        bucket.volume += t.financing_amount_approved ?? t.financing_amount_requested ?? 0
+    // ── Volume by period ──
+    const buckets = buildBuckets(period)
+    const monthly_volume = buckets.map(b => {
+      const slice = txns.filter(t => {
+        const d = new Date(t.created_at)
+        return d >= b.start && d < b.end
+      })
+      return {
+        label:  b.label,
+        count:  slice.length,
+        volume: slice.reduce((s, t) => s + (t.financing_amount_approved ?? t.financing_amount_requested ?? 0), 0),
       }
-    }
-    const monthly_volume = months.map(m => ({
-      label:  m.label,
-      count:  monthlyMap.get(`${m.year}-${m.month}`)!.count,
-      volume: monthlyMap.get(`${m.year}-${m.month}`)!.volume,
-    }))
+    })
 
     // ── Status breakdown ──
     const statusMap = new Map<string, number>()
@@ -145,11 +162,24 @@ export async function GET() {
     }
     const avg_rate = rateCount > 0 ? parseFloat((rateSum / rateCount).toFixed(2)) : null
 
+    const programNameMap = new Map((bankPrograms ?? []).map((p: { id: string; name: string }) => [p.id, p.name]))
+    const programVolMap = new Map<string, { name: string; volume: number }>()
+    for (const t of txns) {
+      if (!t.program_id) continue
+      const name = programNameMap.get(t.program_id) ?? t.program_id
+      const cur = programVolMap.get(t.program_id) ?? { name, volume: 0 }
+      cur.volume += t.financing_amount_approved ?? 0
+      programVolMap.set(t.program_id, cur)
+    }
+    const program_breakdown = Array.from(programVolMap.values())
+      .sort((a, b) => b.volume - a.volume)
+
     return NextResponse.json({
       role: 'bank',
       monthly_volume,
       status_breakdown,
       top_suppliers,
+      program_breakdown,
       portfolio: {
         active_deals,
         outstanding_balance: parseFloat(outstanding_balance.toFixed(2)),
@@ -165,7 +195,7 @@ export async function GET() {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-    const [enrolledResult, txnResult] = await Promise.all([
+    const [enrolledResult, txnResult, anchorProgramsResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('id', { count: 'exact', head: true })
@@ -173,31 +203,37 @@ export async function GET() {
         .eq('status', 'active'),
       adminClient
         .from('transactions')
-        .select('id, status, invoice_amount, created_at, supplier_id')
+        .select('id, status, invoice_amount, created_at, supplier_id, program_id')
         .eq('anchor_id', orgId),
+      adminClient
+        .from('programs')
+        .select('id, name')
+        .in('id',
+          (await adminClient
+            .from('program_enrollments')
+            .select('program_id')
+            .eq('org_id', orgId)
+            .eq('status', 'active')
+          ).data?.map((e: { program_id: string }) => e.program_id) ?? []
+        ),
     ])
 
     const enrolled_programs = enrolledResult.count ?? 0
     const txns = txnResult.data ?? []
 
-    // Monthly volume
-    const months = buildMonths()
-    const monthlyMap = new Map<string, { count: number; volume: number }>()
-    for (const m of months) monthlyMap.set(`${m.year}-${m.month}`, { count: 0, volume: 0 })
-    for (const t of txns) {
-      const d   = new Date(t.created_at)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      const bucket = monthlyMap.get(key)
-      if (bucket) {
-        bucket.count  += 1
-        bucket.volume += t.invoice_amount ?? 0
+    // Volume by period
+    const anchorBuckets = buildBuckets(period)
+    const monthly_volume = anchorBuckets.map(b => {
+      const slice = txns.filter(t => {
+        const d = new Date(t.created_at)
+        return d >= b.start && d < b.end
+      })
+      return {
+        label:                b.label,
+        count:                slice.length,
+        total_invoice_amount: slice.reduce((s, t) => s + (t.invoice_amount ?? 0), 0),
       }
-    }
-    const monthly_volume = months.map(m => ({
-      label:                m.label,
-      count:                monthlyMap.get(`${m.year}-${m.month}`)!.count,
-      total_invoice_amount: monthlyMap.get(`${m.year}-${m.month}`)!.volume,
-    }))
+    })
 
     // Payables summary
     const payablesMap: Record<string, { count: number; total: number }> = {}
@@ -232,12 +268,24 @@ export async function GET() {
       total_volume:      parseFloat((supplierMap.get(id)!.volume).toFixed(2)),
     }))
 
+    const anchorProgramNameMap = new Map((anchorProgramsResult.data ?? []).map((p: { id: string; name: string }) => [p.id, p.name]))
+    const anchorProgramVolMap = new Map<string, { name: string; volume: number }>()
+    for (const t of txns) {
+      if (!t.program_id) continue
+      const name = anchorProgramNameMap.get(t.program_id) ?? t.program_id
+      const cur = anchorProgramVolMap.get(t.program_id) ?? { name, volume: 0 }
+      cur.volume += t.invoice_amount ?? 0
+      anchorProgramVolMap.set(t.program_id, cur)
+    }
+    const anchor_program_breakdown = Array.from(anchorProgramVolMap.values()).sort((a, b) => b.volume - a.volume)
+
     return NextResponse.json({
       role: 'anchor',
       enrolled_programs,
       monthly_volume,
       payables_summary: payablesMap,
       top_suppliers,
+      program_breakdown: anchor_program_breakdown,
     })
   }
 
@@ -246,7 +294,7 @@ export async function GET() {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-    const [enrolledResult, txnResult] = await Promise.all([
+    const [enrolledResult, txnResult, supplierProgramsResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('id', { count: 'exact', head: true })
@@ -254,32 +302,38 @@ export async function GET() {
         .eq('status', 'active'),
       adminClient
         .from('transactions')
-        .select('id, invoice_number, status, invoice_amount, financing_amount_approved, financing_rate_apr, fee_amount, created_at')
+        .select('id, invoice_number, status, invoice_amount, financing_amount_approved, financing_rate_apr, fee_amount, created_at, program_id')
         .eq('supplier_id', orgId)
         .order('created_at', { ascending: false }),
+      adminClient
+        .from('programs')
+        .select('id, name')
+        .in('id',
+          (await adminClient
+            .from('program_enrollments')
+            .select('program_id')
+            .eq('org_id', orgId)
+            .eq('status', 'active')
+          ).data?.map((e: { program_id: string }) => e.program_id) ?? []
+        ),
     ])
 
     const enrolled_programs = enrolledResult.count ?? 0
     const txns = txnResult.data ?? []
 
-    // Monthly volume
-    const months = buildMonths()
-    const monthlyMap = new Map<string, { count: number; financed: number }>()
-    for (const m of months) monthlyMap.set(`${m.year}-${m.month}`, { count: 0, financed: 0 })
-    for (const t of txns) {
-      const d   = new Date(t.created_at)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      const bucket = monthlyMap.get(key)
-      if (bucket) {
-        bucket.count    += 1
-        bucket.financed += t.financing_amount_approved ?? 0
+    // Volume by period
+    const supplierBuckets = buildBuckets(period)
+    const monthly_volume = supplierBuckets.map(b => {
+      const slice = txns.filter(t => {
+        const d = new Date(t.created_at)
+        return d >= b.start && d < b.end
+      })
+      return {
+        label:          b.label,
+        count:          slice.length,
+        total_financed: slice.reduce((s, t) => s + (t.financing_amount_approved ?? 0), 0),
       }
-    }
-    const monthly_volume = months.map(m => ({
-      label:          m.label,
-      count:          monthlyMap.get(`${m.year}-${m.month}`)!.count,
-      total_financed: monthlyMap.get(`${m.year}-${m.month}`)!.financed,
-    }))
+    })
 
     // Receivables summary
     let outstanding_count = 0, outstanding_balance = 0
@@ -310,6 +364,21 @@ export async function GET() {
       created_at:                t.created_at,
     }))
 
+    const acceptedStatuses = new Set(['financing_approved', 'funded', 'completed'])
+    const accepted_count = txns.filter(t => acceptedStatuses.has(t.status)).length
+    const acceptance_rate = txns.length > 0 ? parseFloat((accepted_count / txns.length * 100).toFixed(1)) : null
+
+    const supplierProgramNameMap = new Map((supplierProgramsResult.data ?? []).map((p: { id: string; name: string }) => [p.id, p.name]))
+    const supplierProgramVolMap = new Map<string, { name: string; volume: number }>()
+    for (const t of txns) {
+      if (!t.program_id) continue
+      const name = supplierProgramNameMap.get(t.program_id) ?? t.program_id
+      const cur = supplierProgramVolMap.get(t.program_id) ?? { name, volume: 0 }
+      cur.volume += t.financing_amount_approved ?? 0
+      supplierProgramVolMap.set(t.program_id, cur)
+    }
+    const supplier_program_breakdown = Array.from(supplierProgramVolMap.values()).sort((a, b) => b.volume - a.volume)
+
     return NextResponse.json({
       role: 'supplier',
       enrolled_programs,
@@ -323,6 +392,8 @@ export async function GET() {
         total_fees_paid:     parseFloat(total_fees_paid.toFixed(2)),
       },
       recent_transactions,
+      acceptance_rate,
+      program_breakdown: supplier_program_breakdown,
     })
   }
 

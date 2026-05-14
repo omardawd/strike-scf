@@ -25,6 +25,7 @@ interface StartBody {
   city?: string
   state?: string
   zip?: string
+  anchor_org_id?: string
 }
 
 export async function POST(request: Request) {
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
 
   // ── Supplier / Anchor: create an organization row ───────────
   const { bank_id, type, ein, doing_business_as, business_type,
-    state_of_incorporation, address_line1, city, state, zip } = body
+    state_of_incorporation, address_line1, city, state, zip, anchor_org_id } = body
 
   if (!bank_id || !type || !ein) {
     return NextResponse.json(
@@ -108,23 +109,27 @@ export async function POST(request: Request) {
     )
   }
 
+  const orgRow = {
+    bank_id,
+    type,
+    legal_name: body.legal_name,
+    ein,
+    doing_business_as: doing_business_as ?? null,
+    business_type: business_type ?? null,
+    state_of_incorporation: state_of_incorporation ?? null,
+    address_line1: address_line1 ?? null,
+    city: city ?? null,
+    state: state ?? null,
+    zip: zip ?? null,
+    kyb_status: 'in_progress' satisfies KYBStatus,
+    status: 'in_progress' satisfies OrgStatus,
+    ...(anchor_org_id ? { anchor_org_id } : {}),
+  }
+
   const { data: org, error: orgError } = await adminClient
     .from('organizations')
-    .insert({
-      bank_id,
-      type,
-      legal_name: body.legal_name,
-      ein,
-      doing_business_as: doing_business_as ?? null,
-      business_type: business_type ?? null,
-      state_of_incorporation: state_of_incorporation ?? null,
-      address_line1: address_line1 ?? null,
-      city: city ?? null,
-      state: state ?? null,
-      zip: zip ?? null,
-      kyb_status: 'in_progress' satisfies KYBStatus,
-      status: 'in_progress' satisfies OrgStatus,
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .insert(orgRow as any)
     .select('id')
     .single()
 

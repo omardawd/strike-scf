@@ -44,7 +44,7 @@ export async function GET(
     const [enrollResult, inviteResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
-        .select('org_id, anchor_org_id, status')
+        .select('org_id, anchor_org_id, status, created_at')
         .eq('program_id', programId)
         .in('status', ['active', 'invited']),
       adminClient
@@ -57,12 +57,19 @@ export async function GET(
     const enrollments = enrollResult.data ?? []
     const invitations = inviteResult.data ?? []
 
-    // Build anchor → supplier map from enrollments
+    // Build anchor → supplier map from enrollments, track enrollment dates
     const anchorMap = new Map<string, Set<string>>()
+    const anchorEnrolledAt = new Map<string, string>()
+    const supplierEnrolledAt = new Map<string, string>()
     for (const e of enrollments) {
       if (!e.anchor_org_id) continue
       if (!anchorMap.has(e.anchor_org_id)) anchorMap.set(e.anchor_org_id, new Set())
-      if (e.org_id !== e.anchor_org_id) anchorMap.get(e.anchor_org_id)!.add(e.org_id)
+      if (e.org_id === e.anchor_org_id) {
+        if (!anchorEnrolledAt.has(e.anchor_org_id)) anchorEnrolledAt.set(e.anchor_org_id, e.created_at)
+      } else {
+        anchorMap.get(e.anchor_org_id)!.add(e.org_id)
+        if (!supplierEnrolledAt.has(e.org_id)) supplierEnrolledAt.set(e.org_id, e.created_at)
+      }
     }
 
     // Process pending invitations
@@ -129,13 +136,14 @@ export async function GET(
       const supplierIds = Array.from(anchorMap.get(org.id) ?? new Set<string>())
       const suppliers = supplierIds.map(sid => {
         const s = supplierOrgMap.get(sid) ?? { legal_name: '', kyb_status: 'draft', status: 'pending' }
-        return { id: sid, ...s }
+        return { id: sid, ...s, enrolled_at: supplierEnrolledAt.get(sid) ?? null }
       })
       return {
         id:                org.id,
         legal_name:        org.legal_name,
         kyb_status:        org.kyb_status,
         status:            org.status,
+        enrolled_at:       anchorEnrolledAt.get(org.id) ?? null,
         suppliers,
         supplier_count:    suppliers.length,
         pending_kyb_count: suppliers.filter(s => s.kyb_status === 'submitted').length,
@@ -160,7 +168,7 @@ export async function GET(
     const [enrollResult, inviteResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
-        .select('org_id')
+        .select('org_id, created_at')
         .eq('program_id', programId)
         .eq('anchor_org_id', userData.org_id)
         .neq('org_id', userData.org_id)
@@ -182,6 +190,7 @@ export async function GET(
       type:          'invitation' as const,
     }))
 
+    const enrolledAtBySupplier = new Map((enrollResult.data ?? []).map((e: { org_id: string; created_at: string }) => [e.org_id, e.created_at]))
     const supplierIds = (enrollResult.data ?? []).map((e: { org_id: string }) => e.org_id)
     if (supplierIds.length === 0) {
       return NextResponse.json({ suppliers: [], pending_suppliers })
@@ -211,6 +220,7 @@ export async function GET(
       legal_name:                org.legal_name,
       kyb_status:                org.kyb_status,
       status:                    org.status,
+      enrolled_at:               enrolledAtBySupplier.get(org.id) ?? null,
       transaction_count:         txnBySup.get(org.id)?.count ?? 0,
       latest_transaction_status: txnBySup.get(org.id)?.latest_status ?? null,
     }))

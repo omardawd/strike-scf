@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { KYB_REFERRER_KEY } from '@/lib/kyb-referrer'
+import { Topbar, NotifBell } from '@/components/portal-shell'
 import type { CreditDecision, RiskTier } from '@strike-scf/types'
 
 interface Document {
@@ -225,6 +226,11 @@ export default function KYBDetailPage() {
   if (!isAuthorized) return null
 
   return (
+    <>
+      <Topbar
+        crumbs={[{ label: 'Bank Portal' }, { label: 'KYB Review', onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
+        actions={<NotifBell />}
+      />
     <div className="page">
       <div className="page-header">
         <button
@@ -573,5 +579,6 @@ export default function KYBDetailPage() {
         </div>
       ) : null}
     </div>
+    </>
   )
 }

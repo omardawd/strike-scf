@@ -5,7 +5,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { pushKybDetail } from '@/lib/kyb-referrer'
-import { PortalShell, Topbar, Icon, fmtMoney } from '@/components/portal-shell'
+import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OrgDetail {
@@ -133,55 +133,113 @@ function fmtCurrency(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// ── BarChart ──────────────────────────────────────────────────────────────────
-function BarChart({ items }: { items: Array<{ label: string; value: number; count: number }> }) {
-  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
-  const safeItems = items ?? []
-  const max = Math.max(...safeItems.map(i => i.value), 1)
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+type Period = 'daily' | 'weekly' | 'monthly'
 
-  if (safeItems.length === 0 || safeItems.every(i => i.value === 0)) {
+function PeriodToggle({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, background: 'var(--color-bg-2)', borderRadius: 6, padding: 2 }}>
+      {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onChange(p)}
+          style={{
+            padding: '3px 10px', borderRadius: 4, border: 'none', fontSize: 10.5,
+            fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+            background: value === p ? 'var(--color-card)' : 'transparent',
+            color: value === p ? 'var(--color-ink-1)' : 'var(--color-ink-4)',
+            boxShadow: value === p ? '0 1px 2px var(--color-shadow)' : 'none',
+          }}
+        >
+          {p.charAt(0).toUpperCase() + p.slice(1)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function smoothPath(points: [number, number][]): string {
+  if (points.length < 2) return ''
+  const first = points[0]!
+  let d = `M ${first[0]} ${first[1]}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i]!
+    const p1 = points[i]!
+    const p2 = points[i + 1]!
+    const p3 = points[i + 2] ?? p2
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`
+  }
+  return d
+}
+
+function LineChart({ items, height = 88, color = 'var(--color-accent)' }: {
+  items: Array<{ label: string; value: number; count?: number }>
+  height?: number
+  color?: string
+}) {
+  const [hovered, setHovered] = useState<number | null>(null)
+  const safe = items ?? []
+  const hasData = safe.some(d => d.value > 0)
+
+  if (!hasData) {
     return (
-      <div style={{
-        height: 60, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12,
-      }}>
-        No transaction data yet
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
+        No data yet
       </div>
     )
   }
 
+  const W = 560, H = height - 24
+  const PAD = { top: 8, right: 8, left: 4 }
+  const maxVal = Math.max(...safe.map(d => d.value), 1)
+
+  const pts: [number, number][] = safe.map((d, i) => [
+    PAD.left + (safe.length > 1 ? (i / (safe.length - 1)) : 0.5) * (W - PAD.left - PAD.right),
+    PAD.top + (1 - d.value / maxVal) * (H - PAD.top),
+  ])
+
+  const linePath = smoothPath(pts)
+  const lastPt = pts[pts.length - 1]!
+  const firstPt = pts[0]!
+  const areaPath = pts.length > 1 ? `${linePath} L ${lastPt[0]} ${H} L ${firstPt[0]} ${H} Z` : ''
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
-      {safeItems.map((item, i) => {
-        const pct = max > 0 ? (item.value / max) : 0
-        const barHeight = Math.max(pct * 60, item.value > 0 ? 2 : 0)
-        return (
-          <div
-            key={i}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }}
-            onMouseEnter={() => setHoveredBar(i)}
-            onMouseLeave={() => setHoveredBar(null)}
-          >
-            {hoveredBar === i && (
-              <div style={{
-                position: 'absolute', bottom: '100%', left: '50%',
-                transform: 'translateX(-50%)', marginBottom: 6,
-                background: 'var(--color-ink-1)', color: 'white',
-                padding: '4px 8px', borderRadius: 5,
-                fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
-              }}>
-                {fmtMoney(item.value ?? 0)}
-              </div>
-            )}
-            <div style={{
-              width: '100%', height: barHeight + 'px',
-              background: hoveredBar === i ? 'var(--color-accent)' : 'rgba(37,99,235,0.3)',
-              borderRadius: '3px 3px 0 0', minHeight: 2, transition: 'background 0.1s',
-            }} />
-            <div style={{ fontSize: 10, color: 'var(--color-ink-4)' }}>{item.label}</div>
+    <div style={{ position: 'relative', userSelect: 'none' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
+        {areaPath && <path d={areaPath} fill={color} fillOpacity={0.07} />}
+        <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((pt, i) => safe[i]!.value > 0 && (
+          <circle key={i} cx={pt[0]} cy={pt[1]} r={hovered === i ? 4.5 : 3}
+            fill={hovered === i ? color : 'var(--color-card)'} stroke={color} strokeWidth={2}
+            style={{ cursor: 'default' }}
+            onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
+          />
+        ))}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: `3px ${PAD.right}px 0 ${PAD.left}px` }}>
+        {safe.map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: hovered === i ? color : 'var(--color-ink-4)', textAlign: 'center', flex: 1 }}>
+            {d.label}
           </div>
-        )
-      })}
+        ))}
+      </div>
+      {hovered !== null && safe[hovered] && (
+        <div style={{
+          position: 'absolute',
+          top: Math.max(0, (pts[hovered]![1] / H) * (height - 24) - 32),
+          left: `clamp(0px, calc(${(pts[hovered]![0] / W * 100).toFixed(1)}% - 44px), calc(100% - 88px))`,
+          background: 'var(--color-ink-1)', color: 'white',
+          padding: '3px 7px', borderRadius: 5, fontSize: 11, fontWeight: 500,
+          whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
+        }}>
+          {fmtMoney(safe[hovered]!.value)}
+        </div>
+      )}
     </div>
   )
 }
@@ -274,6 +332,7 @@ export default function AnchorDetailPage() {
   const [error, setError]                       = useState<string | null>(null)
   const [transactions, setTransactions]         = useState<TxRow[]>([])
   const [networkVersion, setNetworkVersion]     = useState(0)
+  const [volPeriod, setVolPeriod]               = useState<Period>('monthly')
 
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteName, setInviteName]           = useState('')
@@ -290,7 +349,7 @@ export default function AnchorDetailPage() {
           fetch(`/api/programs/${programId}/network`),
           fetch(`/api/kyb/${anchorId}`),
           fetch('/api/transactions'),
-          fetch(`/api/programs/${programId}/analytics?anchor_id=${anchorId}`),
+          fetch(`/api/programs/${programId}/analytics?anchor_id=${anchorId}&period=${volPeriod}`),
         ])
 
         const netData = netRes.ok ? await netRes.json() : {}
@@ -321,16 +380,22 @@ export default function AnchorDetailPage() {
           setAnalytics(await analyticsRes.json())
         }
       } else {
-        const [netRes, txRes, analyticsRes] = await Promise.all([
+        const [netRes, txRes, analyticsRes, kybRes] = await Promise.all([
           fetch(`/api/programs/${programId}/network`),
           fetch('/api/transactions'),
-          fetch(`/api/programs/${programId}/analytics?anchor_id=${anchorId}`),
+          fetch(`/api/programs/${programId}/analytics?anchor_id=${anchorId}&period=${volPeriod}`),
+          fetch(`/api/kyb/${anchorId}`),
         ])
 
-        const netData = netRes.ok ? await netRes.json() : {}
-        const anchorEntry = (netData.anchors ?? []).find((a: { id: string }) => a.id === anchorId)
-        if (anchorEntry) {
-          setOrg({ id: anchorEntry.id, legal_name: anchorEntry.legal_name, kyb_status: anchorEntry.kyb_status, status: anchorEntry.status })
+        if (kybRes.ok) {
+          const kybData = await kybRes.json()
+          setOrg(kybData.organization ?? null)
+        } else {
+          const netData = netRes.ok ? await netRes.json() : {}
+          const anchorEntry = (netData.anchors ?? []).find((a: { id: string }) => a.id === anchorId)
+          if (anchorEntry) {
+            setOrg({ id: anchorEntry.id, legal_name: anchorEntry.legal_name, kyb_status: anchorEntry.kyb_status, status: anchorEntry.status })
+          }
         }
 
         if (txRes.ok) {
@@ -348,7 +413,7 @@ export default function AnchorDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [portal, programId, anchorId, networkVersion])
+  }, [portal, programId, anchorId, networkVersion, volPeriod])
 
   useEffect(() => { load() }, [load])
 
@@ -404,6 +469,7 @@ export default function AnchorDetailPage() {
             { label: '…', onClick: () => router.push(`/programs/${programId}`) },
             { label: '…' },
           ]}
+          actions={<NotifBell />}
         />
         <div className="page">
           <div className="page-header">
@@ -426,9 +492,12 @@ export default function AnchorDetailPage() {
             { label: orgName },
           ]}
           actions={
-            <button className="btn btn-primary btn-sm" type="button" onClick={openInviteModal}>
-              <Icon name="plus" size={14} /> Invite Supplier
-            </button>
+            <>
+              <button className="btn btn-primary btn-sm" type="button" onClick={openInviteModal}>
+                <Icon name="plus" size={14} /> Invite Supplier
+              </button>
+              <NotifBell />
+            </>
           }
         />
         <div className="page">
@@ -483,7 +552,10 @@ export default function AnchorDetailPage() {
               </div>
 
               <div className="card" style={{ marginBottom: 16 }}>
-                <div className="card-head"><h3 className="t-card-head">Program Analytics</h3></div>
+                <div className="card-head">
+                  <h3 className="t-card-head">Program Analytics</h3>
+                  <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+                </div>
                 <div className="card-body">
                   <div style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                     <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
@@ -503,7 +575,7 @@ export default function AnchorDetailPage() {
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
-                  <BarChart items={analytics?.monthly_volume ?? []} />
+                  <LineChart items={analytics?.monthly_volume ?? []} color="var(--color-accent)" />
                 </div>
               </div>
 
@@ -730,15 +802,7 @@ export default function AnchorDetailPage() {
           { label: 'Program', onClick: () => router.push(`/programs/${programId}`) },
           { label: orgName },
         ]}
-        // actions={
-        //   <button
-        //     className="btn btn-primary btn-sm"
-        //     type="button"
-        //     onClick={() => pushTransactionNew(router)}
-        //   >
-        //     <Icon name="plus" size={14} /> New Transaction
-        //   </button>
-        // }
+        actions={<NotifBell />}
       />
       <div className="page">
         {error && (
@@ -769,14 +833,29 @@ export default function AnchorDetailPage() {
                 {org?.business_type && (
                   <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
                 )}
+                {org?.ein && (
+                  <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>
+                )}
+                {org?.annual_revenue_range != null && (
+                  <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
+                )}
+                {org?.industry_naics && (
+                  <div className="kv-row"><span className="k">NAICS</span><span className="v mono">{org.industry_naics}</span></div>
+                )}
                 {org?.primary_contact_name && (
                   <div className="kv-row"><span className="k">Primary contact</span><span className="v plain">{org.primary_contact_name}</span></div>
+                )}
+                {org?.primary_contact_email && (
+                  <div className="kv-row"><span className="k">Contact email</span><span className="v plain">{org.primary_contact_email}</span></div>
                 )}
               </div>
             </div>
 
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-head"><h3 className="t-card-head">Analytics</h3></div>
+              <div className="card-head">
+                <h3 className="t-card-head">Analytics</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+              </div>
               <div className="card-body">
                 <div style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                   <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
@@ -792,7 +871,7 @@ export default function AnchorDetailPage() {
                     <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                   </div>
                 </div>
-                <BarChart items={analytics?.monthly_volume ?? []} />
+                <LineChart items={analytics?.monthly_volume ?? []} color="var(--color-accent)" />
               </div>
             </div>
 
@@ -844,7 +923,7 @@ export default function AnchorDetailPage() {
 
           {/* ── RIGHT: Program details + documents ── */}
           <div>
-            <div className="card" style={{ marginBottom: 16 }}>
+            {/* <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head"><h3 className="t-card-head">Program</h3></div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
@@ -859,7 +938,7 @@ export default function AnchorDetailPage() {
                   View program details →
                 </button>
               </div>
-            </div>
+            </div> */}
 
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Documents</h3></div>

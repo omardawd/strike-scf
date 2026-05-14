@@ -45,6 +45,7 @@ interface SupplierReceivables {
   avg_rate: number | null
   total_fees_paid: number
 }
+
 interface SupplierTxnRow {
   id: string
   invoice_number: string | null
@@ -59,6 +60,7 @@ interface SupplierReportingData {
   monthly_volume: SupplierMonthlyBucket[]
   receivables: SupplierReceivables
   recent_transactions: SupplierTxnRow[]
+  acceptance_rate: number | null
 }
 
 type ReportingData = BankReportingData | AnchorReportingData | SupplierReportingData
@@ -97,86 +99,123 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// ── BarChart ──────────────────────────────────────────────────────────────────
-function BarChart({ items, valueLabel }: {
-  items: Array<{ label: string; value: number; count: number }>
-  valueLabel?: string
-}) {
-  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
-  const safeItems = items ?? []
-  const maxVal = Math.max(...safeItems.map(i => i.value), 1)
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+type Period = 'daily' | 'weekly' | 'monthly'
 
-  if (safeItems.length === 0) {
+function PeriodToggle({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, background: 'var(--color-bg-2)', borderRadius: 6, padding: 2 }}>
+      {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onChange(p)}
+          style={{
+            padding: '3px 10px', borderRadius: 4, border: 'none', fontSize: 10.5,
+            fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+            background: value === p ? 'var(--color-card)' : 'transparent',
+            color: value === p ? 'var(--color-ink-1)' : 'var(--color-ink-4)',
+            boxShadow: value === p ? '0 1px 2px var(--color-shadow)' : 'none',
+          }}
+        >
+          {p.charAt(0).toUpperCase() + p.slice(1)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function smoothPath(points: [number, number][]): string {
+  if (points.length < 2) return ''
+  const first = points[0]!
+  let d = `M ${first[0]} ${first[1]}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i]!
+    const p1 = points[i]!
+    const p2 = points[i + 1]!
+    const p3 = points[i + 2] ?? p2
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`
+  }
+  return d
+}
+
+function LineChart({ items, height = 140, color = 'var(--color-accent)' }: {
+  items: Array<{ label: string; value: number; count?: number }>
+  height?: number
+  color?: string
+}) {
+  const [hovered, setHovered] = useState<number | null>(null)
+  const safe = items ?? []
+  const hasData = safe.some(d => d.value > 0)
+
+  if (!hasData) {
     return (
-      <div style={{
-        height: 80, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12,
-      }}>
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
         No transaction data yet
       </div>
     )
   }
 
+  const W = 560, H = height - 28
+  const PAD = { top: 12, right: 12, left: 8 }
+  const maxVal = Math.max(...safe.map(d => d.value), 1)
+
+  const pts: [number, number][] = safe.map((d, i) => [
+    PAD.left + (safe.length > 1 ? (i / (safe.length - 1)) : 0.5) * (W - PAD.left - PAD.right),
+    PAD.top + (1 - d.value / maxVal) * (H - PAD.top),
+  ])
+
+  const linePath = smoothPath(pts)
+  const lastPt = pts[pts.length - 1]!
+  const firstPt = pts[0]!
+  const areaPath = pts.length > 1 ? `${linePath} L ${lastPt[0]} ${H} L ${firstPt[0]} ${H} Z` : ''
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140, padding: '0 4px' }}>
-      {safeItems.map((m, i) => {
-        const pct = maxVal > 0 ? (m.value / maxVal) * 100 : 0
-        const barH = Math.max(pct, m.value > 0 ? 2.9 : 0)
-        return (
-          <div key={m.label} style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 6,
-            height: '100%',
-            justifyContent: 'flex-end',
-            position: 'relative',
-          }}
-            onMouseEnter={() => setHoveredBar(i)}
-            onMouseLeave={() => setHoveredBar(null)}
-          >
-            {hoveredBar === i && (
-              <div style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                marginBottom: 6,
-                background: 'var(--color-ink-1)',
-                color: 'white',
-                padding: '4px 8px',
-                borderRadius: 5,
-                fontSize: 11,
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-                zIndex: 10,
-                pointerEvents: 'none',
-              }}>
-                {valueLabel === 'count' ? m.value : fmtCurrency(m.value)}
-              </div>
-            )}
-            <div style={{
-              width: '100%',
-              height: `${barH}%`,
-              minHeight: m.value > 0 ? 2 : 0,
-              background: hoveredBar === i
-                ? 'var(--color-accent)'
-                : m.value > 0 ? 'rgba(37,99,235,0.3)' : 'var(--color-border)',
-              borderRadius: '3px 3px 0 0',
-              transition: 'background 0.1s',
-            }} />
-            <div style={{ fontSize: 11, color: 'var(--color-ink-3)', whiteSpace: 'nowrap' }}>
-              {m.label}
-            </div>
-            {m.count > 0 && (
-              <div style={{ fontSize: 10, color: 'var(--color-ink-4)' }}>
-                {m.count} deal{m.count !== 1 ? 's' : ''}
-              </div>
-            )}
+    <div style={{ position: 'relative', userSelect: 'none' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
+        {[0.25, 0.5, 0.75, 1].map(v => {
+          const y = PAD.top + (1 - v) * (H - PAD.top)
+          return <line key={v} x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="var(--color-border)" strokeWidth={1} />
+        })}
+        {areaPath && <path d={areaPath} fill={color} fillOpacity={0.07} />}
+        <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((pt, i) => safe[i]!.value > 0 && (
+          <circle
+            key={i} cx={pt[0]} cy={pt[1]} r={hovered === i ? 5 : 3.5}
+            fill={hovered === i ? color : 'var(--color-card)'} stroke={color} strokeWidth={2}
+            style={{ cursor: 'default' }}
+            onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
+          />
+        ))}
+        {hovered !== null && pts[hovered] && (
+          <line x1={pts[hovered]![0]} y1={PAD.top} x2={pts[hovered]![0]} y2={H}
+            stroke={color} strokeWidth={1} strokeDasharray="3,3" opacity={0.4} />
+        )}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: `4px ${PAD.right}px 0 ${PAD.left}px` }}>
+        {safe.map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: hovered === i ? color : 'var(--color-ink-4)', textAlign: 'center', flex: 1, transition: 'color 0.1s' }}>
+            {d.label}
           </div>
-        )
-      })}
+        ))}
+      </div>
+      {hovered !== null && safe[hovered] && (
+        <div style={{
+          position: 'absolute',
+          top: Math.max(2, (pts[hovered]![1] / H) * (height - 28) - 36),
+          left: `clamp(0px, calc(${(pts[hovered]![0] / W * 100).toFixed(1)}% - 48px), calc(100% - 96px))`,
+          background: 'var(--color-ink-1)', color: 'white',
+          padding: '4px 8px', borderRadius: 5, fontSize: 11, fontWeight: 500,
+          whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
+        }}>
+          {fmtCurrency(safe[hovered]!.value)}
+          {(safe[hovered]!.count ?? 0) > 0 && ` · ${safe[hovered]!.count} deal${safe[hovered]!.count !== 1 ? 's' : ''}`}
+        </div>
+      )}
     </div>
   )
 }
@@ -189,6 +228,7 @@ export default function ReportingPage() {
   const [data,    setData]    = useState<ReportingData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
+  const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -284,10 +324,11 @@ export default function ReportingPage() {
             {/* ── Monthly volume chart ── */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Monthly volume (last 6 months)</h3>
+                <h3 className="t-card-head">Volume (last 6 months)</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
-                <BarChart
+                <LineChart
                   items={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))}
                 />
               </div>
@@ -441,15 +482,17 @@ export default function ReportingPage() {
             {/* ── Monthly invoice volume ── */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Monthly invoice volume (last 6 months)</h3>
+                <h3 className="t-card-head">Invoice volume (last 6 months)</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
-                <BarChart
+                <LineChart
                   items={(data.monthly_volume ?? []).map(m => ({
                     label: m.label,
                     value: m.total_invoice_amount,
                     count: m.count,
                   }))}
+                  color="var(--color-anchor)"
                 />
               </div>
             </div>
@@ -546,15 +589,17 @@ export default function ReportingPage() {
             {/* ── Monthly financed volume ── */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Monthly financed volume (last 6 months)</h3>
+                <h3 className="t-card-head">Financed volume (last 6 months)</h3>
+                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
-                <BarChart
+                <LineChart
                   items={(data.monthly_volume ?? []).map(m => ({
                     label: m.label,
                     value: m.total_financed,
                     count: m.count,
                   }))}
+                  color="var(--color-green)"
                 />
               </div>
             </div>

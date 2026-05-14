@@ -93,6 +93,10 @@ export async function POST(
     user_metadata: {
       full_name: fullName,
       role: invitation.role,
+      bank_id: invitation.bank_id ?? undefined,
+      ...(invitation.role === 'supplier' && invitation.anchor_org_id
+        ? { anchor_org_id: invitation.anchor_org_id }
+        : {}),
     },
   })
 
@@ -106,13 +110,11 @@ export async function POST(
 
   const newUserId = authData.user.id
 
-  // Set bank_id or org_id on the public.users row (auth trigger inserts the row
-  // but doesn't know about invitations, so we patch org/bank separately)
+  // Set bank_id on the public.users row for all invited roles.
+  // org_id is not set here — it is assigned during onboarding when the org is created.
   const userUpdate: Record<string, unknown> = {}
-  if (BANK_ROLES.includes(invitation.role)) {
+  if (invitation.bank_id) {
     userUpdate.bank_id = invitation.bank_id
-  } else {
-    userUpdate.org_id = invitation.anchor_org_id
   }
 
   if (Object.keys(userUpdate).length > 0) {
@@ -137,5 +139,5 @@ export async function POST(
     console.error('Mark invitation accepted error:', acceptError)
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, role: invitation.role })
 }

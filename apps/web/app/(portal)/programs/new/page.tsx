@@ -5,10 +5,9 @@ import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 
 const FIN_TYPES = [
-  { id: 'factoring',  icon: 'invoice',  label: 'Factoring',         desc: 'Supplier sells receivables early' },
-  { id: 'reverse',    icon: 'refresh',  label: 'Reverse Factoring', desc: 'Bank pays supplier, anchor repays' },
-  { id: 'po',         icon: 'box',      label: 'PO Financing',      desc: 'Pre-shipment capital' },
-  { id: 'open',       icon: 'message',  label: 'Open',              desc: 'Flexible — bank proposes terms' },
+  { id: 'reverse_factoring', icon: 'refresh', label: 'Reverse Factoring', desc: 'Bank pays supplier, anchor repays' },
+  { id: 'invoice_factoring', icon: 'invoice', label: 'Invoice Factoring',  desc: 'Supplier submits invoice, no anchor step' },
+  { id: 'po_financing',      icon: 'box',     label: 'PO Financing',       desc: 'Pre-shipment capital for purchase orders' },
 ]
 
 function parseMoney(raw: string): number {
@@ -20,7 +19,7 @@ export default function NewProgramPage() {
   const router = useRouter()
 
   const [name, setName] = useState('')
-  const [finType, setFinType] = useState('factoring')
+  const [finType, setFinType] = useState('reverse_factoring')
   const [limitMode, setLimitMode] = useState('fixed')
   const [programLimit, setProgramLimit] = useState(25000000)
   const [supplierSub, setSupplierSub] = useState(2500000)
@@ -85,25 +84,13 @@ export default function NewProgramPage() {
   return (
     <PortalShell activeSection="programs">
       <Topbar
-      onBack={() => router.push('/programs')}
+        onBack={() => router.push('/programs')}
         crumbs={[
           { label: 'Bank Portal' },
           { label: 'My Programs', onClick: () => router.push('/programs') },
           { label: 'New Program' },
         ]}
-        // actions={
-        //   <>
-        //     <button
-        //       className="btn btn-ghost"
-        //       type="button"
-        //       disabled={submitting}
-        //       onClick={() => handleSubmit(true)}
-        //     >
-        //       Save as draft
-        //     </button>
-        //     <NotifBell />
-        //   </>
-        // }
+        actions={<NotifBell />}
       />
 
       <div className="page">
@@ -235,30 +222,32 @@ export default function NewProgramPage() {
                     </div>
                   </div>
 
-                  <div className="form-row-2">
-                    <div className="form-field">
-                      <label className="form-label">Standard tenor (days)</label>
-                      <input
-                        className="form-input mono"
-                        value={tenor}
-                        onChange={(e) => setTenor(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
-                      />
-                    </div>
-                    {finType === 'po' && (
+                  {finType !== 'reverse_factoring' && (
+                    <div className="form-row-2">
                       <div className="form-field">
-                        <label className="form-label">Max PO fulfillment (days)</label>
+                        <label className="form-label">Standard tenor (days)</label>
                         <input
                           className="form-input mono"
-                          value={maxFulfill}
-                          onChange={(e) => setMaxFulfill(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
+                          value={tenor}
+                          onChange={(e) => setTenor(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
                         />
                       </div>
-                    )}
-                  </div>
+                      {finType === 'po_financing' && (
+                        <div className="form-field">
+                          <label className="form-label">Max PO fulfillment (days)</label>
+                          <input
+                            className="form-input mono"
+                            value={maxFulfill}
+                            onChange={(e) => setMaxFulfill(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
-              {limitMode === 'open' && (
+              {limitMode === 'open' && finType !== 'reverse_factoring' && (
                 <div className="form-field">
                   <label className="form-label">Standard tenor (days)</label>
                   <input
@@ -312,10 +301,12 @@ export default function NewProgramPage() {
                   </div>
                 </>
               )}
-              <div className="kv-row">
-                <span className="k">Tenor</span>
-                <span className="v plain">{tenor} days</span>
-              </div>
+              {finType !== 'reverse_factoring' && (
+                <div className="kv-row">
+                  <span className="k">Tenor</span>
+                  <span className="v plain">{tenor} days</span>
+                </div>
+              )}
               <div className="kv-row">
                 <span className="k">Status</span>
                 <span className="v">

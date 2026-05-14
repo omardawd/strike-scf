@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
-import { PortalShell, Topbar, Icon, fmtMoney } from '@/components/portal-shell'
+import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 
 interface Program {
   id: string
@@ -176,15 +176,18 @@ export default function ProgramsPage() {
       <Topbar
         crumbs={[{ label: portalLabel }, { label: 'My Programs' }]}
         actions={
-          portal === 'bank' ? (
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => router.push('/programs/new')}
-            >
-              <Icon name="plus" size={14} /> New Program
-            </button>
-          ) : undefined
+          <>
+            {portal === 'bank' && (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => router.push('/programs/new')}
+              >
+                <Icon name="plus" size={14} /> New Program
+              </button>
+            )}
+            <NotifBell />
+          </>
         }
       />
 

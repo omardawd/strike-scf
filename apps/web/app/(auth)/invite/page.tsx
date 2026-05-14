@@ -7,12 +7,15 @@ interface InvitationInfo {
   email: string
   role: string
   expires_at: string
+  bank_id: string | null
+  anchor_org_id: string | null
+  program_id: string | null
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  anchor:              'Anchor / Buyer',
+  supplier:            'Supplier',
   bank_credit_officer: 'Credit Officer',
-  anchor_member:       'Team Member',
-  supplier_member:     'Team Member',
 }
 
 function PasswordRule({ met, label }: { met: boolean; label: string }) {
@@ -49,7 +52,11 @@ function InvitePageContent() {
     }
     try {
       const res  = await fetch(`/api/invitations/${token}`)
-      const data = await res.json() as { valid: boolean; reason?: string; invitation?: InvitationInfo }
+      const data = await res.json() as {
+        valid: boolean
+        reason?: string
+        invitation?: InvitationInfo
+      }
       if (!data.valid) {
         setValid(false)
         setExpiredMsg(
@@ -108,7 +115,7 @@ function InvitePageContent() {
         return
       }
 
-      router.push('/dashboard')
+      router.push('/onboarding?from=invite')
     } catch {
       setSubmitError('Something went wrong. Please try again.')
     } finally {
@@ -159,9 +166,14 @@ function InvitePageContent() {
             Set up your account to get started
           </p>
           {invitation && (
-            <div style={{ marginTop: 12, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <span className="badge badge-draft">{invitation.email}</span>
-              <span className="badge badge-active">{ROLE_LABELS[invitation.role] ?? invitation.role}</span>
+              <span style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                You&apos;re joining as:{' '}
+                <strong style={{ color: 'var(--color-ink-2)' }}>
+                  {ROLE_LABELS[invitation.role] ?? invitation.role}
+                </strong>
+              </span>
             </div>
           )}
         </div>

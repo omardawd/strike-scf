@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
@@ -690,8 +690,8 @@ function StepReview({ formData, docs, role, onBack, onSubmit, loading, error }: 
 // ─────────────────────────────────────────────────────────────
 // Success screen
 // ─────────────────────────────────────────────────────────────
-function ScreenOBSuccess({ role }: { role: Role }) {
-  const labels: Record<Role, string> = {
+function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolean }) {
+  const standardLabels: Record<Role, string> = {
     supplier: 'Your KYB application has been submitted.',
     anchor:   'Your KYB application has been submitted.',
     bank:     'Your institution profile has been submitted for review.',
@@ -717,7 +717,10 @@ function ScreenOBSuccess({ role }: { role: Role }) {
           Application submitted!
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
-          {labels[role]} Our team reviews applications within <strong>1–3 business days</strong>. We&apos;ll email you with next steps.
+          {fromInvite
+            ? <>We&apos;ve notified your administrator that you&apos;ve completed onboarding. Once approved, you&apos;ll have full access to the platform.</>
+            : <>{standardLabels[role]} Our team reviews applications within <strong>1–3 business days</strong>. We&apos;ll email you with next steps.</>
+          }
         </p>
         <div style={{
           padding: '16px 20px', borderRadius: 10,
@@ -748,8 +751,10 @@ function ScreenOBSuccess({ role }: { role: Role }) {
 // ─────────────────────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────────────────────
-export default function OnboardingPage() {
-  const router = useRouter()
+function OnboardingPageContent() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const fromInvite   = searchParams.get('from') === 'invite'
   const [initialized, setInitialized] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [step, setStep] = useState(0)
@@ -772,34 +777,46 @@ export default function OnboardingPage() {
       if (!user) { router.push('/login'); return }
       setUser(user)
 
-      const roleMap: Record<string, Role> = {
+      const metaRole = user.user_metadata?.role as string
+      const inviteRoleMap: Record<string, Role> = {
+        anchor:              'anchor',
+        supplier:            'supplier',
+        bank_credit_officer: 'bank',
+      }
+      const standardRoleMap: Record<string, Role> = {
         supplier_admin: 'supplier',
         anchor_admin:   'anchor',
         bank_admin:     'bank',
       }
-      const mappedRole: Role = roleMap[user.user_metadata?.role as string] ?? 'supplier'
+      const mappedRole: Role = fromInvite
+        ? (inviteRoleMap[metaRole] ?? 'supplier')
+        : (standardRoleMap[metaRole] ?? 'supplier')
       setRole(mappedRole)
 
-      try {
-        const res = await fetch('/api/onboarding/status')
-        if (res.ok) {
-          const status = await res.json()
-          if (status.kyb_status === 'submitted' || status.bank_status === 'active') {
-            setSubmitted(true)
-          } else if (status.org_id) {
-            setOrgId(status.org_id)
-            setStep(2) // resume at Documents
-          } else if (status.bank_id) {
-            setBankId(status.bank_id)
-            setStep(2)
+      // bank_credit_officer has no KYB — skip status check
+      const isInvitedCO = fromInvite && metaRole === 'bank_credit_officer'
+      if (!isInvitedCO) {
+        try {
+          const res = await fetch('/api/onboarding/status')
+          if (res.ok) {
+            const status = await res.json()
+            if (status.kyb_status === 'submitted' || status.bank_status === 'active') {
+              setSubmitted(true)
+            } else if (status.org_id) {
+              setOrgId(status.org_id)
+              setStep(2)
+            } else if (status.bank_id) {
+              setBankId(status.bank_id)
+              setStep(2)
+            }
           }
-        }
-      } catch { /* ignore — start fresh */ }
+        } catch { /* ignore — start fresh */ }
+      }
 
       setInitialized(true)
     }
     init()
-  }, [router])
+  }, [router, fromInvite])
 
   async function handleCompanyInfoNext() {
     if (role === 'bank') {
@@ -838,12 +855,15 @@ export default function OnboardingPage() {
     }
     setError(null)
     setLoading(true)
+    const inviteBankId = fromInvite
+      ? (user?.user_metadata?.bank_id as string | undefined)
+      : process.env.NEXT_PUBLIC_DEV_BANK_ID
     try {
       const res = await fetch('/api/onboarding/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bank_id: process.env.NEXT_PUBLIC_DEV_BANK_ID,
+          bank_id: inviteBankId,
           type: role,
           legal_name: companyData.legalName,
           ein: companyData.ein,
@@ -854,6 +874,9 @@ export default function OnboardingPage() {
           city: companyData.city || undefined,
           state: companyData.state || undefined,
           zip: companyData.zip || undefined,
+          ...(fromInvite && role === 'supplier' && user?.user_metadata?.anchor_org_id
+            ? { anchor_org_id: user.user_metadata.anchor_org_id as string }
+            : {}),
         }),
       })
       const data = await res.json()
@@ -933,8 +956,17 @@ export default function OnboardingPage() {
     }
   }
 
-  const steps = role === 'supplier' ? SUPPLIER_STEPS : role === 'anchor' ? ANCHOR_STEPS : BANK_STEPS
-  const next = () => { setError(null); setStep(s => s + 1) }
+  const isCreditOfficer = fromInvite && user?.user_metadata?.role === 'bank_credit_officer'
+  const BCO_STEPS = [{ label: 'Account', sub: 'Confirm your details' }]
+  const steps = isCreditOfficer ? BCO_STEPS
+    : role === 'supplier' ? SUPPLIER_STEPS
+    : role === 'anchor'   ? ANCHOR_STEPS
+    : BANK_STEPS
+  const next = () => {
+    setError(null)
+    if (isCreditOfficer) { router.push('/dashboard'); return }
+    setStep(s => s + 1)
+  }
   const back = () => { setError(null); setStep(s => s - 1) }
 
   const fullName = (user?.user_metadata?.full_name as string) ?? ''
@@ -953,7 +985,7 @@ export default function OnboardingPage() {
         </div>
       )
     }
-    if (submitted) return <ScreenOBSuccess role={role} />
+    if (submitted) return <ScreenOBSuccess role={role} fromInvite={fromInvite} />
 
     if (step === 0) return (
       <OBShell steps={steps} current={0} role={role}>
@@ -1032,5 +1064,17 @@ export default function OnboardingPage() {
       />
       {content}
     </>
+  )
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
+        <div style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>Loading…</div>
+      </div>
+    }>
+      <OnboardingPageContent />
+    </Suspense>
   )
 }

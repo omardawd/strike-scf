@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { TRANSACTION_REFERRER_KEY } from '@/lib/transaction-referrer'
@@ -8,6 +8,7 @@ import { PortalShell, Topbar, Icon } from '@/components/portal-shell'
 interface Transaction {
   id: string
   status: string
+  type: string | null
   financing_type: string | null
   invoice_amount: number | null
   financing_amount_requested: number | null
@@ -80,7 +81,11 @@ interface WireInfo {
 
 function parseWireInfo(raw: string | null): WireInfo | null {
   if (!raw) return null
-  try { return JSON.parse(raw) } catch { return null }
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed as WireInfo
+    return null
+  } catch { return null }
 }
 
 function formatCollateralType(type: string): string {
@@ -107,9 +112,19 @@ function collateralStatusBadge(status: string): string {
   }
 }
 
-// RF stepper: includes counter-offer step
+// Status order for stepper
 const RF_STEPPER_STEPS = [
   { key: 'pending_anchor_approval',          label: 'Anchor Review' },
+  { key: 'pending_bank_review',              label: 'Bank Review' },
+  { key: 'pending_supplier_counter_review',  label: 'Supplier Review' },
+  { key: 'financing_approved',              label: 'Approved' },
+  { key: 'funded',                           label: 'Disbursed' },
+  { key: 'completed',                        label: 'Repaid' },
+]
+
+const RF_STATUS_ORDER = RF_STEPPER_STEPS.map(s => s.key)
+
+const IF_STEPPER_STEPS = [
   { key: 'pending_bank_review',              label: 'Bank Review' },
   { key: 'pending_supplier_counter_review',  label: 'Supplier Review' },
   { key: 'financing_approved',               label: 'Approved' },
@@ -117,14 +132,57 @@ const RF_STEPPER_STEPS = [
   { key: 'completed',                        label: 'Repaid' },
 ]
 
-const RF_STATUS_ORDER = RF_STEPPER_STEPS.map(s => s.key)
+const IF_STATUS_ORDER = IF_STEPPER_STEPS.map(s => s.key)
+
+function ifStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
+  let eff = status
+  if (status === 'rejected')            eff = 'pending_bank_review'
+  if (status === 'more_info_requested') eff = 'pending_bank_review'
+
+  const stepIdx    = IF_STATUS_ORDER.indexOf(stepKey)
+  const currentIdx = IF_STATUS_ORDER.indexOf(eff)
+
+  if (currentIdx === -1) return 'todo'
+  if (stepIdx < currentIdx)  return 'done'
+  if (stepIdx === currentIdx) return 'current'
+  return 'todo'
+}
 
 function rfStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
+  // Map intermediate/terminal statuses to their nearest stepper position
   let eff = status
-  if (status === 'rejected') eff = 'pending_bank_review'
+  if (status === 'rejected')            eff = 'pending_bank_review'
+  if (status === 'more_info_requested') eff = 'pending_bank_review'
 
   const stepIdx    = RF_STATUS_ORDER.indexOf(stepKey)
   const currentIdx = RF_STATUS_ORDER.indexOf(eff)
+
+  if (currentIdx === -1) return 'todo'
+  if (stepIdx < currentIdx)  return 'done'
+  if (stepIdx === currentIdx) return 'current'
+  return 'todo'
+}
+
+const PO_STEPPER_STEPS = [
+  { key: 'pending_bank_review',          label: 'PO Submitted' },
+  { key: 'financing_approved',           label: 'Financing Approved' },
+  { key: 'funded',                       label: 'Disbursed' },
+  { key: 'pending_anchor_confirmation',  label: 'Invoice Submitted' },
+  { key: 'repayment_due',               label: 'Repayment Due' },
+  { key: 'completed',                    label: 'Completed' },
+]
+
+const PO_STATUS_ORDER = PO_STEPPER_STEPS.map(s => s.key)
+
+function poStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
+  let eff = status
+  if (status === 'rejected')                       eff = 'pending_bank_review'
+  if (status === 'more_info_requested')            eff = 'pending_bank_review'
+  if (status === 'pending_supplier_counter_review') eff = 'pending_bank_review'
+  if (status === 'in_dispute')                     eff = 'pending_anchor_confirmation'
+
+  const stepIdx    = PO_STATUS_ORDER.indexOf(stepKey)
+  const currentIdx = PO_STATUS_ORDER.indexOf(eff)
 
   if (currentIdx === -1) return 'todo'
   if (stepIdx < currentIdx)  return 'done'
@@ -140,6 +198,9 @@ function statusBadge(status: string): string {
     case 'more_info_requested':             return 'badge-pending'
     case 'financing_approved':              return 'badge-funded'
     case 'funded':                          return 'badge-funded'
+    case 'pending_anchor_confirmation':     return 'badge-pending'
+    case 'repayment_due':                   return 'badge-active'
+    case 'in_dispute':                      return 'badge-rejected'
     case 'completed':                       return 'badge-completed'
     case 'rejected':                        return 'badge-rejected'
     default:                                return 'badge-draft'
@@ -154,6 +215,9 @@ function statusLabel(status: string): string {
     case 'more_info_requested':             return 'More Info Needed'
     case 'financing_approved':              return 'Approved'
     case 'funded':                          return 'Funded'
+    case 'pending_anchor_confirmation':     return 'Awaiting Anchor Confirmation'
+    case 'repayment_due':                   return 'Repayment Due'
+    case 'in_dispute':                      return 'In Dispute'
     case 'completed':                       return 'Completed'
     case 'rejected':                        return 'Rejected'
     default:                                return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -195,13 +259,19 @@ function humanizeEvent(e: TransactionEvent): string {
     case 'counter_offer_submitted':  return 'Submitted counter-offer'
     case 'counter_offer_accepted':   return 'Accepted counter-offer'
     case 'counter_offer_rejected':   return 'Declined counter-offer'
+    case 'wire_info_sent':           return 'Sent wire transfer info to supplier'
     case 'repayment_info_sent':      return 'Sent repayment instructions to anchor'
+    case 'disbursement_marked':      return 'Disbursed funds to supplier'
+    case 'repayment_marked':         return 'Marked as repaid'
     case 'disbursed':                return 'Disbursed funds to supplier'
     case 'repaid':                   return 'Recorded repayment'
     case 'funded':                   return 'Transaction funded'
     case 'completed':                return 'Transaction completed'
     case 'document_uploaded':        return 'Uploaded document'
+    case 'collateral_updated':       return 'Updated collateral requirement'
+    case 'status_change':
     case 'status_changed':
+      if (e.notes === 'Invoice submitted after delivery') return 'Submitted invoice after delivery'
       return e.to_status ? `Status updated to ${statusLabel(e.to_status)}` : 'Status updated'
     default:
       return (e.action || e.event_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -216,42 +286,83 @@ function BankActionPanel({
   acting,
   txnId,
   onRefresh,
+  isInvoiceFactoring,
+  isPOFinancing,
 }: {
   transaction: Transaction
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
   txnId: string
   onRefresh: () => void
+  isInvoiceFactoring?: boolean
+  isPOFinancing?: boolean
 }) {
   const { status } = transaction
   const invoiceAmt = transaction.invoice_amount ?? 0
+
+  // Supplier's offered rate (read-only for bank during approval)
   const supplierRatePct = invoiceAmt > 0 && transaction.financing_amount_requested
     ? ((transaction.financing_amount_requested / invoiceAmt) * 100).toFixed(1)
     : '0'
+  const supplierRateNum    = parseFloat(supplierRatePct) || 0
+  const supplierDisburseAmt = invoiceAmt * (supplierRateNum / 100)
 
   const [mode, setMode]             = useState<'idle' | 'counter' | 'reject'>('idle')
-  const [rfRate, setRfRate]         = useState(supplierRatePct)
-  const [rfDiscount, setRfDiscount] = useState('')
-  const [wireInfo, setWireInfo]     = useState({ bank_name: '', account_number: '', routing_number: '', reference: '' })
-  const [rejectNote, setRejectNote] = useState('')
+  const [counterRate, setCounterRate]   = useState(supplierRatePct)
   const [counterNotes, setCounterNotes] = useState('')
+  const [rejectNote, setRejectNote]     = useState('')
 
-  const [disbRef, setDisbRef]         = useState('')
-  const [disbursing, setDisbursing]   = useState(false)
-  const [disbError, setDisbError]     = useState<string | null>(null)
+  // Wire transfer (shown at financing_approved, separate step)
+  const [wireInfo, setWireInfo]         = useState({ bank_name: '', account_number: '', routing_number: '', reference: '' })
+  const [sendingWire, setSendingWire]   = useState(false)
+  const [wireError, setWireError]       = useState<string | null>(null)
+  const [wireSent, setWireSent]         = useState(false)
 
-  const [repaymentAmount, setRepaymentAmount]           = useState('')
-  const [repaymentDueDate, setRepaymentDueDate]         = useState('')
-  const [repaymentInstructions, setRepaymentInstructions] = useState('')
-  const [sendingRepayment, setSendingRepayment]         = useState(false)
-  const [repaymentError, setRepaymentError]             = useState<string | null>(null)
-  const [repaymentSent, setRepaymentSent]               = useState(false)
+  // Disbursement
+  const [disbRef, setDisbRef]           = useState('')
+  const [disbursing, setDisbursing]     = useState(false)
+  const [disbError, setDisbError]       = useState<string | null>(null)
 
-  const rfRateNum    = parseFloat(rfRate) || 0
-  const disburseAmt  = invoiceAmt * (rfRateNum / 100)
-  const rfDiscountNum = parseFloat(rfDiscount) || 0
+  // Repayment info
+  const [repaymentAmount, setRepaymentAmount]               = useState('')
+  const [repaymentDueDate, setRepaymentDueDate]             = useState('')
+  const [repaymentInstructions, setRepaymentInstructions]   = useState('')
+  const [sendingRepayment, setSendingRepayment]             = useState(false)
+  const [repaymentError, setRepaymentError]                 = useState<string | null>(null)
+  const [repaymentSent, setRepaymentSent]                   = useState(false)
 
+  // Mark as repaid
+  const [markingRepaid, setMarkingRepaid]   = useState(false)
+  const [repaidError, setRepaidError]       = useState<string | null>(null)
+
+  const counterRateNum    = parseFloat(counterRate) || 0
+  const counterDisburseAmt = invoiceAmt * (counterRateNum / 100)
+
+  // ── financing_approved: wire transfer info + disbursement ──────────────────
   if (status === 'financing_approved') {
+    const existingWire = parseWireInfo(transaction.disbursement_reference)
+    const hasWire = existingWire && Object.values(existingWire).some(Boolean)
+
+    const handleSendWire = async () => {
+      setSendingWire(true)
+      setWireError(null)
+      try {
+        const res = await fetch(`/api/transactions/${txnId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send_wire_info', wire_transfer_info: wireInfo }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        setWireSent(true)
+        onRefresh()
+      } catch (err) {
+        setWireError(err instanceof Error ? err.message : 'Failed to send wire info')
+      } finally {
+        setSendingWire(false)
+      }
+    }
+
     const handleDisburse = async () => {
       setDisbursing(true)
       setDisbError(null)
@@ -296,7 +407,50 @@ function BankActionPanel({
             </div>
           )}
         </div>
-        <div>
+
+        {/* Wire transfer info — separate step, visible only to bank + supplier */}
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginTop: 4 }}>
+          Wire transfer info (for supplier)
+        </div>
+        {hasWire ? (
+          <div className="calc-panel">
+            <div style={{ fontSize: 11, color: 'var(--color-green)', marginBottom: 4 }}>Sent to supplier</div>
+            {existingWire!.bank_name      && <div className="calc-row"><span>Bank</span><span>{existingWire!.bank_name}</span></div>}
+            {existingWire!.account_number && <div className="calc-row"><span>Account</span><span className="mono">{existingWire!.account_number}</span></div>}
+            {existingWire!.routing_number && <div className="calc-row"><span>Routing</span><span className="mono">{existingWire!.routing_number}</span></div>}
+            {existingWire!.reference      && <div className="calc-row"><span>Reference</span><span className="mono">{existingWire!.reference}</span></div>}
+          </div>
+        ) : wireSent ? (
+          <div style={{ fontSize: 12, color: 'var(--color-green)' }}>Wire info sent to supplier</div>
+        ) : (
+          <>
+            {(['bank_name', 'account_number', 'routing_number', 'reference'] as const).map(field => (
+              <div key={field}>
+                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
+                  {field === 'bank_name' ? 'Bank name' : field === 'account_number' ? 'Account number' : field === 'routing_number' ? 'Routing number' : 'Reference / memo'}
+                </div>
+                <input
+                  className="form-input"
+                  style={{ width: '100%' }}
+                  value={wireInfo[field]}
+                  onChange={e => setWireInfo(w => ({ ...w, [field]: e.target.value }))}
+                />
+              </div>
+            ))}
+            {wireError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{wireError}</div>}
+            <button
+              className="btn btn-ghost btn-full"
+              type="button"
+              disabled={sendingWire || !Object.values(wireInfo).some(v => v.trim())}
+              onClick={handleSendWire}
+            >
+              {sendingWire ? 'Sending…' : 'Send wire info to supplier'}
+            </button>
+          </>
+        )}
+
+        {/* Disbursement */}
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12, marginTop: 4 }}>
           <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Reference / wire number (optional)</div>
           <input
             className="input"
@@ -314,6 +468,15 @@ function BankActionPanel({
     )
   }
 
+  // ── funded: PO passive / RF repayment form ───────────────────────────────
+  if (status === 'funded' && isPOFinancing) {
+    return (
+      <div className="action-passive muted">
+        Waiting for supplier to deliver goods and submit invoice
+      </div>
+    )
+  }
+
   if (status === 'funded') {
     const repaymentAlreadySent = !!transaction.repayment_due_date
 
@@ -325,9 +488,9 @@ function BankActionPanel({
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'send_repayment_info',
-            repayment_amount: repaymentAmount ? parseFloat(repaymentAmount) : null,
-            repayment_due_date: repaymentDueDate || null,
+            action:                'send_repayment_info',
+            repayment_amount:      repaymentAmount ? parseFloat(repaymentAmount) : null,
+            repayment_due_date:    repaymentDueDate || null,
             repayment_instructions: repaymentInstructions || null,
           }),
         })
@@ -339,6 +502,25 @@ function BankActionPanel({
         setRepaymentError(err instanceof Error ? err.message : 'Failed to send')
       } finally {
         setSendingRepayment(false)
+      }
+    }
+
+    const handleMarkRepaid = async () => {
+      setMarkingRepaid(true)
+      setRepaidError(null)
+      try {
+        const res = await fetch(`/api/transactions/${txnId}/repay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        onRefresh()
+      } catch (err) {
+        setRepaidError(err instanceof Error ? err.message : 'Failed to mark as repaid')
+      } finally {
+        setMarkingRepaid(false)
       }
     }
 
@@ -364,6 +546,15 @@ function BankActionPanel({
               </div>
             )}
           </div>
+          {repaidError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaidError}</div>}
+          <button
+            className="btn btn-primary btn-full"
+            type="button"
+            disabled={markingRepaid}
+            onClick={handleMarkRepaid}
+          >
+            {markingRepaid ? 'Processing…' : 'Mark as repaid'}
+          </button>
         </div>
       )
     }
@@ -417,6 +608,111 @@ function BankActionPanel({
     )
   }
 
+  // ── PO: pending_anchor_confirmation / repayment_due ──────────────────────
+  if (isPOFinancing && status === 'pending_anchor_confirmation') {
+    return <div className="action-passive muted">Anchor is confirming receipt of goods</div>
+  }
+
+  if (isPOFinancing && status === 'repayment_due') {
+    const repaymentAlreadySent = !!transaction.repayment_due_date
+
+    const handleSendRepaymentPO = async () => {
+      setSendingRepayment(true)
+      setRepaymentError(null)
+      try {
+        const res = await fetch(`/api/transactions/${txnId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action:                 'send_repayment_info',
+            repayment_amount:       repaymentAmount ? parseFloat(repaymentAmount) : null,
+            repayment_due_date:     repaymentDueDate || null,
+            repayment_instructions: repaymentInstructions || null,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        setRepaymentSent(true)
+        onRefresh()
+      } catch (err) {
+        setRepaymentError(err instanceof Error ? err.message : 'Failed to send')
+      } finally {
+        setSendingRepayment(false)
+      }
+    }
+
+    const handleMarkRepaidPO = async () => {
+      setMarkingRepaid(true)
+      setRepaidError(null)
+      try {
+        const res = await fetch(`/api/transactions/${txnId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'mark_repaid' }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        onRefresh()
+      } catch (err) {
+        setRepaidError(err instanceof Error ? err.message : 'Failed to mark as repaid')
+      } finally {
+        setMarkingRepaid(false)
+      }
+    }
+
+    if (repaymentAlreadySent || repaymentSent) {
+      return (
+        <div className="action-block">
+          <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-green)', margin: 0 }}>
+            Repayment instructions sent to anchor
+          </p>
+          <div className="calc-panel">
+            {transaction.repayment_due_date && (
+              <div className="calc-row">
+                <span>Due date</span>
+                <span>{fmtDate(transaction.repayment_due_date)}</span>
+              </div>
+            )}
+            {transaction.bank_approval_notes && (
+              <div className="calc-row" style={{ alignItems: 'flex-start' }}>
+                <span>Instructions</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{transaction.bank_approval_notes}</span>
+              </div>
+            )}
+          </div>
+          {repaidError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaidError}</div>}
+          <button className="btn btn-primary btn-full" type="button" disabled={markingRepaid} onClick={handleMarkRepaidPO}>
+            {markingRepaid ? 'Processing…' : 'Mark as repaid'}
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div className="action-block">
+        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+          Send repayment instructions to anchor
+        </p>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment amount ($)</div>
+          <input className="input mono" placeholder="0.00" value={repaymentAmount} onChange={e => setRepaymentAmount(e.target.value)} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment due date</div>
+          <input type="date" className="input" value={repaymentDueDate} onChange={e => setRepaymentDueDate(e.target.value)} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Instructions / wire details</div>
+          <textarea className="form-input" rows={3} placeholder="IBAN, wire instructions, or payment reference…" value={repaymentInstructions} onChange={e => setRepaymentInstructions(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
+        </div>
+        {repaymentError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaymentError}</div>}
+        <button className="btn btn-primary btn-full" type="button" disabled={sendingRepayment || !repaymentDueDate} onClick={handleSendRepaymentPO}>
+          {sendingRepayment ? 'Sending…' : 'Send to anchor'}
+        </button>
+      </div>
+    )
+  }
+
   if (status !== 'pending_bank_review' && status !== 'more_info_requested') {
     return (
       <div className="action-passive muted">
@@ -427,6 +723,7 @@ function BankActionPanel({
     )
   }
 
+  // ── pending_bank_review / more_info_requested ──────────────────────────────
   if (mode === 'reject') {
     return (
       <div className="action-block">
@@ -434,7 +731,7 @@ function BankActionPanel({
         <textarea
           className="form-input"
           rows={4}
-          placeholder="Explain the reason for rejection (min 10 characters)…"
+          placeholder="Reason for rejection (optional)…"
           value={rejectNote}
           onChange={e => setRejectNote(e.target.value)}
           style={{ width: '100%', resize: 'vertical' }}
@@ -442,7 +739,7 @@ function BankActionPanel({
         <button
           className="btn btn-danger btn-full"
           type="button"
-          disabled={acting || rejectNote.trim().length < 10}
+          disabled={acting}
           onClick={() => onAction({ action: 'reject', rejection_reason: rejectNote.trim() })}
         >
           {acting ? 'Processing…' : 'Confirm rejection'}
@@ -459,117 +756,70 @@ function BankActionPanel({
   return (
     <div className="action-block">
       <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
-        {isCounter ? 'Counter-offer' : 'Review financing offer'}
+        {isCounter ? 'Counter-offer' : isPOFinancing ? 'Supplier submitted a purchase order for financing' : isInvoiceFactoring ? 'Supplier submitted this invoice directly for financing' : 'Review financing offer'}
       </p>
 
-      {!isCounter && (
-        <div className="calc-panel">
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
-          <div className="calc-row">
-            <span>Invoice amount</span>
-            <span>{fmtAmt(transaction.invoice_amount)}</span>
-          </div>
-          <div className="calc-row">
-            <span>Requested advance rate</span>
-            <span>{supplierRatePct}%</span>
-          </div>
-          <div className="calc-row">
-            <span>Requested amount</span>
-            <span>{fmtAmt(transaction.financing_amount_requested)}</span>
-          </div>
+      {/* Supplier's offer — always shown (read-only for bank) */}
+      <div className="calc-panel">
+        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
+        <div className="calc-row">
+          <span>Invoice amount</span>
+          <span>{fmtAmt(transaction.invoice_amount)}</span>
         </div>
-      )}
-
-      <div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-          {isCounter ? 'Counter advance rate (%)' : 'Advance rate (%)'}
+        <div className="calc-row">
+          <span>Requested advance rate</span>
+          <span>{supplierRatePct}%</span>
         </div>
-        <div style={{ position: 'relative' }}>
-          <input
-            className="form-input mono"
-            style={{ width: '100%', paddingRight: 32 }}
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            value={rfRate}
-            onChange={e => setRfRate(e.target.value)}
-          />
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+        <div className="calc-row">
+          <span>Requested amount</span>
+          <span>{fmtAmt(transaction.financing_amount_requested)}</span>
         </div>
       </div>
 
-      {rfRateNum > 0 && (
-        <div className="calc-row">
-          <span>Amount to disburse</span>
-          <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(disburseAmt.toFixed(2)))}</strong>
-        </div>
-      )}
-
-      {!isCounter && (
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Discount fee ($)</div>
-          <input
-            className="form-input mono"
-            style={{ width: '100%' }}
-            type="number"
-            min="0"
-            step="0.01"
-            value={rfDiscount}
-            onChange={e => setRfDiscount(e.target.value)}
-            placeholder={rfRateNum > 0 ? (invoiceAmt - disburseAmt).toFixed(2) : '0.00'}
-          />
-        </div>
-      )}
-
-      {!isCounter && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginTop: 4 }}>
-            Wire transfer info
-          </div>
-          {(['bank_name', 'account_number', 'routing_number', 'reference'] as const).map(field => (
-            <div key={field}>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-                {field === 'bank_name'       ? 'Bank name'
-                  : field === 'account_number' ? 'Account number'
-                  : field === 'routing_number' ? 'Routing number'
-                  : 'Reference / memo'}
-              </div>
-              <input
-                className="form-input"
-                style={{ width: '100%' }}
-                value={wireInfo[field]}
-                onChange={e => setWireInfo(w => ({ ...w, [field]: e.target.value }))}
-              />
-            </div>
-          ))}
-        </>
-      )}
-
+      {/* Counter rate — only shown in counter mode */}
       {isCounter && (
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
-          <textarea
-            className="form-input"
-            rows={2}
-            value={counterNotes}
-            onChange={e => setCounterNotes(e.target.value)}
-            style={{ width: '100%', resize: 'vertical' }}
-            placeholder="Reason for counter-offer…"
-          />
-        </div>
-      )}
-
-      {isCounter ? (
         <>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="form-input mono"
+                style={{ width: '100%', paddingRight: 32 }}
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={counterRate}
+                onChange={e => setCounterRate(e.target.value)}
+              />
+              <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+            </div>
+          </div>
+          {counterRateNum > 0 && (
+            <div className="calc-row">
+              <span>Counter amount</span>
+              <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
+            </div>
+          )}
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+            <textarea
+              className="form-input"
+              rows={2}
+              value={counterNotes}
+              onChange={e => setCounterNotes(e.target.value)}
+              style={{ width: '100%', resize: 'vertical' }}
+              placeholder="Reason for counter-offer…"
+            />
+          </div>
           <button
             className="btn btn-primary btn-full"
             type="button"
-            disabled={acting || !rfRateNum}
+            disabled={acting || !counterRateNum}
             onClick={() => onAction({
-              action: 'counter_offer',
-              financing_rate_apr: rfRateNum,
-              financing_amount_approved: parseFloat(disburseAmt.toFixed(2)),
+              action:                    'counter_offer',
+              apr:                       counterRateNum,
+              financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
               ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
             })}
           >
@@ -579,18 +829,19 @@ function BankActionPanel({
             Cancel
           </button>
         </>
-      ) : (
+      )}
+
+      {/* Approve / counter / reject buttons (non-counter mode) */}
+      {!isCounter && (
         <>
           <button
             className="btn btn-primary btn-full"
             type="button"
-            disabled={acting || !rfRateNum}
+            disabled={acting || !supplierRateNum}
             onClick={() => onAction({
-              action: 'approve',
-              financing_rate_apr: rfRateNum,
-              financing_amount_approved: parseFloat(disburseAmt.toFixed(2)),
-              ...(rfDiscountNum ? { discount_fee: rfDiscountNum } : {}),
-              wire_transfer_info: wireInfo,
+              action:                    'approve',
+              apr:                       supplierRateNum,
+              financing_amount_approved: parseFloat(supplierDisburseAmt.toFixed(2)),
             })}
           >
             {acting ? 'Processing…' : 'Approve offer'}
@@ -614,14 +865,124 @@ function AnchorActionPanel({
   onAction,
   acting,
   onSuccess,
+  isInvoiceFactoring,
+  isPOFinancing,
 }: {
   transaction: Transaction
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
   onSuccess: (msg: string) => void
+  isInvoiceFactoring?: boolean
+  isPOFinancing?: boolean
 }) {
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason]     = useState('')
+  const [disputeReason, setDisputeReason]   = useState('')
+  const [showDisputeForm, setShowDisputeForm] = useState(false)
+
+  // PO financing: passive until pending_anchor_confirmation
+  if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
+    return <div className="action-passive muted">Supplier is fulfilling the order</div>
+  }
+
+  // PO financing: anchor confirms goods receipt
+  if (isPOFinancing && transaction.status === 'pending_anchor_confirmation') {
+    if (showDisputeForm) {
+      return (
+        <div className="action-block">
+          <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Dispute reason</p>
+          <textarea
+            className="form-input"
+            rows={4}
+            placeholder="Describe the dispute reason (optional)…"
+            value={disputeReason}
+            onChange={e => setDisputeReason(e.target.value)}
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+          <button
+            className="btn btn-danger btn-full"
+            type="button"
+            disabled={acting}
+            onClick={() => onAction({ action: 'reject', notes: disputeReason.trim() })}
+          >
+            {acting ? 'Processing…' : 'Submit dispute'}
+          </button>
+          <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => { setShowDisputeForm(false); setDisputeReason('') }}>
+            Cancel
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div className="action-block">
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+          Confirm goods received
+        </p>
+        <div className="calc-panel">
+          {transaction.invoice_number && (
+            <div className="calc-row">
+              <span>Invoice #</span>
+              <span>{transaction.invoice_number}</span>
+            </div>
+          )}
+          {transaction.invoice_amount != null && (
+            <div className="calc-row">
+              <span>Amount</span>
+              <span>{fmtAmt(transaction.invoice_amount)}</span>
+            </div>
+          )}
+          {transaction.invoice_date && (
+            <div className="calc-row">
+              <span>Date</span>
+              <span>{fmtDate(transaction.invoice_date)}</span>
+            </div>
+          )}
+        </div>
+        <button
+          className="btn btn-primary btn-full"
+          type="button"
+          disabled={acting}
+          onClick={async () => {
+            await onAction({ action: 'approve' })
+            onSuccess('Goods confirmed — transaction moved to repayment')
+          }}
+        >
+          {acting ? 'Processing…' : 'Confirm receipt'}
+        </button>
+        <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowDisputeForm(true)}>
+          Dispute
+        </button>
+      </div>
+    )
+  }
+
+  // PO financing: repayment_due — show repayment info if sent
+  if (isPOFinancing && transaction.status === 'repayment_due') {
+    return (
+      <div className="action-block">
+        <div className="action-passive muted" style={{ marginBottom: 8 }}>Transaction in repayment</div>
+        {transaction.repayment_due_date ? (
+          <div className="calc-panel">
+            <div className="calc-row">
+              <span>Repayment due</span>
+              <span>{fmtDate(transaction.repayment_due_date)}</span>
+            </div>
+            {transaction.bank_approval_notes && (
+              <div className="calc-row" style={{ alignItems: 'flex-start' }}>
+                <span>Instructions</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{transaction.bank_approval_notes}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 8 }}>
+            Awaiting repayment instructions from bank
+          </p>
+        )}
+      </div>
+    )
+  }
 
   if (transaction.status === 'funded') {
     return (
@@ -639,6 +1000,7 @@ function AnchorActionPanel({
                 <span>{fmtAmt(transaction.financing_amount_approved)}</span>
               </div>
             )}
+            {/* bank_approval_notes (repayment instructions) shown only to anchor */}
             {transaction.bank_approval_notes && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
                 <span>Instructions</span>
@@ -653,6 +1015,24 @@ function AnchorActionPanel({
             Awaiting repayment instructions from bank
           </p>
         )}
+      </div>
+    )
+  }
+
+  if (isInvoiceFactoring) {
+    return (
+      <div className={`action-passive ${transaction.status === 'rejected' ? '' : 'muted'}`}>
+        {transaction.status === 'rejected'
+          ? 'This transaction was rejected.'
+          : transaction.status === 'pending_bank_review'
+            || transaction.status === 'more_info_requested'
+            || transaction.status === 'pending_supplier_counter_review'
+          ? 'Invoice is under bank review.'
+          : transaction.status === 'financing_approved'
+          ? 'Financing approved — supplier will receive payment shortly.'
+          : transaction.status === 'completed'
+          ? 'Transaction completed.'
+          : 'Awaiting next step.'}
       </div>
     )
   }
@@ -687,7 +1067,7 @@ function AnchorActionPanel({
         <textarea
           className="form-input"
           rows={4}
-          placeholder="Explain the reason for rejection (min 10 characters)…"
+          placeholder="Reason for rejection (optional)…"
           value={rejectReason}
           onChange={e => setRejectReason(e.target.value)}
           style={{ width: '100%', resize: 'vertical' }}
@@ -695,7 +1075,7 @@ function AnchorActionPanel({
         <button
           className="btn btn-danger btn-full"
           type="button"
-          disabled={acting || rejectReason.trim().length < 10}
+          disabled={acting}
           onClick={() => onAction({ action: 'reject', notes: rejectReason.trim() })}
         >
           {acting ? 'Processing…' : 'Confirm rejection'}
@@ -733,20 +1113,96 @@ function SupplierActionPanel({
   transaction,
   onAction,
   acting,
+  isInvoiceFactoring,
+  isPOFinancing,
 }: {
   transaction: Transaction
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
+  isInvoiceFactoring?: boolean
+  isPOFinancing?: boolean
 }) {
+  const [counterMode, setCounterMode] = useState(false)
+  const [counterRate, setCounterRate] = useState('')
+  const [counterNotes, setCounterNotes] = useState('')
+  const [invoiceNum, setInvoiceNum]         = useState('')
+  const [invoiceAmt2, setInvoiceAmt2]       = useState('')
+  const [invoiceDateVal, setInvoiceDateVal] = useState('')
+  const [invError, setInvError]             = useState<string | null>(null)
+
+  const invoiceAmt     = transaction.invoice_amount ?? 0
+  const counterRateNum = parseFloat(counterRate) || 0
+  const counterAmt     = invoiceAmt * (counterRateNum / 100)
+
   switch (transaction.status) {
     case 'pending_anchor_approval':
       return <div className="action-passive muted">Waiting for anchor to review</div>
 
     case 'pending_bank_review':
-      return <div className="action-passive muted">Anchor approved — awaiting bank review</div>
+      return <div className="action-passive muted">{isPOFinancing ? 'Your PO is under bank review' : isInvoiceFactoring ? 'Your invoice is under bank review' : 'Anchor approved — awaiting bank review'}</div>
 
     case 'pending_supplier_counter_review': {
       const rate = transaction.apr ?? transaction.financing_rate_apr
+
+      if (counterMode) {
+        return (
+          <div className="action-block">
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+              Your counter-offer
+            </p>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Your advance rate (%)</div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="form-input mono"
+                  style={{ width: '100%', paddingRight: 32 }}
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={counterRate}
+                  onChange={e => setCounterRate(e.target.value)}
+                  placeholder={rate != null ? String(rate) : ''}
+                />
+                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+              </div>
+            </div>
+            {counterRateNum > 0 && (
+              <div className="calc-row">
+                <span>Amount you&apos;d receive</span>
+                <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterAmt.toFixed(2)))}</strong>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+              <textarea
+                className="form-input"
+                rows={2}
+                value={counterNotes}
+                onChange={e => setCounterNotes(e.target.value)}
+                style={{ width: '100%', resize: 'vertical' }}
+                placeholder="Reason for counter-offer…"
+              />
+            </div>
+            <button
+              className="btn btn-primary btn-full"
+              type="button"
+              disabled={acting || !counterRateNum}
+              onClick={() => onAction({
+                action:        'supplier_counter',
+                apr:           counterRateNum,
+                ...(counterNotes.trim() ? { counter_notes: counterNotes.trim() } : {}),
+              })}
+            >
+              {acting ? 'Sending…' : 'Send counter-offer to bank'}
+            </button>
+            <button className="btn btn-ghost btn-full" type="button" onClick={() => setCounterMode(false)}>
+              Cancel
+            </button>
+          </div>
+        )
+      }
+
       return (
         <div className="action-block">
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
@@ -784,6 +1240,14 @@ function SupplierActionPanel({
             className="btn btn-ghost btn-full"
             type="button"
             disabled={acting}
+            onClick={() => setCounterMode(true)}
+          >
+            Make counter-offer
+          </button>
+          <button
+            className="btn btn-danger btn-full"
+            type="button"
+            disabled={acting}
             onClick={() => onAction({ action: 'reject_counter' })}
           >
             Decline offer
@@ -798,24 +1262,73 @@ function SupplierActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-green)', margin: 0 }}>
-            Payment details
+            Financing approved
           </p>
           {hasWire ? (
-            <div className="calc-panel">
-              {wireInfo!.bank_name       && <div className="calc-row"><span>Bank</span><span>{wireInfo!.bank_name}</span></div>}
-              {wireInfo!.account_number  && <div className="calc-row"><span>Account</span><span className="mono">{wireInfo!.account_number}</span></div>}
-              {wireInfo!.routing_number  && <div className="calc-row"><span>Routing</span><span className="mono">{wireInfo!.routing_number}</span></div>}
-              {wireInfo!.reference       && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
-            </div>
-          ) : null}
-          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
-            Payment will be sent to your account
-          </p>
+            <>
+              <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+                Wire transfer details
+              </p>
+              <div className="calc-panel">
+                {wireInfo!.bank_name       && <div className="calc-row"><span>Bank</span><span>{wireInfo!.bank_name}</span></div>}
+                {wireInfo!.account_number  && <div className="calc-row"><span>Account</span><span className="mono">{'••••' + wireInfo!.account_number.slice(-4)}</span></div>}
+                {wireInfo!.routing_number  && <div className="calc-row"><span>Routing</span><span className="mono">{wireInfo!.routing_number}</span></div>}
+                {wireInfo!.reference       && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
+              Wire transfer details will be sent shortly
+            </p>
+          )}
         </div>
       )
     }
 
     case 'funded':
+      if (isPOFinancing) {
+        const handleSubmitInvoice = async () => {
+          if (!invoiceNum.trim() || !invoiceAmt2 || !invoiceDateVal) {
+            setInvError('All invoice fields are required')
+            return
+          }
+          setInvError(null)
+          await onAction({
+            action:         'submit_invoice',
+            invoice_number: invoiceNum.trim(),
+            invoice_amount: parseFloat(invoiceAmt2),
+            invoice_date:   invoiceDateVal,
+          })
+        }
+
+        return (
+          <div className="action-block">
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+              Goods delivered? Submit your invoice
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
+              Once the anchor has received the goods, submit the invoice to proceed.
+            </p>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice number</div>
+              <input className="form-input" style={{ width: '100%' }} value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} placeholder="INV-001" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice amount ($)</div>
+              <input className="form-input mono" style={{ width: '100%' }} value={invoiceAmt2} onChange={e => setInvoiceAmt2(e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice date</div>
+              <input type="date" className="form-input" style={{ width: '100%' }} value={invoiceDateVal} onChange={e => setInvoiceDateVal(e.target.value)} />
+            </div>
+            {invError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{invError}</div>}
+            <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleSubmitInvoice}>
+              {acting ? 'Submitting…' : 'Submit Invoice'}
+            </button>
+          </div>
+        )
+      }
+
       return (
         <div className="action-block">
           <div className="action-passive green" style={{ marginBottom: 8 }}>
@@ -832,6 +1345,15 @@ function SupplierActionPanel({
           )}
         </div>
       )
+
+    case 'pending_anchor_confirmation':
+      return <div className="action-passive muted">Invoice submitted — awaiting anchor confirmation</div>
+
+    case 'repayment_due':
+      return <div className="action-passive muted">Repayment due — transaction completing</div>
+
+    case 'in_dispute':
+      return <div className="action-passive" style={{ color: 'var(--color-red)' }}>Invoice in dispute.</div>
 
     case 'completed':
       return (
@@ -851,6 +1373,89 @@ function SupplierActionPanel({
   }
 }
 
+// ── Collateral submission form (supplier) ──────────────────────────────────
+
+function SupplierCollateralSubmitForm({
+  item,
+  txnId,
+  onDone,
+}: {
+  item: CollateralItem
+  txnId: string
+  onDone: () => void
+}) {
+  const [notes, setNotes]         = useState('')
+  const [file, setFile]           = useState<File | null>(null)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const fileRef                   = useRef<HTMLInputElement>(null)
+
+  const handleSubmit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append('action', 'submit')
+      if (notes.trim()) form.append('submission_notes', notes.trim())
+      if (file) form.append('file', file)
+
+      const res = await fetch(`/api/collateral/${item.id}`, { method: 'PATCH', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Submit failed')
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0' }}>
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Details / notes</div>
+        <textarea
+          className="input"
+          rows={3}
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Describe what you are submitting…"
+          style={{ width: '100%', resize: 'none' }}
+        />
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Supporting document (optional)</div>
+        <input
+          ref={fileRef}
+          type="file"
+          style={{ display: 'none' }}
+          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+          onChange={e => setFile(e.target.files?.[0] ?? null)}
+        />
+        {file ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <span>{file.name}</span>
+            <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)', fontSize: 14 }} onClick={() => setFile(null)}>×</button>
+          </div>
+        ) : (
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => fileRef.current?.click()}>
+            Attach file
+          </button>
+        )}
+      </div>
+      {error && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn btn-primary btn-sm" type="button" disabled={saving} onClick={handleSubmit}>
+          {saving ? 'Submitting…' : 'Submit collateral'}
+        </button>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 
 export default function TransactionDetailPage() {
@@ -859,21 +1464,25 @@ export default function TransactionDetailPage() {
   const params = useParams()
   const id = params.id as string
 
-  const [transaction, setTransaction] = useState<Transaction | null>(null)
-  const [events, setEvents]           = useState<TransactionEvent[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState<string | null>(null)
-  const [acting, setActing]           = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [transaction, setTransaction]       = useState<Transaction | null>(null)
+  const [events, setEvents]                 = useState<TransactionEvent[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [error, setError]                   = useState<string | null>(null)
+  const [acting, setActing]                 = useState(false)
+  const [actionError, setActionError]       = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess]   = useState<string | null>(null)
 
-  const [documents, setDocuments] = useState<{ id: string; name: string; document_kind: string; mime_type: string; size_bytes: number; storage_path: string; signed_url: string | null; created_at: string }[]>([])
+  const [documents, setDocuments] = useState<{
+    id: string; name: string; document_kind: string; mime_type: string
+    size_bytes: number; storage_path: string; signed_url: string | null; created_at: string
+  }[]>([])
 
   const [collateral, setCollateral]                   = useState<CollateralItem[]>([])
   const [showAddCollateral, setShowAddCollateral]     = useState(false)
   const [reviewingCollateral, setReviewingCollateral] = useState<CollateralItem | null>(null)
   const [waiverNote, setWaiverNote]                   = useState('')
   const [rejectionReason, setRejectionReason]         = useState('')
+  const [submittingCollateral, setSubmittingCollateral] = useState<CollateralItem | null>(null)
   const [addCollForm, setAddCollForm]                 = useState({
     collateral_type: 'post_dated_cheque',
     description:     '',
@@ -932,8 +1541,14 @@ export default function TransactionDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+      const data = await res.json() as { error?: string; transaction?: Transaction }
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+      const updatedTxn = data.transaction
+      if (updatedTxn) {
+        setTransaction(prev => prev ? { ...prev, ...updatedTxn } : prev)
+      }
+      setActionSuccess('Done')
+      setTimeout(() => setActionSuccess(null), 2000)
       load()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed')
@@ -1001,14 +1616,15 @@ export default function TransactionDetailPage() {
   }, [id, addCollForm, refreshCollateral])
 
   const txn = transaction
-  const isRF = txn?.financing_type === 'reverse_factoring'
 
-  const typeLabel = humanizeType(txn?.financing_type ?? null)
+  const isPOFinancing = txn?.financing_type === 'po_financing'
+  const isInvoiceFactoring = txn?.type === 'invoice_factoring' || txn?.financing_type === 'invoice_factoring'
+
+  const typeLabel = humanizeType(txn?.type ?? txn?.financing_type ?? null)
   const subtitle = txn
     ? [txn.supplier_name, txn.anchor_name, txn.program_name, txn.bank_name].filter(Boolean).join(' · ')
     : ''
 
-  // Advance rate: use stored apr, else derive from amounts
   const displayAdvanceRate = txn
     ? (txn.apr ?? txn.financing_rate_apr)
       ?? (txn.invoice_amount && txn.financing_amount_requested
@@ -1016,6 +1632,7 @@ export default function TransactionDetailPage() {
           : null)
     : null
 
+  // Wire info for supplier (disbursement_reference is nulled for anchor by API)
   const wireInfoForSummary = txn ? parseWireInfo(txn.disbursement_reference) : null
 
   return (
@@ -1049,7 +1666,7 @@ export default function TransactionDetailPage() {
               <h1 className="page-id-title">
                 <span className="id-text">{txn.invoice_number}</span>
                 <span className={`badge ${statusBadge(txn.status)}`}>{statusLabel(txn.status)}</span>
-                {txn.financing_type && (
+                {(txn.type ?? txn.financing_type) && (
                   <span className="badge badge-active">{typeLabel}</span>
                 )}
               </h1>
@@ -1089,7 +1706,7 @@ export default function TransactionDetailPage() {
                       <span className="fs-value">{fmtAmt(txn.fee_amount)}</span>
                     </div>
                   </div>
-                  {/* Wire info in summary for supplier at financing_approved */}
+                  {/* Wire info in summary — only for supplier (API nulls it for anchor) */}
                   {portal === 'supplier' && wireInfoForSummary && Object.values(wireInfoForSummary).some(Boolean) && (
                     <>
                       {wireInfoForSummary.bank_name && (
@@ -1206,53 +1823,71 @@ export default function TransactionDetailPage() {
                           </div>
                         )
                       : collateral.map(item => (
-                          <div className="collateral-row" key={item.id}>
-                            <div className="cdot" style={{
-                              background: item.status === 'accepted'
-                                ? 'var(--color-green)'
-                                : item.status === 'rejected'
-                                ? 'var(--color-red)'
-                                : item.status === 'submitted'
-                                ? 'var(--color-accent)'
-                                : 'var(--color-amber)',
-                            }} />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13, fontWeight: 500 }}>
-                                {formatCollateralType(item.collateral_type)}
+                          <div key={item.id}>
+                            <div className="collateral-row">
+                              <div className="cdot" style={{
+                                background: item.status === 'accepted'
+                                  ? 'var(--color-green)'
+                                  : item.status === 'rejected'
+                                  ? 'var(--color-red)'
+                                  : item.status === 'submitted'
+                                  ? 'var(--color-accent)'
+                                  : 'var(--color-amber)',
+                              }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                                  {formatCollateralType(item.collateral_type)}
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                                  {item.description}
+                                </div>
                               </div>
-                              <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                                {item.description}
-                              </div>
+                              <span className={`badge ${collateralStatusBadge(item.status)}`}>
+                                {item.status}
+                              </span>
+                              {portal === 'supplier' && item.status === 'pending' && (
+                                submittingCollateral?.id === item.id ? null : (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    type="button"
+                                    onClick={() => setSubmittingCollateral(item)}
+                                  >
+                                    Submit
+                                  </button>
+                                )
+                              )}
+                              {portal === 'bank' && item.status === 'submitted' && (
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  type="button"
+                                  onClick={() => setReviewingCollateral(item)}
+                                >
+                                  Review
+                                </button>
+                              )}
+                              {portal === 'bank' && item.status === 'accepted' && (
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  type="button"
+                                  onClick={() => handleCollateralAction(item.id, { action: 'release' })}
+                                >
+                                  Release
+                                </button>
+                              )}
                             </div>
-                            <span className={`badge ${collateralStatusBadge(item.status)}`}>
-                              {item.status}
-                            </span>
-                            {portal === 'supplier' && item.status === 'pending' && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => handleCollateralAction(item.id, { action: 'submit' })}
-                              >
-                                Submit
-                              </button>
-                            )}
-                            {portal === 'bank' && item.status === 'submitted' && (
-                              <button
-                                className="btn btn-primary btn-sm"
-                                type="button"
-                                onClick={() => setReviewingCollateral(item)}
-                              >
-                                Review
-                              </button>
-                            )}
-                            {portal === 'bank' && item.status === 'accepted' && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => handleCollateralAction(item.id, { action: 'release' })}
-                              >
-                                Release
-                              </button>
+                            {/* Supplier submission form */}
+                            {portal === 'supplier' && submittingCollateral?.id === item.id && (
+                              <div className="card-body" style={{ borderTop: '1px solid var(--color-border)' }}>
+                                <SupplierCollateralSubmitForm
+                                  item={item}
+                                  txnId={id}
+                                  onDone={() => {
+                                    setSubmittingCollateral(null)
+                                    refreshCollateral()
+                                    load()
+                                  }}
+                                />
+                              </div>
                             )}
                           </div>
                         ))
@@ -1295,6 +1930,7 @@ export default function TransactionDetailPage() {
                           <button
                             className="btn btn-danger btn-sm"
                             type="button"
+                            disabled={!rejectionReason.trim()}
                             onClick={() => handleCollateralAction(reviewingCollateral.id, { action: 'reject', rejection_reason: rejectionReason })}
                           >
                             Reject
@@ -1388,7 +2024,7 @@ export default function TransactionDetailPage() {
                   </div>
                 )}
 
-                {/* Documents — always visible to bank/anchor, supplier sees when populated */}
+                {/* Documents */}
                 {(portal !== 'supplier' || documents.length > 0) && (
                   <div className="card">
                     <div className="card-head">
@@ -1418,9 +2054,11 @@ export default function TransactionDetailPage() {
                             {doc.signed_url && (
                               <a
                                 href={doc.signed_url}
+                                download
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="doc-link"
+                                className="btn btn-ghost btn-sm"
+                                style={{ textDecoration: 'none' }}
                               >
                                 Download
                               </a>
@@ -1444,7 +2082,7 @@ export default function TransactionDetailPage() {
                   ) : (
                     <div className="timeline">
                       {[...events].reverse().map((e) => {
-                        const actor = e.actor ?? 'system'
+                        const actor = (e.actor as string) ?? 'system'
                         const dotColor =
                           actor === 'bank'     ? 'blue'   :
                           actor === 'anchor'   ? 'amber'  :
@@ -1484,8 +2122,12 @@ export default function TransactionDetailPage() {
                   </div>
 
                   <div className="stepper">
-                    {RF_STEPPER_STEPS.map((step, i) => {
-                      const state = rfStepperState(step.key, txn.status)
+                    {(isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS).map((step, i) => {
+                      const state = isPOFinancing
+                        ? poStepperState(step.key, txn.status)
+                        : isInvoiceFactoring
+                        ? ifStepperState(step.key, txn.status)
+                        : rfStepperState(step.key, txn.status)
                       return (
                         <div key={step.key} className={`step ${state}`}>
                           <span className={`step-circle ${state}`}>
@@ -1527,6 +2169,8 @@ export default function TransactionDetailPage() {
                       acting={acting}
                       txnId={id}
                       onRefresh={load}
+                      isInvoiceFactoring={isInvoiceFactoring}
+                      isPOFinancing={isPOFinancing}
                     />
                   )}
                   {portal === 'anchor' && (
@@ -1535,6 +2179,8 @@ export default function TransactionDetailPage() {
                       onAction={handleAction}
                       acting={acting}
                       onSuccess={handleSuccess}
+                      isInvoiceFactoring={isInvoiceFactoring}
+                      isPOFinancing={isPOFinancing}
                     />
                   )}
                   {portal === 'supplier' && (
@@ -1542,6 +2188,8 @@ export default function TransactionDetailPage() {
                       transaction={txn}
                       onAction={handleAction}
                       acting={acting}
+                      isInvoiceFactoring={isInvoiceFactoring}
+                      isPOFinancing={isPOFinancing}
                     />
                   )}
                 </div>

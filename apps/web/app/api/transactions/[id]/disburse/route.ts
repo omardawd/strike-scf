@@ -54,15 +54,19 @@ export async function POST(
 
   const disbursementReference = body.disbursement_reference ? String(body.disbursement_reference) : null
 
+  // Only overwrite disbursement_reference if a new one is explicitly provided;
+  // it may already hold wire transfer info JSON sent to the supplier.
+  const updateFields: Record<string, unknown> = {
+    status:               'funded',
+    disbursed_at:         new Date().toISOString(),
+    disbursed_by_user_id: user.id,
+    updated_at:           new Date().toISOString(),
+  }
+  if (disbursementReference) updateFields.disbursement_reference = disbursementReference
+
   const { data: updated, error: updateError } = await adminClient
     .from('transactions')
-    .update({
-      status:                 'funded',
-      disbursed_at:           new Date().toISOString(),
-      disbursed_by_user_id:   user.id,
-      disbursement_reference: disbursementReference,
-      updated_at:             new Date().toISOString(),
-    })
+    .update(updateFields)
     .eq('id', id)
     .select()
     .single()

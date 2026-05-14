@@ -10,22 +10,37 @@ const adminClient = createAdmin(
 const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
 const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
 
-function buildMonths(n = 6) {
-  const months: Array<{ label: string; start: string; end: string }> = []
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(1)
-    d.setMonth(d.getMonth() - i)
-    const start = d.toISOString().slice(0, 10)
-    const next  = new Date(d)
-    next.setMonth(next.getMonth() + 1)
-    months.push({
-      label: d.toLocaleString('en-US', { month: 'short' }),
-      start,
-      end: next.toISOString().slice(0, 10),
+type Period = 'daily' | 'weekly' | 'monthly'
+type Bucket = { label: string; start: Date; end: Date }
+
+function buildBuckets(period: Period): Bucket[] {
+  const now = new Date()
+  if (period === 'daily') {
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(now)
+      d.setDate(d.getDate() - (29 - i))
+      d.setHours(0, 0, 0, 0)
+      const end = new Date(d)
+      end.setDate(end.getDate() + 1)
+      return { label: `${d.getMonth() + 1}/${d.getDate()}`, start: d, end }
     })
   }
-  return months
+  if (period === 'weekly') {
+    return Array.from({ length: 12 }, (_, i) => {
+      const end = new Date(now)
+      end.setDate(end.getDate() - (11 - i) * 7)
+      end.setHours(23, 59, 59, 999)
+      const start = new Date(end)
+      start.setDate(start.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+      return { label: `Wk ${i + 1}`, start, end }
+    })
+  }
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const end = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1)
+    return { label: d.toLocaleString('en-US', { month: 'short' }), start: d, end }
+  })
 }
 
 export async function GET(
@@ -36,6 +51,7 @@ export async function GET(
   const url        = new URL(request.url)
   const anchorId   = url.searchParams.get('anchor_id')   ?? undefined
   const supplierId = url.searchParams.get('supplier_id') ?? undefined
+  const period     = (url.searchParams.get('period') ?? 'monthly') as Period
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -81,7 +97,7 @@ export async function GET(
 
   let txQuery = adminClient
     .from('transactions')
-    .select('id, invoice_amount, financing_amount_approved, status, created_at, anchor_id, supplier_id')
+    .select('id, invoice_amount, financing_amount_approved, financing_rate_apr, status, created_at, anchor_id, supplier_id')
     .eq('program_id', programId)
   if (anchorId)   txQuery = txQuery.eq('anchor_id', anchorId)
   if (supplierId) txQuery = txQuery.eq('supplier_id', supplierId)
@@ -109,6 +125,12 @@ export async function GET(
     ['pending_anchor_approval', 'pending_bank_review', 'more_info_requested'].includes(t.status)
   ).length
 
+  let rateSum = 0, rateCount = 0
+  for (const t of txns) {
+    if (t.financing_rate_apr != null) { rateSum += t.financing_rate_apr; rateCount++ }
+  }
+  const avg_financing_rate = rateCount > 0 ? parseFloat((rateSum / rateCount).toFixed(2)) : 0
+
   let active_anchors   = 0
   let active_suppliers = 0
   let supplier_count   = 0
@@ -131,11 +153,14 @@ export async function GET(
     active_suppliers = 1
   }
 
-  const months = buildMonths(6)
-  const monthly_volume = months.map(m => {
-    const slice = txns.filter(t => t.created_at >= m.start && t.created_at < m.end)
+  const buckets = buildBuckets(period)
+  const monthly_volume = buckets.map(b => {
+    const slice = txns.filter(t => {
+      const d = new Date(t.created_at)
+      return d >= b.start && d < b.end
+    })
     return {
-      label: m.label,
+      label: b.label,
       count: slice.length,
       value: slice.reduce((s, t) => s + (t.invoice_amount ?? 0), 0),
     }
@@ -151,7 +176,7 @@ export async function GET(
     active_anchors,
     active_suppliers,
     ...(anchorId && !supplierId ? { supplier_count } : {}),
-    avg_financing_rate: 0,
+    avg_financing_rate,
     monthly_volume,
   })
 }

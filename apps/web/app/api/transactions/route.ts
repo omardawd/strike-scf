@@ -143,6 +143,11 @@ export async function POST(request: Request) {
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 404 })
   if (program.status !== 'active') return NextResponse.json({ error: 'Program is not active' }, { status: 400 })
 
+  const financingType = (program.financing_types as string[])[0] ?? 'factoring'
+  const initialStatus = (financingType === 'invoice_factoring' || financingType === 'po_financing')
+    ? 'pending_bank_review'
+    : 'pending_anchor_approval'
+
   const { data: transaction, error: txnError } = await adminClient
     .from('transactions')
     .insert({
@@ -151,8 +156,8 @@ export async function POST(request: Request) {
       anchor_id:                   enrollment.anchor_org_id,
       supplier_id:                 userData.org_id,
       created_by_user_id:          user.id,
-      type:                        (program.financing_types as string[])[0] ?? 'factoring',
-      status:                      'pending_anchor_approval',
+      type:                        financingType,
+      status:                      initialStatus,
       invoice_number:              String(invoice_number),
       invoice_date:                String(invoice_date),
       invoice_due_date:            invoice_due_date ? String(invoice_due_date) : null,
@@ -171,7 +176,7 @@ export async function POST(request: Request) {
     transaction_id: transaction.id,
     event_type:     'created',
     from_status:    null,
-    to_status:      'pending_anchor_approval',
+    to_status:      initialStatus,
     actor_id:       user.id,
     actor_type:     'supplier',
     notes:          null,

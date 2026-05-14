@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { pushKybDetail } from '@/lib/kyb-referrer'
+import { Topbar, NotifBell } from '@/components/portal-shell'
 
 interface KYBOrg {
   id: string
@@ -112,11 +113,16 @@ export default function KYBQueuePage() {
   if (!isAuthorized) return null
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-id-title">KYB Review Queue</h1>
-        <div className="subtitle">Review and approve business verification applications</div>
-      </div>
+    <>
+      <Topbar
+        crumbs={[{ label: 'Bank Portal' }, { label: 'KYB Review' }]}
+        actions={<NotifBell />}
+      />
+      <div className="page">
+        <div className="page-header">
+          <h1 className="page-id-title">KYB Review Queue</h1>
+          <div className="subtitle">Review and approve business verification applications</div>
+        </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         {STATUS_FILTERS.map(f => (
@@ -188,6 +194,7 @@ export default function KYBQueuePage() {
           </table>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
