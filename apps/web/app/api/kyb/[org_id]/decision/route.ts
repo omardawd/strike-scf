@@ -181,25 +181,30 @@ export async function POST(
         const orgName = (orgData?.legal_name as string | undefined) ?? 'your organization'
 
         if (isApproved) {
-          // Find the accepted invitation to get program_id + anchor_org_id
+          // Find ALL accepted invitations for this org to enroll them in every invited program
           const emails = usersWithEmail.map(u => u.email)
-          const { data: invitation } = await adminClient
+          const { data: invitations } = await adminClient
             .from('invitations')
             .select('program_id, anchor_org_id, role')
             .eq('status', 'accepted')
             .in('email', emails)
-            .order('accepted_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
 
-          if (invitation?.program_id) {
+          for (const invitation of (invitations ?? [])) {
+            if (!invitation.program_id) continue
             const anchorOrgId = invitation.role === 'anchor' ? org_id : (invitation.anchor_org_id ?? org_id)
-            await adminClient
+            const { error: enrollErr } = await adminClient
               .from('program_enrollments')
               .upsert(
-                { program_id: invitation.program_id, org_id, anchor_org_id: anchorOrgId, status: 'active' },
+                {
+                  program_id:          invitation.program_id,
+                  org_id,
+                  anchor_org_id:       anchorOrgId,
+                  status:              'active',
+                  enrolled_by_user_id: user.id,
+                },
                 { onConflict: 'program_id,org_id' }
               )
+            if (enrollErr) console.error('Enrollment upsert error:', enrollErr)
           }
 
           // Send approval email to all users

@@ -41,7 +41,7 @@ export async function GET(
     }
 
     // Fetch enrollments AND pending invitations in parallel
-    const [enrollResult, inviteResult] = await Promise.all([
+    const [enrollResult, inviteResult, acceptedInviteResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('org_id, anchor_org_id, status, created_at')
@@ -52,6 +52,11 @@ export async function GET(
         .select('id, email, role, created_at, anchor_org_id')
         .eq('program_id', programId)
         .eq('status', 'pending'),
+      adminClient
+        .from('invitations')
+        .select('id, email, role, anchor_org_id')
+        .eq('program_id', programId)
+        .eq('status', 'accepted'),
     ])
 
     const enrollments = enrollResult.data ?? []
@@ -151,7 +156,47 @@ export async function GET(
       }
     })
 
-    return NextResponse.json({ anchors, pending_anchors, pending_suppliers })
+    // ── Accepted invitations with pending KYB (signed up but not yet approved) ──
+    const acceptedInvites = acceptedInviteResult.data ?? []
+    const kyb_anchors: Array<{ id: string; legal_name: string; kyb_status: string }> = []
+    const kyb_suppliers: Array<{ id: string; legal_name: string; kyb_status: string; anchor_org_id: string | null }> = []
+
+    if (acceptedInvites.length > 0) {
+      const acceptedEmails = acceptedInvites.map(i => i.email)
+      const { data: inviteUsers } = await adminClient
+        .from('users')
+        .select('email, org_id')
+        .in('email', acceptedEmails)
+
+      const emailToOrgId = new Map<string, string>(
+        (inviteUsers ?? []).filter(u => u.org_id).map(u => [u.email as string, u.org_id as string])
+      )
+      const kybOrgIds = Array.from(emailToOrgId.values())
+
+      if (kybOrgIds.length > 0) {
+        const { data: kybOrgs } = await adminClient
+          .from('organizations')
+          .select('id, legal_name, kyb_status, type')
+          .in('id', kybOrgIds)
+          .in('kyb_status', ['in_progress', 'submitted', 'under_review', 'more_info_requested'])
+
+        const orgToEmail = new Map<string, string>()
+        for (const [email, orgId] of emailToOrgId) orgToEmail.set(orgId, email)
+        const emailToInvite = new Map(acceptedInvites.map(i => [i.email, i]))
+
+        for (const org of (kybOrgs ?? [])) {
+          const email = orgToEmail.get(org.id)
+          const inv   = email ? emailToInvite.get(email) : null
+          if (org.type === 'anchor') {
+            kyb_anchors.push({ id: org.id, legal_name: org.legal_name, kyb_status: org.kyb_status })
+          } else {
+            kyb_suppliers.push({ id: org.id, legal_name: org.legal_name, kyb_status: org.kyb_status, anchor_org_id: inv?.anchor_org_id ?? null })
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ anchors, pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers })
   }
 
   // ── ANCHOR ────────────────────────────────────────────────────────────────
@@ -165,7 +210,7 @@ export async function GET(
       .maybeSingle()
     if (!myEnrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const [enrollResult, inviteResult] = await Promise.all([
+    const [enrollResult, inviteResult, acceptedSupplierInviteResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('org_id, created_at')
@@ -179,6 +224,12 @@ export async function GET(
         .eq('program_id', programId)
         .eq('anchor_org_id', userData.org_id)
         .eq('status', 'pending'),
+      adminClient
+        .from('invitations')
+        .select('id, email')
+        .eq('program_id', programId)
+        .eq('anchor_org_id', userData.org_id)
+        .eq('status', 'accepted'),
     ])
 
     const pending_suppliers = (inviteResult.data ?? []).map(i => ({
@@ -225,7 +276,29 @@ export async function GET(
       latest_transaction_status: txnBySup.get(org.id)?.latest_status ?? null,
     }))
 
-    return NextResponse.json({ suppliers, pending_suppliers })
+    // Accepted invitations with pending KYB
+    const acceptedSupplierEmails = (acceptedSupplierInviteResult.data ?? []).map(i => i.email)
+    let kyb_suppliers: Array<{ id: string; legal_name: string; kyb_status: string }> = []
+
+    if (acceptedSupplierEmails.length > 0) {
+      const { data: supUsers } = await adminClient
+        .from('users')
+        .select('email, org_id')
+        .in('email', acceptedSupplierEmails)
+
+      const kybOrgIds = (supUsers ?? []).filter(u => u.org_id).map(u => u.org_id as string)
+      if (kybOrgIds.length > 0) {
+        const { data: kybOrgs } = await adminClient
+          .from('organizations')
+          .select('id, legal_name, kyb_status')
+          .in('id', kybOrgIds)
+          .in('kyb_status', ['in_progress', 'submitted', 'under_review', 'more_info_requested'])
+
+        kyb_suppliers = (kybOrgs ?? []).map(o => ({ id: o.id, legal_name: o.legal_name, kyb_status: o.kyb_status }))
+      }
+    }
+
+    return NextResponse.json({ suppliers, pending_suppliers, kyb_suppliers })
   }
 
   // ── SUPPLIER ──────────────────────────────────────────────────────────────

@@ -73,6 +73,13 @@ interface PendingSupplierInv {
   type: 'invitation'
 }
 
+interface KybPendingEntry {
+  id: string
+  legal_name: string
+  kyb_status: string
+  anchor_org_id?: string | null
+}
+
 interface AnalyticsData {
   total_transactions: number
   total_invoice_amount: number
@@ -199,6 +206,8 @@ export default function ProgramDetailPage() {
   const [analytics, setAnalytics]         = useState<AnalyticsData | null>(null)
   const [pendingAnchors, setPendingAnchors] = useState<PendingAnchorInv[]>([])
   const [pendingSuppliers, setPendingSuppliers] = useState<PendingSupplierInv[]>([])
+  const [kybAnchors, setKybAnchors] = useState<KybPendingEntry[]>([])
+  const [kybSuppliers, setKybSuppliers] = useState<KybPendingEntry[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [networkVersion, setNetworkVersion] = useState(0)
@@ -250,6 +259,8 @@ export default function ProgramDetailPage() {
         setAnchorList(netData.anchors ?? [])
         setPendingAnchors(netData.pending_anchors ?? [])
         setPendingSuppliers(netData.pending_suppliers ?? [])
+        setKybAnchors(netData.kyb_anchors ?? [])
+        setKybSuppliers(netData.kyb_suppliers ?? [])
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -568,7 +579,7 @@ export default function ProgramDetailPage() {
             {portal === 'bank' && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>Anchor &amp; Supplier Network</div>
-                {anchors.length === 0 && pendingAnchors.length === 0 ? (
+                {anchors.length === 0 && pendingAnchors.length === 0 && kybAnchors.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No anchors enrolled yet.</div>
@@ -580,12 +591,12 @@ export default function ProgramDetailPage() {
                 ) : (
                   <>
                     {cancelError && (
-                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
-                    <Icon name="error" size={16} className="alert-icon" />
-                    <div className="alert-body">{cancelError}</div>
-                  </div>
-                )}
-                {anchors.map(anchor => (
+                      <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                        <Icon name="error" size={16} className="alert-icon" />
+                        <div className="alert-body">{cancelError}</div>
+                      </div>
+                    )}
+                    {anchors.map(anchor => (
                       <NetworkCard
                         key={anchor.id}
                         name={anchor.legal_name}
@@ -600,6 +611,62 @@ export default function ProgramDetailPage() {
                         onClick={() => router.push(`/programs/${id}/anchor/${anchor.id}`)}
                       />
                     ))}
+                    {kybAnchors.map(org => (
+                      <div
+                        key={org.id}
+                        className="network-card"
+                        style={{ cursor: 'pointer', marginBottom: 12 }}
+                        onClick={() => router.push(`/kyb/${org.id}`)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <div className="avatar">{initials(org.legal_name)}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="network-name">{org.legal_name}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Review KYB →</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+                          {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
+                            <div key={label}>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {kybSuppliers.map(org => (
+                      <div
+                        key={org.id}
+                        className="network-card"
+                        style={{ cursor: 'pointer', marginBottom: 12 }}
+                        onClick={() => router.push(`/kyb/${org.id}`)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <div className="avatar">{initials(org.legal_name)}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="network-name">{org.legal_name}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Supplier · Review KYB →</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                          {['Transactions', 'KYB Status'].map(label => (
+                            <div key={label}>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                                {label === 'KYB Status' ? kybLabel(org.kyb_status) : '—'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                     {pendingAnchors.map(inv => {
                       const emailInitials = inv.email.slice(0, 2).toUpperCase()
                       return (
@@ -611,40 +678,22 @@ export default function ProgramDetailPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                             <div className="avatar">{emailInitials}</div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                className="network-name"
-                                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              >
+                              <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {inv.email}
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span className="badge badge-pending">Invited</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>
-                                  Invitation sent {fmtDate(inv.invited_at)}
-                                </span>
+                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
                               </div>
                             </div>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              type="button"
-                              style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
-                              onClick={() => cancelInvite(inv.id, 'anchor')}
-                            >
+                            <button className="btn btn-ghost btn-sm" type="button" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }} onClick={() => cancelInvite(inv.id, 'anchor')}>
                               Cancel
                             </button>
                           </div>
-                          <div
-                            className="network-stats"
-                            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}
-                          >
+                          <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
                             {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
                               <div key={label}>
-                                <div
-                                  className="network-stat-label"
-                                  style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}
-                                >
-                                  {label}
-                                </div>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
                                 <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
                               </div>
                             ))}
@@ -661,7 +710,7 @@ export default function ProgramDetailPage() {
             {portal === 'anchor' && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>My Suppliers</div>
-                {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
+                {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers yet.</div>
@@ -734,6 +783,32 @@ export default function ProgramDetailPage() {
                         </div>
                       )
                     })}
+                    {kybSuppliers.map(org => (
+                      <div
+                        key={org.id}
+                        className="network-card"
+                        style={{ cursor: 'default', marginBottom: 12, opacity: 0.85 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <div className="avatar">{initials(org.legal_name)}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="network-name">{org.legal_name}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Awaiting KYB approval</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                          {['Transactions', 'Latest status'].map(label => (
+                            <div key={label}>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>

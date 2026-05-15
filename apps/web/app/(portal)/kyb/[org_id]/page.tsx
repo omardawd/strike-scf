@@ -8,10 +8,33 @@ import type { CreditDecision, RiskTier } from '@strike-scf/types'
 
 interface Document {
   id: string
-  file_name: string
+  name: string
+  document_kind: string
   storage_path: string
   created_at: string
   signed_url: string | null
+}
+
+const DOC_KIND_LABELS: Record<string, string> = {
+  certificate_of_incorporation: 'Certificate of Incorporation',
+  articles_of_organization:     'Articles of Organization',
+  memorandum_of_association:    'Memorandum of Association',
+  business_license:             'Business License',
+  ein_letter:                   'EIN / Tax ID Letter',
+  tax_id:                       'Tax Identification',
+  bank_statement:               'Bank Statement',
+  audited_financials:           'Audited Financial Statements',
+  management_accounts:          'Management Accounts',
+  balance_sheet:                'Balance Sheet',
+  profit_loss:                  'Profit & Loss Statement',
+  accounts_receivable_aging:    'Accounts Receivable Aging',
+  accounts_payable_aging:       'Accounts Payable Aging',
+  trade_reference:              'Trade Reference Letter',
+  id_passport:                  'Government-Issued ID / Passport',
+  proof_of_address:             'Proof of Address',
+  shareholder_register:         'Shareholder Register',
+  ubo_declaration:              'Ultimate Beneficial Owner Declaration',
+  other:                        'Supporting Document',
 }
 
 interface CreditScore {
@@ -331,7 +354,10 @@ export default function KYBDetailPage() {
                   {documents.map(doc => (
                     <div key={doc.id} className="doc-row">
                       <svg width={14} height={14} className="doc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
-                      <span className="doc-name">{doc.file_name}</span>
+                      <span className="doc-name">
+                        {DOC_KIND_LABELS[doc.document_kind] ?? doc.name ?? doc.document_kind}
+                        {doc.name && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--color-ink-4)', fontWeight: 400 }}>{doc.name}</span>}
+                      </span>
                       <span className="doc-date">{formatDate(doc.created_at)}</span>
                       {doc.signed_url ? (
                         <a className="doc-link" href={doc.signed_url} target="_blank" rel="noopener noreferrer">View</a>

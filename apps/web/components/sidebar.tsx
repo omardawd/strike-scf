@@ -128,15 +128,18 @@ export function Sidebar() {
       <div style={{
         padding: '16px 12px 12px',
         borderBottom: '1px solid var(--color-border)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}>
         <Image
-          src="/logo.png"
+          src={theme === 'dark' ? '/strike_white_nobg.png' : '/logo.png'}
           alt="Strike SCF"
-          width={120}
-          height={40}
+          width={148}
+          height={48}
           style={{
             objectFit: 'contain',
-            objectPosition: 'left center',
+            objectPosition: 'center center',
             maxWidth: '100%',
             height: 'auto',
           }}

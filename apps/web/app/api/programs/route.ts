@@ -16,7 +16,7 @@ export async function GET() {
 
   const { data: userData, error: userError } = await adminClient
     .from('users')
-    .select('id, role, bank_id, org_id')
+    .select('id, role, bank_id, org_id, email')
     .eq('id', user.id)
     .single()
 
@@ -39,15 +39,27 @@ export async function GET() {
     return NextResponse.json({ programs: [] })
   }
 
-  const { data: enrollments, error: enrollError } = await adminClient
-    .from('program_enrollments')
-    .select('program_id')
-    .eq('org_id', userData.org_id)
-    .eq('status', 'active')
+  const [enrollResult, inviteResult] = await Promise.all([
+    adminClient
+      .from('program_enrollments')
+      .select('program_id')
+      .eq('org_id', userData.org_id)
+      .eq('status', 'active'),
+    userData.email
+      ? adminClient
+          .from('invitations')
+          .select('program_id')
+          .eq('email', userData.email as string)
+          .in('status', ['pending', 'accepted'])
+      : Promise.resolve({ data: [] as Array<{ program_id: string | null }>, error: null }),
+  ])
 
-  if (enrollError) return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 })
+  if (enrollResult.error) return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 })
 
-  const programIds = (enrollments ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean)
+  const enrolledIds = (enrollResult.data ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean)
+  const invitedIds  = (inviteResult.data ?? []).map((e: { program_id: string | null }) => e.program_id).filter(Boolean) as string[]
+  const programIds  = [...new Set([...enrolledIds, ...invitedIds])]
+
   if (programIds.length === 0) return NextResponse.json({ programs: [] })
 
   const { data: programs, error: progError } = await adminClient
