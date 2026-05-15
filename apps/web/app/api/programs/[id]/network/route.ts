@@ -22,7 +22,7 @@ export async function GET(
 
   const { data: userData } = await adminClient
     .from('users')
-    .select('id, role, bank_id, org_id')
+    .select('id, role, bank_id, org_id, email')
     .eq('id', user.id)
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
@@ -201,14 +201,27 @@ export async function GET(
 
   // ── ANCHOR ────────────────────────────────────────────────────────────────
   if (ANCHOR_ROLES.includes(userData.role)) {
-    const { data: myEnrollment } = await adminClient
-      .from('program_enrollments')
-      .select('id')
-      .eq('program_id', programId)
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active')
-      .maybeSingle()
-    if (!myEnrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const [enrollCheck, inviteCheck] = await Promise.all([
+      adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('program_id', programId)
+        .eq('org_id', userData.org_id)
+        .eq('status', 'active')
+        .maybeSingle(),
+      userData.email
+        ? adminClient
+            .from('invitations')
+            .select('id')
+            .eq('program_id', programId)
+            .eq('email', userData.email as string)
+            .in('status', ['pending', 'accepted'])
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+    if (!enrollCheck.data && !inviteCheck.data) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const [enrollResult, inviteResult, acceptedSupplierInviteResult] = await Promise.all([
       adminClient
@@ -309,11 +322,27 @@ export async function GET(
     .eq('org_id', userData.org_id)
     .eq('status', 'active')
 
-  const anchorIds2 = [...new Set(
+  let anchorIds2: string[] = [...new Set(
     (myEnrollments ?? [])
       .map((e: { anchor_org_id: string }) => e.anchor_org_id)
       .filter(Boolean)
   )]
+
+  // No active enrollment yet — fall back to invitation to find the anchor
+  if (anchorIds2.length === 0 && userData.email) {
+    const { data: myInvitations } = await adminClient
+      .from('invitations')
+      .select('anchor_org_id')
+      .eq('program_id', programId)
+      .eq('email', userData.email as string)
+      .in('status', ['pending', 'accepted'])
+
+    anchorIds2 = [...new Set(
+      (myInvitations ?? [])
+        .map(i => i.anchor_org_id)
+        .filter(Boolean) as string[]
+    )]
+  }
 
   if (anchorIds2.length === 0) return NextResponse.json({ anchors: [] })
 

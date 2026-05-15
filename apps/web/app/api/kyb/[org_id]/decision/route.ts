@@ -149,91 +149,109 @@ export async function POST(
       return NextResponse.json({ error: updateErr.message ?? 'Failed to update organization' }, { status: 500 })
     }
 
-    // Fire-and-forget post-decision side-effects
     const isApproved = decision === 'approved' || decision === 'override_approved'
     const isRejected = decision === 'rejected'
+
+    // ── Enrollment creation (synchronous — must complete before returning) ──
+    if (isApproved) {
+      // Fetch users in this org; email is in public.users, fall back to auth if null
+      const { data: orgUsersRaw } = await adminClient
+        .from('users')
+        .select('id, full_name, email')
+        .eq('org_id', org_id)
+
+      const usersWithEmail: Array<{ id: string; full_name: string | null; email: string }> = []
+      await Promise.all(
+        (orgUsersRaw ?? []).map(async (u) => {
+          let email = u.email as string | null
+          if (!email) {
+            const { data: authUser } = await adminClient.auth.admin.getUserById(u.id)
+            email = authUser?.user?.email ?? null
+          }
+          if (email) usersWithEmail.push({ id: u.id, full_name: u.full_name as string | null, email })
+        })
+      )
+
+      const emails = usersWithEmail.map(u => u.email)
+      if (emails.length > 0) {
+        const { data: invitations } = await adminClient
+          .from('invitations')
+          .select('program_id, anchor_org_id, role')
+          .in('status', ['accepted', 'pending'])
+          .in('email', emails)
+
+        for (const invitation of (invitations ?? [])) {
+          if (!invitation.program_id) continue
+          const anchorOrgId = invitation.role === 'anchor'
+            ? org_id
+            : (invitation.anchor_org_id ?? org_id)
+          const { error: enrollErr } = await adminClient
+            .from('program_enrollments')
+            .upsert(
+              {
+                program_id:          invitation.program_id,
+                org_id,
+                anchor_org_id:       anchorOrgId,
+                status:              'active',
+                enrolled_by_user_id: user.id,
+              },
+              { onConflict: 'program_id,org_id' }
+            )
+          if (enrollErr) console.error('Enrollment upsert error:', enrollErr)
+        }
+      }
+    }
+
+    // ── Fire-and-forget: emails + rejection cleanup ────────────────────────
     if (isApproved || isRejected) {
       ;(async () => {
-        // Fetch all users in this org (email lives in public.users already)
         const [{ data: orgUsers }, { data: orgData }] = await Promise.all([
           adminClient.from('users').select('id, full_name, email').eq('org_id', org_id),
           adminClient.from('organizations').select('legal_name, type').eq('id', org_id).single(),
         ])
         if (!orgUsers?.length) return
 
-        const usersWithEmail = orgUsers.filter(u => u.email).map(u => ({
-          id:        u.id,
-          full_name: u.full_name as string | null,
-          email:     u.email as string,
-        }))
+        const usersWithEmail: Array<{ id: string; full_name: string | null; email: string }> = []
+        await Promise.all(
+          orgUsers.map(async (u) => {
+            let email = u.email as string | null
+            if (!email) {
+              const { data: authUser } = await adminClient.auth.admin.getUserById(u.id)
+              email = authUser?.user?.email ?? null
+            }
+            if (email) usersWithEmail.push({ id: u.id, full_name: u.full_name as string | null, email })
+          })
+        )
 
         const orgName = (orgData?.legal_name as string | undefined) ?? 'your organization'
 
         if (isApproved) {
-          // Find ALL accepted invitations for this org to enroll them in every invited program
-          const emails = usersWithEmail.map(u => u.email)
-          const { data: invitations } = await adminClient
-            .from('invitations')
-            .select('program_id, anchor_org_id, role')
-            .eq('status', 'accepted')
-            .in('email', emails)
-
-          for (const invitation of (invitations ?? [])) {
-            if (!invitation.program_id) continue
-            const anchorOrgId = invitation.role === 'anchor' ? org_id : (invitation.anchor_org_id ?? org_id)
-            const { error: enrollErr } = await adminClient
-              .from('program_enrollments')
-              .upsert(
-                {
-                  program_id:          invitation.program_id,
-                  org_id,
-                  anchor_org_id:       anchorOrgId,
-                  status:              'active',
-                  enrolled_by_user_id: user.id,
-                },
-                { onConflict: 'program_id,org_id' }
-              )
-            if (enrollErr) console.error('Enrollment upsert error:', enrollErr)
-          }
-
-          // Send approval email to all users
           for (const u of usersWithEmail) {
             await sendEmail({
               to:      u.email,
               subject: `Your application to Strike SCF has been approved`,
-              html:    kybApprovalEmailHtml({
-                recipientName: u.full_name ?? u.email,
-                orgName,
-              }),
+              html:    kybApprovalEmailHtml({ recipientName: u.full_name ?? u.email, orgName }),
             })
           }
         } else {
-          // Send rejection email to all users first
           for (const u of usersWithEmail) {
             await sendEmail({
               to:      u.email,
               subject: `Update on your Strike SCF application`,
-              html:    kybRejectionEmailHtml({
-                recipientName: u.full_name ?? u.email,
-                orgName,
-                reason: rejection_reason,
-              }),
+              html:    kybRejectionEmailHtml({ recipientName: u.full_name ?? u.email, orgName, reason: rejection_reason }),
             })
           }
 
-          // Delete all org-related records in dependency order
           await adminClient.from('credit_decision_records').delete().eq('org_id', org_id)
           await adminClient.from('credit_scores').delete().eq('org_id', org_id)
           await adminClient.from('documents').delete().eq('org_id', org_id)
           await adminClient.from('program_enrollments').delete().eq('org_id', org_id)
           await adminClient.from('users').delete().eq('org_id', org_id)
 
-          // Delete auth users
           for (const u of orgUsers) {
             await adminClient.auth.admin.deleteUser(u.id)
           }
 
-          // Delete the organization last
           await adminClient.from('organizations').delete().eq('id', org_id)
         }
       })().catch(err => console.error('KYB post-decision side-effects error:', err))
