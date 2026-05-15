@@ -41,14 +41,23 @@ export async function GET() {
 
   const { data: enrollments, error: enrollError } = await adminClient
     .from('program_enrollments')
-    .select('program_id, programs(*)')
+    .select('program_id')
     .eq('org_id', userData.org_id)
     .eq('status', 'active')
 
   if (enrollError) return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 })
 
-  const programs = (enrollments ?? []).map((e: Record<string, unknown>) => e.programs).filter(Boolean)
-  return NextResponse.json({ programs })
+  const programIds = (enrollments ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean)
+  if (programIds.length === 0) return NextResponse.json({ programs: [] })
+
+  const { data: programs, error: progError } = await adminClient
+    .from('programs')
+    .select('*')
+    .in('id', programIds)
+    .order('created_at', { ascending: false })
+
+  if (progError) return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
+  return NextResponse.json({ programs: programs ?? [] })
 }
 
 export async function POST(request: Request) {

@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
+import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+
+const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
 // ── Bank types ────────────────────────────────────────────────────────────────
 interface MonthlyBucket { label: string; count: number; volume: number }
@@ -99,126 +102,6 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// ── Chart helpers ─────────────────────────────────────────────────────────────
-type Period = 'daily' | 'weekly' | 'monthly'
-
-function PeriodToggle({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
-  return (
-    <div style={{ display: 'flex', gap: 2, background: 'var(--color-bg-2)', borderRadius: 6, padding: 2 }}>
-      {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onChange(p)}
-          style={{
-            padding: '3px 10px', borderRadius: 4, border: 'none', fontSize: 10.5,
-            fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-            background: value === p ? 'var(--color-card)' : 'transparent',
-            color: value === p ? 'var(--color-ink-1)' : 'var(--color-ink-4)',
-            boxShadow: value === p ? '0 1px 2px var(--color-shadow)' : 'none',
-          }}
-        >
-          {p.charAt(0).toUpperCase() + p.slice(1)}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function smoothPath(points: [number, number][]): string {
-  if (points.length < 2) return ''
-  const first = points[0]!
-  let d = `M ${first[0]} ${first[1]}`
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i]!
-    const p1 = points[i]!
-    const p2 = points[i + 1]!
-    const p3 = points[i + 2] ?? p2
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`
-  }
-  return d
-}
-
-function LineChart({ items, height = 140, color = 'var(--color-accent)' }: {
-  items: Array<{ label: string; value: number; count?: number }>
-  height?: number
-  color?: string
-}) {
-  const [hovered, setHovered] = useState<number | null>(null)
-  const safe = items ?? []
-  const hasData = safe.some(d => d.value > 0)
-
-  if (!hasData) {
-    return (
-      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-        No transaction data yet
-      </div>
-    )
-  }
-
-  const W = 560, H = height - 28
-  const PAD = { top: 12, right: 12, left: 8 }
-  const maxVal = Math.max(...safe.map(d => d.value), 1)
-
-  const pts: [number, number][] = safe.map((d, i) => [
-    PAD.left + (safe.length > 1 ? (i / (safe.length - 1)) : 0.5) * (W - PAD.left - PAD.right),
-    PAD.top + (1 - d.value / maxVal) * (H - PAD.top),
-  ])
-
-  const linePath = smoothPath(pts)
-  const lastPt = pts[pts.length - 1]!
-  const firstPt = pts[0]!
-  const areaPath = pts.length > 1 ? `${linePath} L ${lastPt[0]} ${H} L ${firstPt[0]} ${H} Z` : ''
-
-  return (
-    <div style={{ position: 'relative', userSelect: 'none' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
-        {[0.25, 0.5, 0.75, 1].map(v => {
-          const y = PAD.top + (1 - v) * (H - PAD.top)
-          return <line key={v} x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="var(--color-border)" strokeWidth={1} />
-        })}
-        {areaPath && <path d={areaPath} fill={color} fillOpacity={0.07} />}
-        <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((pt, i) => safe[i]!.value > 0 && (
-          <circle
-            key={i} cx={pt[0]} cy={pt[1]} r={hovered === i ? 5 : 3.5}
-            fill={hovered === i ? color : 'var(--color-card)'} stroke={color} strokeWidth={2}
-            style={{ cursor: 'default' }}
-            onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
-          />
-        ))}
-        {hovered !== null && pts[hovered] && (
-          <line x1={pts[hovered]![0]} y1={PAD.top} x2={pts[hovered]![0]} y2={H}
-            stroke={color} strokeWidth={1} strokeDasharray="3,3" opacity={0.4} />
-        )}
-      </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: `4px ${PAD.right}px 0 ${PAD.left}px` }}>
-        {safe.map((d, i) => (
-          <div key={i} style={{ fontSize: 10, color: hovered === i ? color : 'var(--color-ink-4)', textAlign: 'center', flex: 1, transition: 'color 0.1s' }}>
-            {d.label}
-          </div>
-        ))}
-      </div>
-      {hovered !== null && safe[hovered] && (
-        <div style={{
-          position: 'absolute',
-          top: Math.max(2, (pts[hovered]![1] / H) * (height - 28) - 36),
-          left: `clamp(0px, calc(${(pts[hovered]![0] / W * 100).toFixed(1)}% - 48px), calc(100% - 96px))`,
-          background: 'var(--color-ink-1)', color: 'white',
-          padding: '4px 8px', borderRadius: 5, fontSize: 11, fontWeight: 500,
-          whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
-        }}>
-          {fmtCurrency(safe[hovered]!.value)}
-          {(safe[hovered]!.count ?? 0) > 0 && ` · ${safe[hovered]!.count} deal${safe[hovered]!.count !== 1 ? 's' : ''}`}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ReportingPage() {
@@ -264,9 +147,6 @@ export default function ReportingPage() {
 
   // Narrowed bank data for bank-specific computations
   const bankData = data?.role === 'bank' ? data : null
-  const maxVolume = bankData
-    ? Math.max(...(bankData.monthly_volume ?? []).map(m => m.volume), 1)
-    : 1
   const totalStatusCount = bankData
     ? bankData.status_breakdown.reduce((s, r) => s + r.count, 0)
     : 0
@@ -293,9 +173,10 @@ export default function ReportingPage() {
           </div>
         )}
 
+        <style>{PULSE_KF}</style>
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-ink-4)', opacity: 0.6, fontSize: 13 }}>
-            Loading…
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
           </div>
         ) : data?.role === 'bank' ? (
           <>
@@ -329,7 +210,8 @@ export default function ReportingPage() {
               </div>
               <div className="card-body">
                 <LineChart
-                  items={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))}
+                  data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))}
+                  height={80}
                 />
               </div>
             </div>
@@ -487,11 +369,8 @@ export default function ReportingPage() {
               </div>
               <div className="card-body">
                 <LineChart
-                  items={(data.monthly_volume ?? []).map(m => ({
-                    label: m.label,
-                    value: m.total_invoice_amount,
-                    count: m.count,
-                  }))}
+                  data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_invoice_amount, count: m.count }))}
+                  height={80}
                   color="var(--color-anchor)"
                 />
               </div>
@@ -594,11 +473,8 @@ export default function ReportingPage() {
               </div>
               <div className="card-body">
                 <LineChart
-                  items={(data.monthly_volume ?? []).map(m => ({
-                    label: m.label,
-                    value: m.total_financed,
-                    count: m.count,
-                  }))}
+                  data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))}
+                  height={80}
                   color="var(--color-green)"
                 />
               </div>

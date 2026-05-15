@@ -36,13 +36,41 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     const supabase = createClient()
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
+    const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) {
+      setLoading(false)
       setError(authError.message)
-    } else {
-      router.push('/dashboard')
+      return
     }
+
+    // Only anchor/supplier roles need the KYB gate — bank roles go straight to dashboard
+    const role = signInData.user?.user_metadata?.role as string | undefined
+    const needsKybCheck = role === 'anchor_admin' || role === 'anchor_member' ||
+                          role === 'supplier_admin' || role === 'supplier_member'
+
+    if (needsKybCheck) {
+      try {
+        const res = await fetch('/api/onboarding/status')
+        if (res.ok) {
+          const { kyb_status, org_status } = await res.json()
+          const pendingStatuses = ['in_progress', 'submitted', 'under_review', 'more_info_requested']
+          if (org_status === 'rejected' || kyb_status === 'rejected') {
+            await supabase.auth.signOut()
+            setLoading(false)
+            setError('Your application was not approved. Please contact your administrator.')
+            return
+          }
+          if (kyb_status && pendingStatuses.includes(kyb_status)) {
+            router.push('/pending-approval')
+            return
+          }
+        }
+      } catch {
+        // Non-fatal — fall through to dashboard
+      }
+    }
+
+    router.push('/dashboard')
   }
 
   const inputStyle: React.CSSProperties = {
@@ -73,15 +101,17 @@ export default function LoginPage() {
         padding: 40,
       }}>
         {/* Logo */}
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 28 }}>
           <Image
             src="/logo.png"
             alt="Strike SCF"
-            width={140}
-            height={44}
+            width={200}
+            height={60}
             style={{
               objectFit: 'contain',
               objectPosition: 'left center',
+              maxWidth: '100%',
+              height: 'auto',
             }}
             priority
           />

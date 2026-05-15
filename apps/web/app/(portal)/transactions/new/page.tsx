@@ -291,11 +291,12 @@ function StepInvoice({
 }
 
 function StepPODetails({
-  poNumber, poValue, expectedDeliveryDate, offerRate, description, errors, onChange,
+  poNumber, poValue, expectedDeliveryDate, poInvoiceDueDate, offerRate, description, errors, onChange,
 }: {
   poNumber: string
   poValue: string
   expectedDeliveryDate: string
+  poInvoiceDueDate: string
   offerRate: string
   description: string
   errors: Record<string, string>
@@ -344,6 +345,19 @@ function StepPODetails({
             onChange={(e) => onChange('expectedDeliveryDate', e.target.value)}
           />
           {errors.expectedDeliveryDate && <div style={errStyle}>{errors.expectedDeliveryDate}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Expected payment date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={poInvoiceDueDate}
+            onChange={(e) => onChange('poInvoiceDueDate', e.target.value)}
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>
+            When the anchor is expected to pay the invoice
+          </div>
         </div>
 
         <div className="form-field">
@@ -421,7 +435,7 @@ function StepPODetails({
 
 function StepReview({
   program, invoiceNumber, invoiceDate, invoiceDueDate, invoiceAmount, offerRate, description, docFiles, submitError, isInvoiceFactoring,
-  isPOFinancing, poNumber, poValue, expectedDeliveryDate,
+  isPOFinancing, poNumber, poValue, expectedDeliveryDate, poInvoiceDueDate,
 }: {
   program: Program
   invoiceNumber: string
@@ -437,6 +451,7 @@ function StepReview({
   poNumber: string
   poValue: string
   expectedDeliveryDate: string
+  poInvoiceDueDate: string
 }) {
   const baseAmt = isPOFinancing ? (parseFloat(poValue) || 0) : (parseFloat(invoiceAmount) || 0)
   const rate = parseFloat(offerRate) || 0
@@ -485,6 +500,12 @@ function StepReview({
                 <span className="k">Expected Delivery</span>
                 <span className="v plain">{expectedDeliveryDate}</span>
               </div>
+              {poInvoiceDueDate && (
+                <div className="kv-row">
+                  <span className="k">Expected Payment</span>
+                  <span className="v plain">{poInvoiceDueDate}</span>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -580,6 +601,7 @@ export default function NewTransactionPage() {
   const [poNumber, setPoNumber] = React.useState('')
   const [poValue, setPoValue] = React.useState('')
   const [expectedDeliveryDate, setExpectedDeliveryDate] = React.useState('')
+  const [poInvoiceDueDate, setPoInvoiceDueDate] = React.useState('')
 
   const isPOFinancing = selectedProgram?.financing_types?.includes('po_financing') ?? false
 
@@ -647,6 +669,7 @@ export default function NewTransactionPage() {
       case 'poNumber':            setPoNumber(value);            break
       case 'poValue':             setPoValue(value);             break
       case 'expectedDeliveryDate': setExpectedDeliveryDate(value); break
+      case 'poInvoiceDueDate':    setPoInvoiceDueDate(value);    break
     }
   }
 
@@ -724,7 +747,7 @@ export default function NewTransactionPage() {
           program_id: selectedProgram!.id,
           invoice_number: poNumber.trim(),
           invoice_date: todayStr,
-          invoice_due_date: expectedDeliveryDate,
+          invoice_due_date: poInvoiceDueDate || expectedDeliveryDate,
           invoice_amount: poAmt,
           financing_amount_requested: financingAmtRequested,
           goods_services_description: description.trim(),
@@ -818,6 +841,7 @@ export default function NewTransactionPage() {
                 poNumber={poNumber}
                 poValue={poValue}
                 expectedDeliveryDate={expectedDeliveryDate}
+                poInvoiceDueDate={poInvoiceDueDate}
                 offerRate={offerRate}
                 description={description}
                 errors={errors}
@@ -925,6 +949,7 @@ export default function NewTransactionPage() {
               poNumber={poNumber}
               poValue={poValue}
               expectedDeliveryDate={expectedDeliveryDate}
+              poInvoiceDueDate={poInvoiceDueDate}
             />
             <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
               <button

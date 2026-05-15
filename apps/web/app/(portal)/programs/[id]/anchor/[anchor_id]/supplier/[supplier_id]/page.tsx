@@ -6,6 +6,9 @@ import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { pushKybDetail } from '@/lib/kyb-referrer'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
+import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+
+const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OrgDetail {
@@ -149,117 +152,6 @@ function maskEIN(raw: string | null | undefined) {
   const clean = (raw ?? '').replace(/\D/g, '')
   if (clean.length < 4) return '—'
   return `**-***${clean.slice(-4)}`
-}
-
-// ── Chart helpers ─────────────────────────────────────────────────────────────
-type Period = 'daily' | 'weekly' | 'monthly'
-
-function PeriodToggle({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
-  return (
-    <div style={{ display: 'flex', gap: 2, background: 'var(--color-bg-2)', borderRadius: 6, padding: 2 }}>
-      {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onChange(p)}
-          style={{
-            padding: '3px 10px', borderRadius: 4, border: 'none', fontSize: 10.5,
-            fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-            background: value === p ? 'var(--color-card)' : 'transparent',
-            color: value === p ? 'var(--color-ink-1)' : 'var(--color-ink-4)',
-            boxShadow: value === p ? '0 1px 2px var(--color-shadow)' : 'none',
-          }}
-        >
-          {p.charAt(0).toUpperCase() + p.slice(1)}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function smoothPath(points: [number, number][]): string {
-  if (points.length < 2) return ''
-  const first = points[0]!
-  let d = `M ${first[0]} ${first[1]}`
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i]!
-    const p1 = points[i]!
-    const p2 = points[i + 1]!
-    const p3 = points[i + 2] ?? p2
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`
-  }
-  return d
-}
-
-function LineChart({ items, height = 88, color = 'var(--color-accent)' }: {
-  items: Array<{ label: string; value: number; count?: number }>
-  height?: number
-  color?: string
-}) {
-  const [hovered, setHovered] = useState<number | null>(null)
-  const safe = items ?? []
-  const hasData = safe.some(d => d.value > 0)
-
-  if (!hasData) {
-    return (
-      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-        No data yet
-      </div>
-    )
-  }
-
-  const W = 560, H = height - 24
-  const PAD = { top: 8, right: 8, left: 4 }
-  const maxVal = Math.max(...safe.map(d => d.value), 1)
-
-  const pts: [number, number][] = safe.map((d, i) => [
-    PAD.left + (safe.length > 1 ? (i / (safe.length - 1)) : 0.5) * (W - PAD.left - PAD.right),
-    PAD.top + (1 - d.value / maxVal) * (H - PAD.top),
-  ])
-
-  const linePath = smoothPath(pts)
-  const lastPt = pts[pts.length - 1]!
-  const firstPt = pts[0]!
-  const areaPath = pts.length > 1 ? `${linePath} L ${lastPt[0]} ${H} L ${firstPt[0]} ${H} Z` : ''
-
-  return (
-    <div style={{ position: 'relative', userSelect: 'none' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
-        {areaPath && <path d={areaPath} fill={color} fillOpacity={0.07} />}
-        <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((pt, i) => safe[i]!.value > 0 && (
-          <circle key={i} cx={pt[0]} cy={pt[1]} r={hovered === i ? 4.5 : 3}
-            fill={hovered === i ? color : 'var(--color-card)'} stroke={color} strokeWidth={2}
-            style={{ cursor: 'default' }}
-            onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
-          />
-        ))}
-      </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: `3px ${PAD.right}px 0 ${PAD.left}px` }}>
-        {safe.map((d, i) => (
-          <div key={i} style={{ fontSize: 10, color: hovered === i ? color : 'var(--color-ink-4)', textAlign: 'center', flex: 1 }}>
-            {d.label}
-          </div>
-        ))}
-      </div>
-      {hovered !== null && safe[hovered] && (
-        <div style={{
-          position: 'absolute',
-          top: Math.max(0, (pts[hovered]![1] / H) * (height - 24) - 32),
-          left: `clamp(0px, calc(${(pts[hovered]![0] / W * 100).toFixed(1)}% - 44px), calc(100% - 88px))`,
-          background: 'var(--color-ink-1)', color: 'white',
-          padding: '3px 7px', borderRadius: 5, fontSize: 11, fontWeight: 500,
-          whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
-        }}>
-          {fmtMoney(safe[hovered]!.value)}
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── AddCollateralForm ──────────────────────────────────────────────────────────
@@ -563,7 +455,11 @@ export default function SupplierDetailPage() {
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                     </div>
                   </div>
-                  <LineChart items={analytics?.monthly_volume ?? []} color="var(--color-accent)" />
+                  <style>{PULSE_KF}</style>
+                  {analytics
+                    ? <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
+                    : <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+                  }
                 </div>
               </div>
 
@@ -751,7 +647,7 @@ export default function SupplierDetailPage() {
                       <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
-                  <LineChart items={analytics.monthly_volume ?? []} color="var(--color-accent)" />
+                  <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
                 </div>
               </div>
             )}

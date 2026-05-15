@@ -735,14 +735,14 @@ function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolea
           <div>④ Set up programs and invite users inside the platform</div>
         </div>
         <a
-          href="/dashboard"
+          href={role === 'bank' ? '/dashboard' : '/pending-approval'}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             marginTop: 24, height: 42, padding: '0 24px', borderRadius: 8,
             background: 'var(--color-ink-1)', color: 'white',
             textDecoration: 'none', fontSize: 14, fontWeight: 600,
           }}
-        >Go to dashboard <OBIcon name="arrow" size={14} /></a>
+        >{role === 'bank' ? 'Go to dashboard' : 'View application status'} <OBIcon name="arrow" size={14} /></a>
       </div>
     </div>
   )

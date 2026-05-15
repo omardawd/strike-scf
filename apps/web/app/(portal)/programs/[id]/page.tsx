@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
-import { VolumeChart, PeriodToggle, type Period } from '@/components/charts'
+import { LineChart, PeriodToggle, type Period } from '@/components/charts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -61,6 +61,15 @@ interface PendingAnchorInv {
   status: 'invited'
   invited_at: string
   expires_at: string | null
+  type: 'invitation'
+}
+
+interface PendingSupplierInv {
+  id: string
+  email: string
+  anchor_org_id: string | null
+  status: 'invited'
+  invited_at: string
   type: 'invitation'
 }
 
@@ -189,6 +198,7 @@ export default function ProgramDetailPage() {
   const [anchorList, setAnchorList]   = useState<AnchorNetEntry[]>([])
   const [analytics, setAnalytics]         = useState<AnalyticsData | null>(null)
   const [pendingAnchors, setPendingAnchors] = useState<PendingAnchorInv[]>([])
+  const [pendingSuppliers, setPendingSuppliers] = useState<PendingSupplierInv[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [networkVersion, setNetworkVersion] = useState(0)
@@ -201,6 +211,20 @@ export default function ProgramDetailPage() {
   const [inviteLoading, setInviteLoading]     = useState(false)
   const [inviteError, setInviteError]         = useState<string | null>(null)
   const [inviteSent, setInviteSent]           = useState(false)
+
+  const [cancelError, setCancelError]   = useState<string | null>(null)
+
+  const [editing, setEditing]         = useState(false)
+  const [editName, setEditName]       = useState('')
+  const [editLimit, setEditLimit]     = useState('')
+  const [editSubLimit, setEditSubLimit] = useState('')
+  const [editMinDeal, setEditMinDeal] = useState('')
+  const [editMaxDeal, setEditMaxDeal] = useState('')
+  const [editTenor, setEditTenor]     = useState('')
+  const [editStatus, setEditStatus]   = useState('')
+  const [editSaving, setEditSaving]   = useState(false)
+  const [editError, setEditError]     = useState<string | null>(null)
+  const [editSuccess, setEditSuccess] = useState(false)
 
   const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
 
@@ -225,6 +249,7 @@ export default function ProgramDetailPage() {
         setSuppliers(netData.suppliers ?? [])
         setAnchorList(netData.anchors ?? [])
         setPendingAnchors(netData.pending_anchors ?? [])
+        setPendingSuppliers(netData.pending_suppliers ?? [])
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -272,17 +297,71 @@ export default function ProgramDetailPage() {
     setShowInviteModal(true)
   }
 
-  async function cancelAnchorInvite(invId: string) {
-    const res = await fetch(`/api/programs/${id}/invite`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invitation_id: invId, action: 'cancel' }),
-    })
-    if (!res.ok) {
-      console.error('Cancel error:', await res.text())
-      return
+  function startEdit() {
+    if (!program) return
+    setEditName(program.name)
+    setEditLimit(program.program_limit != null ? String(program.program_limit) : '')
+    setEditSubLimit(program.per_supplier_sublimit != null ? String(program.per_supplier_sublimit) : '')
+    setEditMinDeal(program.min_deal_size != null ? String(program.min_deal_size) : '')
+    setEditMaxDeal(program.max_deal_size != null ? String(program.max_deal_size) : '')
+    setEditTenor(String(program.standard_tenor_days))
+    setEditStatus(program.status)
+    setEditError(null)
+    setEditing(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!program) return
+    setEditSaving(true); setEditError(null)
+    try {
+      const body: Record<string, unknown> = {
+        name: editName.trim(),
+        status: editStatus,
+        standard_tenor_days: Number(editTenor) || program.standard_tenor_days,
+      }
+      if (editLimit)    body.program_limit          = Number(editLimit)
+      if (editSubLimit) body.per_supplier_sublimit  = Number(editSubLimit)
+      if (editMinDeal)  body.min_deal_size          = Number(editMinDeal)
+      if (editMaxDeal)  body.max_deal_size          = Number(editMaxDeal)
+      const res = await fetch(`/api/programs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Failed to save')
+      setProgram(d.program)
+      setEditing(false)
+      setEditSuccess(true)
+      setTimeout(() => setEditSuccess(false), 3000)
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Failed to save')
+    } finally {
+      setEditSaving(false)
     }
-    setNetworkVersion(v => v + 1)
+  }
+
+  async function cancelInvite(invId: string, kind: 'anchor' | 'supplier') {
+    setCancelError(null)
+    try {
+      const res = await fetch(`/api/programs/${id}/invite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitation_id: invId, action: 'cancel' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCancelError(data.error ?? 'Failed to cancel invitation')
+        return
+      }
+      if (kind === 'anchor') {
+        setPendingAnchors(prev => prev.filter(p => p.id !== invId))
+      } else {
+        setPendingSuppliers(prev => prev.filter(p => p.id !== invId))
+      }
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to cancel invitation')
+    }
   }
 
   const typeLabel = program?.financing_types?.length
@@ -358,54 +437,83 @@ export default function ProgramDetailPage() {
             {/* ── BANK: Full program details ── */}
             {portal === 'bank' && (
               <>
-                {/* <div className="card" style={{ marginBottom: 20 }}>
-                  <div className="card-head"><h3 className="t-card-head">Program overview</h3></div>
-                  <div className="card-body">
-                    <div className="kpi-strip">
-                      {program.program_limit != null && (
-                        <div className="kpi-card">
-                          <div className="kpi-label">Program Limit</div>
-                          <div className="kpi-value">{fmtMoney(program.program_limit)}</div>
-                        </div>
-                      )}
-                      {program.per_supplier_sublimit != null && (
-                        <div className="kpi-card">
-                          <div className="kpi-label">Per-Supplier Limit</div>
-                          <div className="kpi-value">{fmtMoney(program.per_supplier_sublimit)}</div>
-                        </div>
-                      )}
-                      <div className="kpi-card">
-                        <div className="kpi-label">Tenor</div>
-                        <div className="kpi-value">{program.standard_tenor_days} days</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Currency</div>
-                        <div className="kpi-value">{program.currency ?? 'USD'}</div>
-                      </div>
-                    </div>
+                {editSuccess && (
+                  <div className="alert alert-success" style={{ marginBottom: 16 }}>
+                    <div className="alert-body">Program updated successfully.</div>
                   </div>
-                </div> */}
+                )}
 
                 <div className="card" style={{ marginBottom: 24 }}>
-                  <div className="card-head"><h3 className="t-card-head">Program details</h3></div>
-                  <div className="kv-rows">
-                    <div className="kv-row"><span className="k">Financing type</span><span className="v plain">{typeLabel}</span></div>
-                    {/* <div className="kv-row"><span className="k">Currency</span><span className="v plain">{program.currency ?? 'USD'}</span></div> */}
-                    {program.min_deal_size != null && (
-                      <div className="kv-row"><span className="k">Min deal size</span><span className="v plain">{fmtMoney(program.min_deal_size)}</span></div>
+                  <div className="card-head">
+                    <h3 className="t-card-head">Program details</h3>
+                    {!editing && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={startEdit}>Edit</button>
                     )}
-                    {program.max_deal_size != null && (
-                      <div className="kv-row"><span className="k">Max deal size</span><span className="v plain">{fmtMoney(program.max_deal_size)}</span></div>
-                    )}
-                    {program.program_limit != null && (
-                      <div className="kv-row"><span className="k">Program limit</span><span className="v plain">{fmtMoney(program.program_limit)}</span></div>
-                    )}
-                    {program.per_supplier_sublimit != null && (
-                      <div className="kv-row"><span className="k">Per-supplier sublimit</span><span className="v plain">{fmtMoney(program.per_supplier_sublimit)}</span></div>
-                    )}
-                    <div className="kv-row"><span className="k">Standard tenor</span><span className="v plain">{program.standard_tenor_days} days</span></div>
-                    <div className="kv-row"><span className="k">Created</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
                   </div>
+                  {editing ? (
+                    <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {editError && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{editError}</div>}
+                      <div>
+                        <label className="form-label">Program name</label>
+                        <input className="form-input" value={editName} onChange={e => setEditName(e.target.value)} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label className="form-label">Program limit ($)</label>
+                          <input className="form-input" value={editLimit} onChange={e => setEditLimit(e.target.value)} placeholder="e.g. 5000000" />
+                        </div>
+                        <div>
+                          <label className="form-label">Per-supplier sublimit ($)</label>
+                          <input className="form-input" value={editSubLimit} onChange={e => setEditSubLimit(e.target.value)} placeholder="e.g. 500000" />
+                        </div>
+                        <div>
+                          <label className="form-label">Min deal size ($)</label>
+                          <input className="form-input" value={editMinDeal} onChange={e => setEditMinDeal(e.target.value)} placeholder="e.g. 10000" />
+                        </div>
+                        <div>
+                          <label className="form-label">Max deal size ($)</label>
+                          <input className="form-input" value={editMaxDeal} onChange={e => setEditMaxDeal(e.target.value)} placeholder="e.g. 1000000" />
+                        </div>
+                        <div>
+                          <label className="form-label">Standard tenor (days)</label>
+                          <input className="form-input" type="number" value={editTenor} onChange={e => setEditTenor(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="form-label">Status</label>
+                          <select className="form-input" value={editStatus} onChange={e => setEditStatus(e.target.value)}>
+                            <option value="draft">Draft</option>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button className="btn btn-primary btn-sm" type="button" disabled={editSaving} onClick={handleSaveEdit}>
+                          {editSaving ? 'Saving…' : 'Save changes'}
+                        </button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(false)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="kv-rows">
+                      <div className="kv-row"><span className="k">Financing type</span><span className="v plain">{typeLabel}</span></div>
+                      {/* <div className="kv-row"><span className="k">Currency</span><span className="v plain">{program.currency ?? 'USD'}</span></div> */}
+                      {program.min_deal_size != null && (
+                        <div className="kv-row"><span className="k">Min deal size</span><span className="v plain">{fmtMoney(program.min_deal_size)}</span></div>
+                      )}
+                      {program.max_deal_size != null && (
+                        <div className="kv-row"><span className="k">Max deal size</span><span className="v plain">{fmtMoney(program.max_deal_size)}</span></div>
+                      )}
+                      {program.program_limit != null && (
+                        <div className="kv-row"><span className="k">Program limit</span><span className="v plain">{fmtMoney(program.program_limit)}</span></div>
+                      )}
+                      {program.per_supplier_sublimit != null && (
+                        <div className="kv-row"><span className="k">Per-supplier sublimit</span><span className="v plain">{fmtMoney(program.per_supplier_sublimit)}</span></div>
+                      )}
+                      <div className="kv-row"><span className="k">Standard tenor</span><span className="v plain">{program.standard_tenor_days} days</span></div>
+                      <div className="kv-row"><span className="k">Created</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
+                    </div>
+                  )}
                 </div>
 
                 {analytics && (
@@ -429,7 +537,7 @@ export default function ProgramDetailPage() {
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? analytics.avg_financing_rate.toFixed(1) + '%' : '—'}</div>
                         </div>
                       </div>
-                      <VolumeChart data={analytics.monthly_volume ?? []} height={140} color="#2563EB" />
+                      <LineChart data={analytics.monthly_volume ?? []} height={220} color="#2563EB" />
                     </div>
                   </div>
                 )}
@@ -471,7 +579,13 @@ export default function ProgramDetailPage() {
                   </div>
                 ) : (
                   <>
-                    {anchors.map(anchor => (
+                    {cancelError && (
+                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                    <Icon name="error" size={16} className="alert-icon" />
+                    <div className="alert-body">{cancelError}</div>
+                  </div>
+                )}
+                {anchors.map(anchor => (
                       <NetworkCard
                         key={anchor.id}
                         name={anchor.legal_name}
@@ -514,7 +628,7 @@ export default function ProgramDetailPage() {
                               className="btn btn-ghost btn-sm"
                               type="button"
                               style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
-                              onClick={() => cancelAnchorInvite(inv.id)}
+                              onClick={() => cancelInvite(inv.id, 'anchor')}
                             >
                               Cancel
                             </button>
@@ -547,7 +661,7 @@ export default function ProgramDetailPage() {
             {portal === 'anchor' && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>My Suppliers</div>
-                {suppliers.length === 0 ? (
+                {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers yet.</div>
@@ -559,19 +673,68 @@ export default function ProgramDetailPage() {
                     </div>
                   </div>
                 ) : (
-                  suppliers.map(s => (
-                    <NetworkCard
-                      key={s.id}
-                      name={s.legal_name}
-                      kybStatus={s.kyb_status}
-                      stats={[
-                        { label: 'Transactions',  value: s.transaction_count },
-                        { label: 'Latest status', value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
-                        { label: 'Joined',        value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
-                      ]}
-                      onClick={() => router.push(`/programs/${id}/anchor/${user?.org_id}/supplier/${s.id}`)}
-                    />
-                  ))
+                  <>
+                    {cancelError && (
+                      <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                        <Icon name="error" size={16} className="alert-icon" />
+                        <div className="alert-body">{cancelError}</div>
+                      </div>
+                    )}
+                    {suppliers.map(s => (
+                      <NetworkCard
+                        key={s.id}
+                        name={s.legal_name}
+                        kybStatus={s.kyb_status}
+                        stats={[
+                          { label: 'Transactions',  value: s.transaction_count },
+                          { label: 'Latest status', value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
+                          { label: 'Joined',        value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
+                        ]}
+                        onClick={() => router.push(`/programs/${id}/anchor/${user?.org_id}/supplier/${s.id}`)}
+                      />
+                    ))}
+                    {pendingSuppliers.map(inv => {
+                      const emailInitials = inv.email.slice(0, 2).toUpperCase()
+                      return (
+                        <div
+                          key={inv.id}
+                          className="network-card"
+                          style={{ cursor: 'default', marginBottom: 12, opacity: 0.75 }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div className="avatar">{emailInitials}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {inv.email}
+                              </div>
+                              <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span className="badge badge-pending">Invited</span>
+                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>
+                                  Invitation sent {fmtDate(inv.invited_at)}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              type="button"
+                              style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
+                              onClick={() => cancelInvite(inv.id, 'supplier')}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                            {['Transactions', 'Latest status'].map(label => (
+                              <div key={label}>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
                 )}
               </div>
             )}

@@ -85,6 +85,13 @@ export async function POST(
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
   }
 
+  // Map invitation role → DB user role (trigger reads user_metadata.role)
+  const roleMap: Record<string, string> = {
+    anchor:   'anchor_admin',
+    supplier: 'supplier_admin',
+  }
+  const dbRole = roleMap[invitation.role] ?? invitation.role
+
   // Create Supabase auth user
   const { data: authData, error: createError } = await adminClient.auth.admin.createUser({
     email: invitation.email,
@@ -92,7 +99,7 @@ export async function POST(
     email_confirm: true,
     user_metadata: {
       full_name: fullName,
-      role: invitation.role,
+      role: dbRole,
       bank_id: invitation.bank_id ?? undefined,
       ...(invitation.role === 'supplier' && invitation.anchor_org_id
         ? { anchor_org_id: invitation.anchor_org_id }

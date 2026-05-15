@@ -1,5 +1,6 @@
 'use client'
 import React, { useEffect, useState, useCallback, Suspense } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -18,10 +19,25 @@ const ROLE_LABELS: Record<string, string> = {
   bank_credit_officer: 'Credit Officer',
 }
 
+const inputStyle: React.CSSProperties = {
+  height: 40,
+  width: '100%',
+  padding: '0 12px',
+  border: '1px solid var(--color-border, #E2DFD8)',
+  borderRadius: 6,
+  background: 'var(--color-card, white)',
+  fontSize: 13.5,
+  color: 'var(--color-ink-1, #0F0F0F)',
+  fontFamily: 'inherit',
+  outline: 'none',
+  boxSizing: 'border-box',
+  transition: 'border-color 120ms ease',
+}
+
 function PasswordRule({ met, label }: { met: boolean; label: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: met ? 'var(--color-green)' : 'var(--color-ink-4)' }}>
-      <span style={{ fontSize: 11 }}>{met ? '✓' : '○'}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: met ? '#16a34a' : 'var(--color-ink-4, #9C9890)' }}>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>{met ? '✓' : '○'}</span>
       {label}
     </div>
   )
@@ -37,10 +53,12 @@ function InvitePageContent() {
   const [expiredMsg,  setExpiredMsg]  = useState('')
   const [invitation,  setInvitation]  = useState<InvitationInfo | null>(null)
 
-  const [fullName,   setFullName]   = useState('')
-  const [password,   setPassword]   = useState('')
-  const [confirmPw,  setConfirmPw]  = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [fullName,    setFullName]    = useState('')
+  const [password,    setPassword]    = useState('')
+  const [confirmPw,   setConfirmPw]   = useState('')
+  const [showPw,      setShowPw]      = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [submitting,  setSubmitting]  = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const checkToken = useCallback(async () => {
@@ -78,11 +96,11 @@ function InvitePageContent() {
 
   useEffect(() => { checkToken() }, [checkToken])
 
-  const pwLong      = password.length >= 8
-  const pwUpper     = /[A-Z]/.test(password)
-  const pwNumber    = /[0-9]/.test(password)
-  const pwMatch     = password === confirmPw && confirmPw.length > 0
-  const pwValid     = pwLong && pwUpper && pwNumber
+  const pwLong   = password.length >= 8
+  const pwUpper  = /[A-Z]/.test(password)
+  const pwNumber = /[0-9]/.test(password)
+  const pwMatch  = password === confirmPw && confirmPw.length > 0
+  const pwValid  = pwLong && pwUpper && pwNumber
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -102,7 +120,6 @@ function InvitePageContent() {
         return
       }
 
-      // Auto sign in
       const supabase = createClient()
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: invitation!.email,
@@ -125,7 +142,7 @@ function InvitePageContent() {
 
   if (checking) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)' }}>
         <div style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Checking invitation…</div>
       </div>
     )
@@ -133,21 +150,38 @@ function InvitePageContent() {
 
   if (!valid) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: 24 }}>
-        <div className="card" style={{ maxWidth: 420, width: '100%', padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 16 }}>⚠️</div>
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: 'var(--color-ink-1)' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)', padding: 24 }}>
+        <div style={{
+          maxWidth: 420, width: '100%',
+          background: 'var(--color-card, white)',
+          border: '1px solid var(--color-border, #E2DFD8)',
+          borderRadius: 12,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+          padding: 40,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 36, marginBottom: 16 }}>⚠️</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--color-ink-1, #0F0F0F)', letterSpacing: '-0.02em' }}>
             Invitation unavailable
           </h2>
-          <p style={{ fontSize: 14, color: 'var(--color-ink-3)', marginBottom: 24 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-ink-3, #6B6963)', marginBottom: 28, lineHeight: 1.6 }}>
             {expiredMsg}
           </p>
           <a
-            href="/signup"
-            className="btn btn-primary"
-            style={{ display: 'inline-block' }}
+            href="/login"
+            style={{
+              display: 'inline-block',
+              padding: '10px 24px',
+              borderRadius: 7,
+              background: '#0F0F0F',
+              color: 'white',
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: 'none',
+              fontFamily: 'inherit',
+            }}
           >
-            Create a new account
+            Go to sign in
           </a>
         </div>
       </div>
@@ -155,109 +189,205 @@ function InvitePageContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: 24 }}>
-      <div className="card" style={{ maxWidth: 440, width: '100%' }}>
-        <div className="card-head" style={{ textAlign: 'center', paddingBottom: 0 }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: 'var(--color-ink-1)' }}>
-            You&apos;ve been invited to Strike SCF
-          </h1>
-          <p style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 0 }}>
-            Set up your account to get started
-          </p>
-          {invitation && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <span className="badge badge-draft">{invitation.email}</span>
-              <span style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                You&apos;re joining as:{' '}
-                <strong style={{ color: 'var(--color-ink-2)' }}>
-                  {ROLE_LABELS[invitation.role] ?? invitation.role}
-                </strong>
-              </span>
-            </div>
-          )}
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--color-bg, #F7F6F3)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 24px',
+      fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+    }}>
+      <div style={{
+        width: '100%', maxWidth: 460,
+        background: 'var(--color-card, white)',
+        border: '1px solid var(--color-border, #E2DFD8)',
+        borderRadius: 12,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+        padding: 40,
+      }}>
+        {/* Logo */}
+        <div style={{ marginBottom: 28 }}>
+          <Image
+            src="/logo.png"
+            alt="Strike SCF"
+            width={200}
+            height={60}
+            style={{ objectFit: 'contain', objectPosition: 'left center', maxWidth: '100%', height: 'auto' }}
+            priority
+          />
         </div>
 
-        <div className="card-body">
-          {submitError && (
-            <div className="alert alert-error" style={{ marginBottom: 16 }}>
-              <div className="alert-body">{submitError}</div>
-            </div>
-          )}
+        {/* Header */}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--color-ink-1, #0F0F0F)', margin: '0 0 6px' }}>
+            You&apos;ve been invited
+          </h1>
+          <p style={{ fontSize: 13.5, color: 'var(--color-ink-3, #6B6963)', margin: 0 }}>
+            Set up your account to join Strike SCF.
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Email — read-only */}
-            <div>
-              <label className="field-label" htmlFor="inv-email">Email</label>
-              <input
-                id="inv-email"
-                className="input"
-                type="email"
-                value={invitation?.email ?? ''}
-                readOnly
-                style={{ background: 'var(--color-card)', color: 'var(--color-ink-3)', cursor: 'default' }}
-              />
+        {/* Invitation info banner */}
+        {invitation && (
+          <div style={{
+            background: 'var(--color-bg, #F7F6F3)',
+            border: '1px solid var(--color-border, #E2DFD8)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            marginBottom: 24,
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--color-ink-4, #9C9890)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Invitation for
             </div>
-
-            <div>
-              <label className="field-label" htmlFor="inv-name">Full name</label>
-              <input
-                id="inv-name"
-                className="input"
-                type="text"
-                placeholder="Jane Smith"
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                required
-                autoFocus
-              />
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink-1, #0F0F0F)' }}>
+              {invitation.email}
             </div>
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3, #6B6963)' }}>
+              Role: <strong style={{ color: 'var(--color-ink-2, #3D3C3A)' }}>{ROLE_LABELS[invitation.role] ?? invitation.role}</strong>
+            </div>
+          </div>
+        )}
 
-            <div>
-              <label className="field-label" htmlFor="inv-pw">Password</label>
+        {/* Error */}
+        {submitError && (
+          <div style={{
+            background: 'rgba(180,35,24,0.06)',
+            border: '1px solid rgba(180,35,24,0.2)',
+            borderRadius: 7,
+            padding: '10px 14px',
+            marginBottom: 20,
+            fontSize: 13,
+            color: '#B42318',
+          }}>
+            {submitError}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Email read-only */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Email</label>
+            <input
+              style={{ ...inputStyle, background: 'var(--color-bg, #F7F6F3)', color: 'var(--color-ink-3, #6B6963)', cursor: 'default' }}
+              type="email"
+              value={invitation?.email ?? ''}
+              readOnly
+            />
+          </div>
+
+          {/* Full name */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Full name</label>
+            <input
+              style={inputStyle}
+              type="text"
+              placeholder="Jane Smith"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+
+          {/* Password */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Password</label>
+            <div style={{ position: 'relative' }}>
               <input
-                id="inv-pw"
-                className="input"
-                type="password"
+                style={{ ...inputStyle, paddingRight: 42 }}
+                type={showPw ? 'text' : 'password'}
                 placeholder="Choose a strong password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPw(v => !v)}
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--color-ink-3)', padding: 4,
+                  display: 'flex', alignItems: 'center',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                  {showPw
+                    ? <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
+                    : <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>
+                  }
+                </svg>
+              </button>
             </div>
+          </div>
 
-            <div>
-              <label className="field-label" htmlFor="inv-pw2">Confirm password</label>
+          {/* Password rules */}
+          {password.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', padding: '4px 0' }}>
+              <PasswordRule met={pwLong}   label="8+ characters" />
+              <PasswordRule met={pwUpper}  label="Uppercase letter" />
+              <PasswordRule met={pwNumber} label="One number" />
+            </div>
+          )}
+
+          {/* Confirm password */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Confirm password</label>
+            <div style={{ position: 'relative' }}>
               <input
-                id="inv-pw2"
-                className="input"
-                type="password"
+                style={{ ...inputStyle, paddingRight: 42 }}
+                type={showConfirm ? 'text' : 'password'}
                 placeholder="Re-enter password"
                 value={confirmPw}
                 onChange={e => setConfirmPw(e.target.value)}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(v => !v)}
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--color-ink-3)', padding: 4,
+                  display: 'flex', alignItems: 'center',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                  {showConfirm
+                    ? <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
+                    : <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>
+                  }
+                </svg>
+              </button>
             </div>
-
-            {/* Password rules */}
-            {password.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 0' }}>
-                <PasswordRule met={pwLong}   label="At least 8 characters" />
-                <PasswordRule met={pwUpper}  label="One uppercase letter" />
-                <PasswordRule met={pwNumber} label="One number" />
-                <PasswordRule met={pwMatch}  label="Passwords match" />
-              </div>
+            {confirmPw.length > 0 && !pwMatch && (
+              <div style={{ fontSize: 12, color: '#B42318' }}>Passwords don&apos;t match</div>
             )}
+          </div>
 
-            <button
-              className="btn btn-primary btn-full"
-              type="submit"
-              disabled={submitting || !fullName.trim() || !pwValid || !pwMatch}
-            >
-              {submitting ? 'Creating account…' : 'Create account'}
-            </button>
-          </form>
-        </div>
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={submitting || !fullName.trim() || !pwValid || !pwMatch}
+            style={{
+              width: '100%', height: 42, borderRadius: 7,
+              background: '#0F0F0F', color: 'white',
+              border: 'none', cursor: submitting || !fullName.trim() || !pwValid || !pwMatch ? 'not-allowed' : 'pointer',
+              fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+              opacity: submitting || !fullName.trim() || !pwValid || !pwMatch ? 0.55 : 1,
+              marginTop: 4,
+            }}
+          >
+            {submitting ? 'Creating account…' : 'Create account'}
+          </button>
+        </form>
+
+        <div style={{ height: 1, background: 'var(--color-border, #E2DFD8)', margin: '20px 0 16px' }} />
+
+        <p style={{ fontSize: 13, color: 'var(--color-ink-3, #6B6963)', margin: 0, textAlign: 'center' }}>
+          Already have an account?{' '}
+          <a href="/login" style={{ color: '#0A1FB8', fontWeight: 500, textDecoration: 'none' }}>Sign in</a>
+        </p>
       </div>
     </div>
   )
@@ -266,7 +396,7 @@ function InvitePageContent() {
 export default function InvitePage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)' }}>
         <div style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Loading…</div>
       </div>
     }>

@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
   // ── Supplier / Anchor: create an organization row ───────────
   const { bank_id, type, ein, doing_business_as, business_type,
-    state_of_incorporation, address_line1, city, state, zip, anchor_org_id } = body
+    state_of_incorporation, address_line1, city, state, zip } = body
 
   if (!bank_id || !type || !ein) {
     return NextResponse.json(
@@ -123,7 +123,6 @@ export async function POST(request: Request) {
     zip: zip ?? null,
     kyb_status: 'in_progress' satisfies KYBStatus,
     status: 'in_progress' satisfies OrgStatus,
-    ...(anchor_org_id ? { anchor_org_id } : {}),
   }
 
   const { data: org, error: orgError } = await adminClient
@@ -134,7 +133,8 @@ export async function POST(request: Request) {
     .single()
 
   if (orgError || !org) {
-    return NextResponse.json({ error: 'Failed to create organization' }, { status: 500 })
+    console.error('[onboarding/start] org insert error:', orgError)
+    return NextResponse.json({ error: orgError?.message ?? 'Failed to create organization' }, { status: 500 })
   }
 
   const { error: updateError } = await adminClient

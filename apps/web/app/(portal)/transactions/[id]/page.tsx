@@ -300,6 +300,17 @@ function BankActionPanel({
   const { status } = transaction
   const invoiceAmt = transaction.invoice_amount ?? 0
 
+  // Parse parallel negotiation state
+  const negotiationState = (() => {
+    try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} }
+  })()
+  const supplierNeg = negotiationState.supplier_negotiation as { status?: string; bank_offer?: { advance_rate?: number; amount?: number; fee?: number } } | undefined
+  const anchorNeg   = negotiationState.anchor_negotiation   as {
+    type?: string; status?: string;
+    anchor_request?: { date?: string; count?: number; structure?: string; notes?: string };
+    bank_counter?:   { date?: string; count?: number; structure?: string };
+  } | undefined
+
   // Supplier's offered rate (read-only for bank during approval)
   const supplierRatePct = invoiceAmt > 0 && transaction.financing_amount_requested
     ? ((transaction.financing_amount_requested / invoiceAmt) * 100).toFixed(1)
@@ -311,6 +322,13 @@ function BankActionPanel({
   const [counterRate, setCounterRate]   = useState(supplierRatePct)
   const [counterNotes, setCounterNotes] = useState('')
   const [rejectNote, setRejectNote]     = useState('')
+  const [discountFee, setDiscountFee]   = useState(0)
+
+  // Anchor negotiation counter form state
+  const [anchorCounterMode, setAnchorCounterMode]           = useState(false)
+  const [anchorCounterDate, setAnchorCounterDate]           = useState('')
+  const [anchorCounterCount, setAnchorCounterCount]         = useState(2)
+  const [anchorCounterStructure, setAnchorCounterStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
 
   // Wire transfer (shown at financing_approved, separate step)
   const [wireInfo, setWireInfo]         = useState({ bank_name: '', account_number: '', routing_number: '', reference: '' })
@@ -724,10 +742,11 @@ function BankActionPanel({
   }
 
   // ── pending_bank_review / more_info_requested ──────────────────────────────
+  // Supplier reject form (returns early so it can use full width)
   if (mode === 'reject') {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', margin: 0 }}>Supplier financing — rejection reason</p>
         <textarea
           className="form-input"
           rows={4}
@@ -740,7 +759,7 @@ function BankActionPanel({
           className="btn btn-danger btn-full"
           type="button"
           disabled={acting}
-          onClick={() => onAction({ action: 'reject', rejection_reason: rejectNote.trim() })}
+          onClick={() => onAction({ action: 'reject', negotiation_target: 'supplier', rejection_reason: rejectNote.trim() })}
         >
           {acting ? 'Processing…' : 'Confirm rejection'}
         </button>
@@ -755,104 +774,194 @@ function BankActionPanel({
 
   return (
     <div className="action-block">
-      <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
-        {isCounter ? 'Counter-offer' : isPOFinancing ? 'Supplier submitted a purchase order for financing' : isInvoiceFactoring ? 'Supplier submitted this invoice directly for financing' : 'Review financing offer'}
-      </p>
 
-      {/* Supplier's offer — always shown (read-only for bank) */}
-      <div className="calc-panel">
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
-        <div className="calc-row">
-          <span>Invoice amount</span>
-          <span>{fmtAmt(transaction.invoice_amount)}</span>
-        </div>
-        <div className="calc-row">
-          <span>Requested advance rate</span>
-          <span>{supplierRatePct}%</span>
-        </div>
-        <div className="calc-row">
-          <span>Requested amount</span>
-          <span>{fmtAmt(transaction.financing_amount_requested)}</span>
-        </div>
+      {/* ── Panel 1: Supplier financing offer ── */}
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Supplier financing offer</div>
+
+        {supplierNeg?.status === 'approved' ? (
+          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Financing approved ✓</div>
+        ) : supplierNeg?.status === 'counter_offered' ? (
+          <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting supplier</div>
+        ) : (
+          <>
+            {/* Supplier's offer */}
+            <div className="calc-panel">
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
+              <div className="calc-row"><span>Invoice amount</span><span>{fmtAmt(transaction.invoice_amount)}</span></div>
+              <div className="calc-row"><span>Requested advance rate</span><span>{supplierRatePct}%</span></div>
+              <div className="calc-row"><span>Requested amount</span><span>{fmtAmt(transaction.financing_amount_requested)}</span></div>
+            </div>
+
+            {isCounter ? (
+              <>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="form-input mono"
+                      style={{ width: '100%', paddingRight: 32 }}
+                      type="number" min="0" max="100" step="0.1"
+                      value={counterRate}
+                      onChange={e => setCounterRate(e.target.value)}
+                    />
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+                  </div>
+                </div>
+                {counterRateNum > 0 && (
+                  <div className="calc-row">
+                    <span>Counter amount</span>
+                    <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
+                  </div>
+                )}
+                <div>
+                  <label className="field-label">Discount fee ($)</label>
+                  <div className="input-group">
+                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} />
+                    <span className="input-suffix">USD</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+                  <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
+                </div>
+                <button
+                  className="btn btn-primary btn-full"
+                  type="button"
+                  disabled={acting || !counterRateNum || discountFee < 0}
+                  onClick={() => onAction({
+                    action: 'counter_offer', negotiation_target: 'supplier',
+                    apr: counterRateNum,
+                    financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
+                    discount_fee: discountFee, fee_amount: discountFee,
+                    ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
+                  })}
+                >
+                  {acting ? 'Sending…' : 'Send counter-offer'}
+                </button>
+                <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="field-label">Discount fee ($)</label>
+                  <div className="input-group">
+                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} />
+                    <span className="input-suffix">USD</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>Fee charged for early payment</div>
+                </div>
+                <button
+                  className="btn btn-primary btn-full"
+                  type="button"
+                  disabled={acting || !supplierRateNum || discountFee < 0}
+                  onClick={() => onAction({
+                    action: 'approve', negotiation_target: 'supplier',
+                    apr: supplierRateNum,
+                    financing_amount_approved: parseFloat(supplierDisburseAmt.toFixed(2)),
+                    discount_fee: discountFee, fee_amount: discountFee,
+                  })}
+                >
+                  {acting ? 'Processing…' : 'Approve offer'}
+                </button>
+                <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>Counter-offer</button>
+                <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>Reject</button>
+              </>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Counter rate — only shown in counter mode */}
-      {isCounter && (
-        <>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
-            <div style={{ position: 'relative' }}>
-              <input
-                className="form-input mono"
-                style={{ width: '100%', paddingRight: 32 }}
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={counterRate}
-                onChange={e => setCounterRate(e.target.value)}
-              />
-              <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
-            </div>
-          </div>
-          {counterRateNum > 0 && (
-            <div className="calc-row">
-              <span>Counter amount</span>
-              <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
+      {/* ── Panel 2: Anchor repayment request (only if anchor requested something) ── */}
+      {anchorNeg?.type && (
+        <div style={{ border: '1px solid var(--color-amber)', borderRadius: 8, padding: '12px 14px', background: 'rgba(180,83,9,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)' }}>Anchor repayment request</div>
+
+          {/* Request details */}
+          {anchorNeg.type === 'extension' && anchorNeg.anchor_request?.date && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested repayment date: {anchorNeg.anchor_request.date}</div>
+          )}
+          {anchorNeg.type === 'installment' && anchorNeg.anchor_request && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested: {anchorNeg.anchor_request.count} {anchorNeg.anchor_request.structure} installments</div>
+          )}
+          {anchorNeg.anchor_request?.notes && (
+            <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Notes: {anchorNeg.anchor_request.notes}</div>
+          )}
+
+          {anchorNeg.status === 'pending' && !anchorCounterMode && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button className="btn btn-primary btn-sm" type="button" disabled={acting}
+                onClick={() => onAction({ action: 'approve', negotiation_target: 'anchor' })}>
+                {acting ? 'Processing…' : 'Approve request'}
+              </button>
+              <button className="btn btn-ghost btn-sm" type="button" disabled={acting} onClick={() => setAnchorCounterMode(true)}>
+                Counter-offer
+              </button>
+              <button className="btn btn-danger btn-sm" type="button" disabled={acting}
+                onClick={() => onAction({ action: 'reject', negotiation_target: 'anchor' })}>
+                Decline
+              </button>
             </div>
           )}
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
-            <textarea
-              className="form-input"
-              rows={2}
-              value={counterNotes}
-              onChange={e => setCounterNotes(e.target.value)}
-              style={{ width: '100%', resize: 'vertical' }}
-              placeholder="Reason for counter-offer…"
-            />
-          </div>
-          <button
-            className="btn btn-primary btn-full"
-            type="button"
-            disabled={acting || !counterRateNum}
-            onClick={() => onAction({
-              action:                    'counter_offer',
-              apr:                       counterRateNum,
-              financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
-              ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
-            })}
-          >
-            {acting ? 'Sending…' : 'Send counter-offer'}
-          </button>
-          <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>
-            Cancel
-          </button>
-        </>
-      )}
 
-      {/* Approve / counter / reject buttons (non-counter mode) */}
-      {!isCounter && (
-        <>
-          <button
-            className="btn btn-primary btn-full"
-            type="button"
-            disabled={acting || !supplierRateNum}
-            onClick={() => onAction({
-              action:                    'approve',
-              apr:                       supplierRateNum,
-              financing_amount_approved: parseFloat(supplierDisburseAmt.toFixed(2)),
-            })}
-          >
-            {acting ? 'Processing…' : 'Approve offer'}
-          </button>
-          <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>
-            Counter-offer
-          </button>
-          <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>
-            Reject
-          </button>
-        </>
+          {anchorNeg.status === 'pending' && anchorCounterMode && (
+            <>
+              {anchorNeg.type === 'extension' && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter repayment date</div>
+                  <input type="date" className="input" value={anchorCounterDate} onChange={e => setAnchorCounterDate(e.target.value)} style={{ width: '100%' }} />
+                </div>
+              )}
+              {anchorNeg.type === 'installment' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Number of installments</div>
+                    <input type="number" className="input" min="2" max="52" value={anchorCounterCount} onChange={e => setAnchorCounterCount(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+                    <select className="input" value={anchorCounterStructure} onChange={e => setAnchorCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Bi-weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  disabled={acting || (anchorNeg.type === 'extension' && !anchorCounterDate)}
+                  onClick={() => onAction({
+                    action: 'counter_offer', negotiation_target: 'anchor',
+                    ...(anchorNeg.type === 'extension' ? { counter_date: anchorCounterDate } : { counter_count: anchorCounterCount, counter_structure: anchorCounterStructure }),
+                  })}
+                >
+                  {acting ? 'Sending…' : 'Submit counter'}
+                </button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setAnchorCounterMode(false)}>Cancel</button>
+              </div>
+            </>
+          )}
+
+          {anchorNeg.status === 'counter_offered' && (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting anchor response</div>
+              {anchorNeg.bank_counter?.date && <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginTop: 4 }}>Counter date: {anchorNeg.bank_counter.date}</div>}
+              {anchorNeg.bank_counter?.count != null && <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginTop: 4 }}>Counter: {anchorNeg.bank_counter.count} {anchorNeg.bank_counter.structure} installments</div>}
+            </div>
+          )}
+
+          {anchorNeg.status === 'approved' && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Repayment terms agreed ✓</div>
+          )}
+
+          {anchorNeg.status === 'rejected' && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Standard repayment terms apply</div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -879,6 +988,12 @@ function AnchorActionPanel({
   const [rejectReason, setRejectReason]     = useState('')
   const [disputeReason, setDisputeReason]   = useState('')
   const [showDisputeForm, setShowDisputeForm] = useState(false)
+  const [anchorApprovalMode, setAnchorApprovalMode] = useState<'none'|'extend'|'installment'>('none')
+  const [extendDate, setExtendDate] = useState('')
+  const [extendNotes, setExtendNotes] = useState('')
+  const [installmentCount, setInstallmentCount] = useState(2)
+  const [installmentStructure, setInstallmentStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
+  const [installmentNotes, setInstallmentNotes] = useState('')
 
   // PO financing: passive until pending_anchor_confirmation
   if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
@@ -1037,14 +1152,90 @@ function AnchorActionPanel({
     )
   }
 
+  // At pending_bank_review / more_info_requested: show two-card view
+  if (transaction.status === 'pending_bank_review' || transaction.status === 'more_info_requested') {
+    const negState   = (() => { try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} } })()
+    const anchorNegV = negState.anchor_negotiation as {
+      type?: string; status?: string;
+      anchor_request?: { date?: string; count?: number; structure?: string; notes?: string };
+      bank_counter?:   { date?: string; count?: number; structure?: string };
+    } | undefined
+
+    return (
+      <div className="action-block">
+        {/* Card 1: Invoice approval — read-only */}
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 4 }}>Your invoice approval</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Approved — awaiting bank review</div>
+        </div>
+
+        {/* Card 2: Repayment request (only when anchor requested something) */}
+        {anchorNegV?.type && (
+          <div style={{ border: '1px solid var(--color-amber)', borderRadius: 8, padding: '12px 14px', background: 'rgba(180,83,9,0.04)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Your repayment request</div>
+
+            {anchorNegV.type === 'extension' && anchorNegV.anchor_request?.date && (
+              <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+                Requested date: {anchorNegV.anchor_request.date}
+              </div>
+            )}
+            {anchorNegV.type === 'installment' && anchorNegV.anchor_request && (
+              <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+                Requested: {anchorNegV.anchor_request.count} {anchorNegV.anchor_request.structure} installments
+              </div>
+            )}
+            {anchorNegV.anchor_request?.notes && (
+              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>
+                Notes: {anchorNegV.anchor_request.notes}
+              </div>
+            )}
+
+            {anchorNegV.status === 'pending' && (
+              <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Awaiting bank decision</div>
+            )}
+
+            {anchorNegV.status === 'counter_offered' && (
+              <>
+                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-ink-1)', marginBottom: 6 }}>Bank counter-proposal:</div>
+                {anchorNegV.bank_counter?.date && (
+                  <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Counter date: {anchorNegV.bank_counter.date}</div>
+                )}
+                {anchorNegV.bank_counter?.count != null && (
+                  <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+                    Counter: {anchorNegV.bank_counter.count} {anchorNegV.bank_counter.structure} installments
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-primary btn-sm" type="button" disabled={acting}
+                    onClick={() => onAction({ action: 'accept_anchor_counter' })}>
+                    {acting ? 'Processing…' : 'Accept'}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" type="button" disabled={acting}
+                    onClick={() => onAction({ action: 'reject_anchor_counter' })}>
+                    Decline
+                  </button>
+                </div>
+              </>
+            )}
+
+            {anchorNegV.status === 'approved' && (
+              <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Your repayment request was approved</div>
+            )}
+            {anchorNegV.status === 'rejected' && (
+              <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Bank declined — standard terms apply</div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (transaction.status !== 'pending_anchor_approval') {
     return (
       <div className={`action-passive ${transaction.status === 'rejected' ? '' : 'muted'}`}>
         {transaction.status === 'rejected'
           ? 'This transaction was rejected.'
-          : transaction.status === 'pending_bank_review'
-            || transaction.status === 'more_info_requested'
-            || transaction.status === 'pending_supplier_counter_review'
+          : transaction.status === 'pending_supplier_counter_review'
           ? 'Invoice approved — awaiting bank review.'
           : transaction.status === 'financing_approved'
           ? 'Financing approved — supplier will receive payment shortly.'
@@ -1055,9 +1246,17 @@ function AnchorActionPanel({
     )
   }
 
-  async function handleApprove() {
-    await onAction({ action: 'approve' })
+  async function handleAnchorApprove(mode: 'normal'|'extend'|'installment') {
+    if (mode === 'normal') {
+      await onAction({ action: 'approve' })
+    } else if (mode === 'extend') {
+      if (!extendDate) return
+      await onAction({ action: 'approve_with_extension', extension_date: extendDate, ...(extendNotes ? { extension_notes: extendNotes } : {}) })
+    } else {
+      await onAction({ action: 'approve_with_installment', installment_count: installmentCount, installment_structure: installmentStructure, ...(installmentNotes ? { installment_notes: installmentNotes } : {}) })
+    }
     onSuccess('Invoice approved — sent to bank for review')
+    setAnchorApprovalMode('none')
   }
 
   if (showRejectForm) {
@@ -1092,13 +1291,154 @@ function AnchorActionPanel({
     )
   }
 
+  if (anchorApprovalMode === 'extend') {
+    return (
+      <div className="action-block">
+        <div className="card-body" style={{ borderTop: '1px solid var(--color-border)', marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
+            Request payment extension
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="field-label">Requested repayment date</label>
+            <input
+              className="input"
+              type="date"
+              value={extendDate}
+              min={transaction?.invoice_due_date ?? ''}
+              onChange={e => setExtendDate(e.target.value)}
+              style={{ width: '100%' }}
+            />
+            <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>
+              Must be after original due date ({transaction?.invoice_due_date})
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="field-label">Notes to bank (optional)</label>
+            <textarea
+              className="input"
+              value={extendNotes}
+              onChange={e => setExtendNotes(e.target.value)}
+              style={{ height: 60, resize: 'none', width: '100%' }}
+              placeholder="Reason for extension request..."
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              disabled={!extendDate || acting}
+              onClick={() => handleAnchorApprove('extend')}
+            >
+              Submit extension request
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              onClick={() => setAnchorApprovalMode('none')}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (anchorApprovalMode === 'installment') {
+    return (
+      <div className="action-block">
+        <div className="card-body" style={{ borderTop: '1px solid var(--color-border)', marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
+            Request installment structure
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label className="field-label">Number of installments</label>
+              <input
+                className="input"
+                type="number"
+                min="2" max="52"
+                value={installmentCount}
+                onChange={e => setInstallmentCount(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="field-label">Frequency</label>
+              <select
+                className="input"
+                value={installmentStructure}
+                onChange={e => setInstallmentStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}
+              >
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 8, fontSize: 12.5, color: 'var(--color-ink-3)' }}>
+            Example: {installmentCount} {installmentStructure} installments
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="field-label">Notes to bank (optional)</label>
+            <textarea
+              className="input"
+              value={installmentNotes}
+              onChange={e => setInstallmentNotes(e.target.value)}
+              style={{ height: 60, resize: 'none', width: '100%' }}
+              placeholder="Additional details..."
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              disabled={acting}
+              onClick={() => handleAnchorApprove('installment')}
+            >
+              Submit installment request
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              onClick={() => setAnchorApprovalMode('none')}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="action-block">
       <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
         Review and confirm this invoice before it is sent to the bank for financing.
       </p>
-      <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleApprove}>
-        {acting ? 'Processing…' : 'Approve invoice'}
+      <button
+        className="btn btn-primary btn-full"
+        type="button"
+        disabled={acting}
+        onClick={() => handleAnchorApprove('normal')}
+      >
+        {acting ? 'Processing…' : 'Approve normally'}
+      </button>
+      <button
+        className="btn btn-ghost btn-full"
+        type="button"
+        disabled={acting}
+        onClick={() => setAnchorApprovalMode('extend')}
+      >
+        Approve + Extend payment
+      </button>
+      <button
+        className="btn btn-ghost btn-full"
+        type="button"
+        disabled={acting}
+        onClick={() => setAnchorApprovalMode('installment')}
+      >
+        Approve + Installment structure
       </button>
       <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
         Reject
@@ -1620,6 +1960,16 @@ export default function TransactionDetailPage() {
   const isPOFinancing = txn?.financing_type === 'po_financing'
   const isInvoiceFactoring = txn?.type === 'invoice_factoring' || txn?.financing_type === 'invoice_factoring'
 
+  const txnNegState = (() => { try { return JSON.parse(txn?.bank_approval_notes ?? '{}') } catch { return {} } })()
+  const txnAnchorNeg = txnNegState.anchor_negotiation as { type?: string; status?: string } | undefined
+  const hasAnchorRepaymentRequest = !!txnAnchorNeg?.type
+
+  const rejectionEvent = events.find(e => e.event_type === 'status_change' && e.to_status === 'rejected')
+    ?? events.find(e => e.to_status === 'rejected')
+  const txnRejectionReason = rejectionEvent?.notes ?? null
+
+  const showFinancials = txn ? !['rejected', 'cancelled'].includes(txn.status) : true
+
   const typeLabel = humanizeType(txn?.type ?? txn?.financing_type ?? null)
   const subtitle = txn
     ? [txn.supplier_name, txn.anchor_name, txn.program_name, txn.bank_name].filter(Boolean).join(' · ')
@@ -1692,18 +2042,18 @@ export default function TransactionDetailPage() {
                     <div className="fs-cell">
                       <span className="fs-label">Advance rate</span>
                       <span className="fs-value">
-                        {displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
+                        {showFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
                       </span>
                     </div>
                     <div className="fs-cell">
                       <span className="fs-label">Amount disbursed</span>
-                      <span className={`fs-value ${txn.financing_amount_approved != null ? 'green' : ''}`}>
-                        {fmtAmt(txn.financing_amount_approved)}
+                      <span className={`fs-value ${showFinancials && txn.financing_amount_approved != null ? 'green' : ''}`}>
+                        {showFinancials ? fmtAmt(txn.financing_amount_approved) : '—'}
                       </span>
                     </div>
                     <div className="fs-cell">
                       <span className="fs-label">Discount fee</span>
-                      <span className="fs-value">{fmtAmt(txn.fee_amount)}</span>
+                      <span className="fs-value">{showFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
                     </div>
                   </div>
                   {/* Wire info in summary — only for supplier (API nulls it for anchor) */}
@@ -2116,30 +2466,78 @@ export default function TransactionDetailPage() {
 
               {/* ── RIGHT column (sticky) ── */}
               <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start' }}>
+                {txn.status === 'rejected' && (
+                  <div style={{
+                    background: 'var(--color-red-bg, rgba(220,38,38,0.08))',
+                    border: '1px solid var(--color-red, #dc2626)',
+                    borderRadius: 8, padding: '10px 14px',
+                    fontSize: 13, color: 'var(--color-red, #dc2626)',
+                    fontWeight: 500, marginBottom: 12,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                    ✕ This transaction was rejected
+                    {txnRejectionReason && ` — ${txnRejectionReason}`}
+                  </div>
+                )}
                 <div className="card">
                   <div className="card-head">
                     <h3 className="t-card-head">Status tracker</h3>
                   </div>
 
                   <div className="stepper">
-                    {(isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS).map((step, i) => {
-                      const state = isPOFinancing
-                        ? poStepperState(step.key, txn.status)
-                        : isInvoiceFactoring
-                        ? ifStepperState(step.key, txn.status)
-                        : rfStepperState(step.key, txn.status)
+                    {(() => {
+                      // For RF transactions with an anchor repayment request, inject a dynamic step
+                      let steps = isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS
+                      type StepDef = { key: string; label: string; stateOverride?: 'done'|'current'|'todo' }
+                      let stepsWithOverride: StepDef[] = steps
+
+                      if (!isPOFinancing && !isInvoiceFactoring && hasAnchorRepaymentRequest) {
+                        const anchorStepState: 'done'|'current'|'todo' =
+                          txn.status === 'pending_anchor_approval' ? 'todo'
+                          : txnAnchorNeg?.status === 'pending' || txnAnchorNeg?.status === 'counter_offered' ? 'current'
+                          : txnAnchorNeg?.status === 'approved' || txnAnchorNeg?.status === 'rejected' ? 'done'
+                          : 'todo'
+
+                        stepsWithOverride = [
+                          { key: 'pending_anchor_approval', label: 'Anchor Review' },
+                          { key: 'anchor_repayment_negotiation', label: 'Repayment Request', stateOverride: anchorStepState },
+                          ...RF_STEPPER_STEPS.slice(1),
+                        ]
+                      }
+
+                      return stepsWithOverride.map((step, i) => {
+                      const state: 'done'|'current'|'todo' = (step as StepDef).stateOverride ?? (
+                        isPOFinancing
+                          ? poStepperState(step.key, txn.status)
+                          : isInvoiceFactoring
+                          ? ifStepperState(step.key, txn.status)
+                          : rfStepperState(step.key, txn.status)
+                      )
+                      const isRejectedStep = (txn.status === 'rejected' || txn.status === 'in_dispute') && (state === 'done' || state === 'current')
                       return (
                         <div key={step.key} className={`step ${state}`}>
-                          <span className={`step-circle ${state}`}>
-                            {state === 'done' ? <Icon name="check" size={11} /> : i + 1}
-                          </span>
+                          {isRejectedStep ? (
+                            <div style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              background: 'var(--color-red, #dc2626)',
+                              display: 'flex', alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white', fontSize: 11, fontWeight: 700,
+                              flexShrink: 0,
+                            }}>✕</div>
+                          ) : (
+                            <span className={`step-circle ${state}`}>
+                              {state === 'done' ? <Icon name="check" size={11} /> : i + 1}
+                            </span>
+                          )}
                           <span className={`step-line ${state === 'done' ? 'done' : ''}`} />
                           <div className="step-body">
                             <span className="step-name">{step.label}</span>
                           </div>
                         </div>
                       )
-                    })}
+                    })
+                    })()}
                   </div>
 
                   {actionSuccess && (

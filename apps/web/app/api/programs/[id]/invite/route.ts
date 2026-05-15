@@ -106,6 +106,9 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 })
   }
 
+  console.log('[invite] Sending email to:', invitation.email)
+  console.log('[invite] Invite URL:', `${process.env.NEXT_PUBLIC_APP_URL}/invite?token=${invitation.token}`)
+
   ;(async () => {
     const { data: bankData } = await adminClient
       .from('banks')
@@ -167,15 +170,21 @@ export async function PATCH(
     return NextResponse.json({ error: 'invitation_id is required' }, { status: 400 })
   }
 
-  const { error: updateError } = await adminClient
+  const { data: updated, error: updateError } = await adminClient
     .from('invitations')
-    .update({ status: 'cancelled' })
+    .update({ status: 'revoked' })
     .eq('id', invitation_id)
     .eq('program_id', programId)
     .eq('status', 'pending')
+    .select('id')
 
   if (updateError) {
+    console.error('Cancel invitation error:', updateError)
     return NextResponse.json({ error: 'Failed to cancel invitation' }, { status: 500 })
+  }
+
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ error: 'Invitation not found or already cancelled' }, { status: 404 })
   }
 
   return NextResponse.json({ success: true })

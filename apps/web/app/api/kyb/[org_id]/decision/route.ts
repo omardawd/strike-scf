@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { KYBStatus, OrgStatus, RiskTier, CreditDecision } from '@strike-scf/types'
+import { sendEmail, kybApprovalEmailHtml, kybRejectionEmailHtml } from '@/lib/email'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -146,6 +147,102 @@ export async function POST(
     if (updateErr) {
       console.error('KYB decision error — organizations update:', updateErr)
       return NextResponse.json({ error: updateErr.message ?? 'Failed to update organization' }, { status: 500 })
+    }
+
+    // Fire-and-forget post-decision side-effects
+    const isApproved = decision === 'approved' || decision === 'override_approved'
+    const isRejected = decision === 'rejected'
+    if (isApproved || isRejected) {
+      ;(async () => {
+        // Fetch all users in this org
+        const { data: orgUsers } = await adminClient
+          .from('users')
+          .select('id, full_name')
+          .eq('org_id', org_id)
+        if (!orgUsers?.length) return
+
+        // Fetch org name + type
+        const { data: orgData } = await adminClient
+          .from('organizations')
+          .select('legal_name, org_type')
+          .eq('id', org_id)
+          .single()
+
+        // Resolve each user's email via auth
+        const authLookups = await Promise.all(
+          orgUsers.map(u => adminClient.auth.admin.getUserById(u.id))
+        )
+        const usersWithEmail = orgUsers.map((u, i) => ({
+          id:        u.id,
+          full_name: u.full_name as string | null,
+          email:     authLookups[i]?.data?.user?.email ?? '',
+        })).filter(u => u.email)
+
+        const orgName = (orgData?.legal_name as string | undefined) ?? 'your organization'
+
+        if (isApproved) {
+          // Find the accepted invitation to get program_id + anchor_org_id
+          const emails = usersWithEmail.map(u => u.email)
+          const { data: invitation } = await adminClient
+            .from('invitations')
+            .select('program_id, anchor_org_id, role')
+            .eq('status', 'accepted')
+            .in('email', emails)
+            .order('accepted_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (invitation?.program_id) {
+            const anchorOrgId = invitation.role === 'anchor' ? org_id : (invitation.anchor_org_id ?? org_id)
+            await adminClient
+              .from('program_enrollments')
+              .upsert(
+                { program_id: invitation.program_id, org_id, anchor_org_id: anchorOrgId, status: 'active' },
+                { onConflict: 'program_id,org_id' }
+              )
+          }
+
+          // Send approval email to all users
+          for (const u of usersWithEmail) {
+            await sendEmail({
+              to:      u.email,
+              subject: `Your application to Strike SCF has been approved`,
+              html:    kybApprovalEmailHtml({
+                recipientName: u.full_name ?? u.email,
+                orgName,
+              }),
+            })
+          }
+        } else {
+          // Send rejection email to all users first
+          for (const u of usersWithEmail) {
+            await sendEmail({
+              to:      u.email,
+              subject: `Update on your Strike SCF application`,
+              html:    kybRejectionEmailHtml({
+                recipientName: u.full_name ?? u.email,
+                orgName,
+                reason: rejection_reason,
+              }),
+            })
+          }
+
+          // Delete all org-related records in dependency order
+          await adminClient.from('credit_decision_records').delete().eq('org_id', org_id)
+          await adminClient.from('credit_scores').delete().eq('org_id', org_id)
+          await adminClient.from('documents').delete().eq('org_id', org_id)
+          await adminClient.from('program_enrollments').delete().eq('org_id', org_id)
+          await adminClient.from('users').delete().eq('org_id', org_id)
+
+          // Delete auth users
+          for (const u of orgUsers) {
+            await adminClient.auth.admin.deleteUser(u.id)
+          }
+
+          // Delete the organization last
+          await adminClient.from('organizations').delete().eq('id', org_id)
+        }
+      })().catch(err => console.error('KYB post-decision side-effects error:', err))
     }
 
     return NextResponse.json({ success: true, organization: updatedOrg })
