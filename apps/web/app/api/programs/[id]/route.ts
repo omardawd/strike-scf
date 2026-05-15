@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: userData, error: userError } = await adminClient
     .from('users')
-    .select('id, role, bank_id, org_id')
+    .select('id, role, bank_id, org_id, email')
     .eq('id', user.id)
     .single()
 
@@ -44,15 +44,27 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   } else {
-    const { data: enrollment } = await adminClient
-      .from('program_enrollments')
-      .select('id')
-      .eq('program_id', id)
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active')
-      .single()
+    // Allow active enrollments OR pending/accepted invitations (invited user viewing before approval)
+    const [enrollResult, inviteResult] = await Promise.all([
+      adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('program_id', id)
+        .eq('org_id', userData.org_id)
+        .eq('status', 'active')
+        .maybeSingle(),
+      userData.email
+        ? adminClient
+            .from('invitations')
+            .select('id')
+            .eq('program_id', id)
+            .eq('email', userData.email as string)
+            .in('status', ['pending', 'accepted'])
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
 
-    if (!enrollment) {
+    if (!enrollResult.data && !inviteResult.data) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   }

@@ -154,29 +154,18 @@ export async function POST(
     const isRejected = decision === 'rejected'
     if (isApproved || isRejected) {
       ;(async () => {
-        // Fetch all users in this org
-        const { data: orgUsers } = await adminClient
-          .from('users')
-          .select('id, full_name')
-          .eq('org_id', org_id)
+        // Fetch all users in this org (email lives in public.users already)
+        const [{ data: orgUsers }, { data: orgData }] = await Promise.all([
+          adminClient.from('users').select('id, full_name, email').eq('org_id', org_id),
+          adminClient.from('organizations').select('legal_name, type').eq('id', org_id).single(),
+        ])
         if (!orgUsers?.length) return
 
-        // Fetch org name + type
-        const { data: orgData } = await adminClient
-          .from('organizations')
-          .select('legal_name, org_type')
-          .eq('id', org_id)
-          .single()
-
-        // Resolve each user's email via auth
-        const authLookups = await Promise.all(
-          orgUsers.map(u => adminClient.auth.admin.getUserById(u.id))
-        )
-        const usersWithEmail = orgUsers.map((u, i) => ({
+        const usersWithEmail = orgUsers.filter(u => u.email).map(u => ({
           id:        u.id,
           full_name: u.full_name as string | null,
-          email:     authLookups[i]?.data?.user?.email ?? '',
-        })).filter(u => u.email)
+          email:     u.email as string,
+        }))
 
         const orgName = (orgData?.legal_name as string | undefined) ?? 'your organization'
 
