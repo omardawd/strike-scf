@@ -5,6 +5,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -93,6 +94,16 @@ interface AnalyticsData {
   monthly_volume: Array<{ label: string; count: number; value: number }>
 }
 
+interface TxRow {
+  id: string
+  invoice_number: string | null
+  invoice_amount: number | null
+  financing_amount_approved: number | null
+  status: string
+  created_at: string
+  program_id: string
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function statusBadge(s: string) {
   const m: Record<string, string> = { active: 'badge-active', draft: 'badge-draft', closed: 'badge-draft', pending: 'badge-pending' }
@@ -121,6 +132,27 @@ function initials(name: string) {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function txnBadge(s: string) {
+  if (s === 'completed') return 'badge-funded'
+  if (s === 'funded' || s === 'financing_approved') return 'badge-active'
+  if (s === 'rejected') return 'badge-rejected'
+  return 'badge-pending'
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending_anchor_approval: 'Pending Anchor',
+  pending_bank_review:     'Pending Bank',
+  more_info_requested:     'More Info',
+  financing_approved:      'Approved',
+  funded:                  'Funded',
+  completed:               'Completed',
+  rejected:                'Rejected',
+}
+
+function fmtCurrency(n: number) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 
@@ -208,8 +240,12 @@ export default function ProgramDetailPage() {
   const [pendingSuppliers, setPendingSuppliers] = useState<PendingSupplierInv[]>([])
   const [kybAnchors, setKybAnchors] = useState<KybPendingEntry[]>([])
   const [kybSuppliers, setKybSuppliers] = useState<KybPendingEntry[]>([])
+  const [signedUpAnchors, setSignedUpAnchors] = useState<Array<{ email: string }>>([])
+  const [signedUpSuppliers, setSignedUpSuppliers] = useState<Array<{ email: string }>>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
+  const [isIFOnly, setIsIFOnly]       = useState(false)
+  const [ifTxns, setIfTxns]           = useState<TxRow[]>([])
   const [networkVersion, setNetworkVersion] = useState(0)
   const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
@@ -254,6 +290,8 @@ export default function ProgramDetailPage() {
 
       if (results[1]!.ok) {
         const netData = await results[1]!.json()
+        const localIsIFOnly = netData.isInvoiceFactoring === true
+        setIsIFOnly(localIsIFOnly)
         setAnchors(netData.anchors ?? [])
         setSuppliers(netData.suppliers ?? [])
         setAnchorList(netData.anchors ?? [])
@@ -261,6 +299,17 @@ export default function ProgramDetailPage() {
         setPendingSuppliers(netData.pending_suppliers ?? [])
         setKybAnchors(netData.kyb_anchors ?? [])
         setKybSuppliers(netData.kyb_suppliers ?? [])
+        setSignedUpAnchors(netData.signed_up_anchors ?? [])
+        setSignedUpSuppliers(netData.signed_up_suppliers ?? [])
+
+        if (portal === 'supplier' && localIsIFOnly) {
+          const txRes = await fetch('/api/transactions')
+          if (txRes.ok) {
+            const txData = await txRes.json()
+            const all: TxRow[] = txData.transactions ?? txData.data ?? []
+            setIfTxns(all.filter((t: TxRow) => t.program_id === id).slice(0, 20))
+          }
+        }
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -397,6 +446,11 @@ export default function ProgramDetailPage() {
     )
   }
 
+  if (isIFOnly && portal === 'anchor') {
+    router.push('/programs')
+    return null
+  }
+
   return (
     <PortalShell activeSection="programs">
       <Topbar
@@ -409,9 +463,13 @@ export default function ProgramDetailPage() {
         actions={
           <>
             {portal === 'bank' && program && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('anchor')}>
-                <Icon name="plus" size={14} /> Invite Anchor
-              </button>
+              isIFOnly
+                ? <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
+                    <Icon name="plus" size={14} /> Invite Supplier
+                  </button>
+                : <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('anchor')}>
+                    <Icon name="plus" size={14} /> Invite Anchor
+                  </button>
             )}
             {portal === 'anchor' && (
               <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
@@ -575,11 +633,84 @@ export default function ProgramDetailPage() {
               </div>
             )}
 
+            {/* ── BANK + IF: Suppliers ── */}
+            {portal === 'bank' && isIFOnly && (
+              <div>
+                <div className="section-title" style={{ marginBottom: 12 }}>Suppliers</div>
+                {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
+                  <div className="card">
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
+                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers enrolled yet.</div>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
+                        <Icon name="plus" size={14} /> Invite a supplier
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {cancelError && (
+                      <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                        <Icon name="error" size={16} className="alert-icon" />
+                        <div className="alert-body">{cancelError}</div>
+                      </div>
+                    )}
+                    {suppliers.map(s => (
+                      <NetworkCard
+                        key={s.id}
+                        name={s.legal_name}
+                        kybStatus={s.kyb_status}
+                        stats={[
+                          { label: 'Transactions', value: s.transaction_count },
+                          { label: 'KYB Status',   value: kybLabel(s.kyb_status) },
+                          { label: 'Joined',       value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
+                        ]}
+                        onClick={() => router.push(`/programs/${id}/supplier/${s.id}`)}
+                      />
+                    ))}
+                    {pendingSuppliers.map(inv => {
+                      const emailInitials = inv.email.slice(0, 2).toUpperCase()
+                      return (
+                        <div
+                          key={inv.id}
+                          className="network-card"
+                          style={{ cursor: 'default', marginBottom: 12, opacity: 0.75 }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div className="avatar">{emailInitials}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {inv.email}
+                              </div>
+                              <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span className="badge badge-pending">Invited</span>
+                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
+                              </div>
+                            </div>
+                            <button className="btn btn-ghost btn-sm" type="button" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }} onClick={() => cancelInvite(inv.id, 'supplier')}>
+                              Cancel
+                            </button>
+                          </div>
+                          <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                            {['Transactions', 'KYB Status'].map(label => (
+                              <div key={label}>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            )}
+
             {/* ── BANK: Anchor & Supplier Network ── */}
-            {portal === 'bank' && (
+            {portal === 'bank' && !isIFOnly && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>Anchor &amp; Supplier Network</div>
-                {anchors.length === 0 && pendingAnchors.length === 0 && kybAnchors.length === 0 ? (
+                {anchors.length === 0 && pendingAnchors.length === 0 && kybAnchors.length === 0 && signedUpAnchors.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No anchors enrolled yet.</div>
@@ -616,7 +747,7 @@ export default function ProgramDetailPage() {
                         key={org.id}
                         className="network-card"
                         style={{ cursor: 'pointer', marginBottom: 12 }}
-                        onClick={() => router.push(`/kyb/${org.id}`)}
+                        onClick={() => router.push(`/programs/${id}/anchor/${org.id}`)}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                           <div className="avatar">{initials(org.legal_name)}</div>
@@ -643,7 +774,7 @@ export default function ProgramDetailPage() {
                         key={org.id}
                         className="network-card"
                         style={{ cursor: 'pointer', marginBottom: 12 }}
-                        onClick={() => router.push(`/kyb/${org.id}`)}
+                        onClick={() => router.push(org.anchor_org_id ? `/programs/${id}/anchor/${org.anchor_org_id}/supplier/${org.id}` : `/kyb/${org.id}`)}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                           <div className="avatar">{initials(org.legal_name)}</div>
@@ -701,6 +832,32 @@ export default function ProgramDetailPage() {
                         </div>
                       )
                     })}
+                    {signedUpAnchors.map(su => (
+                      <div
+                        key={su.email}
+                        className="network-card"
+                        style={{ cursor: 'default', marginBottom: 12, opacity: 0.75 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <div className="avatar">{su.email.slice(0, 2).toUpperCase()}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="badge badge-draft">Setting up</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+                          {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
+                            <div key={label}>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>
@@ -710,7 +867,7 @@ export default function ProgramDetailPage() {
             {portal === 'anchor' && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>My Suppliers</div>
-                {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 ? (
+                {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers yet.</div>
@@ -783,19 +940,52 @@ export default function ProgramDetailPage() {
                         </div>
                       )
                     })}
-                    {kybSuppliers.map(org => (
+                    {kybSuppliers.map(org => {
+                      const isApproved = org.kyb_status === 'approved'
+                      return (
+                        <div
+                          key={org.id}
+                          className="network-card"
+                          style={{ cursor: isApproved ? 'pointer' : 'default', marginBottom: 12, opacity: isApproved ? 1 : 0.85 }}
+                          onClick={isApproved ? () => router.push(`/programs/${id}/anchor/${user?.org_id}/supplier/${org.id}`) : undefined}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div className="avatar">{initials(org.legal_name)}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="network-name">{org.legal_name}</div>
+                              <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {isApproved && <span className="verified-dot" />}
+                                <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>
+                                  {isApproved ? 'View supplier →' : 'Awaiting KYB approval'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                            {['Transactions', 'Latest status'].map(label => (
+                              <div key={label}>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {signedUpSuppliers.map(su => (
                       <div
-                        key={org.id}
+                        key={su.email}
                         className="network-card"
-                        style={{ cursor: 'default', marginBottom: 12, opacity: 0.85 }}
+                        style={{ cursor: 'default', marginBottom: 12, opacity: 0.75 }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                          <div className="avatar">{initials(org.legal_name)}</div>
+                          <div className="avatar">{su.email.slice(0, 2).toUpperCase()}</div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="network-name">{org.legal_name}</div>
+                            <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Awaiting KYB approval</span>
+                              <span className="badge badge-draft">Setting up</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
                             </div>
                           </div>
                         </div>
@@ -814,8 +1004,59 @@ export default function ProgramDetailPage() {
               </div>
             )}
 
+            {/* ── SUPPLIER + IF: Transactions ── */}
+            {portal === 'supplier' && isIFOnly && (
+              <div>
+                <div className="section-title" style={{ marginBottom: 12 }}>Transactions</div>
+                {ifTxns.length === 0 ? (
+                  <div className="card">
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
+                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No transactions yet.</div>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => pushTransactionNew(router)}>
+                        <Icon name="plus" size={14} /> New Transaction
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="card">
+                    <div className="card-head">
+                      <h3 className="t-card-head">My Transactions</h3>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => pushTransactionNew(router)}>
+                        <Icon name="plus" size={14} /> New
+                      </button>
+                    </div>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Invoice #</th>
+                          <th style={{ textAlign: 'right' }}>Amount</th>
+                          <th>Status</th>
+                          <th>Date</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ifTxns.map(t => (
+                          <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, t.id)}>
+                            <td style={{ fontSize: 13 }}>{t.invoice_number ?? t.id.slice(0, 8) + '…'}</td>
+                            <td style={{ textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                              {t.financing_amount_approved != null ? fmtCurrency(t.financing_amount_approved)
+                                : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
+                            </td>
+                            <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
+                            <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
+                            <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── SUPPLIER: My Anchor ── */}
-            {portal === 'supplier' && (
+            {portal === 'supplier' && !isIFOnly && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
                 {anchorList.length === 0 ? (

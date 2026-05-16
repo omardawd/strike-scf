@@ -7,7 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
+const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
 
 export async function GET(
   _request: Request,
@@ -44,22 +45,44 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   } else {
-    // Allow active enrollments OR pending/accepted invitations (invited user viewing before approval)
+    // Allow active enrollments OR pending/accepted invitations (invited user viewing before approval).
+    // Anchors: match by anchor_org_id (covers both their own row and supplier rows under them).
+    // Suppliers: match by org_id.
+    const isAnchor = ANCHOR_ROLES.includes(userData.role)
+
+    // public.users.email may be null for older invited users — fall back to auth.users
+    let userEmail = userData.email as string | null
+    if (!userEmail) {
+      const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
+      userEmail = authUser?.user?.email ?? null
+    }
+
     const [enrollResult, inviteResult] = await Promise.all([
-      adminClient
-        .from('program_enrollments')
-        .select('id')
-        .eq('program_id', id)
-        .eq('org_id', userData.org_id)
-        .eq('status', 'active')
-        .maybeSingle(),
-      userData.email
+      isAnchor
+        ? adminClient
+            .from('program_enrollments')
+            .select('id')
+            .eq('program_id', id)
+            .eq('anchor_org_id', userData.org_id)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle()
+        : adminClient
+            .from('program_enrollments')
+            .select('id')
+            .eq('program_id', id)
+            .eq('org_id', userData.org_id)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle(),
+      userEmail
         ? adminClient
             .from('invitations')
             .select('id')
             .eq('program_id', id)
-            .eq('email', userData.email as string)
+            .eq('email', userEmail)
             .in('status', ['pending', 'accepted'])
+            .limit(1)
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ])

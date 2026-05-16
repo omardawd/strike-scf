@@ -185,19 +185,33 @@ export async function POST(
           const anchorOrgId = invitation.role === 'anchor'
             ? org_id
             : (invitation.anchor_org_id ?? org_id)
-          const { error: enrollErr } = await adminClient
+
+          // Check if enrollment already exists to avoid relying on a unique constraint
+          const { data: existingEnroll } = await adminClient
             .from('program_enrollments')
-            .upsert(
-              {
+            .select('id')
+            .eq('program_id', invitation.program_id)
+            .eq('org_id', org_id)
+            .maybeSingle()
+
+          if (existingEnroll) {
+            const { error: updateErr } = await adminClient
+              .from('program_enrollments')
+              .update({ status: 'active', anchor_org_id: anchorOrgId, enrolled_by_user_id: user.id })
+              .eq('id', existingEnroll.id)
+            if (updateErr) console.error('Enrollment update error:', updateErr)
+          } else {
+            const { error: insertErr } = await adminClient
+              .from('program_enrollments')
+              .insert({
                 program_id:          invitation.program_id,
                 org_id,
                 anchor_org_id:       anchorOrgId,
                 status:              'active',
                 enrolled_by_user_id: user.id,
-              },
-              { onConflict: 'program_id,org_id' }
-            )
-          if (enrollErr) console.error('Enrollment upsert error:', enrollErr)
+              })
+            if (insertErr) console.error('Enrollment insert error:', insertErr)
+          }
         }
       }
     }

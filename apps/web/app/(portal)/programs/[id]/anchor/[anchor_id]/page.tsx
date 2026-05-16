@@ -58,6 +58,12 @@ interface PendingSupplierInv {
   type: 'invitation'
 }
 
+interface KybSupplierEntry {
+  id: string
+  legal_name: string
+  kyb_status: string
+}
+
 interface TxRow {
   id: string
   invoice_number: string | null
@@ -217,6 +223,8 @@ export default function AnchorDetailPage() {
   const [org, setOrg]                           = useState<OrgDetail | null>(null)
   const [suppliers, setSuppliers]               = useState<SupplierEntry[]>([])
   const [pendingSuppliers, setPendingSuppliers] = useState<PendingSupplierInv[]>([])
+  const [kybSuppliers, setKybSuppliers]         = useState<KybSupplierEntry[]>([])
+  const [signedUpSuppliers, setSignedUpSuppliers] = useState<Array<{ email: string }>>([])
   const [docs, setDocs]                         = useState<KYBDoc[]>([])
   const [creditScore, setCreditScore]           = useState<CreditScore | null>(null)
   const [analytics, setAnalytics]               = useState<AnalyticsData | null>(null)
@@ -250,6 +258,16 @@ export default function AnchorDetailPage() {
         setPendingSuppliers(
           (netData.pending_suppliers ?? []).filter(
             (s: PendingSupplierInv) => s.anchor_org_id === anchorId
+          )
+        )
+        setKybSuppliers(
+          (netData.kyb_suppliers ?? []).filter(
+            (s: KybSupplierEntry & { anchor_org_id?: string | null }) => s.anchor_org_id === anchorId
+          )
+        )
+        setSignedUpSuppliers(
+          (netData.signed_up_suppliers ?? []).filter(
+            (s: { email: string; anchor_org_id?: string | null }) => s.anchor_org_id === anchorId
           )
         )
 
@@ -491,7 +509,7 @@ export default function AnchorDetailPage() {
                     <Icon name="plus" size={14} /> Invite
                   </button>
                 </div>
-                {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
+                {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
                   <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
                     No suppliers yet.
                   </div>
@@ -514,6 +532,44 @@ export default function AnchorDetailPage() {
                             </div>
                           </div>
                           <span style={{ color: 'var(--color-ink-4)', fontSize: 16 }}>›</span>
+                        </div>
+                      </div>
+                    ))}
+                    {kybSuppliers.map(s => (
+                      <div
+                        key={s.id}
+                        className="network-card"
+                        style={{ cursor: 'pointer', margin: '0 0 2px' }}
+                        onClick={() => router.push(`/programs/${programId}/anchor/${anchorId}/supplier/${s.id}`)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="avatar">{initials(s.legal_name)}</div>
+                          <div style={{ flex: 1 }}>
+                            <div className="network-name">{s.legal_name}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Review KYB →</span>
+                            </div>
+                          </div>
+                          <span style={{ color: 'var(--color-ink-4)', fontSize: 16 }}>›</span>
+                        </div>
+                      </div>
+                    ))}
+                    {signedUpSuppliers.map(su => (
+                      <div
+                        key={su.email}
+                        className="network-card"
+                        style={{ cursor: 'default', margin: '0 0 2px', opacity: 0.75 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="avatar">{su.email.slice(0, 2).toUpperCase()}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
+                            <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="badge badge-draft">Setting up</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}

@@ -185,6 +185,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Anchor approval not required for invoice factoring' }, { status: 400 })
     }
 
+    if (transaction.type === 'po_financing' && action === 'approve') {
+      delete body.payment_extension
+      delete body.installment_request
+    }
+
     // PO financing: anchor confirms goods receipt at pending_anchor_confirmation
     if (transaction.status === 'pending_anchor_confirmation') {
       const newStatus = action === 'approve' ? 'repayment_due'

@@ -232,15 +232,16 @@ export default function SettingsPage() {
   const [actingId,    setActingId]    = useState<string | null>(null)
   const [actionErr,   setActionErr]   = useState<string | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
-  const [inviteEmail,   setInviteEmail]   = useState('')
-  const [inviteRole,    setInviteRole]    = useState('')
-  const [inviting,      setInviting]      = useState(false)
-  const [inviteError,   setInviteError]   = useState<string | null>(null)
-  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [addEmail,     setAddEmail]     = useState('')
+  const [addFullName,  setAddFullName]  = useState('')
+  const [addPassword,  setAddPassword]  = useState('')
+  const [addConfirmPw, setAddConfirmPw] = useState('')
+  const [showAddPw,    setShowAddPw]    = useState(false)
+  const [adding,       setAdding]       = useState(false)
+  const [addError,     setAddError]     = useState<string | null>(null)
+  const [addSuccess,   setAddSuccess]   = useState<string | null>(null)
 
-  const inviteableRole = user?.role === 'bank_admin'
-    ? { value: 'bank_credit_officer', label: 'Credit Officer' }
-    : { value: user?.role === 'anchor_admin' ? 'anchor_member' : 'supplier_member', label: 'Team Member' }
+  const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
 
   const fetchTeam = useCallback(async () => {
     setTeamLoading(true)
@@ -264,7 +265,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (tab === 'team' && isAdmin && members.length === 0 && !teamLoading) {
-      setInviteRole(inviteableRole.value)
       fetchTeam()
     }
   }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -313,27 +313,34 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleInvite(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
-    if (!inviteEmail.trim()) return
-    setInviting(true)
-    setInviteError(null)
-    setInviteSuccess(null)
+    if (!addEmail.trim() || !addPassword || addPassword !== addConfirmPw) return
+    setAdding(true)
+    setAddError(null)
+    setAddSuccess(null)
     try {
-      const res = await fetch('/api/invitations', {
+      const res = await fetch('/api/settings/team/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+        body: JSON.stringify({
+          email:     addEmail.trim(),
+          password:  addPassword,
+          full_name: addFullName.trim() || undefined,
+        }),
       })
       const data = await res.json() as { error?: string }
-      if (!res.ok) { setInviteError(data.error ?? 'Failed to send invitation'); return }
-      setInviteSuccess(`Invitation sent to ${inviteEmail.trim()}`)
-      setInviteEmail('')
+      if (!res.ok) { setAddError(data.error ?? 'Failed to create account'); return }
+      setAddSuccess(`Account created for ${addEmail.trim()}`)
+      setAddEmail('')
+      setAddFullName('')
+      setAddPassword('')
+      setAddConfirmPw('')
       await fetchTeam()
     } catch {
-      setInviteError('Failed to send invitation')
+      setAddError('Failed to create account')
     } finally {
-      setInviting(false)
+      setAdding(false)
     }
   }
 
@@ -709,49 +716,107 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Invite form */}
+            {/* Add member form */}
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Invite a team member</h3>
+                <h3 className="t-card-head">Add a team member</h3>
+                <div className="subtitle">Create an account for a new {newMemberRoleLabel} in your organization</div>
               </div>
               <div className="card-body">
-                {inviteSuccess && (
+                {addSuccess && (
                   <div className="alert alert-success" style={{ marginBottom: 16 }}>
-                    <div className="alert-body">{inviteSuccess}</div>
+                    <div className="alert-body">{addSuccess}</div>
                   </div>
                 )}
-                {inviteError && (
+                {addError && (
                   <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                    <div className="alert-body">{inviteError}</div>
+                    <div className="alert-body">{addError}</div>
                   </div>
                 )}
-                <form onSubmit={handleInvite} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 220 }}>
-                    <label className="field-label" htmlFor="invite-email">Email address</label>
-                    <input
-                      id="invite-email"
-                      className="input"
-                      type="email"
-                      placeholder="colleague@example.com"
-                      value={inviteEmail}
-                      onChange={e => { setInviteEmail(e.target.value); setInviteSuccess(null) }}
-                      required
-                    />
+                <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--color-ink-4)' }}>(optional)</span></label>
+                      <input
+                        id="add-fullname"
+                        className="input"
+                        type="text"
+                        placeholder="Jane Smith"
+                        value={addFullName}
+                        onChange={e => setAddFullName(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label className="field-label" htmlFor="add-email">Email address</label>
+                      <input
+                        id="add-email"
+                        className="input"
+                        type="email"
+                        placeholder="colleague@example.com"
+                        value={addEmail}
+                        onChange={e => { setAddEmail(e.target.value); setAddSuccess(null) }}
+                        required
+                      />
+                    </div>
                   </div>
-                  <div style={{ minWidth: 160 }}>
-                    <label className="field-label" htmlFor="invite-role">Role</label>
-                    <select id="invite-role" className="input" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-                      <option value={inviteableRole.value}>{inviteableRole.label}</option>
-                    </select>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label className="field-label" htmlFor="add-password">Password</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          id="add-password"
+                          className="input"
+                          type={showAddPw ? 'text' : 'password'}
+                          placeholder="Min. 8 characters"
+                          value={addPassword}
+                          onChange={e => setAddPassword(e.target.value)}
+                          required
+                          style={{ paddingRight: 38 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAddPw(v => !v)}
+                          style={{
+                            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--color-ink-3)', padding: 4,
+                            display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            {showAddPw
+                              ? <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>
+                              : <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>
+                            }
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label className="field-label" htmlFor="add-confirm">Confirm password</label>
+                      <input
+                        id="add-confirm"
+                        className="input"
+                        type={showAddPw ? 'text' : 'password'}
+                        placeholder="Re-enter password"
+                        value={addConfirmPw}
+                        onChange={e => setAddConfirmPw(e.target.value)}
+                        required
+                      />
+                      {addConfirmPw.length > 0 && addPassword !== addConfirmPw && (
+                        <div style={{ fontSize: 12, color: 'var(--color-red)', marginTop: 4 }}>Passwords don&apos;t match</div>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    className="btn btn-primary"
-                    type="submit"
-                    disabled={inviting || !inviteEmail.trim()}
-                    style={{ marginBottom: 1 }}
-                  >
-                    {inviting ? 'Sending…' : 'Send invite'}
-                  </button>
+                  <div>
+                    <button
+                      className="btn btn-primary"
+                      type="submit"
+                      disabled={adding || !addEmail.trim() || !addPassword || addPassword !== addConfirmPw || addPassword.length < 8}
+                    >
+                      {adding ? 'Creating…' : 'Create account'}
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>

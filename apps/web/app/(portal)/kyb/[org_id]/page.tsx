@@ -15,15 +15,27 @@ interface Document {
   signed_url: string | null
 }
 
-const DOC_KIND_LABELS: Record<string, string> = {
+const DOCUMENT_LABELS: Record<string, string> = {
   certificate_of_incorporation: 'Certificate of Incorporation',
+  ein_letter:                   'IRS EIN Confirmation Letter',
+  ownership_structure:          'Ownership Structure',
+  audited_financials:           'Audited Financials (2 years)',
+  bank_statements:              'Bank Statements (6 months)',
+  insurance_certificate:        'Certificate of Insurance',
+  banking_license:              'Banking License / Charter',
+  aml_kyc_policy:               'AML / KYC Policy',
+  bsa_officer_letter:           'BSA Officer Letter',
+  fdic_exam_report:             'FDIC Exam Report',
+  invoice_pdf:                  'Invoice Document',
+  purchase_order:               'Purchase Order',
+  supporting_document:          'Supporting Document',
+  delivery_confirmation:        'Delivery Confirmation',
+  // additional document kinds
   articles_of_organization:     'Articles of Organization',
   memorandum_of_association:    'Memorandum of Association',
   business_license:             'Business License',
-  ein_letter:                   'EIN / Tax ID Letter',
   tax_id:                       'Tax Identification',
   bank_statement:               'Bank Statement',
-  audited_financials:           'Audited Financial Statements',
   management_accounts:          'Management Accounts',
   balance_sheet:                'Balance Sheet',
   profit_loss:                  'Profit & Loss Statement',
@@ -35,6 +47,16 @@ const DOC_KIND_LABELS: Record<string, string> = {
   shareholder_register:         'Shareholder Register',
   ubo_declaration:              'Ultimate Beneficial Owner Declaration',
   other:                        'Supporting Document',
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getDocLabel(doc: any): string {
+  if (doc.document_kind) {
+    const label = DOCUMENT_LABELS[doc.document_kind as string]
+    if (label) return label
+  }
+  const filename = doc.name as string | undefined
+  return filename?.replace(/\.[^/.]+$/, '') ?? String(doc.document_kind ?? 'Document')
 }
 
 interface CreditScore {
@@ -354,10 +376,7 @@ export default function KYBDetailPage() {
                   {documents.map(doc => (
                     <div key={doc.id} className="doc-row">
                       <svg width={14} height={14} className="doc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
-                      <span className="doc-name">
-                        {DOC_KIND_LABELS[doc.document_kind] ?? doc.name ?? doc.document_kind}
-                        {doc.name && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--color-ink-4)', fontWeight: 400 }}>{doc.name}</span>}
-                      </span>
+                      <span className="doc-name">{getDocLabel(doc)}</span>
                       <span className="doc-date">{formatDate(doc.created_at)}</span>
                       {doc.signed_url ? (
                         <a className="doc-link" href={doc.signed_url} target="_blank" rel="noopener noreferrer">View</a>

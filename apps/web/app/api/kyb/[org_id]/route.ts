@@ -39,18 +39,58 @@ export async function GET(
   if (BANK_ROLES.includes(me.role)) {
     if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   } else if (ORG_ROLES.includes(me.role)) {
-    if (me.org_id !== org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (me.org_id !== org_id) {
+      // Anchors may view KYB for suppliers linked to them
+      if (me.role === 'anchor_admin' || me.role === 'anchor_member') {
+        const { data: enrollment } = await adminClient
+          .from('program_enrollments')
+          .select('id')
+          .eq('anchor_org_id', me.org_id)
+          .eq('org_id', org_id)
+          .limit(1)
+          .maybeSingle()
+
+        if (!enrollment) {
+          // Fall back to invitation link (supplier accepted but enrollment not yet created)
+          const { data: orgUsers } = await adminClient
+            .from('users')
+            .select('email')
+            .eq('org_id', org_id)
+
+          const emails = (orgUsers ?? []).map((u: { email: string | null }) => u.email).filter(Boolean) as string[]
+          let linked = false
+          if (emails.length > 0) {
+            const { data: inv } = await adminClient
+              .from('invitations')
+              .select('id')
+              .eq('anchor_org_id', me.org_id)
+              .in('email', emails)
+              .in('status', ['pending', 'accepted'])
+              .limit(1)
+              .maybeSingle()
+            linked = !!inv
+          }
+          if (!linked) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
+      } else {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
   } else {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const isBankCaller = BANK_ROLES.includes(me.role)
+
   const [{ data: rawDocs }, { data: credit_score }, { data: latest_decision }] = await Promise.all([
-    adminClient
-      .from('documents')
-      .select('*')
-      .eq('entity_type', 'kyb')
-      .eq('entity_id', org_id)
-      .order('created_at', { ascending: false }),
+    isBankCaller
+      ? adminClient
+          .from('documents')
+          .select('id, name, document_kind, storage_path, mime_type, size_bytes, created_at, uploaded_by_user_id')
+          .eq('entity_type', 'kyb')
+          .eq('entity_id', org_id)
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
     adminClient
       .from('credit_scores')
       .select('*')
@@ -67,14 +107,16 @@ export async function GET(
       .maybeSingle(),
   ])
 
-  const documents = await Promise.all(
-    (rawDocs ?? []).map(async (doc: Record<string, unknown>) => {
-      const { data: signed } = await adminClient.storage
-        .from('kyb-documents')
-        .createSignedUrl(doc.storage_path as string, 3600)
-      return { ...doc, signed_url: signed?.signedUrl ?? null }
-    })
-  )
+  const documents = isBankCaller
+    ? await Promise.all(
+        (rawDocs ?? []).map(async (doc: Record<string, unknown>) => {
+          const { data: signed } = await adminClient.storage
+            .from('kyb-documents')
+            .createSignedUrl(doc.storage_path as string, 3600)
+          return { ...doc, signed_url: signed?.signedUrl ?? null }
+        })
+      )
+    : []
 
   return NextResponse.json({ organization: org, documents, credit_score, latest_decision })
 }

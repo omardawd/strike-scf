@@ -164,27 +164,44 @@ function rfStepperState(stepKey: string, status: string): 'done' | 'current' | '
 }
 
 const PO_STEPPER_STEPS = [
-  { key: 'pending_bank_review',          label: 'PO Submitted' },
-  { key: 'financing_approved',           label: 'Financing Approved' },
-  { key: 'funded',                       label: 'Disbursed' },
-  { key: 'pending_anchor_confirmation',  label: 'Invoice Submitted' },
-  { key: 'repayment_due',               label: 'Repayment Due' },
-  { key: 'completed',                    label: 'Completed' },
+  { key: 'po_submitted',                label: 'PO Submitted' },
+  { key: 'pending_bank_review',         label: 'Bank Review' },
+  { key: 'financing_approved',          label: 'Financing Approved' },
+  { key: 'funded',                      label: 'Disbursed' },
+  { key: 'invoice_submitted',           label: 'Invoice Submitted' },
+  { key: 'pending_anchor_confirmation', label: 'Anchor Confirmation' },
+  { key: 'repayment_due',              label: 'Repayment Due' },
+  { key: 'completed',                   label: 'Completed' },
 ]
 
-const PO_STATUS_ORDER = PO_STEPPER_STEPS.map(s => s.key)
+function poStatusToStepIndex(status: string): number {
+  switch (status) {
+    case 'pending_bank_review':
+    case 'pending_supplier_counter_review':
+    case 'more_info_requested':
+    case 'rejected':
+      return 1
+    case 'financing_approved':
+      return 2
+    case 'funded':
+      return 3
+    case 'pending_anchor_confirmation':
+    case 'in_dispute':
+      return 5
+    case 'repayment_due':
+      return 6
+    case 'completed':
+      return 7
+    default:
+      return -1
+  }
+}
 
 function poStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
-  let eff = status
-  if (status === 'rejected')                       eff = 'pending_bank_review'
-  if (status === 'more_info_requested')            eff = 'pending_bank_review'
-  if (status === 'pending_supplier_counter_review') eff = 'pending_bank_review'
-  if (status === 'in_dispute')                     eff = 'pending_anchor_confirmation'
+  const stepIdx    = PO_STEPPER_STEPS.findIndex(s => s.key === stepKey)
+  const currentIdx = poStatusToStepIndex(status)
 
-  const stepIdx    = PO_STATUS_ORDER.indexOf(stepKey)
-  const currentIdx = PO_STATUS_ORDER.indexOf(eff)
-
-  if (currentIdx === -1) return 'todo'
+  if (currentIdx === -1 || stepIdx === -1) return 'todo'
   if (stepIdx < currentIdx)  return 'done'
   if (stepIdx === currentIdx) return 'current'
   return 'todo'
@@ -997,7 +1014,7 @@ function AnchorActionPanel({
 
   // PO financing: passive until pending_anchor_confirmation
   if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
-    return <div className="action-passive muted">Supplier is fulfilling the order</div>
+    return <div className="action-passive muted">Waiting for supplier to fulfill the order</div>
   }
 
   // PO financing: anchor confirms goods receipt
@@ -1005,11 +1022,11 @@ function AnchorActionPanel({
     if (showDisputeForm) {
       return (
         <div className="action-block">
-          <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Dispute reason</p>
+          <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
           <textarea
             className="form-input"
             rows={4}
-            placeholder="Describe the dispute reason (optional)…"
+            placeholder="Reason for rejection (optional)…"
             value={disputeReason}
             onChange={e => setDisputeReason(e.target.value)}
             style={{ width: '100%', resize: 'vertical' }}
@@ -1020,7 +1037,7 @@ function AnchorActionPanel({
             disabled={acting}
             onClick={() => onAction({ action: 'reject', notes: disputeReason.trim() })}
           >
-            {acting ? 'Processing…' : 'Submit dispute'}
+            {acting ? 'Processing…' : 'Confirm rejection'}
           </button>
           <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => { setShowDisputeForm(false); setDisputeReason('') }}>
             Cancel
@@ -1029,10 +1046,12 @@ function AnchorActionPanel({
       )
     }
 
+    // PO financing: anchor simple approve/reject only
+    // Extend/installment is reverse factoring only
     return (
       <div className="action-block">
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
-          Confirm goods received
+          Invoice ready for approval
         </p>
         <div className="calc-panel">
           {transaction.invoice_number && (
@@ -1053,20 +1072,26 @@ function AnchorActionPanel({
               <span>{fmtDate(transaction.invoice_date)}</span>
             </div>
           )}
+          {transaction.description && (
+            <div className="calc-row">
+              <span>Description</span>
+              <span>{transaction.description}</span>
+            </div>
+          )}
         </div>
         <button
           className="btn btn-primary btn-full"
           type="button"
           disabled={acting}
           onClick={async () => {
-            await onAction({ action: 'approve' })
-            onSuccess('Goods confirmed — transaction moved to repayment')
+            await onAction({ action: 'approve', transaction_type: 'po_financing' })
+            onSuccess('Invoice approved — transaction moved to repayment')
           }}
         >
-          {acting ? 'Processing…' : 'Confirm receipt'}
+          {acting ? 'Processing…' : 'Approve invoice'}
         </button>
         <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowDisputeForm(true)}>
-          Dispute
+          Reject
         </button>
       </div>
     )
@@ -1424,22 +1449,27 @@ function AnchorActionPanel({
       >
         {acting ? 'Processing…' : 'Approve normally'}
       </button>
-      <button
-        className="btn btn-ghost btn-full"
-        type="button"
-        disabled={acting}
-        onClick={() => setAnchorApprovalMode('extend')}
-      >
-        Approve + Extend payment
-      </button>
-      <button
-        className="btn btn-ghost btn-full"
-        type="button"
-        disabled={acting}
-        onClick={() => setAnchorApprovalMode('installment')}
-      >
-        Approve + Installment structure
-      </button>
+      {/* Extend/installment options are reverse factoring only */}
+      {!isPOFinancing && (
+        <>
+          <button
+            className="btn btn-ghost btn-full"
+            type="button"
+            disabled={acting}
+            onClick={() => setAnchorApprovalMode('extend')}
+          >
+            Approve + Extend payment
+          </button>
+          <button
+            className="btn btn-ghost btn-full"
+            type="button"
+            disabled={acting}
+            onClick={() => setAnchorApprovalMode('installment')}
+          >
+            Approve + Installment structure
+          </button>
+        </>
+      )}
       <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
         Reject
       </button>
@@ -1957,7 +1987,7 @@ export default function TransactionDetailPage() {
 
   const txn = transaction
 
-  const isPOFinancing = txn?.financing_type === 'po_financing'
+  const isPOFinancing = txn?.type === 'po_financing' || txn?.financing_type === 'po_financing'
   const isInvoiceFactoring = txn?.type === 'invoice_factoring' || txn?.financing_type === 'invoice_factoring'
 
   const txnNegState = (() => { try { return JSON.parse(txn?.bank_approval_notes ?? '{}') } catch { return {} } })()

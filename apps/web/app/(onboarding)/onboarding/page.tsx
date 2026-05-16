@@ -309,7 +309,6 @@ const ANCHOR_STEPS = [
 const BANK_STEPS = [
   { label: 'Account',          sub: 'Confirm your details' },
   { label: 'Institution info', sub: 'Legal name & routing' },
-  { label: 'Regulatory docs',  sub: 'License & compliance' },
   { label: 'Review',           sub: 'Submit for activation' },
 ]
 
@@ -691,11 +690,48 @@ function StepReview({ formData, docs, role, onBack, onSubmit, loading, error }: 
 // Success screen
 // ─────────────────────────────────────────────────────────────
 function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolean }) {
-  const standardLabels: Record<Role, string> = {
-    supplier: 'Your KYB application has been submitted.',
-    anchor:   'Your KYB application has been submitted.',
-    bank:     'Your institution profile has been submitted for review.',
+  const checkCircle = (
+    <div style={{
+      width: 64, height: 64, borderRadius: '50%',
+      background: 'rgba(22,163,74,0.1)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      margin: '0 auto 20px',
+    }}>
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <path d="M7 14 L12 19 L21 10" stroke="var(--color-green, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  )
+
+  if (role === 'bank') {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
+          {checkCircle}
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
+            Welcome to Strike SCF!
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
+            Your bank account is active. You can now create programs and invite anchors and suppliers.
+          </p>
+          <a
+            href="/dashboard"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              marginTop: 8, height: 42, padding: '0 24px', borderRadius: 8,
+              background: 'var(--color-ink-1)', color: 'white',
+              textDecoration: 'none', fontSize: 14, fontWeight: 600,
+            }}
+          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
+        </div>
+      </div>
+    )
   }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
@@ -703,23 +739,14 @@ function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolea
       background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
     }}>
       <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: '50%',
-          background: 'rgba(22,163,74,0.1)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 20px',
-        }}>
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <path d="M7 14 L12 19 L21 10" stroke="var(--color-green, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
+        {checkCircle}
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
           Application submitted!
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
           {fromInvite
             ? <>We&apos;ve notified your administrator that you&apos;ve completed onboarding. Once approved, you&apos;ll have full access to the platform.</>
-            : <>{standardLabels[role]} Our team reviews applications within <strong>1–3 business days</strong>. We&apos;ll email you with next steps.</>
+            : <>Your KYB application has been submitted. Our team reviews applications within <strong>1–3 business days</strong>. We&apos;ll email you with next steps.</>
           }
         </p>
         <div style={{
@@ -735,14 +762,14 @@ function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolea
           <div>④ Set up programs and invite users inside the platform</div>
         </div>
         <a
-          href={role === 'bank' ? '/dashboard' : '/pending-approval'}
+          href="/pending-approval"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             marginTop: 24, height: 42, padding: '0 24px', borderRadius: 8,
             background: 'var(--color-ink-1)', color: 'white',
             textDecoration: 'none', fontSize: 14, fontWeight: 600,
           }}
-        >{role === 'bank' ? 'Go to dashboard' : 'View application status'} <OBIcon name="arrow" size={14} /></a>
+        >View application status <OBIcon name="arrow" size={14} /></a>
       </div>
     </div>
   )
@@ -1040,11 +1067,6 @@ function OnboardingPageContent() {
       )
       if (step === 2) return (
         <OBShell steps={steps} current={2} role={role}>
-          <StepRegulatoryDocs docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} />
-        </OBShell>
-      )
-      if (step === 3) return (
-        <OBShell steps={steps} current={3} role={role}>
           <StepReview formData={{ account: accountInfo, company: companyData }} docs={docs} role={role} onBack={back} onSubmit={handleSubmit} loading={loading} error={error} />
         </OBShell>
       )

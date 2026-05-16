@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         primary_contact_name: (userData.full_name as string) ?? '',
         primary_contact_email: (userData.email as string) ?? user.email ?? '',
         routing_number: body.routing_number ?? '',
-        status: 'setup_pending' satisfies BankStatus,
+        status: 'active' satisfies BankStatus,
       })
       .select('id')
       .single()

@@ -146,6 +146,14 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const visiblePrograms = portal === 'anchor'
+    ? programs.filter(p => {
+        const types = p.financing_types ?? []
+        const isIFOnly = types.length > 0 && types.every((t: string) => t === 'invoice_factoring')
+        return !isIFOnly
+      })
+    : programs
+
   const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
 
   useEffect(() => {
@@ -194,11 +202,11 @@ export default function ProgramsPage() {
       <div className="page">
         <div className="page-header">
           <h1 className="t-page-title">My Programs</h1>
-          {!loading && !error && programs.length > 0 && (
+          {!loading && !error && visiblePrograms.length > 0 && (
             <div className="subtitle">
-              {programs.length} program{programs.length !== 1 ? 's' : ''}
+              {visiblePrograms.length} program{visiblePrograms.length !== 1 ? 's' : ''}
               {' · '}
-              {programs.filter(p => p.status === 'active').length} active
+              {visiblePrograms.filter(p => p.status === 'active').length} active
             </div>
           )}
         </div>
@@ -215,7 +223,7 @@ export default function ProgramsPage() {
             <SkeletonCard />
             <SkeletonCard />
           </div>
-        ) : programs.length === 0 ? (
+        ) : visiblePrograms.length === 0 ? (
           <div className="card">
             <div className="card-body" style={{ padding: 48, textAlign: 'center' }}>
               <div style={{ color: 'var(--color-ink-4)', marginBottom: 12 }}>
@@ -240,7 +248,7 @@ export default function ProgramsPage() {
           </div>
         ) : (
           <div className="program-grid">
-            {programs.map(p => (
+            {visiblePrograms.map(p => (
               <ProgramCard
                 key={p.id}
                 program={p}

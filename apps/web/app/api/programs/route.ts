@@ -7,7 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
+const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
 
 export async function GET() {
   const supabase = await createClient()
@@ -39,12 +40,23 @@ export async function GET() {
     return NextResponse.json({ programs: [] })
   }
 
+  const isAnchor = ANCHOR_ROLES.includes(userData.role)
+
+  // Anchors: query by anchor_org_id so they see programs even if their direct enrollment
+  // row was never created — supplier enrollments reference them via anchor_org_id.
+  // Suppliers: query by org_id (their own enrollment row).
   const [enrollResult, inviteResult] = await Promise.all([
-    adminClient
-      .from('program_enrollments')
-      .select('program_id')
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active'),
+    isAnchor
+      ? adminClient
+          .from('program_enrollments')
+          .select('program_id')
+          .eq('anchor_org_id', userData.org_id)
+          .eq('status', 'active')
+      : adminClient
+          .from('program_enrollments')
+          .select('program_id')
+          .eq('org_id', userData.org_id)
+          .eq('status', 'active'),
     userData.email
       ? adminClient
           .from('invitations')

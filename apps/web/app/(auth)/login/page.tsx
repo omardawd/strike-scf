@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -30,6 +30,15 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsDark(document.documentElement.getAttribute('data-theme') === 'dark')
+    check()
+    const observer = new MutationObserver(check)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -103,7 +112,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{ marginBottom: 28 }}>
           <Image
-            src="/logo.png"
+            src={isDark ? '/strike_white_nobg.png' : '/logo.png'}
             alt="Strike SCF"
             width={200}
             height={60}
@@ -154,13 +163,21 @@ export default function LoginPage() {
 
           {/* Password */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <label style={{
-              fontSize: 13, fontWeight: 500,
-              color: 'var(--color-ink-1, #0F0F0F)', marginBottom: 5,
-              display: 'block',
-            }}>
-              Password
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+              <label style={{
+                fontSize: 13, fontWeight: 500,
+                color: 'var(--color-ink-1, #0F0F0F)',
+                display: 'block',
+              }}>
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                style={{ fontSize: 12.5, color: 'var(--color-accent, #0A1FB8)', fontWeight: 500, textDecoration: 'none' }}
+              >
+                Forgot password?
+              </Link>
+            </div>
             <div style={{ position: 'relative' }}>
               <input
                 style={{ ...inputStyle, paddingRight: 40 }}
@@ -197,7 +214,7 @@ export default function LoginPage() {
             disabled={loading}
             style={{
               width: '100%', height: 40, borderRadius: 7,
-              background: 'var(--color-ink-1, #0F0F0F)', color: 'white',
+              background: isDark ? '#B8B7B0' : 'var(--color-ink-1, #0F0F0F)', color: isDark ? '#0F0F0F' : 'white',
               border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
               opacity: loading ? 0.7 : 1,
@@ -207,26 +224,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Divider */}
-        <div style={{
-          height: 1,
-          background: 'var(--color-border, #E2DFD8)',
-          margin: '20px 0 16px',
-        }} />
-
-        {/* Sign up link */}
-        <p style={{
-          fontSize: 13, color: 'var(--color-ink-3, #6B6963)',
-          margin: 0, textAlign: 'center',
-        }}>
-          Don&apos;t have an account?{' '}
-          <Link
-            href="/signup"
-            style={{ color: 'var(--color-accent, #0A1FB8)', fontWeight: 500, textDecoration: 'none' }}
-          >
-            Sign up
-          </Link>
-        </p>
       </div>
     </div>
   )

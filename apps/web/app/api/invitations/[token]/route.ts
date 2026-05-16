@@ -117,23 +117,25 @@ export async function POST(
 
   const newUserId = authData.user.id
 
-  // Set bank_id on the public.users row for all invited roles.
-  // org_id is not set here — it is assigned during onboarding when the org is created.
-  const userUpdate: Record<string, unknown> = {}
+  // Persist email, full_name, role, and bank_id onto the public.users row.
+  // The DB trigger creates the row on auth.users insert but may not copy all fields;
+  // we set them explicitly here so access checks that read public.users.email work.
+  const userUpdate: Record<string, unknown> = {
+    email:     invitation.email,
+    full_name: fullName,
+    role:      dbRole,
+  }
   if (invitation.bank_id) {
     userUpdate.bank_id = invitation.bank_id
   }
 
-  if (Object.keys(userUpdate).length > 0) {
-    const { error: updateError } = await adminClient
-      .from('users')
-      .update(userUpdate)
-      .eq('id', newUserId)
+  const { error: updateError } = await adminClient
+    .from('users')
+    .update(userUpdate)
+    .eq('id', newUserId)
 
-    if (updateError) {
-      // Non-fatal — user was created; org assignment failed but can be fixed manually
-      console.error('Update user org/bank error:', updateError)
-    }
+  if (updateError) {
+    console.error('Update user fields error:', updateError)
   }
 
   // Mark invitation accepted

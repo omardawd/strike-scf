@@ -95,5 +95,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to submit application' }, { status: 500 })
   }
 
+  // Auto-enroll invited supplier in their program if not already enrolled
+  const programId   = user.user_metadata?.program_id as string | undefined
+  const anchorOrgId = user.user_metadata?.anchor_org_id as string | undefined
+  if (programId && userData.org_id) {
+    const { data: existingEnrollment } = await adminClient
+      .from('program_enrollments')
+      .select('id')
+      .eq('program_id', programId)
+      .eq('org_id', userData.org_id)
+      .maybeSingle()
+
+    if (!existingEnrollment) {
+      let resolvedAnchorId = anchorOrgId
+      if (!resolvedAnchorId) {
+        const { data: inv } = await adminClient
+          .from('invitations')
+          .select('anchor_org_id')
+          .eq('program_id', programId)
+          .eq('email', user.email!)
+          .in('status', ['accepted', 'pending'])
+          .limit(1)
+          .maybeSingle()
+        resolvedAnchorId = inv?.anchor_org_id
+      }
+      if (resolvedAnchorId) {
+        await adminClient
+          .from('program_enrollments')
+          .insert({
+            program_id:          programId,
+            org_id:              userData.org_id,
+            anchor_org_id:       resolvedAnchorId,
+            enrolled_by_user_id: user.id,
+            status:              'active',
+            enrolled_at:         new Date().toISOString(),
+          })
+      }
+    }
+  }
+
   return NextResponse.json({ success: true })
 }

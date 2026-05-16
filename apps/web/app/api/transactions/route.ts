@@ -105,13 +105,43 @@ export async function POST(request: Request) {
   }
 
   // Verify supplier is enrolled and get anchor_org_id
-  const { data: enrollment } = await adminClient
+  let enrollment: { program_id: string; org_id: string; anchor_org_id: string; status: string } | null = null
+
+  const { data: existingEnroll } = await adminClient
     .from('program_enrollments')
     .select('program_id, org_id, anchor_org_id, status')
     .eq('program_id', program_id as string)
     .eq('org_id', userData.org_id)
     .eq('status', 'active')
-    .single()
+    .maybeSingle()
+
+  enrollment = existingEnroll
+
+  if (!enrollment) {
+    const { data: inv } = await adminClient
+      .from('invitations')
+      .select('anchor_org_id')
+      .eq('program_id', program_id as string)
+      .eq('email', user.email!)
+      .eq('status', 'accepted')
+      .maybeSingle()
+
+    if (inv?.anchor_org_id) {
+      const { data: created } = await adminClient
+        .from('program_enrollments')
+        .insert({
+          program_id:          program_id as string,
+          org_id:              userData.org_id,
+          anchor_org_id:       inv.anchor_org_id,
+          enrolled_by_user_id: user.id,
+          status:              'active',
+          enrolled_at:         new Date().toISOString(),
+        })
+        .select('program_id, org_id, anchor_org_id, status')
+        .single()
+      enrollment = created
+    }
+  }
 
   if (!enrollment) {
     return NextResponse.json({ error: 'Supplier is not enrolled in this program' }, { status: 403 })
@@ -147,6 +177,8 @@ export async function POST(request: Request) {
   const initialStatus = (financingType === 'invoice_factoring' || financingType === 'po_financing')
     ? 'pending_bank_review'
     : 'pending_anchor_approval'
+
+  console.log('[transaction create] type:', financingType, 'initialStatus:', initialStatus)
 
   const { data: transaction, error: txnError } = await adminClient
     .from('transactions')
