@@ -84,7 +84,7 @@ export async function GET(
 
     const { data: anchorOrg } = await adminClient
       .from('organizations')
-      .select('id, legal_name, type, city, state, primary_contact_name, primary_contact_email, industry_naics, created_at, kyb_status, annual_revenue_range, doing_business_as')
+      .select('id, legal_name, type, city, state, primary_contact_name, industry_naics, created_at, kyb_status, annual_revenue_range, doing_business_as')
       .eq('id', anchorId)
       .single()
 
@@ -440,8 +440,7 @@ export async function GET(
       .filter(Boolean)
   )]
 
-  // No active enrollment yet — fall back to invitation to find the anchor.
-  // public.users.email may be null for older invited users — fall back to auth.users.
+  // No active enrollment yet — fall back through multiple sources to find the anchor.
   if (anchorIds2.length === 0) {
     let supplierEmail = userData.email as string | null
     if (!supplierEmail) {
@@ -450,6 +449,7 @@ export async function GET(
     }
 
     if (supplierEmail) {
+      // First try: invitation filtered by program_id (works for newer records)
       const { data: myInvitations } = await adminClient
         .from('invitations')
         .select('anchor_org_id')
@@ -462,6 +462,30 @@ export async function GET(
           .map(i => i.anchor_org_id)
           .filter(Boolean) as string[]
       )]
+
+      // Second try: any invitation for this email with an anchor (older records may lack program_id)
+      if (anchorIds2.length === 0) {
+        const { data: anyInvitations } = await adminClient
+          .from('invitations')
+          .select('anchor_org_id')
+          .eq('email', supplierEmail)
+          .in('status', ['pending', 'accepted'])
+          .not('anchor_org_id', 'is', null)
+
+        anchorIds2 = [...new Set(
+          (anyInvitations ?? [])
+            .map(i => i.anchor_org_id)
+            .filter(Boolean) as string[]
+        )]
+      }
+    }
+
+    // Third try: user_metadata set at signup always has anchor_org_id for invited suppliers
+    if (anchorIds2.length === 0) {
+      const metaAnchorId = user.user_metadata?.anchor_org_id as string | undefined
+      if (metaAnchorId) {
+        anchorIds2 = [metaAnchorId]
+      }
     }
   }
 
@@ -470,7 +494,7 @@ export async function GET(
   const [{ data: anchorOrgs2 }, { data: txns2 }] = await Promise.all([
     adminClient
       .from('organizations')
-      .select('id, legal_name, kyb_status, status, city, state, primary_contact_name, primary_contact_email, industry_naics, created_at, doing_business_as')
+      .select('id, legal_name, kyb_status, status, city, state, primary_contact_name, industry_naics, created_at, doing_business_as')
       .in('id', anchorIds2),
     adminClient
       .from('transactions')
@@ -497,7 +521,6 @@ export async function GET(
     city:                  org.city,
     state:                 org.state,
     primary_contact_name:  org.primary_contact_name,
-    primary_contact_email: org.primary_contact_email,
     industry_naics:        org.industry_naics,
     created_at:            org.created_at,
     doing_business_as:     org.doing_business_as,
