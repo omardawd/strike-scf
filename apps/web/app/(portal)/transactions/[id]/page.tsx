@@ -2397,13 +2397,7 @@ export default function TransactionDetailPage() {
                       <span className="fs-value">{showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
                     </div>
                   </div>
-                  {/* Wire info in summary — only for supplier and bank */}
-                  {(portal === 'supplier' || portal === 'bank') && wireInfoForSummary?.reference && (
-                    <div className="fs-extra-row">
-                      <span className="k">Wire reference</span>
-                      <span className="v mono">{wireInfoForSummary.reference}</span>
-                    </div>
-                  )}
+                  
                 </div>
 
                 {/* Invoice details */}
@@ -2422,6 +2416,13 @@ export default function TransactionDetailPage() {
                       <span className="k">Invoice date</span>
                       <span className="v plain">{fmtDate(txn.invoice_date)}</span>
                     </div>
+                    {/* Wire info in summary — only for supplier and bank */}
+                  {(portal === 'supplier' || portal === 'bank') && wireInfoForSummary?.reference && (
+                    <div className="kv-row">
+                      <span className="k">Wire reference</span>
+                      <span className="v plain">{wireInfoForSummary.reference}</span>
+                    </div>
+                  )}
                     <div className="kv-row">
                       <span className="k">Invoice due date</span>
                       <span className="v plain">{fmtDate(txn.invoice_due_date)}</span>
