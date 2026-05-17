@@ -5,7 +5,6 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
-import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -94,16 +93,6 @@ interface AnalyticsData {
   monthly_volume: Array<{ label: string; count: number; value: number }>
 }
 
-interface TxRow {
-  id: string
-  invoice_number: string | null
-  invoice_amount: number | null
-  financing_amount_approved: number | null
-  status: string
-  created_at: string
-  program_id: string
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function statusBadge(s: string) {
   const m: Record<string, string> = { active: 'badge-active', draft: 'badge-draft', closed: 'badge-draft', pending: 'badge-pending' }
@@ -133,28 +122,6 @@ function initials(name: string) {
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
-
-function txnBadge(s: string) {
-  if (s === 'completed') return 'badge-funded'
-  if (s === 'funded' || s === 'financing_approved') return 'badge-active'
-  if (s === 'rejected') return 'badge-rejected'
-  return 'badge-pending'
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending_anchor_approval: 'Pending Anchor',
-  pending_bank_review:     'Pending Bank',
-  more_info_requested:     'More Info',
-  financing_approved:      'Approved',
-  funded:                  'Funded',
-  completed:               'Completed',
-  rejected:                'Rejected',
-}
-
-function fmtCurrency(n: number) {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 
 // ── NetworkCard ────────────────────────────────────────────────────────────────
 function NetworkCard({
@@ -245,7 +212,6 @@ export default function ProgramDetailPage() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [isIFOnly, setIsIFOnly]       = useState(false)
-  const [ifTxns, setIfTxns]           = useState<TxRow[]>([])
   const [networkVersion, setNetworkVersion] = useState(0)
   const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
@@ -270,8 +236,6 @@ export default function ProgramDetailPage() {
   const [editSaving, setEditSaving]   = useState(false)
   const [editError, setEditError]     = useState<string | null>(null)
   const [editSuccess, setEditSuccess] = useState(false)
-
-  const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
 
   const load = useCallback(async () => {
     if (!id) return
@@ -302,14 +266,6 @@ export default function ProgramDetailPage() {
         setSignedUpAnchors(netData.signed_up_anchors ?? [])
         setSignedUpSuppliers(netData.signed_up_suppliers ?? [])
 
-        if (portal === 'supplier' && localIsIFOnly) {
-          const txRes = await fetch('/api/transactions')
-          if (txRes.ok) {
-            const txData = await txRes.json()
-            const all: TxRow[] = txData.transactions ?? txData.data ?? []
-            setIfTxns(all.filter((t: TxRow) => t.program_id === id).slice(0, 20))
-          }
-        }
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -433,7 +389,7 @@ export default function ProgramDetailPage() {
       <PortalShell activeSection="programs">
         <Topbar
           onBack={() => router.push('/programs')}
-          crumbs={[{ label: portalLabel }, { label: 'My Programs', onClick: () => router.push('/programs') }, { label: '…' }]}
+          crumbs={[{ label: 'My Programs', onClick: () => router.push('/programs') }, { label: '…' }]}
           actions={<NotifBell />}
         />
         <div className="page">
@@ -446,17 +402,11 @@ export default function ProgramDetailPage() {
     )
   }
 
-  if (isIFOnly && portal === 'anchor') {
-    router.push('/programs')
-    return null
-  }
-
   return (
     <PortalShell activeSection="programs">
       <Topbar
         onBack={() => router.push('/programs')}
         crumbs={[
-          { label: portalLabel },
           { label: 'My Programs', onClick: () => router.push('/programs') },
           { label: program?.name ?? 'Program' },
         ]}
@@ -544,10 +494,6 @@ export default function ProgramDetailPage() {
                           <input className="form-input" value={editMaxDeal} onChange={e => setEditMaxDeal(e.target.value)} placeholder="e.g. 1000000" />
                         </div>
                         <div>
-                          <label className="form-label">Standard tenor (days)</label>
-                          <input className="form-input" type="number" value={editTenor} onChange={e => setEditTenor(e.target.value)} />
-                        </div>
-                        <div>
                           <label className="form-label">Status</label>
                           <select className="form-input" value={editStatus} onChange={e => setEditStatus(e.target.value)}>
                             <option value="draft">Draft</option>
@@ -579,7 +525,6 @@ export default function ProgramDetailPage() {
                       {program.per_supplier_sublimit != null && (
                         <div className="kv-row"><span className="k">Per-supplier sublimit</span><span className="v plain">{fmtMoney(program.per_supplier_sublimit)}</span></div>
                       )}
-                      <div className="kv-row"><span className="k">Standard tenor</span><span className="v plain">{program.standard_tenor_days} days</span></div>
                       <div className="kv-row"><span className="k">Created</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
                     </div>
                   )}
@@ -1004,53 +949,29 @@ export default function ProgramDetailPage() {
               </div>
             )}
 
-            {/* ── SUPPLIER + IF: Transactions ── */}
+            {/* ── SUPPLIER + IF: Anchor cards ── */}
             {portal === 'supplier' && isIFOnly && (
               <div>
-                <div className="section-title" style={{ marginBottom: 12 }}>Transactions</div>
-                {ifTxns.length === 0 ? (
+                <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
+                {anchorList.length === 0 ? (
                   <div className="card">
-                    <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No transactions yet.</div>
-                      <button className="btn btn-primary btn-sm" type="button" onClick={() => pushTransactionNew(router)}>
-                        <Icon name="plus" size={14} /> New Transaction
-                      </button>
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--color-ink-3)' }}>
+                      No anchor relationships yet.
                     </div>
                   </div>
                 ) : (
-                  <div className="card">
-                    <div className="card-head">
-                      <h3 className="t-card-head">My Transactions</h3>
-                      <button className="btn btn-primary btn-sm" type="button" onClick={() => pushTransactionNew(router)}>
-                        <Icon name="plus" size={14} /> New
-                      </button>
-                    </div>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Invoice #</th>
-                          <th style={{ textAlign: 'right' }}>Amount</th>
-                          <th>Status</th>
-                          <th>Date</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ifTxns.map(t => (
-                          <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, t.id)}>
-                            <td style={{ fontSize: 13 }}>{t.invoice_number ?? t.id.slice(0, 8) + '…'}</td>
-                            <td style={{ textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-                              {t.financing_amount_approved != null ? fmtCurrency(t.financing_amount_approved)
-                                : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
-                            </td>
-                            <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
-                            <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
-                            <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  anchorList.map(a => (
+                    <NetworkCard
+                      key={a.id}
+                      name={a.legal_name}
+                      kybStatus={a.kyb_status}
+                      stats={[
+                        { label: 'Transactions', value: a.transaction_count },
+                        { label: 'KYB Status',   value: kybLabel(a.kyb_status) },
+                      ]}
+                      onClick={() => router.push(`/programs/${id}/anchor/${a.id}`)}
+                    />
+                  ))
                 )}
               </div>
             )}

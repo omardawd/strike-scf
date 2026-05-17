@@ -276,9 +276,16 @@ function humanizeEvent(e: TransactionEvent): string {
     case 'counter_offer_submitted':  return 'Submitted counter-offer'
     case 'counter_offer_accepted':   return 'Accepted counter-offer'
     case 'counter_offer_rejected':   return 'Declined counter-offer'
-    case 'wire_info_sent':           return 'Sent wire transfer info to supplier'
-    case 'repayment_info_sent':      return 'Sent repayment instructions to anchor'
-    case 'disbursement_marked':      return 'Disbursed funds to supplier'
+    case 'wire_info_sent':                         return 'Sent wire transfer info to supplier'
+    case 'repayment_info_sent':                    return 'Sent repayment instructions to anchor'
+    case 'anchor_repayment_extension_requested':   return 'Requested repayment extension'
+    case 'anchor_repayment_installment_requested': return 'Requested installment structure'
+    case 'anchor_accepted_repayment_counter':      return 'Accepted bank repayment counter-proposal'
+    case 'anchor_rejected_repayment_counter':      return 'Declined bank repayment counter-proposal'
+    case 'anchor_repayment_approved':              return 'Bank approved repayment request'
+    case 'anchor_repayment_rejected':              return 'Bank declined repayment request'
+    case 'anchor_repayment_countered':             return 'Bank counter-proposed repayment terms'
+    case 'disbursement_marked':                    return 'Disbursed funds to supplier'
     case 'repayment_marked':         return 'Marked as repaid'
     case 'disbursed':                return 'Disbursed funds to supplier'
     case 'repaid':                   return 'Recorded repayment'
@@ -293,6 +300,274 @@ function humanizeEvent(e: TransactionEvent): string {
     default:
       return (e.action || e.event_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   }
+}
+
+// ── Anchor standalone repayment request section (RF only, always visible) ──
+
+type RepaymentRequest = {
+  type?: string; status?: string; requested_date?: string;
+  count?: number; structure?: string; notes?: string;
+  bank_counter?: { date?: string; count?: number; structure?: string };
+  rejection_reason?: string;
+}
+
+function AnchorStandaloneRepaymentSection({
+  transaction,
+  onAction,
+  acting,
+}: {
+  transaction: Transaction
+  onAction: (body: Record<string, unknown>) => Promise<void>
+  acting: boolean
+}) {
+  const [mode, setMode]           = useState<'none'|'extension'|'installment'>('none')
+  const [extDate, setExtDate]     = useState('')
+  const [extNotes, setExtNotes]   = useState('')
+  const [instCount, setInstCount] = useState(2)
+  const [instStructure, setInstStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
+  const [instNotes, setInstNotes] = useState('')
+
+  const negState   = (() => { try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} } })()
+  const repRequest = negState.anchor_repayment_request as RepaymentRequest | undefined
+
+  const isTerminal = ['rejected', 'cancelled', 'completed'].includes(transaction.status)
+  if (isTerminal && !repRequest) return null
+
+  const canSubmit = !isTerminal && (!repRequest || repRequest.status === 'rejected')
+
+  if (mode === 'extension') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Request repayment extension</div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Requested date</div>
+          <input type="date" className="input" value={extDate} onChange={e => setExtDate(e.target.value)} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+          <textarea className="form-input" rows={2} value={extNotes} onChange={e => setExtNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary btn-sm" type="button" disabled={!extDate || acting}
+            onClick={async () => { await onAction({ action: 'request_extension', extension_date: extDate, ...(extNotes ? { notes: extNotes } : {}) }); setMode('none') }}>
+            {acting ? 'Sending…' : 'Submit request'}
+          </button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'installment') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Request installment structure</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Installments</div>
+            <input type="number" className="input" min="2" max="52" value={instCount} onChange={e => setInstCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+            <select className="input" value={instStructure} onChange={e => setInstStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+          <textarea className="form-input" rows={2} value={instNotes} onChange={e => setInstNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary btn-sm" type="button" disabled={acting}
+            onClick={async () => { await onAction({ action: 'request_installment', count: instCount, structure: instStructure, ...(instNotes ? { notes: instNotes } : {}) }); setMode('none') }}>
+            {acting ? 'Sending…' : 'Submit request'}
+          </button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {!repRequest || repRequest.status === 'rejected' ? (
+        <>
+          {repRequest?.status === 'rejected' && (
+            <div style={{ fontSize: 12, color: 'var(--color-red)', marginBottom: 8 }}>
+              Your repayment request was declined{repRequest.rejection_reason ? `: ${repRequest.rejection_reason}` : ''}.
+            </div>
+          )}
+          {canSubmit ? (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>
+                Request a payment extension or installment plan from the bank.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('extension')}>Request extension</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('installment')}>Request installments</button>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>No repayment request submitted.</div>
+          )}
+        </>
+      ) : repRequest.status === 'pending_bank_review' ? (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 4 }}>Awaiting bank review</div>
+          {repRequest.type === 'extension' && repRequest.requested_date && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested date: {repRequest.requested_date}</div>
+          )}
+          {repRequest.type === 'installment' && repRequest.count && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>{repRequest.count} {repRequest.structure} installments</div>
+          )}
+        </div>
+      ) : repRequest.status === 'bank_countered' ? (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-amber)', marginBottom: 6 }}>Bank has a counter-proposal</div>
+          {repRequest.bank_counter?.date && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Counter date: {repRequest.bank_counter.date}</div>
+          )}
+          {repRequest.bank_counter?.count != null && (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+              Counter: {repRequest.bank_counter.count} {repRequest.bank_counter.structure} installments
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="btn btn-primary btn-sm" type="button" disabled={acting}
+              onClick={() => onAction({ action: 'accept_repayment_counter' })}>
+              {acting ? 'Processing…' : 'Accept'}
+            </button>
+            <button className="btn btn-ghost btn-sm" type="button" disabled={acting}
+              onClick={() => onAction({ action: 'reject_repayment_counter' })}>
+              Decline
+            </button>
+          </div>
+        </div>
+      ) : repRequest.status === 'approved' ? (
+        <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Your repayment request was approved ✓</div>
+      ) : null}
+    </div>
+  )
+}
+
+// ── Bank anchor repayment request card (shown independently on bank portal) ──
+
+function BankAnchorRepaymentRequestCard({
+  transaction,
+  onAction,
+  acting,
+}: {
+  transaction: Transaction
+  onAction: (body: Record<string, unknown>) => Promise<void>
+  acting: boolean
+}) {
+  const [counterMode, setCounterMode]       = useState(false)
+  const [counterDate, setCounterDate]       = useState('')
+  const [counterCount, setCounterCount]     = useState(2)
+  const [counterStructure, setCounterStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
+  const [rejectReason, setRejectReason]     = useState('')
+
+  const negState   = (() => { try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} } })()
+  const repRequest = negState.anchor_repayment_request as RepaymentRequest | undefined
+
+  if (!repRequest) return null
+
+  return (
+    <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12, marginTop: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Anchor Repayment Request</div>
+
+      {repRequest.type === 'extension' && repRequest.requested_date && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Extension to: {repRequest.requested_date}</div>
+      )}
+      {repRequest.type === 'installment' && repRequest.count != null && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>{repRequest.count} {repRequest.structure} installments</div>
+      )}
+      {repRequest.notes && (
+        <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>Notes: {repRequest.notes}</div>
+      )}
+
+      {repRequest.status === 'pending_bank_review' && !counterMode && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          <button className="btn btn-primary btn-sm" type="button" disabled={acting}
+            onClick={() => onAction({ action: 'review_repayment_request', decision: 'approve' })}>
+            {acting ? 'Processing…' : 'Approve request'}
+          </button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(true)}>Counter-offer</button>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Rejection reason (optional)</div>
+            <input className="input" style={{ width: '100%' }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason…" />
+          </div>
+          <button className="btn btn-danger btn-sm" type="button" disabled={acting}
+            onClick={() => onAction({ action: 'review_repayment_request', decision: 'reject', rejection_reason: rejectReason })}>
+            Decline
+          </button>
+        </div>
+      )}
+
+      {repRequest.status === 'pending_bank_review' && counterMode && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {repRequest.type === 'extension' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter date</div>
+              <input type="date" className="input" value={counterDate} onChange={e => setCounterDate(e.target.value)} style={{ width: '100%' }} />
+            </div>
+          )}
+          {repRequest.type === 'installment' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Installments</div>
+                <input type="number" className="input" min="2" value={counterCount} onChange={e => setCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+                <select className="input" value={counterStructure} onChange={e => setCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Bi-weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                </select>
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary btn-sm" type="button"
+              disabled={acting || (repRequest.type === 'extension' && !counterDate)}
+              onClick={() => onAction({
+                action: 'review_repayment_request', decision: 'counter',
+                ...(repRequest.type === 'extension' ? { counter_date: counterDate } : { counter_count: counterCount, counter_structure: counterStructure }),
+              })}>
+              {acting ? 'Sending…' : 'Submit counter'}
+            </button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {repRequest.status === 'bank_countered' && (
+        <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 4 }}>
+          Counter-offer sent — awaiting anchor response
+          {repRequest.bank_counter?.date && <div style={{ marginTop: 4 }}>Counter date: {repRequest.bank_counter.date}</div>}
+          {repRequest.bank_counter?.count != null && (
+            <div style={{ marginTop: 4 }}>Counter: {repRequest.bank_counter.count} {repRequest.bank_counter.structure} installments</div>
+          )}
+        </div>
+      )}
+
+      {repRequest.status === 'approved' && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-green)', marginTop: 4 }}>Repayment request approved ✓</div>
+      )}
+
+      {repRequest.status === 'rejected' && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)', marginTop: 4 }}>
+          Request declined{repRequest.rejection_reason ? ` — ${repRequest.rejection_reason}` : ''}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Bank action panel (reverse factoring) ──────────────────────────────────
@@ -321,7 +596,12 @@ function BankActionPanel({
   const negotiationState = (() => {
     try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} }
   })()
-  const supplierNeg = negotiationState.supplier_negotiation as { status?: string; bank_offer?: { advance_rate?: number; amount?: number; fee?: number } } | undefined
+  const supplierNeg = negotiationState.supplier_negotiation as {
+    status?: string
+    bank_offer?: { advance_rate?: number; amount?: number; fee?: number }
+    bank_counter_rate?: number
+    supplier_counter?: { advance_rate?: number; amount?: number; submitted_at?: string }
+  } | undefined
   const anchorNeg   = negotiationState.anchor_negotiation   as {
     type?: string; status?: string;
     anchor_request?: { date?: string; count?: number; structure?: string; notes?: string };
@@ -340,6 +620,7 @@ function BankActionPanel({
   const [counterNotes, setCounterNotes] = useState('')
   const [rejectNote, setRejectNote]     = useState('')
   const [discountFee, setDiscountFee]   = useState(0)
+  const [counterError, setCounterError] = useState<string | null>(null)
 
   // Anchor negotiation counter form state
   const [anchorCounterMode, setAnchorCounterMode]           = useState(false)
@@ -798,8 +1079,127 @@ function BankActionPanel({
 
         {supplierNeg?.status === 'approved' ? (
           <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Financing approved ✓</div>
-        ) : supplierNeg?.status === 'counter_offered' ? (
-          <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting supplier</div>
+        ) : (supplierNeg?.status === 'counter_offered' || supplierNeg?.status === 'supplier_countered') ? (
+          supplierNeg.supplier_counter ? (
+            <>
+              <div className="calc-panel">
+                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier counter-offer</div>
+                <div className="calc-row">
+                  <span>Supplier&apos;s counter rate</span>
+                  <span style={{ fontWeight: 600 }}>{supplierNeg.supplier_counter.advance_rate}%</span>
+                </div>
+                {supplierNeg.bank_counter_rate != null && (
+                  <div className="calc-row">
+                    <span>Bank&apos;s offer</span>
+                    <span style={{ color: 'var(--color-ink-3)', textDecoration: 'line-through', fontSize: 12 }}>
+                      {supplierNeg.bank_counter_rate}%
+                    </span>
+                  </div>
+                )}
+                {supplierNeg.supplier_counter.amount != null && (
+                  <div className="calc-row">
+                    <span>Counter amount</span>
+                    <span>{fmtAmt(supplierNeg.supplier_counter.amount)}</span>
+                  </div>
+                )}
+              </div>
+              {isCounter ? (
+                <>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        className="form-input mono"
+                        style={{ width: '100%', paddingRight: 32 }}
+                        type="number" min={0.01} max={100} step={0.01}
+                        value={counterRate}
+                        onChange={e => setCounterRate(e.target.value)}
+                        onWheel={e => (e.target as HTMLInputElement).blur()}
+                      />
+                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+                    </div>
+                  </div>
+                  {counterRateNum > 0 && (
+                    <div className="calc-row">
+                      <span>Counter amount</span>
+                      <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
+                    </div>
+                  )}
+                  <div>
+                    <label className="field-label">Discount fee ($)</label>
+                    <div className="input-group">
+                      <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
+                      <span className="input-suffix">USD</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+                    <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
+                  </div>
+                  {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                  <button
+                    className="btn btn-primary btn-full"
+                    type="button"
+                    disabled={acting || !counterRateNum || discountFee < 0}
+                    onClick={() => {
+                      if (counterRateNum > 100 || counterRateNum <= 0) {
+                        setCounterError('Advance rate must be between 0.01% and 100%')
+                        return
+                      }
+                      setCounterError(null)
+                      onAction({
+                        action: 'counter_offer', negotiation_target: 'supplier',
+                        apr: counterRateNum,
+                        financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
+                        discount_fee: discountFee, fee_amount: discountFee,
+                        ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
+                      })
+                    }}
+                  >
+                    {acting ? 'Sending…' : 'Send counter-offer'}
+                  </button>
+                  <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="field-label">Discount fee ($)</label>
+                    <div className="input-group">
+                      <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
+                      <span className="input-suffix">USD</span>
+                    </div>
+                  </div>
+                  {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                  <button
+                    className="btn btn-primary btn-full"
+                    type="button"
+                    disabled={acting || discountFee < 0}
+                    onClick={() => {
+                      const scRate = supplierNeg.supplier_counter!.advance_rate ?? 0
+                      const scAmt  = supplierNeg.supplier_counter!.amount ?? 0
+                      if (scRate > 100 || scRate <= 0) {
+                        setCounterError('Advance rate must be between 0.01% and 100%')
+                        return
+                      }
+                      setCounterError(null)
+                      onAction({
+                        action: 'approve', negotiation_target: 'supplier',
+                        apr: scRate,
+                        financing_amount_approved: scAmt,
+                        discount_fee: discountFee, fee_amount: discountFee,
+                      })
+                    }}
+                  >
+                    {acting ? 'Processing…' : 'Approve counter-offer'}
+                  </button>
+                  <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>Counter again</button>
+                  <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>Reject</button>
+                </>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting supplier</div>
+          )
         ) : (
           <>
             {/* Supplier's offer */}
@@ -818,9 +1218,10 @@ function BankActionPanel({
                     <input
                       className="form-input mono"
                       style={{ width: '100%', paddingRight: 32 }}
-                      type="number" min="0" max="100" step="0.1"
+                      type="number" min={0.01} max={100} step={0.01}
                       value={counterRate}
                       onChange={e => setCounterRate(e.target.value)}
+                      onWheel={e => (e.target as HTMLInputElement).blur()}
                     />
                     <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
                   </div>
@@ -834,7 +1235,7 @@ function BankActionPanel({
                 <div>
                   <label className="field-label">Discount fee ($)</label>
                   <div className="input-group">
-                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} />
+                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                     <span className="input-suffix">USD</span>
                   </div>
                 </div>
@@ -842,42 +1243,58 @@ function BankActionPanel({
                   <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
                   <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
                 </div>
+                {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
                 <button
                   className="btn btn-primary btn-full"
                   type="button"
                   disabled={acting || !counterRateNum || discountFee < 0}
-                  onClick={() => onAction({
-                    action: 'counter_offer', negotiation_target: 'supplier',
-                    apr: counterRateNum,
-                    financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
-                    discount_fee: discountFee, fee_amount: discountFee,
-                    ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
-                  })}
+                  onClick={() => {
+                    if (counterRateNum > 100 || counterRateNum <= 0) {
+                      setCounterError('Advance rate must be between 0.01% and 100%')
+                      return
+                    }
+                    setCounterError(null)
+                    onAction({
+                      action: 'counter_offer', negotiation_target: 'supplier',
+                      apr: counterRateNum,
+                      financing_amount_approved: parseFloat(counterDisburseAmt.toFixed(2)),
+                      discount_fee: discountFee, fee_amount: discountFee,
+                      ...(counterNotes.trim() ? { counter_offer_notes: counterNotes.trim() } : {}),
+                    })
+                  }}
                 >
                   {acting ? 'Sending…' : 'Send counter-offer'}
                 </button>
-                <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>Cancel</button>
+                <button className="btn btn-ghost btn-full" type="button" onClick={() => { setMode('idle'); setCounterError(null) }}>Cancel</button>
               </>
             ) : (
               <>
                 <div>
                   <label className="field-label">Discount fee ($)</label>
                   <div className="input-group">
-                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} />
+                    <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                     <span className="input-suffix">USD</span>
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>Fee charged for early payment</div>
                 </div>
+                {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
                 <button
                   className="btn btn-primary btn-full"
                   type="button"
                   disabled={acting || !supplierRateNum || discountFee < 0}
-                  onClick={() => onAction({
-                    action: 'approve', negotiation_target: 'supplier',
-                    apr: supplierRateNum,
-                    financing_amount_approved: parseFloat(supplierDisburseAmt.toFixed(2)),
-                    discount_fee: discountFee, fee_amount: discountFee,
-                  })}
+                  onClick={() => {
+                    if (supplierRateNum > 100 || supplierRateNum <= 0) {
+                      setCounterError('Advance rate must be between 0.01% and 100%')
+                      return
+                    }
+                    setCounterError(null)
+                    onAction({
+                      action: 'approve', negotiation_target: 'supplier',
+                      apr: supplierRateNum,
+                      financing_amount_approved: parseFloat(supplierDisburseAmt.toFixed(2)),
+                      discount_fee: discountFee, fee_amount: discountFee,
+                    })
+                  }}
                 >
                   {acting ? 'Processing…' : 'Approve offer'}
                 </button>
@@ -933,7 +1350,7 @@ function BankActionPanel({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Number of installments</div>
-                    <input type="number" className="input" min="2" max="52" value={anchorCounterCount} onChange={e => setAnchorCounterCount(Number(e.target.value))} />
+                    <input type="number" className="input" min="2" max="52" value={anchorCounterCount} onChange={e => setAnchorCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
@@ -1005,12 +1422,6 @@ function AnchorActionPanel({
   const [rejectReason, setRejectReason]     = useState('')
   const [disputeReason, setDisputeReason]   = useState('')
   const [showDisputeForm, setShowDisputeForm] = useState(false)
-  const [anchorApprovalMode, setAnchorApprovalMode] = useState<'none'|'extend'|'installment'>('none')
-  const [extendDate, setExtendDate] = useState('')
-  const [extendNotes, setExtendNotes] = useState('')
-  const [installmentCount, setInstallmentCount] = useState(2)
-  const [installmentStructure, setInstallmentStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
-  const [installmentNotes, setInstallmentNotes] = useState('')
 
   // PO financing: passive until pending_anchor_confirmation
   if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
@@ -1271,19 +1682,6 @@ function AnchorActionPanel({
     )
   }
 
-  async function handleAnchorApprove(mode: 'normal'|'extend'|'installment') {
-    if (mode === 'normal') {
-      await onAction({ action: 'approve' })
-    } else if (mode === 'extend') {
-      if (!extendDate) return
-      await onAction({ action: 'approve_with_extension', extension_date: extendDate, ...(extendNotes ? { extension_notes: extendNotes } : {}) })
-    } else {
-      await onAction({ action: 'approve_with_installment', installment_count: installmentCount, installment_structure: installmentStructure, ...(installmentNotes ? { installment_notes: installmentNotes } : {}) })
-    }
-    onSuccess('Invoice approved — sent to bank for review')
-    setAnchorApprovalMode('none')
-  }
-
   if (showRejectForm) {
     return (
       <div className="action-block">
@@ -1316,126 +1714,6 @@ function AnchorActionPanel({
     )
   }
 
-  if (anchorApprovalMode === 'extend') {
-    return (
-      <div className="action-block">
-        <div className="card-body" style={{ borderTop: '1px solid var(--color-border)', marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
-            Request payment extension
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="field-label">Requested repayment date</label>
-            <input
-              className="input"
-              type="date"
-              value={extendDate}
-              min={transaction?.invoice_due_date ?? ''}
-              onChange={e => setExtendDate(e.target.value)}
-              style={{ width: '100%' }}
-            />
-            <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>
-              Must be after original due date ({transaction?.invoice_due_date})
-            </div>
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <label className="field-label">Notes to bank (optional)</label>
-            <textarea
-              className="input"
-              value={extendNotes}
-              onChange={e => setExtendNotes(e.target.value)}
-              style={{ height: 60, resize: 'none', width: '100%' }}
-              placeholder="Reason for extension request..."
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="btn btn-primary btn-sm"
-              type="button"
-              disabled={!extendDate || acting}
-              onClick={() => handleAnchorApprove('extend')}
-            >
-              Submit extension request
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              type="button"
-              onClick={() => setAnchorApprovalMode('none')}
-            >
-              Back
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (anchorApprovalMode === 'installment') {
-    return (
-      <div className="action-block">
-        <div className="card-body" style={{ borderTop: '1px solid var(--color-border)', marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
-            Request installment structure
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div>
-              <label className="field-label">Number of installments</label>
-              <input
-                className="input"
-                type="number"
-                min="2" max="52"
-                value={installmentCount}
-                onChange={e => setInstallmentCount(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="field-label">Frequency</label>
-              <select
-                className="input"
-                value={installmentStructure}
-                onChange={e => setInstallmentStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}
-              >
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Bi-weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ marginBottom: 8, fontSize: 12.5, color: 'var(--color-ink-3)' }}>
-            Example: {installmentCount} {installmentStructure} installments
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <label className="field-label">Notes to bank (optional)</label>
-            <textarea
-              className="input"
-              value={installmentNotes}
-              onChange={e => setInstallmentNotes(e.target.value)}
-              style={{ height: 60, resize: 'none', width: '100%' }}
-              placeholder="Additional details..."
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="btn btn-primary btn-sm"
-              type="button"
-              disabled={acting}
-              onClick={() => handleAnchorApprove('installment')}
-            >
-              Submit installment request
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              type="button"
-              onClick={() => setAnchorApprovalMode('none')}
-            >
-              Back
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="action-block">
       <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
@@ -1445,31 +1723,10 @@ function AnchorActionPanel({
         className="btn btn-primary btn-full"
         type="button"
         disabled={acting}
-        onClick={() => handleAnchorApprove('normal')}
+        onClick={async () => { await onAction({ action: 'approve' }); onSuccess('Invoice approved — sent to bank for review') }}
       >
-        {acting ? 'Processing…' : 'Approve normally'}
+        {acting ? 'Processing…' : 'Approve'}
       </button>
-      {/* Extend/installment options are reverse factoring only */}
-      {!isPOFinancing && (
-        <>
-          <button
-            className="btn btn-ghost btn-full"
-            type="button"
-            disabled={acting}
-            onClick={() => setAnchorApprovalMode('extend')}
-          >
-            Approve + Extend payment
-          </button>
-          <button
-            className="btn btn-ghost btn-full"
-            type="button"
-            disabled={acting}
-            onClick={() => setAnchorApprovalMode('installment')}
-          >
-            Approve + Installment structure
-          </button>
-        </>
-      )}
       <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
         Reject
       </button>
@@ -1485,19 +1742,25 @@ function SupplierActionPanel({
   acting,
   isInvoiceFactoring,
   isPOFinancing,
+  txnId,
+  onRefresh,
 }: {
   transaction: Transaction
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
   isInvoiceFactoring?: boolean
   isPOFinancing?: boolean
+  txnId: string
+  onRefresh: () => void
 }) {
   const [counterMode, setCounterMode] = useState(false)
   const [counterRate, setCounterRate] = useState('')
   const [counterNotes, setCounterNotes] = useState('')
+  const [counterError, setCounterError] = useState<string | null>(null)
   const [invoiceNum, setInvoiceNum]         = useState('')
   const [invoiceAmt2, setInvoiceAmt2]       = useState('')
   const [invoiceDateVal, setInvoiceDateVal] = useState('')
+  const [invoiceFile, setInvoiceFile]       = useState<File | null>(null)
   const [invError, setInvError]             = useState<string | null>(null)
 
   const invoiceAmt     = transaction.invoice_amount ?? 0
@@ -1527,12 +1790,13 @@ function SupplierActionPanel({
                   className="form-input mono"
                   style={{ width: '100%', paddingRight: 32 }}
                   type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
+                  min={0.01}
+                  max={100}
+                  step={0.01}
                   value={counterRate}
                   onChange={e => setCounterRate(e.target.value)}
                   placeholder={rate != null ? String(rate) : ''}
+                  onWheel={e => (e.target as HTMLInputElement).blur()}
                 />
                 <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
               </div>
@@ -1554,19 +1818,27 @@ function SupplierActionPanel({
                 placeholder="Reason for counter-offer…"
               />
             </div>
+            {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
             <button
               className="btn btn-primary btn-full"
               type="button"
               disabled={acting || !counterRateNum}
-              onClick={() => onAction({
-                action:        'supplier_counter',
-                apr:           counterRateNum,
-                ...(counterNotes.trim() ? { counter_notes: counterNotes.trim() } : {}),
-              })}
+              onClick={() => {
+                if (counterRateNum > 100 || counterRateNum <= 0) {
+                  setCounterError('Advance rate must be between 0.01% and 100%')
+                  return
+                }
+                setCounterError(null)
+                onAction({
+                  action:        'supplier_counter',
+                  apr:           counterRateNum,
+                  ...(counterNotes.trim() ? { counter_notes: counterNotes.trim() } : {}),
+                })
+              }}
             >
               {acting ? 'Sending…' : 'Send counter-offer to bank'}
             </button>
-            <button className="btn btn-ghost btn-full" type="button" onClick={() => setCounterMode(false)}>
+            <button className="btn btn-ghost btn-full" type="button" onClick={() => { setCounterMode(false); setCounterError(null) }}>
               Cancel
             </button>
           </div>
@@ -1640,10 +1912,7 @@ function SupplierActionPanel({
                 Wire transfer details
               </p>
               <div className="calc-panel">
-                {wireInfo!.bank_name       && <div className="calc-row"><span>Bank</span><span>{wireInfo!.bank_name}</span></div>}
-                {wireInfo!.account_number  && <div className="calc-row"><span>Account</span><span className="mono">{'••••' + wireInfo!.account_number.slice(-4)}</span></div>}
-                {wireInfo!.routing_number  && <div className="calc-row"><span>Routing</span><span className="mono">{wireInfo!.routing_number}</span></div>}
-                {wireInfo!.reference       && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
+                {wireInfo!.reference && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
               </div>
             </>
           ) : (
@@ -1669,6 +1938,13 @@ function SupplierActionPanel({
             invoice_amount: parseFloat(invoiceAmt2),
             invoice_date:   invoiceDateVal,
           })
+          if (invoiceFile) {
+            const fd = new FormData()
+            fd.append('file', invoiceFile)
+            fd.append('document_kind', 'invoice_pdf')
+            await fetch(`/api/transactions/${txnId}/documents`, { method: 'POST', body: fd })
+          }
+          onRefresh()
         }
 
         return (
@@ -1690,6 +1966,23 @@ function SupplierActionPanel({
             <div>
               <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice date</div>
               <input type="date" className="form-input" style={{ width: '100%' }} value={invoiceDateVal} onChange={e => setInvoiceDateVal(e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Upload invoice document</div>
+              <input
+                type="file"
+                accept=".pdf,image/*"
+                onChange={e => setInvoiceFile(e.target.files?.[0] ?? null)}
+                style={{ display: 'none' }}
+                id="invoice-upload"
+              />
+              <label
+                htmlFor="invoice-upload"
+                className="btn btn-ghost btn-sm"
+                style={{ cursor: 'pointer', display: 'inline-block' }}
+              >
+                {invoiceFile ? invoiceFile.name : 'Choose file'}
+              </label>
             </div>
             {invError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{invError}</div>}
             <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleSubmitInvoice}>
@@ -1994,11 +2287,29 @@ export default function TransactionDetailPage() {
   const txnAnchorNeg = txnNegState.anchor_negotiation as { type?: string; status?: string } | undefined
   const hasAnchorRepaymentRequest = !!txnAnchorNeg?.type
 
+  const repaymentRequest = (() => {
+    try {
+      const state = JSON.parse(txn?.bank_approval_notes ?? '{}')
+      return state.anchor_repayment_request as {
+        status?: string; type?: string; requested_date?: string; count?: number; structure?: string;
+        agreed_date?: string; agreed_count?: number; agreed_structure?: string;
+      } | undefined
+    } catch { return undefined }
+  })()
+
   const rejectionEvent = events.find(e => e.event_type === 'status_change' && e.to_status === 'rejected')
     ?? events.find(e => e.to_status === 'rejected')
   const txnRejectionReason = rejectionEvent?.notes ?? null
 
   const showFinancials = txn ? !['rejected', 'cancelled'].includes(txn.status) : true
+
+  const showApprovedFinancials = txn != null &&
+    ['financing_approved', 'funded', 'pending_anchor_confirmation', 'repayment_due', 'completed']
+    .includes(txn.status)
+
+  const amountDisbursed = showApprovedFinancials && txn
+    ? (txn.invoice_amount ?? 0) * ((txn.apr ?? txn.financing_rate_apr ?? 0) / 100) - (txn.fee_amount ?? 0)
+    : null
 
   const typeLabel = humanizeType(txn?.type ?? txn?.financing_type ?? null)
   const subtitle = txn
@@ -2072,44 +2383,26 @@ export default function TransactionDetailPage() {
                     <div className="fs-cell">
                       <span className="fs-label">Advance rate</span>
                       <span className="fs-value">
-                        {showFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
+                        {showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
                       </span>
                     </div>
                     <div className="fs-cell">
                       <span className="fs-label">Amount disbursed</span>
-                      <span className={`fs-value ${showFinancials && txn.financing_amount_approved != null ? 'green' : ''}`}>
-                        {showFinancials ? fmtAmt(txn.financing_amount_approved) : '—'}
+                      <span className={`fs-value ${amountDisbursed != null && amountDisbursed > 0 ? 'green' : ''}`}>
+                        {amountDisbursed != null ? fmtAmt(parseFloat(amountDisbursed.toFixed(2))) : '—'}
                       </span>
                     </div>
                     <div className="fs-cell">
                       <span className="fs-label">Discount fee</span>
-                      <span className="fs-value">{showFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
+                      <span className="fs-value">{showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
                     </div>
                   </div>
-                  {/* Wire info in summary — only for supplier (API nulls it for anchor) */}
-                  {portal === 'supplier' && wireInfoForSummary && Object.values(wireInfoForSummary).some(Boolean) && (
-                    <>
-                      {wireInfoForSummary.bank_name && (
-                        <div className="fs-extra-row">
-                          <span className="k">Wire bank</span>
-                          <span className="v">{wireInfoForSummary.bank_name}</span>
-                        </div>
-                      )}
-                      {wireInfoForSummary.account_number && (
-                        <div className="fs-extra-row">
-                          <span className="k">Account</span>
-                          <span className="v mono">
-                            {'••••' + wireInfoForSummary.account_number.slice(-4)}
-                          </span>
-                        </div>
-                      )}
-                      {wireInfoForSummary.reference && (
-                        <div className="fs-extra-row">
-                          <span className="k">Reference</span>
-                          <span className="v mono">{wireInfoForSummary.reference}</span>
-                        </div>
-                      )}
-                    </>
+                  {/* Wire info in summary — only for supplier and bank */}
+                  {(portal === 'supplier' || portal === 'bank') && wireInfoForSummary?.reference && (
+                    <div className="fs-extra-row">
+                      <span className="k">Wire reference</span>
+                      <span className="v mono">{wireInfoForSummary.reference}</span>
+                    </div>
                   )}
                 </div>
 
@@ -2174,6 +2467,36 @@ export default function TransactionDetailPage() {
                         <span className="k">Repaid</span>
                         <span className="v plain">{fmtDate(txn.repaid_at)}</span>
                       </div>
+                    )}
+                    {repaymentRequest?.status === 'approved' && (
+                      <>
+                        <div className="kv-row">
+                          <span className="k">Repayment type</span>
+                          <span className="v plain">
+                            {repaymentRequest.type === 'extension'
+                              ? 'Extended payment'
+                              : 'Installment structure'}
+                          </span>
+                        </div>
+                        {repaymentRequest.type === 'extension' && (
+                          <div className="kv-row">
+                            <span className="k">New payment date</span>
+                            <span className="v plain">
+                              {repaymentRequest.agreed_date ?? repaymentRequest.requested_date}
+                            </span>
+                          </div>
+                        )}
+                        {repaymentRequest.type === 'installment' && (
+                          <div className="kv-row">
+                            <span className="k">Installment plan</span>
+                            <span className="v plain">
+                              {repaymentRequest.agreed_count ?? repaymentRequest.count}{' '}
+                              {repaymentRequest.agreed_structure ?? repaymentRequest.structure}{' '}
+                              payments
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -2405,7 +2728,7 @@ export default function TransactionDetailPage() {
                 )}
 
                 {/* Documents */}
-                {(portal !== 'supplier' || documents.length > 0) && (
+                {documents.length > 0 && (
                   <div className="card">
                     <div className="card-head">
                       <h3 className="t-card-head">Documents</h3>
@@ -2467,6 +2790,9 @@ export default function TransactionDetailPage() {
                           actor === 'bank'     ? 'blue'   :
                           actor === 'anchor'   ? 'amber'  :
                           actor === 'supplier' ? 'purple' : 'gray'
+                        const isWireEvent = e.event_type === 'disbursement_marked' || e.event_type === 'wire_info_sent' || (e.notes?.toLowerCase().includes('wire') ?? false)
+                        const displayAction = isWireEvent ? 'Bank submitted wire transfer details' : humanizeEvent(e)
+                        const displayNotes = isWireEvent ? null : e.notes
                         return (
                           <div key={e.id} className="tl-item">
                             <span className={`tl-dot ${dotColor}`} />
@@ -2477,11 +2803,11 @@ export default function TransactionDetailPage() {
                                   {actor.charAt(0).toUpperCase() + actor.slice(1)}
                                 </span>
                                 <span className="tl-actor-name">{e.actor_name}</span>
-                                <span className="tl-action">{humanizeEvent(e)}</span>
+                                <span className="tl-action">{displayAction}</span>
                               </div>
-                              {e.notes && (
+                              {displayNotes && (
                                 <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-ink-3)' }}>
-                                  {e.notes}
+                                  {displayNotes}
                                 </div>
                               )}
                             </div>
@@ -2601,6 +2927,13 @@ export default function TransactionDetailPage() {
                       isPOFinancing={isPOFinancing}
                     />
                   )}
+                  {portal === 'bank' && !isInvoiceFactoring && !isPOFinancing && (
+                    <BankAnchorRepaymentRequestCard
+                      transaction={txn}
+                      onAction={handleAction}
+                      acting={acting}
+                    />
+                  )}
                   {portal === 'anchor' && (
                     <AnchorActionPanel
                       transaction={txn}
@@ -2618,9 +2951,26 @@ export default function TransactionDetailPage() {
                       acting={acting}
                       isInvoiceFactoring={isInvoiceFactoring}
                       isPOFinancing={isPOFinancing}
+                      txnId={id}
+                      onRefresh={load}
                     />
                   )}
                 </div>
+                {portal === 'anchor' && !isInvoiceFactoring && !isPOFinancing &&
+                  !['draft', 'rejected', 'cancelled', 'completed'].includes(txn.status) && (
+                  <div className="card" style={{ width: '100%', marginTop: 12 }}>
+                    <div className="card-head">
+                      <span>Repayment Request</span>
+                    </div>
+                    <div className="card-body">
+                      <AnchorStandaloneRepaymentSection
+                        transaction={txn}
+                        onAction={handleAction}
+                        acting={acting}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </>

@@ -299,11 +299,11 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Bank Portal' }, { label: 'Dashboard' }]}
+        crumbs={[{ label: 'Dashboard' }]}
       />
       <div className="page">
         <div className="page-header">
-          <div className="eyebrow">{data?.bank_name ?? 'Bank Portal'} · Portfolio Command</div>
+          <div className="eyebrow">{data?.bank_name ?? 'Bank'} · Portfolio Command</div>
           <h1 className="t-page-title">Good morning, {firstName}</h1>
           <div className="subtitle">
             {data && data.kyb_pending > 0 ? `${data.kyb_pending} KYB review${data.kyb_pending !== 1 ? 's' : ''} pending · ` : ''}
@@ -445,11 +445,11 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap, volPe
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Anchor Portal' }, { label: 'Dashboard' }]}
+        crumbs={[{ label: 'Dashboard' }]}
       />
       <div className="page">
         <div className="page-header">
-          <div className="eyebrow">{data?.org_name ?? 'Anchor Portal'} · Anchor Portal</div>
+          <div className="eyebrow">{data?.org_name ?? 'Organization'} · Overview</div>
           <h1 className="t-page-title">Good morning, {firstName}</h1>
           <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
         </div>
@@ -565,11 +565,11 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, vol
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Supplier Portal' }, { label: 'Dashboard' }]}
+        crumbs={[{ label: 'Dashboard' }]}
       />
       <div className="page">
         <div className="page-header">
-          <div className="eyebrow">{data?.org_name ?? 'Supplier Portal'} · Supplier Portal</div>
+          <div className="eyebrow">{data?.org_name ?? 'Organization'} · Overview</div>
           <h1 className="t-page-title">Good morning, {firstName}</h1>
           <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
         </div>

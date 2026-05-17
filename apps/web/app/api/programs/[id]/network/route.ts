@@ -11,10 +11,12 @@ const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
 const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: programId } = await params
+  const url = new URL(request.url)
+  const anchorId = url.searchParams.get('anchor_id')
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -37,89 +39,40 @@ export async function GET(
   const programFT = (program as { financing_types?: string[] | null }).financing_types
   const isIFOnly = (programFT?.length ?? 0) > 0 && programFT!.every((t: string) => t === 'invoice_factoring')
 
+  // ── ANCHOR_ID param: return full anchor org details ───────────────────────
+  if (anchorId) {
+    let allowed = false
+    if (BANK_ROLES.includes(userData.role)) {
+      allowed = program.bank_id === userData.bank_id
+    } else if (ANCHOR_ROLES.includes(userData.role)) {
+      allowed = userData.org_id === anchorId
+    } else {
+      const { data: enr } = await adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('program_id', programId)
+        .eq('anchor_org_id', anchorId)
+        .eq('org_id', userData.org_id)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle()
+      allowed = !!enr
+    }
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const { data: anchorOrg } = await adminClient
+      .from('organizations')
+      .select('id, legal_name, type, city, state, primary_contact_name, primary_contact_email, industry_naics, created_at, kyb_status, annual_revenue_range, doing_business_as')
+      .eq('id', anchorId)
+      .single()
+
+    return NextResponse.json({ anchor: anchorOrg ?? null })
+  }
+
   // ── BANK ─────────────────────────────────────────────────────────────────
   if (BANK_ROLES.includes(userData.role)) {
     if (program.bank_id !== userData.bank_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    // ── Invoice Factoring: no anchor grouping, return supplier list directly ──
-    if (isIFOnly) {
-      const [enrollResult, inviteResult] = await Promise.all([
-        adminClient
-          .from('program_enrollments')
-          .select('org_id, created_at')
-          .eq('program_id', programId)
-          .eq('status', 'active'),
-        adminClient
-          .from('invitations')
-          .select('id, email, role, created_at')
-          .eq('program_id', programId)
-          .eq('status', 'pending'),
-      ])
-
-      const enrollments = enrollResult.data ?? []
-      const orgIds = enrollments.map((e: { org_id: string }) => e.org_id)
-      const enrolledAtMap = new Map(enrollments.map((e: { org_id: string; created_at: string }) => [e.org_id, e.created_at]))
-
-      let suppliers: Array<{
-        id: string; legal_name: string; kyb_status: string; status: string
-        city: string | null; state: string | null; enrolled_at: string | null; transaction_count: number
-      }> = []
-
-      if (orgIds.length > 0) {
-        const [{ data: orgs }, { data: txns }] = await Promise.all([
-          adminClient
-            .from('organizations')
-            .select('id, legal_name, kyb_status, status, city, state')
-            .in('id', orgIds)
-            .eq('type', 'supplier'),
-          adminClient
-            .from('transactions')
-            .select('supplier_id')
-            .eq('program_id', programId)
-            .in('supplier_id', orgIds),
-        ])
-
-        const txnCount = new Map<string, number>()
-        for (const t of (txns ?? [])) {
-          txnCount.set(t.supplier_id, (txnCount.get(t.supplier_id) ?? 0) + 1)
-        }
-
-        suppliers = (orgs ?? []).map(org => ({
-          id: org.id,
-          legal_name: org.legal_name,
-          kyb_status: org.kyb_status,
-          status: org.status,
-          city: (org as { city?: string | null }).city ?? null,
-          state: (org as { state?: string | null }).state ?? null,
-          enrolled_at: enrolledAtMap.get(org.id) ?? null,
-          transaction_count: txnCount.get(org.id) ?? 0,
-        }))
-      }
-
-      const pending_suppliers = (inviteResult.data ?? [])
-        .filter((i: { role: string }) => i.role === 'supplier')
-        .map((i: { id: string; email: string; created_at: string }) => ({
-          id: i.id,
-          email: i.email,
-          anchor_org_id: null as string | null,
-          status: 'invited' as const,
-          invited_at: i.created_at,
-          type: 'invitation' as const,
-        }))
-
-      return NextResponse.json({
-        suppliers,
-        anchors: [],
-        pending_suppliers,
-        pending_anchors: [],
-        kyb_anchors: [],
-        kyb_suppliers: [],
-        signed_up_anchors: [],
-        signed_up_suppliers: [],
-        isInvoiceFactoring: true,
-      })
     }
 
     // Fetch enrollments AND pending/accepted invitations in parallel
@@ -452,19 +405,6 @@ export async function GET(
   }
 
   // ── SUPPLIER ──────────────────────────────────────────────────────────────
-  // Invoice factoring has no anchor relationship
-  if (isIFOnly) {
-    const { data: enrollCheck } = await adminClient
-      .from('program_enrollments')
-      .select('id')
-      .eq('program_id', programId)
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active')
-      .limit(1)
-      .maybeSingle()
-    return NextResponse.json({ isInvoiceFactoring: true, enrolled: !!enrollCheck })
-  }
-
   const { data: myEnrollments } = await adminClient
     .from('program_enrollments')
     .select('anchor_org_id')
@@ -503,12 +443,12 @@ export async function GET(
     }
   }
 
-  if (anchorIds2.length === 0) return NextResponse.json({ anchors: [] })
+  if (anchorIds2.length === 0) return NextResponse.json({ anchors: [], isInvoiceFactoring: isIFOnly })
 
   const [{ data: anchorOrgs2 }, { data: txns2 }] = await Promise.all([
     adminClient
       .from('organizations')
-      .select('id, legal_name, kyb_status, status')
+      .select('id, legal_name, kyb_status, status, city, state, primary_contact_name, primary_contact_email, industry_naics, created_at, doing_business_as')
       .in('id', anchorIds2),
     adminClient
       .from('transactions')
@@ -528,13 +468,20 @@ export async function GET(
   }
 
   const anchors2 = (anchorOrgs2 ?? []).map(org => ({
-    id:                  org.id,
-    legal_name:          org.legal_name,
-    kyb_status:          org.kyb_status,
-    status:              org.status,
-    transaction_count:   txnByAnchor2.get(org.id)?.count ?? 0,
-    outstanding_balance: txnByAnchor2.get(org.id)?.outstanding ?? 0,
+    id:                    org.id,
+    legal_name:            org.legal_name,
+    kyb_status:            org.kyb_status,
+    status:                org.status,
+    city:                  org.city,
+    state:                 org.state,
+    primary_contact_name:  org.primary_contact_name,
+    primary_contact_email: org.primary_contact_email,
+    industry_naics:        org.industry_naics,
+    created_at:            org.created_at,
+    doing_business_as:     org.doing_business_as,
+    transaction_count:     txnByAnchor2.get(org.id)?.count ?? 0,
+    outstanding_balance:   txnByAnchor2.get(org.id)?.outstanding ?? 0,
   }))
 
-  return NextResponse.json({ anchors: anchors2 })
+  return NextResponse.json({ anchors: anchors2, isInvoiceFactoring: isIFOnly })
 }

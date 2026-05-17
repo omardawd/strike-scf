@@ -42,21 +42,35 @@ export async function GET() {
 
   const isAnchor = ANCHOR_ROLES.includes(userData.role)
 
-  // Anchors: query by anchor_org_id so they see programs even if their direct enrollment
-  // row was never created — supplier enrollments reference them via anchor_org_id.
-  // Suppliers: query by org_id (their own enrollment row).
+  // Anchors: query by anchor_org_id — catches both self-enrollment rows and supplier rows under this anchor
+  if (isAnchor) {
+    const { data: enrollments } = await adminClient
+      .from('program_enrollments')
+      .select('program_id')
+      .eq('anchor_org_id', userData.org_id)
+      .in('status', ['active', 'invited', 'onboarding'])
+
+    const programIds = [...new Set((enrollments ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean))]
+
+    if (programIds.length === 0) return NextResponse.json({ programs: [] })
+
+    const { data: programs, error: progError } = await adminClient
+      .from('programs')
+      .select('*')
+      .in('id', programIds)
+      .eq('status', 'active')
+
+    if (progError) return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
+    return NextResponse.json({ programs: programs ?? [] })
+  }
+
+  // Suppliers: query by org_id + email invitations
   const [enrollResult, inviteResult] = await Promise.all([
-    isAnchor
-      ? adminClient
-          .from('program_enrollments')
-          .select('program_id')
-          .eq('anchor_org_id', userData.org_id)
-          .eq('status', 'active')
-      : adminClient
-          .from('program_enrollments')
-          .select('program_id')
-          .eq('org_id', userData.org_id)
-          .eq('status', 'active'),
+    adminClient
+      .from('program_enrollments')
+      .select('program_id')
+      .eq('org_id', userData.org_id)
+      .eq('status', 'active'),
     userData.email
       ? adminClient
           .from('invitations')

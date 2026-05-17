@@ -181,6 +181,7 @@ function StepInvoice({
               className="form-input"
               type="date"
               value={invoiceDate}
+              max={invoiceDueDate || undefined}
               onChange={(e) => onChange('invoiceDate', e.target.value)}
             />
             {errors.invoiceDate && <div style={errStyle}>{errors.invoiceDate}</div>}
@@ -353,11 +354,13 @@ function StepPODetails({
             className="form-input"
             type="date"
             value={poInvoiceDueDate}
+            min={new Date().toISOString().slice(0, 10)}
             onChange={(e) => onChange('poInvoiceDueDate', e.target.value)}
           />
           <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>
             When the anchor is expected to pay the invoice
           </div>
+          {errors.poInvoiceDueDate && <div style={errStyle}>{errors.poInvoiceDueDate}</div>}
         </div>
 
         <div className="form-field">
@@ -692,6 +695,9 @@ export default function NewTransactionPage() {
     } else if (rate > 100) {
       e.offerRate = 'Advance rate cannot exceed 100%'
     }
+    if (poInvoiceDueDate && new Date(poInvoiceDueDate) <= new Date()) {
+      e.poInvoiceDueDate = 'Expected payment date must be in the future'
+    }
 
     setErrors(e)
     return Object.keys(e).length === 0
@@ -722,8 +728,8 @@ export default function NewTransactionPage() {
 
     if (!invoiceDueDate) {
       e.invoiceDueDate = 'Due date is required'
-    } else if (invoiceDate && invoiceDueDate < invoiceDate) {
-      e.invoiceDueDate = 'Due date cannot be before invoice date'
+    } else if (invoiceDate && new Date(invoiceDate) >= new Date(invoiceDueDate)) {
+      e.invoiceDate = 'Invoice date must be before the due date'
     }
     
 
@@ -752,7 +758,7 @@ export default function NewTransactionPage() {
           financing_amount_requested: financingAmtRequested,
           goods_services_description: description.trim(),
         }
-        docKind = 'purchase_order_pdf'
+        docKind = 'purchase_order'
       } else {
         const invoiceAmt = parseFloat(invoiceAmount)
         const rate = parseFloat(offerRate)

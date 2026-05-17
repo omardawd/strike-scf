@@ -103,7 +103,7 @@ export async function GET() {
 
   const { data: enrollments } = await adminClient
     .from('program_enrollments')
-    .select('program_id, programs(id, name, financing_types, status, standard_tenor_days)')
+    .select('program_id, programs(id, name, status, financing_types, program_limit, created_at)')
     .eq('org_id', userData.org_id)
     .eq('status', 'active')
 

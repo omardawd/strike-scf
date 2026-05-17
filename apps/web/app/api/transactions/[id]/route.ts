@@ -281,6 +281,97 @@ export async function PATCH(
       return NextResponse.json({ transaction: updated })
     }
 
+    // ── Standalone anchor repayment request (independent of invoice approval) ──
+    if (action === 'request_extension' || action === 'request_installment') {
+      if (['rejected', 'cancelled', 'completed'].includes(transaction.status)) {
+        return NextResponse.json({ error: 'Cannot request repayment terms at this transaction status' }, { status: 400 })
+      }
+      const repState = getNegotiationState(transaction as Record<string, unknown>)
+      if (action === 'request_extension') {
+        const extDate  = body.extension_date ? String(body.extension_date) : null
+        const extNotes = body.notes ? String(body.notes) : null
+        if (!extDate) return NextResponse.json({ error: 'extension_date is required' }, { status: 400 })
+        repState.anchor_repayment_request = { type: 'extension', status: 'pending_bank_review', requested_date: extDate, notes: extNotes }
+      } else {
+        const count    = body.count != null ? Number(body.count) : null
+        const structure = body.structure ? String(body.structure) : null
+        const instNotes = body.notes ? String(body.notes) : null
+        if (!count || !structure) return NextResponse.json({ error: 'count and structure are required' }, { status: 400 })
+        repState.anchor_repayment_request = { type: 'installment', status: 'pending_bank_review', count, structure, notes: instNotes }
+      }
+      const { data: updated, error } = await adminClient
+        .from('transactions')
+        .update({ bank_approval_notes: setNegotiationState(repState), updated_at: new Date().toISOString() })
+        .eq('id', id).select().single()
+      if (error) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+      const repReq = repState.anchor_repayment_request as Record<string, unknown>
+      await adminClient.from('transaction_events').insert({
+        transaction_id: id,
+        event_type:     action === 'request_extension' ? 'anchor_repayment_extension_requested' : 'anchor_repayment_installment_requested',
+        from_status:    transaction.status,
+        to_status:      transaction.status,
+        actor_id:       user.id,
+        actor_type:     'anchor',
+        notes:          action === 'request_extension'
+          ? `Requested repayment extension to ${repReq.requested_date}`
+          : `Requested ${repReq.count} ${repReq.structure} installments`,
+      })
+      const { data: bankAdminRep } = await adminClient.from('users').select('email, full_name')
+        .eq('bank_id', transaction.bank_id).eq('role', 'bank_admin').limit(1).maybeSingle()
+      if (bankAdminRep?.email) {
+        const invoiceRefRep = transaction.invoice_number ?? id
+        await sendEmail({
+          to:      bankAdminRep.email,
+          subject: `Anchor repayment ${action === 'request_extension' ? 'extension' : 'installment'} request on invoice ${invoiceRefRep}`,
+          html:    transactionStatusEmailHtml({
+            recipientName: bankAdminRep.full_name ?? 'Bank Admin',
+            eventBody:     `The anchor has submitted a repayment ${action === 'request_extension' ? 'extension' : 'installment'} request for invoice ${invoiceRefRep}. Please review.`,
+            transactionId: id,
+          }),
+        })
+      }
+      return NextResponse.json({ transaction: updated })
+    }
+
+    if (action === 'accept_repayment_counter' || action === 'reject_repayment_counter') {
+      const repState   = getNegotiationState(transaction as Record<string, unknown>)
+      const repRequest = repState.anchor_repayment_request as Record<string, unknown> | undefined
+      if (!repRequest || repRequest.status !== 'bank_countered') {
+        return NextResponse.json({ error: 'No repayment counter-offer pending' }, { status: 400 })
+      }
+      const accepted = action === 'accept_repayment_counter'
+      repRequest.status = accepted ? 'approved' : 'rejected'
+      const { data: updated, error } = await adminClient
+        .from('transactions')
+        .update({ bank_approval_notes: setNegotiationState(repState), updated_at: new Date().toISOString() })
+        .eq('id', id).select().single()
+      if (error) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+      await adminClient.from('transaction_events').insert({
+        transaction_id: id,
+        event_type:     accepted ? 'anchor_accepted_repayment_counter' : 'anchor_rejected_repayment_counter',
+        from_status:    transaction.status,
+        to_status:      transaction.status,
+        actor_id:       user.id,
+        actor_type:     'anchor',
+        notes:          accepted ? 'Anchor accepted bank counter-proposal for repayment' : 'Anchor declined bank counter-proposal for repayment',
+      })
+      const { data: bankAdminAc } = await adminClient.from('users').select('email, full_name')
+        .eq('bank_id', transaction.bank_id).eq('role', 'bank_admin').limit(1).maybeSingle()
+      if (bankAdminAc?.email) {
+        const invoiceRefAc = transaction.invoice_number ?? id
+        await sendEmail({
+          to:      bankAdminAc.email,
+          subject: `Anchor ${accepted ? 'accepted' : 'declined'} repayment counter on invoice ${invoiceRefAc}`,
+          html:    transactionStatusEmailHtml({
+            recipientName: bankAdminAc.full_name ?? 'Bank Admin',
+            eventBody:     `The anchor has ${accepted ? 'accepted' : 'declined'} the bank counter-proposal for repayment on invoice ${invoiceRefAc}.`,
+            transactionId: id,
+          }),
+        })
+      }
+      return NextResponse.json({ transaction: updated })
+    }
+
     if (transaction.status !== 'pending_anchor_approval') {
       return NextResponse.json({ error: 'Transaction is not awaiting anchor approval' }, { status: 400 })
     }
@@ -491,12 +582,25 @@ export async function PATCH(
       const invoiceAmt = transaction.invoice_amount ?? 0
       const amountApproved = parseFloat((invoiceAmt * (rateApr / 100)).toFixed(2))
 
+      // Store supplier's counter in negotiation state so bank can see the new rate
+      const scNegState = getNegotiationState(transaction as Record<string, unknown>)
+      if (scNegState.supplier_negotiation) {
+        ;(scNegState.supplier_negotiation as Record<string, unknown>).supplier_counter = {
+          advance_rate: rateApr,
+          amount: amountApproved,
+          submitted_at: new Date().toISOString(),
+        }
+        ;(scNegState.supplier_negotiation as Record<string, unknown>).status = 'supplier_countered'
+      }
+      console.log('[supplier counter] new rate:', rateApr)
+
       const { data: updated, error } = await adminClient
         .from('transactions')
         .update({
           status:                    'pending_bank_review',
           financing_rate_apr:        rateApr,
           financing_amount_approved: amountApproved,
+          bank_approval_notes:       setNegotiationState(scNegState),
           updated_at:                new Date().toISOString(),
         })
         .eq('id', id)
@@ -515,7 +619,7 @@ export async function PATCH(
         to_status:      'pending_bank_review',
         actor_id:       user.id,
         actor_type:     'supplier',
-        notes:          counterNotes,
+        notes:          `Supplier counter: ${rateApr}% advance rate${counterNotes ? ` — ${counterNotes}` : ''}`,
       })
 
       // Notify bank
@@ -762,6 +866,7 @@ export async function PATCH(
       const scState = getNegotiationState(transaction as Record<string, unknown>)
       if (scState.supplier_negotiation) {
         (scState.supplier_negotiation as Record<string, unknown>).status = 'counter_offered'
+        ;(scState.supplier_negotiation as Record<string, unknown>).bank_counter_rate = rateApr
       }
 
       const counterPayload: Record<string, unknown> = {
@@ -856,6 +961,70 @@ export async function PATCH(
       })
 
       return NextResponse.json({ transaction: updated })
+    }
+
+    // ── review_repayment_request: bank reviews standalone anchor repayment request ──
+    // Available at any transaction status (independent of supplier financing flow)
+    if (action === 'review_repayment_request') {
+      const rrState   = getNegotiationState(transaction as Record<string, unknown>)
+      const rrRequest = rrState.anchor_repayment_request as Record<string, unknown> | undefined
+      if (!rrRequest || rrRequest.status !== 'pending_bank_review') {
+        return NextResponse.json({ error: 'No repayment request pending review' }, { status: 400 })
+      }
+      const decision = body.decision as string
+      if (!['approve', 'counter', 'reject'].includes(decision)) {
+        return NextResponse.json({ error: 'decision must be approve, counter, or reject' }, { status: 400 })
+      }
+      if (decision === 'approve') {
+        rrRequest.status = 'approved'
+      } else if (decision === 'reject') {
+        rrRequest.status = 'rejected'
+        if (body.rejection_reason) rrRequest.rejection_reason = String(body.rejection_reason)
+      } else {
+        rrRequest.status      = 'bank_countered'
+        rrRequest.bank_counter = {
+          date:      body.counter_date      ? String(body.counter_date)      : null,
+          count:     body.counter_count     != null ? Number(body.counter_count)  : null,
+          structure: body.counter_structure ? String(body.counter_structure) : null,
+        }
+      }
+      const { data: rrUpdated, error: rrErr } = await adminClient
+        .from('transactions')
+        .update({ bank_approval_notes: setNegotiationState(rrState), updated_at: new Date().toISOString() })
+        .eq('id', id).select().single()
+      if (rrErr) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+      await adminClient.from('transaction_events').insert({
+        transaction_id: id,
+        event_type:     decision === 'approve' ? 'anchor_repayment_approved'
+          : decision === 'reject'  ? 'anchor_repayment_rejected'
+          : 'anchor_repayment_countered',
+        from_status: transaction.status,
+        to_status:   transaction.status,
+        actor_id:    user.id,
+        actor_type:  'bank',
+        notes:       decision === 'reject'
+          ? (body.rejection_reason ? String(body.rejection_reason) : 'Repayment request declined')
+          : `Bank ${decision}d anchor repayment request`,
+      })
+      const { data: anchorAdminRr } = await adminClient.from('users').select('email, full_name')
+        .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle()
+      if (anchorAdminRr?.email) {
+        const invoiceRefRr = transaction.invoice_number ?? id
+        await sendEmail({
+          to:      anchorAdminRr.email,
+          subject: `Your repayment request on invoice ${invoiceRefRr} — ${decision === 'approve' ? 'approved' : decision === 'reject' ? 'declined' : 'counter-proposal'}`,
+          html:    transactionStatusEmailHtml({
+            recipientName: anchorAdminRr.full_name ?? 'Anchor Admin',
+            eventBody:     decision === 'approve'
+              ? `The bank has approved your repayment request for invoice ${invoiceRefRr}.`
+              : decision === 'reject'
+              ? `The bank has declined your repayment request for invoice ${invoiceRefRr}.${body.rejection_reason ? `\n\nReason: ${body.rejection_reason}` : ''}`
+              : `The bank has a counter-proposal for your repayment request on invoice ${invoiceRefRr}. Please review and respond.`,
+            transactionId: id,
+          }),
+        })
+      }
+      return NextResponse.json({ transaction: rrUpdated })
     }
 
     // approve / reject / request_info: only when pending_bank_review or more_info_requested
@@ -966,6 +1135,7 @@ export async function PATCH(
       const discountFee = body.discount_fee != null ? Number(body.discount_fee)
         : body.fee_amount != null ? Number(body.fee_amount)
         : 0
+      console.log('[approve] fee received:', body.discount_fee, 'stored:', discountFee)
       updatePayload.fee_amount   = discountFee
       updatePayload.net_proceeds = (amountApproved ?? 0) - discountFee
 
@@ -981,8 +1151,9 @@ export async function PATCH(
     }
 
     if (action === 'reject') {
-      updatePayload.status             = 'rejected'
-      updatePayload.bank_approval_notes = body.rejection_reason !== undefined ? String(body.rejection_reason) : undefined
+      updatePayload.status = 'rejected'
+      // rejection_reason is stored in event notes; do NOT overwrite bank_approval_notes
+      // so that anchor_repayment_request survives bank rejection of supplier financing
     }
 
     if (action === 'request_info') {

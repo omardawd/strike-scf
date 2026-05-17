@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 
-const FROM = 'Strike SCF <onboarding@resend.dev>'
+const FROM = 'Strike SCF <no-reply@strikescf.com>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function getResend(): Resend | null {

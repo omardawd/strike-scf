@@ -72,6 +72,38 @@ export async function GET(
           }
           if (!linked) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
+      } else if (me.role === 'supplier_admin' || me.role === 'supplier_member') {
+        if (org.type !== 'anchor') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
+        const { data: enrollment } = await adminClient
+          .from('program_enrollments')
+          .select('id')
+          .eq('anchor_org_id', org_id)
+          .eq('org_id', me.org_id)
+          .eq('status', 'active')
+          .limit(1)
+          .maybeSingle()
+        if (!enrollment) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
+        return NextResponse.json({
+          organization: {
+            id:                    org.id,
+            legal_name:            org.legal_name,
+            type:                  org.type,
+            city:                  org.city ?? null,
+            state:                 org.state ?? null,
+            primary_contact_name:  org.primary_contact_name ?? null,
+            primary_contact_email: org.primary_contact_email ?? null,
+            kyb_status:            org.kyb_status,
+            created_at:            org.created_at,
+            doing_business_as:     org.doing_business_as ?? null,
+            industry_naics:        org.industry_naics ?? null,
+          },
+          documents:    [],
+          credit_score: null,
+        })
       } else {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }

@@ -64,13 +64,11 @@ function ProgramCard({
 
   const stats = portal === 'bank'
     ? [
-        { label: 'Limit',     value: fmtMoney(program.program_limit) },
-        { label: 'Currency',  value: program.currency ?? 'USD' },
-        { label: 'Tenor',     value: `${program.standard_tenor_days}d` },
+        { label: 'Limit',    value: fmtMoney(program.program_limit) },
+        { label: 'Currency', value: program.currency ?? 'USD' },
       ]
     : [
         { label: 'Type',   value: label },
-        { label: 'Tenor',  value: `${program.standard_tenor_days}d` },
         { label: 'Status', value: statusStr },
       ]
 
@@ -126,7 +124,7 @@ function SkeletonCard() {
         <span className="program-type-pill" style={{ background: 'var(--color-border)', color: 'transparent' }}>Type</span>
         <div className="program-divider" />
         <div className="program-stats">
-          {[0, 1, 2].map(i => (
+          {[0, 1].map(i => (
             <div key={i}>
               <div className="program-stat-label" style={{ background: 'var(--color-border)', borderRadius: 3, color: 'transparent' }}>Label</div>
               <div className="program-stat-value" style={{ background: 'var(--color-border)', borderRadius: 3, color: 'transparent', marginTop: 4 }}>—</div>
@@ -146,15 +144,7 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const visiblePrograms = portal === 'anchor'
-    ? programs.filter(p => {
-        const types = p.financing_types ?? []
-        const isIFOnly = types.length > 0 && types.every((t: string) => t === 'invoice_factoring')
-        return !isIFOnly
-      })
-    : programs
-
-  const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
+  const visiblePrograms = programs
 
   useEffect(() => {
     fetch('/api/programs')
@@ -182,7 +172,7 @@ export default function ProgramsPage() {
   return (
     <PortalShell activeSection="programs">
       <Topbar
-        crumbs={[{ label: portalLabel }, { label: 'My Programs' }]}
+        crumbs={[{ label: 'My Programs' }]}
         actions={
           <>
             {portal === 'bank' && (

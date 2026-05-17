@@ -24,8 +24,10 @@ interface OrgDetail {
   industry_naics?: string | null
   primary_contact_name?: string | null
   primary_contact_email?: string | null
+  doing_business_as?: string | null
   credit_reviewed_at?: string | null
   kyb_submitted_at?: string | null
+  created_at?: string | null
 }
 
 interface KYBDoc {
@@ -785,30 +787,33 @@ export default function AnchorDetailPage() {
               <div className="card-head"><h3 className="t-card-head">Anchor Info</h3></div>
               <div className="kv-rows">
                 <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
-                {(org?.city || org?.state) && (
-                  <div className="kv-row">
-                    <span className="k">Location</span>
-                    <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
-                  </div>
-                )}
-                {org?.business_type && (
-                  <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
-                )}
-                {org?.ein && (
-                  <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>
-                )}
-                {org?.annual_revenue_range != null && (
-                  <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
-                )}
-                {org?.industry_naics && (
-                  <div className="kv-row"><span className="k">NAICS</span><span className="v mono">{org.industry_naics}</span></div>
-                )}
-                {org?.primary_contact_name && (
-                  <div className="kv-row"><span className="k">Primary contact</span><span className="v plain">{org.primary_contact_name}</span></div>
-                )}
-                {org?.primary_contact_email && (
-                  <div className="kv-row"><span className="k">Contact email</span><span className="v plain">{org.primary_contact_email}</span></div>
-                )}
+                <div className="kv-row"><span className="k">Trade name</span><span className="v plain">{org?.doing_business_as ?? '—'}</span></div>
+                <div className="kv-row">
+                  <span className="k">Location</span>
+                  <span className="v plain">{[org?.city, org?.state].filter(Boolean).join(', ') || '—'}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="k">Primary contact</span>
+                  <span className="v plain">{org?.primary_contact_name ?? '—'}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="k">Contact email</span>
+                  <span className="v plain">{org?.primary_contact_email ?? '—'}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="k">Industry / NAICS</span>
+                  <span className="v plain">{org?.industry_naics ?? org?.business_type ?? '—'}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="k">Member since</span>
+                  <span className="v plain">{org?.created_at ? fmtDate(org.created_at) : '—'}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="k">KYB status</span>
+                  <span className="v">
+                    <span className={`badge ${kybBadge(org?.kyb_status ?? 'draft')}`}>{kybLabel(org?.kyb_status ?? 'draft')}</span>
+                  </span>
+                </div>
               </div>
             </div>
 

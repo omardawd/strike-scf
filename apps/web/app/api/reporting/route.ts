@@ -195,31 +195,27 @@ export async function GET(request: Request) {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-    const [enrolledResult, txnResult, anchorProgramsResult] = await Promise.all([
+    const [enrolledResult, txnResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('org_id', orgId)
-        .eq('status', 'active'),
+        .in('status', ['active', 'invited', 'onboarding']),
       adminClient
         .from('transactions')
         .select('id, status, invoice_amount, created_at, supplier_id, program_id')
         .eq('anchor_id', orgId),
-      adminClient
-        .from('programs')
-        .select('id, name')
-        .in('id',
-          (await adminClient
-            .from('program_enrollments')
-            .select('program_id')
-            .eq('org_id', orgId)
-            .eq('status', 'active')
-          ).data?.map((e: { program_id: string }) => e.program_id) ?? []
-        ),
     ])
 
     const enrolled_programs = enrolledResult.count ?? 0
     const txns = txnResult.data ?? []
+
+    // Resolve program names from transaction program_ids
+    const txnProgramIds = [...new Set(txns.map((t: { program_id: string }) => t.program_id).filter(Boolean))]
+    const anchorProgramData: Array<{ id: string; name: string }> = txnProgramIds.length > 0
+      ? ((await adminClient.from('programs').select('id, name').in('id', txnProgramIds)).data ?? [])
+      : []
+    const anchorProgramNameMap = new Map(anchorProgramData.map(p => [p.id, p.name]))
 
     // Volume by period
     const anchorBuckets = buildBuckets(period)
@@ -268,7 +264,6 @@ export async function GET(request: Request) {
       total_volume:      parseFloat((supplierMap.get(id)!.volume).toFixed(2)),
     }))
 
-    const anchorProgramNameMap = new Map((anchorProgramsResult.data ?? []).map((p: { id: string; name: string }) => [p.id, p.name]))
     const anchorProgramVolMap = new Map<string, { name: string; volume: number }>()
     for (const t of txns) {
       if (!t.program_id) continue
