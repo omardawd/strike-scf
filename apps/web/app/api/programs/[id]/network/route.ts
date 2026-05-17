@@ -56,7 +56,29 @@ export async function GET(
         .eq('status', 'active')
         .limit(1)
         .maybeSingle()
-      allowed = !!enr
+
+      if (enr) {
+        allowed = true
+      } else {
+        // Fall back to invitation — supplier accepted invite but enrollment not yet created
+        let supplierEmailForCheck = userData.email as string | null
+        if (!supplierEmailForCheck) {
+          const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
+          supplierEmailForCheck = authUser?.user?.email ?? null
+        }
+        if (supplierEmailForCheck) {
+          const { data: inv } = await adminClient
+            .from('invitations')
+            .select('id')
+            .eq('program_id', programId)
+            .eq('anchor_org_id', anchorId)
+            .eq('email', supplierEmailForCheck)
+            .in('status', ['pending', 'accepted'])
+            .limit(1)
+            .maybeSingle()
+          allowed = !!inv
+        }
+      }
     }
     if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

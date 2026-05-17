@@ -11,7 +11,7 @@ const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
 async function fetchValidInvitation(token: string) {
   const { data, error } = await adminClient
     .from('invitations')
-    .select('id, email, role, expires_at, bank_id, anchor_org_id, status')
+    .select('id, email, role, expires_at, bank_id, anchor_org_id, program_id, status')
     .eq('token', token)
     .eq('status', 'pending')
     .single()
@@ -103,6 +103,9 @@ export async function POST(
       bank_id: invitation.bank_id ?? undefined,
       ...(invitation.role === 'supplier' && invitation.anchor_org_id
         ? { anchor_org_id: invitation.anchor_org_id }
+        : {}),
+      ...(invitation.role === 'supplier' && invitation.program_id
+        ? { program_id: invitation.program_id }
         : {}),
     },
   })

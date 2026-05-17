@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
 const FROM = 'Strike SCF <no-reply@strikescf.com>'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'strike-scf.vercel.app'
 
 function getResend(): Resend | null {
   const key = process.env.RESEND_API_KEY
