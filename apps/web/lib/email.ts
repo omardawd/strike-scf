@@ -1,7 +1,15 @@
 import { Resend } from 'resend'
 
 const FROM = 'Strike SCF <no-reply@strikescf.com>'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'strike-scf.vercel.app'
+const APP_URL = (() => {
+  const url = process.env.NEXT_PUBLIC_APP_URL
+  if (url && !url.includes('localhost')) return url
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  return process.env.NEXT_PUBLIC_APP_URL
+    ?? 'http://localhost:3000'
+})()
 
 function getResend(): Resend | null {
   const key = process.env.RESEND_API_KEY
@@ -53,9 +61,12 @@ export function inviteEmailHtml({
       max-width: 500px; margin: 0 auto;
       padding: 40px 24px; color: #0f172a;">
 
-      <img src="${APP_URL}/logo.png"
-        alt="Strike SCF"
-        style="height: 36px; margin-bottom: 32px;" />
+      <div style="font-family: system-ui, sans-serif;
+        font-size: 20px; font-weight: 700;
+        color: #1B3BE8; margin-bottom: 24px;
+        letter-spacing: -0.03em;">
+        Strike SCF
+      </div>
 
       <h2 style="font-size: 22px; font-weight: 700;
         margin: 0 0 8px; letter-spacing: -0.02em;">
@@ -98,7 +109,12 @@ export function kybApprovalEmailHtml({
   const dashboardUrl = `${APP_URL}/dashboard`
   return `
     <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:40px 24px;color:#0f172a;">
-      <img src="${APP_URL}/logo.png" alt="Strike SCF" style="height:36px;margin-bottom:32px;" />
+      <div style="font-family: system-ui, sans-serif;
+        font-size: 20px; font-weight: 700;
+        color: #1B3BE8; margin-bottom: 24px;
+        letter-spacing: -0.03em;">
+        Strike SCF
+      </div>
       <div style="width:52px;height:52px;border-radius:50%;background:rgba(22,163,74,0.1);display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12 L10 17 L19 8" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
@@ -127,7 +143,12 @@ export function kybRejectionEmailHtml({
 }) {
   return `
     <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:40px 24px;color:#0f172a;">
-      <img src="${APP_URL}/logo.png" alt="Strike SCF" style="height:36px;margin-bottom:32px;" />
+      <div style="font-family: system-ui, sans-serif;
+        font-size: 20px; font-weight: 700;
+        color: #1B3BE8; margin-bottom: 24px;
+        letter-spacing: -0.03em;">
+        Strike SCF
+      </div>
       <h2 style="font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-0.02em;">Application update</h2>
       <p style="color:#64748b;font-size:14px;line-height:1.7;margin:0 0 16px;">
         Hi <strong>${recipientName}</strong>, we have completed our review of <strong>${orgName}</strong>&apos;s application on Strike SCF. Unfortunately we are unable to approve the application at this time.
@@ -159,9 +180,12 @@ export function transactionStatusEmailHtml({
     <div style="font-family: system-ui, sans-serif;
       max-width: 480px; margin: 0 auto;
       padding: 40px 24px; color: #0f172a;">
-      <img src="${APP_URL}/logo.png"
-        alt="Strike SCF"
-        style="height: 36px; margin-bottom: 32px;" />
+      <div style="font-family: system-ui, sans-serif;
+        font-size: 20px; font-weight: 700;
+        color: #1B3BE8; margin-bottom: 24px;
+        letter-spacing: -0.03em;">
+        Strike SCF
+      </div>
       <h2 style="font-size: 20px; font-weight: 700;
         margin: 0 0 8px;">Hi ${recipientName},</h2>
       <p style="color: #64748b; font-size: 14px;

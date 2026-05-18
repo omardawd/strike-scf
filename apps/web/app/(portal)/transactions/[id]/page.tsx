@@ -84,8 +84,13 @@ function parseWireInfo(raw: string | null): WireInfo | null {
   try {
     const parsed = JSON.parse(raw)
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed as WireInfo
-    return null
-  } catch { return null }
+    return { reference: raw }
+  } catch { return { reference: raw } }
+}
+
+function getRepaymentInstructions(raw: string | null): string | null {
+  if (!raw) return null
+  try { JSON.parse(raw); return null } catch { return raw }
 }
 
 function formatCollateralType(type: string): string {
@@ -266,14 +271,21 @@ function humanizeType(t: string | null): string {
 function humanizeEvent(e: TransactionEvent): string {
   switch (e.event_type) {
     case 'transaction_submitted':    return 'Submitted transaction'
-    case 'created':                  return 'Transaction created'
+    case 'created': {
+      const rateMatch = e.notes?.match(/(\d+(?:\.\d+)?)%/)
+      return rateMatch ? `Submitted invoice — ${rateMatch[1]}% advance rate` : 'Transaction created'
+    }
     case 'anchor_approved':          return 'Approved invoice'
     case 'anchor_rejected':          return 'Rejected invoice'
     case 'bank_approved':            return 'Approved financing'
     case 'bank_rejected':            return 'Rejected transaction'
     case 'bank_requested_info':      return 'Requested more information'
     case 'more_info_provided':       return 'Provided additional information'
-    case 'counter_offer_submitted':  return 'Submitted counter-offer'
+    case 'counter_offer_submitted': {
+      const base = e.actor === 'bank' ? 'Sent counter-offer to supplier' : 'Sent counter-offer to bank'
+      const rateMatch = e.notes?.match(/(\d+(?:\.\d+)?)%/)
+      return rateMatch ? `${base} — ${rateMatch[1]}% advance rate` : base
+    }
     case 'counter_offer_accepted':   return 'Accepted counter-offer'
     case 'counter_offer_rejected':   return 'Declined counter-offer'
     case 'wire_info_sent':                         return 'Sent wire transfer info to supplier'
@@ -332,8 +344,6 @@ function AnchorStandaloneRepaymentSection({
 
   const isTerminal = ['rejected', 'cancelled', 'completed'].includes(transaction.status)
   if (isTerminal && !repRequest) return null
-
-  const canSubmit = !isTerminal && (!repRequest || repRequest.status === 'rejected')
 
   if (mode === 'extension') {
     return (
@@ -394,27 +404,26 @@ function AnchorStandaloneRepaymentSection({
 
   return (
     <div>
-      {!repRequest || repRequest.status === 'rejected' ? (
-        <>
-          {repRequest?.status === 'rejected' && (
-            <div style={{ fontSize: 12, color: 'var(--color-red)', marginBottom: 8 }}>
-              Your repayment request was declined{repRequest.rejection_reason ? `: ${repRequest.rejection_reason}` : ''}.
-            </div>
-          )}
-          {canSubmit ? (
-            <>
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>
-                Request a payment extension or installment plan from the bank.
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('extension')}>Request extension</button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('installment')}>Request installments</button>
-              </div>
-            </>
-          ) : (
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>No repayment request submitted.</div>
-          )}
-        </>
+      {repRequest?.status === 'rejected' ? (
+        <div style={{
+          padding: '10px 14px',
+          background: 'var(--color-bg-2)',
+          borderRadius: 8,
+          fontSize: 13,
+          color: 'var(--color-ink-3)',
+        }}>
+          Your repayment request was declined. Standard repayment terms apply.
+        </div>
+      ) : !repRequest ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+            Request a payment extension or installment plan from the bank.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('extension')}>Request extension</button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('installment')}>Request installments</button>
+          </div>
+        </div>
       ) : repRequest.status === 'pending_bank_review' ? (
         <div>
           <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 4 }}>Awaiting bank review</div>
@@ -558,7 +567,9 @@ function BankAnchorRepaymentRequestCard({
       )}
 
       {repRequest.status === 'approved' && (
-        <div style={{ fontSize: 12.5, color: 'var(--color-green)', marginTop: 4 }}>Repayment request approved ✓</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', background: 'rgba(var(--color-green-rgb, 34,197,94), 0.08)', borderRadius: 8, marginTop: 4 }}>
+          <span style={{ fontSize: 12.5, color: 'var(--color-green)', fontWeight: 500 }}>Repayment request approved ✓</span>
+        </div>
       )}
 
       {repRequest.status === 'rejected' && (
@@ -628,12 +639,6 @@ function BankActionPanel({
   const [anchorCounterCount, setAnchorCounterCount]         = useState(2)
   const [anchorCounterStructure, setAnchorCounterStructure] = useState<'weekly'|'biweekly'|'monthly'|'quarterly'>('monthly')
 
-  // Wire transfer (shown at financing_approved, separate step)
-  const [wireInfo, setWireInfo]         = useState({ bank_name: '', account_number: '', routing_number: '', reference: '' })
-  const [sendingWire, setSendingWire]   = useState(false)
-  const [wireError, setWireError]       = useState<string | null>(null)
-  const [wireSent, setWireSent]         = useState(false)
-
   // Disbursement
   const [disbRef, setDisbRef]           = useState('')
   const [disbursing, setDisbursing]     = useState(false)
@@ -654,41 +659,16 @@ function BankActionPanel({
   const counterRateNum    = parseFloat(counterRate) || 0
   const counterDisburseAmt = invoiceAmt * (counterRateNum / 100)
 
-  // ── financing_approved: wire transfer info + disbursement ──────────────────
+  // ── financing_approved: send wire reference + mark as disbursed ───────────
   if (status === 'financing_approved') {
-    const existingWire = parseWireInfo(transaction.disbursement_reference)
-    const hasWire = existingWire && Object.values(existingWire).some(Boolean)
-
-    const handleSendWire = async () => {
-      setSendingWire(true)
-      setWireError(null)
-      try {
-        const res = await fetch(`/api/transactions/${txnId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send_wire_info', wire_transfer_info: wireInfo }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        setWireSent(true)
-        onRefresh()
-      } catch (err) {
-        setWireError(err instanceof Error ? err.message : 'Failed to send wire info')
-      } finally {
-        setSendingWire(false)
-      }
-    }
-
     const handleDisburse = async () => {
       setDisbursing(true)
       setDisbError(null)
       try {
-        const b: Record<string, unknown> = {}
-        if (disbRef.trim()) b.disbursement_reference = disbRef.trim()
-        const res = await fetch(`/api/transactions/${txnId}/disburse`, {
-          method: 'POST',
+        const res = await fetch(`/api/transactions/${txnId}`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(b),
+          body: JSON.stringify({ action: 'disburse', disbursement_reference: disbRef.trim() || null }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
@@ -703,7 +683,7 @@ function BankActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
-          Offer approved — disbursement pending
+          Send wire transfer to supplier
         </p>
         <div className="calc-panel">
           <div className="calc-row">
@@ -723,54 +703,11 @@ function BankActionPanel({
             </div>
           )}
         </div>
-
-        {/* Wire transfer info — separate step, visible only to bank + supplier */}
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginTop: 4 }}>
-          Wire transfer info (for supplier)
-        </div>
-        {hasWire ? (
-          <div className="calc-panel">
-            <div style={{ fontSize: 11, color: 'var(--color-green)', marginBottom: 4 }}>Sent to supplier</div>
-            {existingWire!.bank_name      && <div className="calc-row"><span>Bank</span><span>{existingWire!.bank_name}</span></div>}
-            {existingWire!.account_number && <div className="calc-row"><span>Account</span><span className="mono">{existingWire!.account_number}</span></div>}
-            {existingWire!.routing_number && <div className="calc-row"><span>Routing</span><span className="mono">{existingWire!.routing_number}</span></div>}
-            {existingWire!.reference      && <div className="calc-row"><span>Reference</span><span className="mono">{existingWire!.reference}</span></div>}
-          </div>
-        ) : wireSent ? (
-          <div style={{ fontSize: 12, color: 'var(--color-green)' }}>Wire info sent to supplier</div>
-        ) : (
-          <>
-            {(['bank_name', 'account_number', 'routing_number', 'reference'] as const).map(field => (
-              <div key={field}>
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>
-                  {field === 'bank_name' ? 'Bank name' : field === 'account_number' ? 'Account number' : field === 'routing_number' ? 'Routing number' : 'Reference / memo'}
-                </div>
-                <input
-                  className="form-input"
-                  style={{ width: '100%' }}
-                  value={wireInfo[field]}
-                  onChange={e => setWireInfo(w => ({ ...w, [field]: e.target.value }))}
-                />
-              </div>
-            ))}
-            {wireError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{wireError}</div>}
-            <button
-              className="btn btn-ghost btn-full"
-              type="button"
-              disabled={sendingWire || !Object.values(wireInfo).some(v => v.trim())}
-              onClick={handleSendWire}
-            >
-              {sendingWire ? 'Sending…' : 'Send wire info to supplier'}
-            </button>
-          </>
-        )}
-
-        {/* Disbursement */}
-        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12, marginTop: 4 }}>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Reference / wire number (optional)</div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Wire reference / memo</div>
           <input
             className="input"
-            placeholder="e.g. WIRE-20240509-001"
+            placeholder="e.g. invoice number or internal ref"
             value={disbRef}
             onChange={e => setDisbRef(e.target.value)}
             style={{ width: '100%' }}
@@ -853,11 +790,11 @@ function BankActionPanel({
                 <span>{fmtDate(transaction.repayment_due_date)}</span>
               </div>
             )}
-            {transaction.bank_approval_notes && (
+            {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
                 <span>Instructions</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
-                  {transaction.bank_approval_notes}
+                  {getRepaymentInstructions(transaction.bank_approval_notes)}
                 </span>
               </div>
             )}
@@ -989,10 +926,10 @@ function BankActionPanel({
                 <span>{fmtDate(transaction.repayment_due_date)}</span>
               </div>
             )}
-            {transaction.bank_approval_notes && (
+            {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
                 <span>Instructions</span>
-                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{transaction.bank_approval_notes}</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{getRepaymentInstructions(transaction.bank_approval_notes)}</span>
               </div>
             )}
           </div>
@@ -1519,10 +1456,10 @@ function AnchorActionPanel({
               <span>Repayment due</span>
               <span>{fmtDate(transaction.repayment_due_date)}</span>
             </div>
-            {transaction.bank_approval_notes && (
+            {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
                 <span>Instructions</span>
-                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{transaction.bank_approval_notes}</span>
+                <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{getRepaymentInstructions(transaction.bank_approval_notes)}</span>
               </div>
             )}
           </div>
@@ -1551,12 +1488,11 @@ function AnchorActionPanel({
                 <span>{fmtAmt(transaction.financing_amount_approved)}</span>
               </div>
             )}
-            {/* bank_approval_notes (repayment instructions) shown only to anchor */}
-            {transaction.bank_approval_notes && (
+            {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
                 <span>Instructions</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
-                  {transaction.bank_approval_notes}
+                  {getRepaymentInstructions(transaction.bank_approval_notes)}
                 </span>
               </div>
             )}
@@ -2297,6 +2233,11 @@ export default function TransactionDetailPage() {
     } catch { return undefined }
   })()
 
+  const repaymentInstructionsText = (() => {
+    if (!txn?.bank_approval_notes) return null
+    try { JSON.parse(txn.bank_approval_notes); return null } catch { return txn.bank_approval_notes }
+  })()
+
   const rejectionEvent = events.find(e => e.event_type === 'status_change' && e.to_status === 'rejected')
     ?? events.find(e => e.to_status === 'rejected')
   const txnRejectionReason = rejectionEvent?.notes ?? null
@@ -2469,14 +2410,28 @@ export default function TransactionDetailPage() {
                         <span className="v plain">{fmtDate(txn.repaid_at)}</span>
                       </div>
                     )}
-                    {repaymentRequest?.status === 'approved' && (
+                    {repaymentInstructionsText && (portal === 'bank' || portal === 'anchor') && (
+                      <div className="kv-row">
+                        <span className="k">Repayment instructions</span>
+                        <span className="v plain" style={{ fontSize: 12, lineHeight: 1.5 }}>
+                          {repaymentInstructionsText}
+                        </span>
+                      </div>
+                    )}
+                    {txn.repayment_due_date && (portal === 'bank' || portal === 'anchor') && (
+                      <div className="kv-row">
+                        <span className="k">Repayment due</span>
+                        <span className="v plain">{fmtDate(txn.repayment_due_date)}</span>
+                      </div>
+                    )}
+                    {repaymentRequest?.status === 'approved' && (portal === 'bank' || portal === 'anchor') && (
                       <>
                         <div className="kv-row">
-                          <span className="k">Repayment type</span>
+                          <span className="k">Repayment arrangement</span>
                           <span className="v plain">
                             {repaymentRequest.type === 'extension'
-                              ? 'Extended payment'
-                              : 'Installment structure'}
+                              ? 'Extended payment date'
+                              : `${repaymentRequest.agreed_count ?? repaymentRequest.count} ${repaymentRequest.agreed_structure ?? repaymentRequest.structure} installments`}
                           </span>
                         </div>
                         {repaymentRequest.type === 'extension' && (
@@ -2484,16 +2439,6 @@ export default function TransactionDetailPage() {
                             <span className="k">New payment date</span>
                             <span className="v plain">
                               {repaymentRequest.agreed_date ?? repaymentRequest.requested_date}
-                            </span>
-                          </div>
-                        )}
-                        {repaymentRequest.type === 'installment' && (
-                          <div className="kv-row">
-                            <span className="k">Installment plan</span>
-                            <span className="v plain">
-                              {repaymentRequest.agreed_count ?? repaymentRequest.count}{' '}
-                              {repaymentRequest.agreed_structure ?? repaymentRequest.structure}{' '}
-                              payments
                             </span>
                           </div>
                         )}

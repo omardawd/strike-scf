@@ -313,8 +313,8 @@ export async function PATCH(
         actor_id:       user.id,
         actor_type:     'anchor',
         notes:          action === 'request_extension'
-          ? `Requested repayment extension to ${repReq.requested_date}`
-          : `Requested ${repReq.count} ${repReq.structure} installments`,
+          ? `Anchor requested payment extension to ${body.extension_date}`
+          : `Anchor requested ${body.count} ${body.structure} installment payments`,
       })
       const { data: bankAdminRep } = await adminClient.from('users').select('email, full_name')
         .eq('bank_id', transaction.bank_id).eq('role', 'bank_admin').limit(1).maybeSingle()
@@ -391,7 +391,7 @@ export async function PATCH(
         to_status:      'rejected',
         actor_id:       user.id,
         actor_type:     'anchor',
-        notes:          body.notes ? String(body.notes) : null,
+        notes:          `Anchor rejected invoice: ${body.notes ?? 'No reason given'}`,
       })
 
       return NextResponse.json({ transaction: updated })
@@ -564,7 +564,7 @@ export async function PATCH(
         to_status:      acNewStatus,
         actor_id:       user.id,
         actor_type:     'supplier',
-        notes:          null,
+        notes:          `Supplier accepted bank offer: ${transaction.financing_rate_apr ?? transaction.apr}% advance rate`,
       })
 
       return NextResponse.json({ transaction: updated })
@@ -619,7 +619,7 @@ export async function PATCH(
         to_status:      'pending_bank_review',
         actor_id:       user.id,
         actor_type:     'supplier',
-        notes:          `Supplier counter: ${rateApr}% advance rate${counterNotes ? ` — ${counterNotes}` : ''}`,
+        notes:          `Supplier counter-offer: ${rateApr}% advance rate, $${amountApproved} requested`,
       })
 
       // Notify bank
@@ -664,7 +664,7 @@ export async function PATCH(
         to_status:      'rejected',
         actor_id:       user.id,
         actor_type:     'supplier',
-        notes:          null,
+        notes:          'Supplier rejected bank offer',
       })
 
       return NextResponse.json({ transaction: updated })
@@ -792,6 +792,34 @@ export async function PATCH(
       return NextResponse.json({ transaction: updated })
     }
 
+    // disburse: mark financing_approved → funded, store wire reference
+    if (action === 'disburse') {
+      if (transaction.status !== 'financing_approved') {
+        return NextResponse.json({ error: 'Transaction is not in financing_approved status' }, { status: 400 })
+      }
+      const wireRef = body.disbursement_reference ? String(body.disbursement_reference) : null
+      const { data: disbUpdated, error: disbErr } = await adminClient
+        .from('transactions')
+        .update({
+          status:       'funded',
+          disbursed_at: new Date().toISOString(),
+          ...(wireRef ? { disbursement_reference: wireRef } : {}),
+          updated_at:   new Date().toISOString(),
+        })
+        .eq('id', id).select().single()
+      if (disbErr) return NextResponse.json({ error: 'Failed to disburse' }, { status: 500 })
+      await adminClient.from('transaction_events').insert({
+        transaction_id: id,
+        event_type:     'disbursement_marked',
+        from_status:    transaction.status,
+        to_status:      'funded',
+        actor_id:       user.id,
+        actor_type:     'bank',
+        notes:          wireRef ? `Wire reference: ${wireRef}` : null,
+      })
+      return NextResponse.json({ transaction: disbUpdated })
+    }
+
     // counter_offer: bank counters supplier or anchor negotiation
     if (action === 'counter_offer') {
       const coTarget = (body.negotiation_target as string | undefined) ?? 'supplier'
@@ -897,7 +925,7 @@ export async function PATCH(
         to_status:      'pending_supplier_counter_review',
         actor_id:       user.id,
         actor_type:     'bank',
-        notes:          counterNotes,
+        notes:          `Bank counter-offer: ${rateApr}% advance rate, $${amountApproved}`,
       })
 
       const invoiceRef = transaction.invoice_number ?? id
@@ -1002,9 +1030,9 @@ export async function PATCH(
         to_status:   transaction.status,
         actor_id:    user.id,
         actor_type:  'bank',
-        notes:       decision === 'reject'
-          ? (body.rejection_reason ? String(body.rejection_reason) : 'Repayment request declined')
-          : `Bank ${decision}d anchor repayment request`,
+        notes:       decision === 'approve' ? `Bank approved anchor's repayment request`
+          : decision === 'reject' ? `Bank rejected anchor's repayment request`
+          : `Bank counter-offered anchor's repayment request`,
       })
       const { data: anchorAdminRr } = await adminClient.from('users').select('email, full_name')
         .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle()
@@ -1185,7 +1213,11 @@ export async function PATCH(
       to_status:      finalStatus,
       actor_id:       user.id,
       actor_type:     'bank',
-      notes:          action === 'reject' && body.rejection_reason ? String(body.rejection_reason) : null,
+      notes:          action === 'approve'
+        ? `Bank approved: ${updatePayload.financing_rate_apr ?? transaction.financing_rate_apr}% advance rate, $${updatePayload.financing_amount_approved ?? transaction.financing_amount_approved} disbursed, $${updatePayload.fee_amount ?? 0} discount fee`
+        : action === 'reject'
+        ? `Bank rejected: ${body.rejection_reason ?? 'No reason given'}`
+        : null,
     })
 
     const invoiceRef2 = transaction.invoice_number ?? id

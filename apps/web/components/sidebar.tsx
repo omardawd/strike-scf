@@ -148,7 +148,6 @@ export function Sidebar() {
       </div>
 
       <nav className="nav-section" style={{ marginTop: 4 }}>
-        <div className="nav-label">Workspace</div>
         {NAV_ITEMS.map(item => {
           const active = item.href === '/dashboard'
             ? pathname === '/dashboard'
@@ -291,8 +290,8 @@ export function Sidebar() {
         >
           <div className="avatar">{userInitials}</div>
           <div className="user-meta">
-            <span className="user-name">{userName}</span>
-            <span className="user-role">{userRole}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)' }}>{userName}</span>
+            <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{userRole}</span>            
           </div>
         </button>
       </div>

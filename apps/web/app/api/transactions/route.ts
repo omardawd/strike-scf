@@ -211,7 +211,7 @@ export async function POST(request: Request) {
     to_status:      initialStatus,
     actor_id:       user.id,
     actor_type:     'supplier',
-    notes:          null,
+    notes:          `Supplier initial offer: ${((financingAmt / invoiceAmt) * 100).toFixed(1)}% advance rate, ${financingAmt} requested`,
   })
 
   return NextResponse.json({ transaction_id: transaction.id, transaction }, { status: 201 })

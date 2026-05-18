@@ -292,10 +292,13 @@ export default function AnchorDetailPage() {
           setAnalytics(await analyticsRes.json())
         }
       } else {
+        const analyticsUrl = portal === 'supplier' && user?.org_id
+          ? `/api/programs/${programId}/analytics?anchor_id=${anchorId}&supplier_id=${user.org_id}&period=${volPeriod}`
+          : `/api/programs/${programId}/analytics?anchor_id=${anchorId}&period=${volPeriod}`
         const [netRes, txRes, analyticsRes, kybRes] = await Promise.all([
           fetch(`/api/programs/${programId}/network`),
           fetch('/api/transactions'),
-          fetch(`/api/programs/${programId}/analytics?anchor_id=${anchorId}&period=${volPeriod}`),
+          fetch(analyticsUrl),
           fetch(`/api/kyb/${anchorId}`),
         ])
 
@@ -313,7 +316,10 @@ export default function AnchorDetailPage() {
         if (txRes.ok) {
           const txData = await txRes.json()
           const all: TxRow[] = txData.transactions ?? txData.data ?? []
-          setTransactions(all.filter(t => t.anchor_id === anchorId && t.program_id === programId))
+          const filtered = all.filter(t => t.anchor_id === anchorId && t.program_id === programId)
+          setTransactions(portal === 'supplier' && user?.org_id
+            ? filtered.filter(t => t.supplier_id === user.org_id)
+            : filtered)
         }
 
         if (analyticsRes.ok) {
@@ -796,10 +802,10 @@ export default function AnchorDetailPage() {
                   <span className="k">Primary contact</span>
                   <span className="v plain">{org?.primary_contact_name ?? '—'}</span>
                 </div>
-                <div className="kv-row">
+                {/* <div className="kv-row">
                   <span className="k">Contact email</span>
                   <span className="v plain">{org?.primary_contact_email ?? '—'}</span>
-                </div>
+                </div> */}
                 <div className="kv-row">
                   <span className="k">Industry / NAICS</span>
                   <span className="v plain">{org?.industry_naics ?? org?.business_type ?? '—'}</span>

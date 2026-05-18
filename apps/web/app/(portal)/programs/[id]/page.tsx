@@ -237,6 +237,9 @@ export default function ProgramDetailPage() {
   const [editError, setEditError]     = useState<string | null>(null)
   const [editSuccess, setEditSuccess] = useState(false)
 
+  const [activating, setActivating] = useState(false)
+  const [deleting, setDeleting]     = useState(false)
+
   const load = useCallback(async () => {
     if (!id) return
     setError(null)
@@ -357,6 +360,33 @@ export default function ProgramDetailPage() {
     }
   }
 
+  async function handleActivate() {
+    setActivating(true)
+    const res = await fetch(`/api/programs/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'active' }),
+    })
+    if (res.ok) {
+      setProgram(prev => prev ? { ...prev, status: 'active' } : prev)
+    }
+    setActivating(false)
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this draft program? This cannot be undone.')) return
+    setDeleting(true)
+    const res = await fetch(`/api/programs/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'closed' }),
+    })
+    if (res.ok) {
+      router.push('/programs')
+    }
+    setDeleting(false)
+  }
+
   async function cancelInvite(invId: string, kind: 'anchor' | 'supplier') {
     setCancelError(null)
     try {
@@ -466,7 +496,28 @@ export default function ProgramDetailPage() {
                   <div className="card-head">
                     <h3 className="t-card-head">Program details</h3>
                     {!editing && (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={startEdit}>Edit</button>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {program.status === 'draft' && (
+                          <>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              type="button"
+                              onClick={handleActivate}
+                              disabled={activating}>
+                              {activating ? 'Activating…' : 'Activate'}
+                            </button>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              type="button"
+                              onClick={handleDelete}
+                              disabled={deleting}
+                              style={{ color: 'var(--color-red)' }}>
+                              {deleting ? 'Deleting…' : 'Delete program'}
+                            </button>
+                          </>
+                        )}
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={startEdit}>Edit</button>
+                      </div>
                     )}
                   </div>
                   {editing ? (
