@@ -58,7 +58,7 @@ ON CONFLICT (id) DO NOTHING;
 -- id must match the auth.users UUID created above.
 INSERT INTO users (id, full_name, email, role, bank_id, org_id, created_at)
 VALUES
-  ('a1000000-0000-0000-0000-000000000001',
+  ('b7509d2a-d652-4540-82f2-6889fe38d73e',
    'Sarah Chen',
    'sarah@atlasbank.dev',
    'bank_admin',
@@ -66,7 +66,7 @@ VALUES
    NULL,
    NOW()),
 
-  ('a2000000-0000-0000-0000-000000000002',
+  ('709a8599-2d7c-4344-baf5-49b05c80a460',
    'James Patel',
    'james@pacdyn.dev',
    'anchor_admin',
@@ -74,7 +74,7 @@ VALUES
    'b1000000-0000-0000-0000-000000000001',
    NOW()),
 
-  ('a3000000-0000-0000-0000-000000000003',
+  ('2c3273a4-7ef5-4fef-be96-adc4d9ad8c2a',
    'Rachel Kim',
    'rachel@westcoast.dev',
    'supplier_admin',
@@ -82,7 +82,7 @@ VALUES
    'b2000000-0000-0000-0000-000000000002',
    NOW()),
 
-  ('a4000000-0000-0000-0000-000000000004',
+  ('bd403c45-7fd3-4ee2-87e1-dd6ba5a5144e',
    'Mike Torres',
    'mike@deltacomp.dev',
    'supplier_admin',
@@ -125,17 +125,30 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Program enrollments ───────────────────────────────────────────────────────
-INSERT INTO program_enrollments (id, program_id, org_id, status, created_at)
+-- Each row needs anchor_org_id so the network view and anchor's "My Programs" work.
+-- The anchor's own row has org_id = anchor_org_id (sentinel that identifies the anchor).
+INSERT INTO program_enrollments (id, program_id, org_id, anchor_org_id, status, created_at)
 VALUES
+  -- Anchor enrollment (org_id = anchor_org_id = anchor's org)
+  ('d0000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-000000000001',
+   'b1000000-0000-0000-0000-000000000001',
+   'b1000000-0000-0000-0000-000000000001',
+   'active',
+   NOW()),
+
+  -- Supplier enrollments reference the anchor via anchor_org_id
   ('d1000000-0000-0000-0000-000000000001',
    'c1000000-0000-0000-0000-000000000001',
    'b2000000-0000-0000-0000-000000000002',
+   'b1000000-0000-0000-0000-000000000001',
    'active',
    NOW()),
 
   ('d2000000-0000-0000-0000-000000000002',
    'c1000000-0000-0000-0000-000000000001',
    'b3000000-0000-0000-0000-000000000003',
+   'b1000000-0000-0000-0000-000000000001',
    'active',
    NOW())
 ON CONFLICT (id) DO NOTHING;
