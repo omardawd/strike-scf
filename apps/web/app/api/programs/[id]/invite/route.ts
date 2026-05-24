@@ -36,10 +36,15 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const email         = typeof body.email          === 'string' ? body.email.toLowerCase().trim() : ''
-  const name          = typeof body.name           === 'string' ? body.name.trim() : ''
-  const role          = typeof body.role           === 'string' ? body.role : ''
-  const anchor_org_id = typeof body.anchor_org_id  === 'string' ? body.anchor_org_id : null
+  const email            = typeof body.email           === 'string' ? body.email.toLowerCase().trim() : ''
+  const name             = typeof body.name            === 'string' ? body.name.trim() : ''
+  const role             = typeof body.role            === 'string' ? body.role : ''
+  const anchor_org_id    = typeof body.anchor_org_id   === 'string' ? body.anchor_org_id : null
+  const invitation_mode  = typeof body.invitation_mode === 'string' ? body.invitation_mode : 'standard'
+  const prefilled_kyb    = body.prefilled_kyb && typeof body.prefilled_kyb === 'object' && !Array.isArray(body.prefilled_kyb)
+    ? body.prefilled_kyb as Record<string, unknown>
+    : null
+  const required_documents = Array.isArray(body.required_documents) ? body.required_documents : null
 
   if (!email || !email.includes('@')) {
     return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
@@ -94,6 +99,10 @@ export async function POST(
     expires_at:             expiresAt,
   }
   if (anchor_org_id) record.anchor_org_id = anchor_org_id
+  record.invitation_mode = invitation_mode
+  if (prefilled_kyb)     record.prefilled_kyb = prefilled_kyb
+  if (required_documents) record.required_documents = required_documents
+  if (name)              record.invitee_name = name
 
   const { data: invitation, error: insertError } = await adminClient
     .from('invitations')
@@ -116,17 +125,31 @@ export async function POST(
       .eq('id', program.bank_id)
       .single()
     const orgName = (bankData?.display_name ?? bankData?.legal_name) ?? 'Strike SCF'
+    const subject = invitation_mode === 'known_counterparty'
+      ? `Your account is ready on Strike SCF`
+      : invitation_mode === 'custom_kyb'
+        ? `Complete your Strike SCF onboarding`
+        : name
+          ? `Hi ${name}, you've been invited to join ${orgName} on Strike SCF`
+          : `You've been invited to join ${orgName} on Strike SCF`
+
+    const baseHtml = inviteEmailHtml({
+      inviterName: userData.full_name ?? 'A colleague',
+      orgName,
+      role:        inviteRole,
+      token:       invitation.token,
+    })
+
+    const noteHtml = invitation_mode === 'known_counterparty'
+      ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has already set up your organization details. You just need to create your credentials to get started.</p>`
+      : invitation_mode === 'custom_kyb'
+        ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has specified the documents required for your onboarding.</p>`
+        : ''
+
     await sendEmail({
       to:      invitation.email,
-      subject: name
-        ? `Hi ${name}, you've been invited to join ${orgName} on Strike SCF`
-        : `You've been invited to join ${orgName} on Strike SCF`,
-      html:    inviteEmailHtml({
-        inviterName: userData.full_name ?? 'A colleague',
-        orgName,
-        role:        inviteRole,
-        token:       invitation.token,
-      }),
+      subject,
+      html:    baseHtml + noteHtml,
     })
   })().catch(() => {})
 

@@ -7,10 +7,13 @@ import { createClient } from '@/lib/supabase/client'
 interface InvitationInfo {
   email: string
   role: string
-  expires_at: string
-  bank_id: string | null
-  anchor_org_id: string | null
-  program_id: string | null
+  bank_id: string
+  anchor_org_id?: string
+  program_id?: string
+  invitation_mode: 'standard' | 'known_counterparty' | 'custom_kyb'
+  prefilled_kyb?: Record<string, string>
+  required_documents?: Array<{ id: string; label: string }>
+  invitee_name?: string
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -85,6 +88,7 @@ function InvitePageContent() {
       } else {
         setValid(true)
         setInvitation(data.invitation ?? null)
+        setFullName(data.invitation?.invitee_name ?? '')
       }
     } catch {
       setValid(false)
@@ -130,6 +134,14 @@ function InvitePageContent() {
         setSubmitError('Account created — please sign in manually.')
         router.push('/login')
         return
+      }
+
+      sessionStorage.setItem('invitation_mode', invitation!.invitation_mode)
+      if (invitation!.prefilled_kyb) {
+        sessionStorage.setItem('prefilled_kyb', JSON.stringify(invitation!.prefilled_kyb))
+      }
+      if (invitation!.required_documents) {
+        sessionStorage.setItem('required_documents', JSON.stringify(invitation!.required_documents))
       }
 
       router.push('/onboarding?from=invite')
@@ -245,6 +257,34 @@ function InvitePageContent() {
             <div style={{ fontSize: 12.5, color: 'var(--color-ink-3, #6B6963)' }}>
               Role: <strong style={{ color: 'var(--color-ink-2, #3D3C3A)' }}>{ROLE_LABELS[invitation.role] ?? invitation.role}</strong>
             </div>
+          </div>
+        )}
+
+        {/* Mode-specific banners */}
+        {invitation?.invitation_mode === 'known_counterparty' && (
+          <div style={{
+            background: 'rgba(5,150,105,0.08)',
+            border: '1px solid rgba(5,150,105,0.3)',
+            padding: '10px 14px',
+            marginBottom: 16,
+            fontFamily: 'var(--font-body)',
+            fontSize: 13,
+            color: '#059669',
+          }}>
+            ✓ Your organization details have been pre-filled. Just create your credentials to access the platform — no KYB required.
+          </div>
+        )}
+        {invitation?.invitation_mode === 'custom_kyb' && (
+          <div style={{
+            background: 'rgba(0,82,255,0.05)',
+            border: '1px solid rgba(0,82,255,0.2)',
+            padding: '10px 14px',
+            marginBottom: 16,
+            fontFamily: 'var(--font-body)',
+            fontSize: 13,
+            color: 'var(--blue)',
+          }}>
+            Your bank has specified the documents required for your onboarding. You&apos;ll be guided through the process after creating your account.
           </div>
         )}
 

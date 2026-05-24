@@ -5,6 +5,7 @@ import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+import { AIInsight } from '@/components/ai-insight'
 
 const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
@@ -180,6 +181,20 @@ export default function ReportingPage() {
           </div>
         ) : data?.role === 'bank' ? (
           <>
+            <AIInsight
+              title="Analytics Summary"
+              collapsed={false}
+              prompt="Analyze this bank's SCF portfolio performance. Based on transaction volumes, status breakdown, and supplier activity, identify trends, flag any concerns, and suggest one portfolio optimization action."
+              context={{
+                total_transactions: data.portfolio.active_deals,
+                outstanding_balance: data.portfolio.outstanding_balance,
+                total_repaid: data.portfolio.total_repaid,
+                avg_rate: data.portfolio.avg_rate ?? 0,
+                top_suppliers: data.top_suppliers.slice(0, 3),
+                status_breakdown: data.status_breakdown,
+              }}
+            />
+
             {/* ── KPI strip ── */}
             <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
               <div className="kpi-card-spark">
@@ -337,6 +352,18 @@ export default function ReportingPage() {
 
         ) : data?.role === 'anchor' ? (
           <>
+            <AIInsight
+              title="Payables Analytics"
+              collapsed={false}
+              prompt="Analyze this anchor's SCF program usage. Based on invoice volumes, supplier activity, and payables pipeline, identify trends and suggest one action to improve program efficiency."
+              context={{
+                enrolled_programs: data.enrolled_programs,
+                monthly_volume: data.monthly_volume.slice(-3),
+                payables_summary: data.payables_summary,
+                top_suppliers: data.top_suppliers.slice(0, 3),
+              }}
+            />
+
             {/* ── KPI strip ── */}
             <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
               <div className="kpi-card-spark">
@@ -443,6 +470,19 @@ export default function ReportingPage() {
 
         ) : data?.role === 'supplier' ? (
           <>
+            <AIInsight
+              title="Receivables Analytics"
+              collapsed={false}
+              prompt="Analyze this supplier's SCF financing activity. Based on their receivables, advance rates, and fees paid, suggest how they can optimize their use of the program to improve cash flow."
+              context={{
+                enrolled_programs: data.enrolled_programs,
+                outstanding_balance: data.receivables.outstanding_balance,
+                avg_rate: data.receivables.avg_rate ?? 0,
+                total_fees_paid: data.receivables.total_fees_paid,
+                monthly_volume: data.monthly_volume.slice(-3),
+              }}
+            />
+
             {/* ── KPI strip ── */}
             <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
               <div className="kpi-card-spark">

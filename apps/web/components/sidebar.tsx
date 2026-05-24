@@ -126,8 +126,8 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div style={{
-        padding: '16px 12px 12px',
-        borderBottom: '1px solid var(--color-border)',
+        padding: '20px 24px',
+        borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -174,7 +174,7 @@ export function Sidebar() {
                       width: '100%', textAlign: 'left',
                       background: 'none', border: 'none', cursor: 'pointer',
                       fontFamily: 'inherit', textDecoration: 'none',
-                      color:      onProgramDetail ? 'var(--color-ink-1)' : 'var(--color-ink-2)',
+                      color:      onProgramDetail ? 'var(--ink)' : 'var(--gray)',
                       fontWeight: onProgramDetail ? 500 : 400,
                     }}
                     onClick={() => router.push(programPath)}
@@ -192,7 +192,7 @@ export function Sidebar() {
                         width: '100%', textAlign: 'left',
                         background: 'none', border: 'none', cursor: 'pointer',
                         fontFamily: 'inherit', textDecoration: 'none',
-                        color:      onAnchorDetail ? 'var(--color-ink-1)' : 'var(--color-ink-2)',
+                        color:      onAnchorDetail ? 'var(--ink)' : 'var(--gray)',
                         fontWeight: onAnchorDetail ? 500 : 400,
                       }}
                       onClick={() => router.push(anchorPath)}
@@ -207,7 +207,7 @@ export function Sidebar() {
                       className="nav-item"
                       style={{
                         paddingLeft: 52, fontSize: 12,
-                        color: 'var(--color-ink-1)', fontWeight: 500,
+                        color: 'var(--ink)', fontWeight: 500,
                         textDecoration: 'none', cursor: 'default',
                       }}
                     >
@@ -229,16 +229,15 @@ export function Sidebar() {
             left:         8,
             right:        8,
             marginBottom: 4,
-            background:   'var(--color-card)',
-            border:       '1px solid var(--color-border)',
-            borderRadius: 8,
+            background:   'var(--white)',
+            border:       '1px solid var(--border)',
             padding:      '4px 0',
             boxShadow:    '0 4px 16px rgba(0,0,0,0.12)',
             zIndex:       50,
           }}>
-            <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--color-border)' }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-ink-1)' }}>{userName}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-3)', marginTop: 2 }}>{user?.email}</div>
+            <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{userName}</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{user?.email}</div>
             </div>
             <button
               type="button"
@@ -246,7 +245,7 @@ export function Sidebar() {
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: 'var(--color-ink-1)',
+                fontSize: 13, color: 'var(--ink)',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
@@ -259,14 +258,14 @@ export function Sidebar() {
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: 'var(--color-ink-1)',
+                fontSize: 13, color: 'var(--ink)',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
               <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
               {theme === 'dark' ? 'Light mode' : 'Dark mode'}
             </button>
-            <div style={{ height: 1, background: 'var(--color-border)', margin: '4px 0' }} />
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button
               type="button"
               onClick={() => { setUserMenuOpen(false); handleSignOut() }}
@@ -286,12 +285,15 @@ export function Sidebar() {
           type="button"
           className="sidebar-footer"
           onClick={() => setUserMenuOpen(o => !o)}
-          style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left' }}
+          style={{
+            width: '100%', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left',
+            borderTop: '1px solid var(--border)', padding: 16,
+          }}
         >
           <div className="avatar">{userInitials}</div>
           <div className="user-meta">
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)' }}>{userName}</span>
-            <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{userRole}</span>            
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)' }}>{userName}</span>
+            <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{userRole}</span>            
           </div>
         </button>
       </div>

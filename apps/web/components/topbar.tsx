@@ -82,7 +82,12 @@ function NotifBell() {
         type="button"
         className="icon-btn"
         onClick={() => setOpen(v => !v)}
-        style={{ position: 'relative' }}
+        style={{
+          position: 'relative',
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          color: 'var(--gray)',
+        }}
       >
         <Icon name="bell" size={16} />
         {unreadCount > 0 && (
@@ -113,16 +118,15 @@ function NotifBell() {
           top:          'calc(100% + 8px)',
           right:        0,
           width:        320,
-          background:   'var(--color-card)',
-          border:       '1px solid var(--color-border)',
-          borderRadius: 10,
+          background:   'var(--white)',
+          border:       '1px solid var(--border)',
           boxShadow:    '0 8px 24px rgba(0,0,0,0.12)',
           zIndex:       9999,
           overflow:     'hidden',
         }}>
           <div style={{
             padding:        '12px 16px',
-            borderBottom:   '1px solid var(--color-border)',
+            borderBottom:   '1px solid var(--border)',
             display:        'flex',
             alignItems:     'center',
             justifyContent: 'space-between',
@@ -160,7 +164,7 @@ function NotifBell() {
                   onClick={() => { if (!n.read) markRead(n.id) }}
                   style={{
                     padding:     '12px 16px',
-                    borderBottom: '1px solid var(--color-border)',
+                    borderBottom: '1px solid var(--border)',
                     cursor:       n.read ? 'default' : 'pointer',
                     borderLeft:   n.read ? 'none' : '3px solid var(--color-accent)',
                     background:   n.read ? 'transparent' : 'rgba(37,99,235,0.03)',
@@ -191,7 +195,13 @@ function NotifBell() {
   )
 }
 
-export function Topbar({ title, actions }: { title?: string; actions?: React.ReactNode }) {
+export function Topbar({
+  title,
+  actions,
+}: {
+  title?: string
+  actions?: React.ReactNode
+}) {
   const pathname    = usePathname()
   const portal      = usePortal()
   const portalLabel = PORTAL_LABELS[portal] ?? 'Portal'
@@ -205,7 +215,13 @@ export function Topbar({ title, actions }: { title?: string; actions?: React.Rea
 
   return (
     <header className="topbar">
-      <div className="breadcrumb">
+      <div className="breadcrumb" style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        color: 'var(--gray)',
+      }}>
         <span className="crumb-portal">{portalLabel}</span>
         {derivedTitle && (
           <>

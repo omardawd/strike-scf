@@ -29,7 +29,7 @@ export async function GET(
 
   const { data, error } = await adminClient
     .from('invitations')
-    .select('id, email, role, expires_at, bank_id, anchor_org_id, status')
+    .select('id, email, role, status, expires_at, bank_id, anchor_org_id, program_id, invitation_mode, prefilled_kyb, required_documents, invitee_name')
     .eq('token', token)
     .eq('status', 'pending')
     .single()
@@ -50,6 +50,11 @@ export async function GET(
       expires_at: data.expires_at,
       bank_id: data.bank_id,
       anchor_org_id: data.anchor_org_id,
+      program_id: data.program_id,
+      invitation_mode: data.invitation_mode ?? 'standard',
+      prefilled_kyb: data.prefilled_kyb,
+      required_documents: data.required_documents,
+      invitee_name: data.invitee_name,
     },
   })
 }

@@ -237,14 +237,60 @@ export default function ProgramsPage() {
             </div>
           </div>
         ) : (
-          <div className="program-grid">
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: '1px',
+            background: 'var(--border)',
+          }}>
             {visiblePrograms.map(p => (
-              <ProgramCard
+              <div
                 key={p.id}
-                program={p}
-                portal={portal}
-                onClick={() => router.push(`/programs/${p.id}`)}
-              />
+                style={{
+                  background: 'var(--white)',
+                  padding: 28,
+                  cursor: 'pointer',
+                  transition: 'box-shadow 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+                onClick={() => router.push('/programs/' + p.id)}
+              >
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 18,
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
+                  color: 'var(--ink)',
+                  marginBottom: 4,
+                }}>{p.name}</div>
+
+                <div style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: 'var(--gray)',
+                  marginBottom: 20,
+                }}>
+                  {typeLabel(p)}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 6,
+                    height: 6,
+                    background: p.status === 'active' ? 'var(--color-green)' : 'var(--gray)',
+                  }} />
+                  <span style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'var(--gray)',
+                  }}>{p.status}</span>
+                </div>
+              </div>
             ))}
           </div>
         )}

@@ -88,52 +88,51 @@ function StepPrograms({ programs, loading, onSelect }: {
     )
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 640 }}>
+    <div style={{ display: 'grid', gap: '1px', background: 'var(--border)', maxWidth: 640 }}>
       {eligiblePrograms.map((p) => (
         <div
           key={p.id}
           onClick={() => onSelect(p)}
           style={{
-            border: '1.5px solid var(--color-border)',
-            borderRadius: 10,
+            background: 'var(--white)',
             padding: '16px 20px',
             cursor: 'pointer',
-            background: 'var(--color-card)',
+            transition: 'box-shadow 0.15s',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>{p.name}</div>
             {p.status && (
               <span style={{
-                fontSize: 11,
-                fontWeight: 600,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                fontWeight: 500,
                 padding: '2px 8px',
-                borderRadius: 20,
-                background: p.status === 'active' ? 'var(--color-green-subtle, #e6f9f0)' : 'var(--color-surface-2, #f4f4f5)',
-                color: p.status === 'active' ? 'var(--color-green, #16a34a)' : 'var(--color-ink-4, #9ca3af)',
+                border: '1px solid currentColor',
+                color: p.status === 'active' ? 'var(--color-green)' : 'var(--gray)',
                 textTransform: 'uppercase' as const,
-                letterSpacing: '0.04em',
+                letterSpacing: '0.1em',
               }}>
                 {p.status}
               </span>
             )}
           </div>
           {p.bank_name && (
-            <div style={{ fontSize: 12, color: 'var(--color-text-2)', marginBottom: 10 }}>{p.bank_name}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginBottom: 12, letterSpacing: '0.06em' }}>{p.bank_name}</div>
           )}
-          <div style={{ borderTop: '1px solid var(--color-border)', marginBottom: 10 }} />
+          <div style={{ borderTop: '1px solid var(--border)', marginBottom: 12 }} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-2)', marginBottom: 2 }}>Type</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Type</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)' }}>
                 {(p.financing_types ?? []).map(fmtFinancingType).join(', ') || '—'}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-2)', marginBottom: 2 }}>Offered By</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Limit</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)' }}>
                 {p.program_limit ? fmtMoney(p.program_limit) : 'No limit'}
               </div>
             </div>

@@ -213,6 +213,17 @@ function KybSection({
   )
 }
 
+const AVAILABLE_DOCS = [
+  { id: 'certificate_of_incorporation', label: 'Certificate of Incorporation' },
+  { id: 'ein_letter',                   label: 'IRS EIN Confirmation Letter' },
+  { id: 'ownership_structure',          label: 'Ownership Structure' },
+  { id: 'audited_financials',           label: 'Audited Financials (2 years)' },
+  { id: 'bank_statements',              label: 'Bank Statements (6 months)' },
+  { id: 'insurance_certificate',        label: 'Certificate of Insurance' },
+  { id: 'aml_kyc_policy',              label: 'AML / KYC Policy' },
+  { id: 'custom_document',              label: 'Custom document (specify below)' },
+]
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function AnchorDetailPage() {
   const portal    = usePortal()
@@ -242,6 +253,10 @@ export default function AnchorDetailPage() {
   const [inviteLoading, setInviteLoading]     = useState(false)
   const [inviteError, setInviteError]         = useState<string | null>(null)
   const [inviteSent, setInviteSent]           = useState(false)
+  const [inviteMode, setInviteMode]           = useState<'standard' | 'known_counterparty' | 'custom_kyb'>('standard')
+  const [prefilledKyb, setPrefilledKyb]       = useState<Record<string, string>>({})
+  const [requiredDocs, setRequiredDocs]       = useState<string[]>([])
+  const [customDocName, setCustomDocName]     = useState('')
 
   const load = useCallback(async () => {
     setError(null)
@@ -345,10 +360,22 @@ export default function AnchorDetailPage() {
     if (!inviteEmail.includes('@')) { setInviteError('Enter a valid email'); return }
     setInviteLoading(true); setInviteError(null)
     try {
+      const reqBody: Record<string, unknown> = {
+        name: inviteName.trim(), email: inviteEmail.trim(), role: 'supplier', anchor_org_id: anchorId,
+        invitation_mode: inviteMode,
+      }
+      if (inviteMode === 'known_counterparty') reqBody.prefilled_kyb = prefilledKyb
+      if (inviteMode === 'custom_kyb') {
+        reqBody.required_documents = requiredDocs.map(docId =>
+          docId === 'custom_document'
+            ? { id: docId, label: customDocName }
+            : AVAILABLE_DOCS.find(d => d.id === docId)
+        )
+      }
       const res = await fetch(`/api/programs/${programId}/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: inviteName.trim(), email: inviteEmail.trim(), role: 'supplier', anchor_org_id: anchorId }),
+        body: JSON.stringify(reqBody),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Failed')
@@ -363,6 +390,7 @@ export default function AnchorDetailPage() {
 
   function openInviteModal() {
     setInviteName(''); setInviteEmail(''); setInviteError(null); setInviteSent(false)
+    setInviteMode('standard'); setPrefilledKyb({}); setRequiredDocs([]); setCustomDocName('')
     setShowInviteModal(true)
   }
 
@@ -713,40 +741,161 @@ export default function AnchorDetailPage() {
           >
             <div
               className="card"
-              style={{ width: 400, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
+              style={{ width: 480, maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
               onClick={e => e.stopPropagation()}
             >
               <div className="card-head">
                 <h3 className="t-card-head">Invite Supplier</h3>
                 <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowInviteModal(false)}>✕</button>
               </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
                 {inviteSent ? (
                   <div style={{ fontSize: 14, color: 'var(--color-green)', textAlign: 'center', padding: '12px 0' }}>
                     Invitation sent!
                   </div>
                 ) : (
                   <>
-                    <div>
-                      <label className="form-label">Name <span style={{ color: 'var(--color-ink-4)' }}>(optional)</span></label>
-                      <input
-                        className="form-input"
-                        placeholder="Contact name"
-                        value={inviteName}
-                        onChange={e => setInviteName(e.target.value)}
-                      />
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '1px',
+                      background: 'var(--border)',
+                      marginBottom: 20,
+                    }}>
+                      {([
+                        { id: 'standard'           as const, label: 'Standard',    desc: 'Counterparty completes\nfull onboarding' },
+                        { id: 'known_counterparty' as const, label: 'Known Party', desc: 'Pre-fill their details,\nskip re-onboarding' },
+                        { id: 'custom_kyb'         as const, label: 'Custom KYB',  desc: 'Specify exactly what\ndocs you require' },
+                      ]).map(m => (
+                        <button
+                          key={m.id}
+                          onClick={() => setInviteMode(m.id)}
+                          style={{
+                            background: inviteMode === m.id ? 'rgba(0,82,255,0.05)' : 'var(--white)',
+                            border: 'none',
+                            padding: '14px 12px',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            borderBottom: inviteMode === m.id ? '2px solid var(--blue)' : '2px solid transparent',
+                          }}
+                        >
+                          <div style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            letterSpacing: '0.12em',
+                            textTransform: 'uppercase',
+                            color: inviteMode === m.id ? 'var(--blue)' : 'var(--gray)',
+                            marginBottom: 4,
+                          }}>{m.label}</div>
+                          <div style={{
+                            fontFamily: 'var(--font-body)',
+                            fontSize: 12,
+                            color: 'var(--gray)',
+                            lineHeight: 1.4,
+                            whiteSpace: 'pre-line',
+                          }}>{m.desc}</div>
+                        </button>
+                      ))}
                     </div>
                     <div>
-                      <label className="form-label">Email</label>
-                      <input
-                        className="form-input"
-                        type="email"
-                        placeholder="supplier@company.com"
-                        value={inviteEmail}
-                        onChange={e => setInviteEmail(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSendInvite()}
-                      />
+                      <label className="field-label">Contact name</label>
+                      <input className="input" placeholder="Jane Smith" value={inviteName} onChange={e => setInviteName(e.target.value)} />
                     </div>
+                    <div>
+                      <label className="field-label">Work email</label>
+                      <input className="input" type="email" placeholder="jane@company.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+                    </div>
+                    {inviteMode === 'known_counterparty' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                          Pre-fill their organization details
+                        </div>
+                        <input className="input" placeholder="Legal name" value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
+                        <input className="input" placeholder="EIN / Tax ID" value={prefilledKyb.ein ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, ein: e.target.value }))} />
+                        <select className="input" value={prefilledKyb.entity_type ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, entity_type: e.target.value }))}>
+                          <option value="">Entity type</option>
+                          <option value="LLC">LLC</option>
+                          <option value="Corporation">Corporation</option>
+                          <option value="Partnership">Partnership</option>
+                          <option value="Sole Proprietor">Sole Proprietor</option>
+                        </select>
+                        <input className="input" placeholder="State of incorporation" value={prefilledKyb.state_of_incorporation ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state_of_incorporation: e.target.value }))} />
+                        <input className="input" placeholder="Address line 1" value={prefilledKyb.address_line_1 ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, address_line_1: e.target.value }))} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8 }}>
+                          <input className="input" placeholder="City" value={prefilledKyb.city ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, city: e.target.value }))} />
+                          <input className="input" placeholder="State" value={prefilledKyb.state ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state: e.target.value }))} />
+                          <input className="input" placeholder="ZIP" value={prefilledKyb.zip ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, zip: e.target.value }))} />
+                        </div>
+                        <input className="input" placeholder="Industry NAICS" value={prefilledKyb.industry_naics ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, industry_naics: e.target.value }))} />
+                        <select className="input" value={prefilledKyb.annual_revenue_range ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, annual_revenue_range: e.target.value }))}>
+                          <option value="">Annual revenue range</option>
+                          <option value="<$1M">&lt;$1M</option>
+                          <option value="$1M-$5M">$1M–$5M</option>
+                          <option value="$5M-$10M">$5M–$10M</option>
+                          <option value="$10M-$50M">$10M–$50M</option>
+                          <option value="$50M-$100M">$50M–$100M</option>
+                          <option value="$100M+">$100M+</option>
+                        </select>
+                        <input className="input" placeholder="Primary contact phone" value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
+                        <div style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                          letterSpacing: '0.1em',
+                          color: 'var(--gray)',
+                          padding: '10px 14px',
+                          background: 'var(--offwhite)',
+                          border: '1px solid var(--border)',
+                        }}>
+                          These details will be pre-filled in their onboarding. They will only need to create credentials — no KYB application required.
+                        </div>
+                      </div>
+                    )}
+                    {inviteMode === 'custom_kyb' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                          Required documents
+                        </div>
+                        {AVAILABLE_DOCS.map(doc => (
+                          <label key={doc.id} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '8px 0',
+                            borderBottom: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            fontFamily: 'var(--font-body)',
+                            fontSize: 13,
+                            color: 'var(--ink)',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={requiredDocs.includes(doc.id)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setRequiredDocs(prev => [...prev, doc.id])
+                                } else {
+                                  setRequiredDocs(prev => prev.filter(d => d !== doc.id))
+                                }
+                              }}
+                              style={{ accentColor: 'var(--blue)' }}
+                            />
+                            {doc.label}
+                          </label>
+                        ))}
+                        {requiredDocs.includes('custom_document') && (
+                          <input
+                            className="input"
+                            placeholder="Document name..."
+                            value={customDocName}
+                            onChange={e => setCustomDocName(e.target.value)}
+                            style={{ marginTop: 8 }}
+                          />
+                        )}
+                        <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
+                          The counterparty will be guided to upload exactly these documents during onboarding.
+                        </div>
+                      </div>
+                    )}
                     {inviteError && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{inviteError}</div>}
                     <button className="btn btn-primary" type="button" disabled={inviteLoading} onClick={handleSendInvite}>
                       {inviteLoading ? 'Sending…' : 'Send invite'}

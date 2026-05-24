@@ -4,6 +4,8 @@ import { useRouter, useParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { TRANSACTION_REFERRER_KEY } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon } from '@/components/portal-shell'
+import { AIInsight } from '@/components/ai-insight'
+import { DocGenerator } from '@/components/doc-generator'
 
 interface Transaction {
   id: string
@@ -1008,7 +1010,22 @@ function BankActionPanel({
   const isCounter = mode === 'counter'
 
   return (
-    <div className="action-block">
+    <>
+      <AIInsight
+        title="Risk Analysis"
+        prompt="Analyze this transaction and provide a brief risk assessment. Consider the advance rate requested, invoice amount, counterparty history if available, and recommend whether to approve, counter, or flag for review."
+        context={{
+          invoice_amount: transaction.invoice_amount,
+          advance_rate_requested: transaction.financing_rate_apr,
+          amount_requested: transaction.financing_amount_requested,
+          invoice_due_date: transaction.invoice_due_date,
+          supplier: transaction.supplier_id,
+          program_type: transaction.type,
+          description: transaction.description,
+        }}
+        collapsed={true}
+      />
+      <div className="action-block">
 
       {/* ── Panel 1: Supplier financing offer ── */}
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1335,6 +1352,7 @@ function BankActionPanel({
         </div>
       )}
     </div>
+    </>
   )
 }
 
@@ -1655,6 +1673,18 @@ function AnchorActionPanel({
       <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
         Review and confirm this invoice before it is sent to the bank for financing.
       </p>
+      <AIInsight
+        title="Invoice Assessment"
+        prompt="Assess this invoice submission. Is the requested advance rate reasonable? What should the anchor consider before approving or rejecting?"
+        context={{
+          invoice_number: transaction.invoice_number,
+          invoice_amount: transaction.invoice_amount,
+          advance_rate_requested: transaction.financing_rate_apr,
+          due_date: transaction.invoice_due_date,
+          description: transaction.description,
+        }}
+        collapsed={true}
+      />
       <button
         className="btn btn-primary btn-full"
         type="button"
@@ -1712,6 +1742,7 @@ function SupplierActionPanel({
 
     case 'pending_supplier_counter_review': {
       const rate = transaction.apr ?? transaction.financing_rate_apr
+      const negotiationState = (() => { try { return JSON.parse(transaction.bank_approval_notes ?? '{}') } catch { return {} } })()
 
       if (counterMode) {
         return (
@@ -1806,6 +1837,17 @@ function SupplierActionPanel({
               </div>
             )}
           </div>
+          <AIInsight
+            title="Offer Analysis"
+            prompt="The bank has made a counter-offer. Analyze whether the supplier should accept this offer or negotiate further. Consider the advance rate, fees, and market context."
+            context={{
+              original_rate: transaction.financing_rate_apr,
+              bank_counter: (negotiationState as { supplier_negotiation?: { bank_offer?: unknown } })?.supplier_negotiation?.bank_offer,
+              invoice_amount: transaction.invoice_amount,
+              fee_amount: transaction.fee_amount,
+            }}
+            collapsed={true}
+          />
           <button
             className="btn btn-primary btn-full"
             type="button"
@@ -2718,6 +2760,33 @@ export default function TransactionDetailPage() {
                     )}
                   </div>
                 )}
+
+                {/* AI Document Generator */}
+                <DocGenerator
+                  entityType="transaction"
+                  portal={portal}
+                  entityData={{
+                    transaction_id: txn.id,
+                    type: txn.type,
+                    status: txn.status,
+                    invoice_number: txn.invoice_number,
+                    invoice_amount: txn.invoice_amount,
+                    invoice_date: txn.invoice_date,
+                    invoice_due_date: txn.invoice_due_date,
+                    financing_rate_apr: txn.financing_rate_apr,
+                    financing_amount_approved: txn.financing_amount_approved,
+                    fee_amount: txn.fee_amount,
+                    net_proceeds: txn.net_proceeds,
+                    description: txn.description,
+                    created_at: txn.created_at,
+                    events: events?.map(e => ({
+                      type: e.event_type,
+                      actor: e.actor,
+                      notes: e.notes,
+                      date: e.created_at,
+                    })),
+                  }}
+                />
 
                 {/* Event history */}
                 <div className="card">

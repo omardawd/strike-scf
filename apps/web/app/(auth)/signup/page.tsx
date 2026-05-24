@@ -37,27 +37,26 @@ function OBStepper({ steps, current }: { steps: Step[]; current: number }) {
           <div key={i} style={{
             display: 'flex', alignItems: 'center', gap: 12,
             padding: '10px 20px',
-            borderLeft: `2px solid ${active ? 'var(--color-accent, #0A1FB8)' : 'transparent'}`,
-            background: active ? 'rgba(10,31,184,0.05)' : 'transparent',
-            borderRadius: '0 6px 6px 0',
+            borderLeft: `2px solid ${active ? 'var(--blue)' : 'transparent'}`,
+            background: active ? 'rgba(0,82,255,0.05)' : 'transparent',
           }}>
             <div style={{
               width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 10, fontWeight: 600,
-              background: done ? 'var(--color-green, #1A6B42)' : active ? 'var(--color-accent, #0A1FB8)' : 'var(--color-bg-2, #EFEDE8)',
-              color: done || active ? 'white' : 'var(--color-ink-4, #9C9890)',
-              border: done || active ? 'none' : '1.5px solid var(--color-border, #E2DFD8)',
+              background: done ? 'var(--blue)' : active ? 'var(--ink)' : 'var(--white)',
+              color: done || active ? 'white' : 'var(--gray)',
+              border: done || active ? 'none' : '1px solid var(--border-strong)',
             }}>
               {done ? <OBIcon name="check" size={12} /> : i + 1}
             </div>
             <div>
               <div style={{
                 fontSize: 12.5, fontWeight: active ? 600 : 400,
-                color: active ? 'var(--color-ink-1, #0F0F0F)' : done ? 'var(--color-ink-2, #3D3C3A)' : 'var(--color-ink-3, #6B6963)',
+                color: active ? 'var(--ink)' : done ? 'var(--color-ink-2)' : 'var(--gray)',
               }}>{step.label}</div>
               {step.sub && (
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4, #9C9890)', marginTop: 1 }}>{step.sub}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray-soft)', marginTop: 1 }}>{step.sub}</div>
               )}
             </div>
           </div>
@@ -77,19 +76,19 @@ function OBShell({ steps, current, children }: {
     <div data-theme="light" style={{
       position: 'fixed', inset: 0,
       display: 'grid', gridTemplateColumns: '280px 1fr',
-      background: 'var(--color-bg, #F7F6F3)',
-      fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+      background: 'var(--offwhite)',
+      fontFamily: 'var(--font-body)',
     }}>
       {/* Left rail */}
       <div style={{
-        background: 'white',
-        borderRight: '1px solid var(--color-border, #E2DFD8)',
+        background: 'var(--white)',
+        borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* Brand */}
         <div style={{
           padding: '16px 12px 12px',
-          borderBottom: '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--border)',
         }}>
           <Image
             src="/logo.png"
@@ -112,8 +111,8 @@ function OBShell({ steps, current, children }: {
         {/* Footer */}
         <div style={{
           padding: '14px 20px',
-          borderTop: '1px solid var(--color-border, #E2DFD8)',
-          fontSize: 11, color: 'var(--color-ink-4)',
+          borderTop: '1px solid var(--border)',
+          fontSize: 11, color: 'var(--gray-soft)',
           display: 'flex', alignItems: 'flex-start', gap: 8,
         }}>
           <OBIcon name="info" size={13} />
@@ -136,12 +135,12 @@ function OBShell({ steps, current, children }: {
 
 // ─── shared input style ───────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
-  height: 38, padding: '0 12px', borderRadius: 6,
-  border: '1.5px solid var(--color-border, #E2DFD8)',
-  background: 'white',
-  fontSize: 13.5, color: 'var(--color-ink-1)',
+  height: 38, padding: '0 12px',
+  border: '1px solid var(--border)',
+  background: 'var(--white)',
+  fontSize: 13.5, color: 'var(--ink)',
   outline: 'none', width: '100%', boxSizing: 'border-box',
-  transition: 'border-color 0.15s', fontFamily: 'inherit',
+  transition: 'border-color 0.15s, box-shadow 0.15s', fontFamily: 'inherit',
 }
 
 // ─── step 0: role picker (StepWelcome from reference) ────────────────────────
@@ -169,7 +168,7 @@ function StepWelcome({ role, setRole, onNext }: {
             priority
           />
         </div>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.04em', color: 'var(--color-ink-1)', margin: 0, lineHeight: 1.15 }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--ink)', margin: 0, lineHeight: 1.15 }}>
           Let&apos;s get you set up.
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-ink-3)', marginTop: 10, lineHeight: 1.6 }}>
@@ -186,14 +185,14 @@ function StepWelcome({ role, setRole, onNext }: {
             style={{
               display: 'flex', alignItems: 'center', gap: 16,
               padding: '16px 20px', borderRadius: 10, textAlign: 'left',
-              border: `2px solid ${role === r.id ? '#1B3BE8' : 'var(--color-border, #E2DFD8)'}`,
-              background: role === r.id ? '#1B3BE8' : 'white',
+              border: `1px solid ${role === r.id ? 'var(--blue)' : 'var(--border)'}`,
+              background: role === r.id ? 'var(--blue)' : 'var(--white)',
               cursor: 'pointer', transition: 'all 0.12s', width: '100%',
             }}
           >
             <div style={{
               width: 40, height: 40, borderRadius: 8, flexShrink: 0,
-              background: role === r.id ? 'rgba(255,255,255,0.12)' : 'var(--color-bg-2, #EFEDE8)',
+              background: role === r.id ? 'rgba(255,255,255,0.12)' : 'var(--offwhite)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: role === r.id ? 'white' : 'var(--color-ink-2)',
             }}>
@@ -222,7 +221,7 @@ function StepWelcome({ role, setRole, onNext }: {
           onClick={onNext}
           style={{
             height: 40, padding: '0 24px', borderRadius: 7, fontSize: 14, fontWeight: 600,
-            background: '#1B3BE8', color: 'white',
+            background: 'var(--blue)', color: 'white',
             border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
             fontFamily: 'inherit',
           }}
@@ -233,7 +232,7 @@ function StepWelcome({ role, setRole, onNext }: {
 
       <p style={{ marginTop: 16, fontSize: 12, color: 'var(--color-ink-4)' }}>
         Already have an account?{' '}
-        <a href="/login" style={{ color: 'var(--color-accent, #0A1FB8)', fontWeight: 500, textDecoration: 'none' }}>
+        <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
           Sign in
         </a>
       </p>
@@ -300,7 +299,7 @@ function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--color-ink-1)', margin: 0 }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--ink)', margin: 0 }}>
           Create your account
         </h1>
         <p style={{ fontSize: 13.5, color: 'var(--color-ink-3)', marginTop: 6, lineHeight: 1.6 }}>
@@ -309,9 +308,9 @@ function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
       </div>
 
       <div style={{
-        background: 'white',
-        border: '1.5px solid var(--color-border, #E2DFD8)',
-        borderRadius: 10, padding: 24,
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
+        padding: 24,
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* First / Last name */}
@@ -440,7 +439,7 @@ function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
           disabled={loading}
           style={{
             height: 40, padding: '0 24px', borderRadius: 7, fontSize: 14, fontWeight: 600,
-            background: '#1B3BE8', color: 'white',
+            background: 'var(--blue)', color: 'white',
             border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', gap: 8,
             opacity: loading ? 0.7 : 1, fontFamily: 'inherit',
@@ -454,8 +453,8 @@ function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
           onClick={onBack}
           style={{
             height: 40, padding: '0 18px', borderRadius: 7, fontSize: 13.5,
-            background: 'transparent', color: 'var(--color-ink-3)',
-            border: '1.5px solid var(--color-border, #E2DFD8)',
+            background: 'transparent', color: 'var(--gray)',
+            border: '1px solid var(--border)',
             cursor: 'pointer', fontFamily: 'inherit',
           }}
         >
@@ -465,7 +464,7 @@ function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
 
       <p style={{ marginTop: 16, fontSize: 12, color: 'var(--color-ink-4)' }}>
         Already have an account?{' '}
-        <a href="/login" style={{ color: 'var(--color-accent, #0A1FB8)', fontWeight: 500, textDecoration: 'none' }}>
+        <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
           Sign in
         </a>
       </p>

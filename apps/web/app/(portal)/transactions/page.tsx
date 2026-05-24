@@ -157,7 +157,7 @@ export default function TransactionsPage() {
               <button
                 key={f.key}
                 type="button"
-                className={`btn btn-sm ${filter === f.key ? 'btn-secondary' : 'btn-ghost'}`}
+                className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={() => setFilter(f.key)}
               >
                 {f.label}

@@ -312,6 +312,11 @@ const BANK_STEPS = [
   { label: 'Review',           sub: 'Submit for activation' },
 ]
 
+const KNOWN_PARTY_STEPS = [
+  { label: 'Account',      sub: 'Confirm your details' },
+  { label: 'Your details', sub: 'Pre-verified by your bank' },
+]
+
 // ─────────────────────────────────────────────────────────────
 // Step 0 — Account Confirmation (read-only, from session)
 // ─────────────────────────────────────────────────────────────
@@ -437,13 +442,14 @@ function StepCompanyInfo({ data, setData, onBack, onNext, role, loading, error }
 // ─────────────────────────────────────────────────────────────
 // Step 2 — Documents (Supplier / Anchor)
 // ─────────────────────────────────────────────────────────────
-function StepDocuments({ docs, onUpload, onBack, onNext, role }: {
+function StepDocuments({ docs, onUpload, onBack, onNext, role, customDocs }: {
   docs: DocState; onUpload: (id: string) => void
   onBack: () => void; onNext: () => void; role: Role
+  customDocs?: Array<{ id: string; label: string }>
 }) {
   const isAnchor = role === 'anchor'
 
-  const requiredDocs = isAnchor
+  const defaultDocs = isAnchor
     ? [
         { id: 'inc',       name: 'Certificate of Incorporation / Articles',    required: true },
         { id: 'ein_letter',name: 'IRS EIN Confirmation Letter',                 required: true },
@@ -460,8 +466,13 @@ function StepDocuments({ docs, onUpload, onBack, onNext, role }: {
         { id: 'insurance', name: 'Certificate of Insurance',                   required: false },
       ]
 
-  const uploadedRequired = requiredDocs.filter(d => d.required && docs[d.id]?.status === 'uploaded').length
-  const totalRequired = requiredDocs.filter(d => d.required).length
+  const usingCustom = customDocs && customDocs.length > 0
+  const docsToShow = usingCustom
+    ? customDocs.map(d => ({ id: d.id, name: d.label, required: true }))
+    : defaultDocs
+
+  const uploadedRequired = docsToShow.filter(d => d.required && docs[d.id]?.status === 'uploaded').length
+  const totalRequired = docsToShow.filter(d => d.required).length
 
   return (
     <div>
@@ -469,6 +480,22 @@ function StepDocuments({ docs, onUpload, onBack, onNext, role }: {
         title="Upload your documents"
         sub="You can come back to upload anything missing — we'll save your progress."
       />
+
+      {usingCustom && (
+        <div style={{
+          background: 'rgba(0,82,255,0.05)',
+          border: '1px solid rgba(0,82,255,0.2)',
+          padding: '10px 14px',
+          marginBottom: 16,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'var(--blue)',
+        }}>
+          Your bank has requested these specific documents
+        </div>
+      )}
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
@@ -482,7 +509,7 @@ function StepDocuments({ docs, onUpload, onBack, onNext, role }: {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {requiredDocs.map(d => (
+        {docsToShow.map(d => (
           <DocTile
             key={d.id}
             name={d.name}
@@ -609,6 +636,52 @@ function StepRegulatoryDocs({ docs, onUpload, onBack, onNext }: {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Known counterparty — read-only pre-filled details review
+// ─────────────────────────────────────────────────────────────
+function StepKnownPartyReview({ prefilledKyb, onBack, onSubmit, loading, error }: {
+  prefilledKyb: Record<string, string>
+  onBack: () => void
+  onSubmit: () => void
+  loading?: boolean
+  error?: string | null
+}) {
+  return (
+    <div>
+      <SectionHead
+        title="Review your details"
+        sub="Your bank has pre-filled your organization information. Confirm to complete your account."
+      />
+      <Card>
+        <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', fontWeight: 600, marginBottom: 14 }}>
+          Your organization details
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Object.entries(prefilledKyb)
+            .filter(([, v]) => v)
+            .map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: 'var(--color-ink-3)' }}>{k.replace(/_/g, ' ')}</span>
+                <span style={{ color: 'var(--color-ink-1)', fontWeight: 500 }}>{v}</span>
+              </div>
+            ))}
+        </div>
+      </Card>
+      <div style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 10,
+        letterSpacing: '0.1em',
+        color: 'var(--color-ink-4)',
+        marginTop: 12,
+      }}>
+        These details were provided by your bank. Contact them if any information is incorrect.
+      </div>
+      {error && <p style={{ fontSize: 12.5, color: 'var(--color-red, #dc2626)', marginTop: 14 }}>{error}</p>}
+      <OBActions onBack={onBack} onNext={onSubmit} nextLabel="Complete setup →" loading={loading} />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // Final Review step
 // ─────────────────────────────────────────────────────────────
 function StepReview({ formData, docs, role, onBack, onSubmit, loading, error }: {
@@ -689,7 +762,7 @@ function StepReview({ formData, docs, role, onBack, onSubmit, loading, error }: 
 // ─────────────────────────────────────────────────────────────
 // Success screen
 // ─────────────────────────────────────────────────────────────
-function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolean }) {
+function ScreenOBSuccess({ role, fromInvite, knownParty }: { role: Role; fromInvite?: boolean; knownParty?: boolean }) {
   const checkCircle = (
     <div style={{
       width: 64, height: 64, borderRadius: '50%',
@@ -702,6 +775,35 @@ function ScreenOBSuccess({ role, fromInvite }: { role: Role; fromInvite?: boolea
       </svg>
     </div>
   )
+
+  if (knownParty) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
+          {checkCircle}
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
+            Welcome to Strike SCF!
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
+            Your account is active. Your organization details have been pre-verified.
+          </p>
+          <a
+            href="/dashboard"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              marginTop: 8, height: 42, padding: '0 24px', borderRadius: 8,
+              background: 'var(--color-ink-1)', color: 'white',
+              textDecoration: 'none', fontSize: 14, fontWeight: 600,
+            }}
+          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
+        </div>
+      </div>
+    )
+  }
 
   if (role === 'bank') {
     return (
@@ -793,12 +895,26 @@ function OnboardingPageContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [invitationMode, setInvitationMode] = useState<string>('standard')
+  const [prefilledKyb, setPrefilledKyb] = useState<Record<string, string>>({})
+  const [requiredDocs, setRequiredDocs] = useState<Array<{ id: string; label: string }>>([])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pendingUpload = useRef<{ docId: string; docKind: string } | null>(null)
 
   useEffect(() => {
     async function init() {
+      const storedMode = sessionStorage.getItem('invitation_mode') ?? 'standard'
+      const storedPrefilled = (() => {
+        try { return JSON.parse(sessionStorage.getItem('prefilled_kyb') ?? '{}') } catch { return {} }
+      })()
+      const storedRequiredDocs = (() => {
+        try { return JSON.parse(sessionStorage.getItem('required_documents') ?? '[]') } catch { return [] }
+      })()
+      setInvitationMode(storedMode)
+      setPrefilledKyb(storedPrefilled)
+      setRequiredDocs(storedRequiredDocs)
+
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
@@ -983,11 +1099,38 @@ function OnboardingPageContent() {
     }
   }
 
+  const isKnownParty = invitationMode === 'known_counterparty'
+  const isCustomKyb  = invitationMode === 'custom_kyb'
+
+  async function handleKnownPartySubmit() {
+    setError(null)
+    setLoading(true)
+    const inviteBankId = fromInvite
+      ? (user?.user_metadata?.bank_id as string | undefined)
+      : process.env.NEXT_PUBLIC_DEV_BANK_ID
+    try {
+      const res = await fetch('/api/onboarding/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bank_id: inviteBankId, type: role }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setOrgId(data.org_id)
+      setSubmitted(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to complete onboarding.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const isCreditOfficer = fromInvite && user?.user_metadata?.role === 'bank_credit_officer'
   const BCO_STEPS = [{ label: 'Account', sub: 'Confirm your details' }]
   const steps = isCreditOfficer ? BCO_STEPS
-    : role === 'supplier' ? SUPPLIER_STEPS
-    : role === 'anchor'   ? ANCHOR_STEPS
+    : isKnownParty         ? KNOWN_PARTY_STEPS
+    : role === 'supplier'  ? SUPPLIER_STEPS
+    : role === 'anchor'    ? ANCHOR_STEPS
     : BANK_STEPS
   const next = () => {
     setError(null)
@@ -1012,13 +1155,23 @@ function OnboardingPageContent() {
         </div>
       )
     }
-    if (submitted) return <ScreenOBSuccess role={role} fromInvite={fromInvite} />
+    if (submitted) return <ScreenOBSuccess role={role} fromInvite={fromInvite} knownParty={isKnownParty} />
 
     if (step === 0) return (
       <OBShell steps={steps} current={0} role={role}>
         <StepAccountConfirmation fullName={fullName} email={user?.email ?? ''} onNext={next} />
       </OBShell>
     )
+
+    // Known counterparty flow
+if (isKnownParty) {
+  if (step === 1) return (
+    <OBShell steps={steps} current={1} role={role}>
+      <StepKnownPartyReview prefilledKyb={prefilledKyb} onBack={back}
+        onSubmit={handleKnownPartySubmit} loading={loading} error={error} />
+    </OBShell>
+  )
+}
 
     // Supplier flow
     if (role === 'supplier') {
@@ -1029,7 +1182,8 @@ function OnboardingPageContent() {
       )
       if (step === 2) return (
         <OBShell steps={steps} current={2} role={role}>
-          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role} />
+          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role}
+  customDocs={isCustomKyb && requiredDocs.length > 0 ? requiredDocs : undefined} />
         </OBShell>
       )
       if (step === 3) return (
@@ -1048,7 +1202,8 @@ function OnboardingPageContent() {
       )
       if (step === 2) return (
         <OBShell steps={steps} current={2} role={role}>
-          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role} />
+          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role}
+  customDocs={isCustomKyb && requiredDocs.length > 0 ? requiredDocs : undefined} />
         </OBShell>
       )
       if (step === 3) return (

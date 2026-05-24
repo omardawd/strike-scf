@@ -4,6 +4,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
 import { VolumeChart, ProgramPieChart, PeriodToggle, type Period } from '@/components/charts'
+import { AIInsight } from '@/components/ai-insight'
 
 // ============== Types ==============
 interface DashProgram { id: string; name: string; financing_types: string[]; status: string }
@@ -160,6 +161,7 @@ function NotifBell() {
         type="button"
         aria-label="Notifications"
         onClick={() => setOpen(o => !o)}
+        style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--gray)' }}
       >
         <Icon name="bell" size={16} />
       </button>
@@ -311,9 +313,22 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
           </div>
         </div>
 
-        <div className="kpi-strip-5" style={{ marginTop: 24 }}>
+        <AIInsight
+          title="Portfolio Overview"
+          collapsed={true}
+          prompt="Based on this bank's current portfolio data, provide a brief executive summary. Highlight key metrics, any concentration risks, and one recommended action for today."
+          context={{
+            active_programs: data?.active_program_count ?? 0,
+            pending_kyb: data?.kyb_pending ?? 0,
+            pending_review: data?.pending_bank_review ?? 0,
+            active_deals: data?.active_transactions ?? 0,
+            enrolled_orgs: data?.enrolled_org_count ?? 0,
+          }}
+        />
+
+        <div className="kpi-strip-5" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
           {kpis.map((k, i) => (
-            <div key={i} className="kpi-card-spark">
+            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className={`kpi-delta ${k.deltaClass}`}>{k.delta}</div>
@@ -454,14 +469,25 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap, volPe
           <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
         </div>
 
-        <div className="kpi-strip-4" style={{ marginTop: 24 }}>
+        <AIInsight
+          title="Payables Snapshot"
+          collapsed={true}
+          prompt="Based on this anchor's current payables data, provide a brief summary. Highlight pending approvals, upcoming obligations, and one recommended action."
+          context={{
+            pending_approval: data?.pending_approval ?? 0,
+            enrolled_programs: data?.programs?.length ?? 0,
+            total_invoice_volume: totalPayablesFinanced ?? 0,
+          }}
+        />
+
+        <div className="kpi-strip-4" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
           {[
             { label: 'Payables financed',   value: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? fmtCurrency(totalPayablesFinanced) : '—', delta: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? 'Last 6 months' : 'No data yet', color: 'var(--color-anchor)', sparkData: anchorMonthly },
             { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',                                          delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',  color: 'var(--color-amber)',  sparkData: [] as number[] },
             { label: 'Financed this month', value: currentMonthFinanced != null && currentMonthFinanced > 0 ? fmtCurrency(currentMonthFinanced) : '—', delta: currentMonthFinanced != null && currentMonthFinanced > 0 ? 'This month' : 'No data yet', color: 'var(--color-green)',  sparkData: anchorMonthly },
             { label: 'Due in 30 days',      value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-amber)',  sparkData: [] as number[] },
           ].map((k, i) => (
-            <div key={i} className="kpi-card-spark">
+            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className="kpi-delta kpi-delta-mut">{k.delta}</div>
@@ -574,14 +600,25 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, vol
           <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
         </div>
 
-        <div className="kpi-strip-4" style={{ marginTop: 24 }}>
+        <AIInsight
+          title="Receivables Snapshot"
+          collapsed={true}
+          prompt="Based on this supplier's current receivables data, provide a brief summary. Highlight outstanding financing, any pending actions needed, and one tip to optimize their cash flow."
+          context={{
+            active_transactions: data?.active_transactions ?? 0,
+            outstanding_balance: supplierSnap?.receivables?.outstanding_balance ?? 0,
+            enrolled_programs: data?.programs?.length ?? 0,
+          }}
+        />
+
+        <div className="kpi-strip-4" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
           {[
             { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
             { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--color-ink-3)', sparkData: [] as number[] },
             { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
             { label: 'Acceptance rate',      value: acceptanceRate != null ? `${acceptanceRate}%` : '—',                   delta: acceptanceRate != null ? 'Of submitted txns' : 'No data yet',            color: 'var(--color-green)', sparkData: [] as number[] },
           ].map((k, i) => (
-            <div key={i} className="kpi-card-spark">
+            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
               <div className="kpi-value mono">{k.value}</div>
               <div className="kpi-delta kpi-delta-mut">{k.delta}</div>

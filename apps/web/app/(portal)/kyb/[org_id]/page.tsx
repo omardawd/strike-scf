@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { KYB_REFERRER_KEY } from '@/lib/kyb-referrer'
 import { Topbar, NotifBell } from '@/components/portal-shell'
+import { AIInsight } from '@/components/ai-insight'
 import type { CreditDecision, RiskTier } from '@strike-scf/types'
 
 interface Document {
@@ -433,6 +434,23 @@ export default function KYBDetailPage() {
           {/* RIGHT — Sticky decision panel or read-only status */}
           <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start' }}>
             {['submitted', 'under_review', 'in_progress', 'more_info_requested'].includes(org.kyb_status) ? (
+              <>
+                <AIInsight
+                  title="KYB Risk Summary"
+                  prompt="Based on this organization's KYB submission, provide a brief risk assessment. Highlight any concerns and recommend approve, request more info, or reject."
+                  context={{
+                    org_name: org?.legal_name,
+                    org_type: org?.type,
+                    kyb_status: org?.kyb_status,
+                    city: org?.city,
+                    state: org?.state,
+                    industry: (org as unknown as Record<string, unknown>)?.industry_naics,
+                    annual_revenue: (org as unknown as Record<string, unknown>)?.annual_revenue_range,
+                    document_count: documents?.length ?? 0,
+                    ein_provided: !!org?.ein,
+                  }}
+                  collapsed={false}
+                />
               <div className="card">
                 <div className="card-head"><h3 className="t-card-head">Make a decision</h3></div>
                 <div className="decision-panel">
@@ -568,6 +586,7 @@ export default function KYBDetailPage() {
                   )}
                 </div>
               </div>
+              </>
             ) : (
               <div className="card">
                 <div className="card-head"><h3 className="t-card-head">Decision</h3></div>

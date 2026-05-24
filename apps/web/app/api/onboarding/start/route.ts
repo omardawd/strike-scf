@@ -62,6 +62,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // ── Known counterparty: instant approval, no KYB ───────────
+  if (!isBankAdmin) {
+    const { data: invitationRecord } = await adminClient
+      .from('invitations')
+      .select('invitation_mode, prefilled_kyb')
+      .eq('email', userData.email)
+      .eq('status', 'accepted')
+      .order('accepted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const isKnownParty = invitationRecord?.invitation_mode === 'known_counterparty'
+    const prefilledData = (invitationRecord?.prefilled_kyb ?? {}) as Record<string, string>
+
+    if (isKnownParty) {
+      const inviteBankId = userData.bank_id ?? body.bank_id
+      const knownOrgRow = {
+        bank_id: inviteBankId,
+        type: (body.type ?? 'supplier') satisfies OrgType,
+        legal_name: prefilledData.legal_name ?? body.legal_name ?? '',
+        ein: prefilledData.ein ?? body.ein ?? '',
+        doing_business_as: prefilledData.doing_business_as ?? null,
+        business_type: (prefilledData.business_type ?? null) as BusinessType | null,
+        state_of_incorporation: prefilledData.state_of_incorporation ?? null,
+        address_line1: prefilledData.address_line1 ?? null,
+        city: prefilledData.city ?? null,
+        state: prefilledData.state ?? null,
+        zip: prefilledData.zip ?? null,
+        kyb_status: 'approved' satisfies KYBStatus,
+        status: 'approved' satisfies OrgStatus,
+        kyb_submitted_at: new Date().toISOString(),
+      }
+
+      const { data: knownOrg, error: knownOrgError } = await adminClient
+        .from('organizations')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(knownOrgRow as any)
+        .select('id')
+        .single()
+
+      if (knownOrgError || !knownOrg) {
+        console.error('[onboarding/start] known_counterparty org insert error:', knownOrgError)
+        return NextResponse.json({ error: knownOrgError?.message ?? 'Failed to create organization' }, { status: 500 })
+      }
+
+      await adminClient.from('users').update({ org_id: knownOrg.id }).eq('id', user.id)
+
+      return NextResponse.json({ org_id: knownOrg.id, instantly_approved: true }, { status: 201 })
+    }
+  }
+
   if (!body.legal_name) {
     return NextResponse.json({ error: 'legal_name is required' }, { status: 400 })
   }

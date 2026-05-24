@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { PortalProvider, type PortalType } from '@/lib/portal-context'
 import { UserProvider } from '@/lib/user-context'
 import { Sidebar } from '@/components/sidebar'
+import { PortalShell } from './portal-shell'
 
 const adminClient = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,12 +42,12 @@ export default async function PortalLayout({ children }: { children: React.React
         org_id: userData.org_id ?? null,
         bank_id: userData.bank_id ?? null,
       }}>
-        <div className="app-shell">
-          <Sidebar />
-          <main className="main">
-            {children}
-          </main>
-        </div>
+        <PortalShell
+          portal={portal}
+          userName={userData.full_name ?? undefined}
+        >
+          {children}
+        </PortalShell>
       </UserProvider>
     </PortalProvider>
   )

@@ -84,29 +84,26 @@ export default function LoginPage() {
 
   const inputStyle: React.CSSProperties = {
     height: 38, width: '100%', padding: '0 12px',
-    border: '1px solid var(--color-border, #E2DFD8)',
-    borderRadius: 6,
-    background: 'var(--color-card, white)',
-    fontSize: 13.5, color: 'var(--color-ink-1, #0F0F0F)',
+    border: '1px solid var(--border)',
+    background: 'var(--white)',
+    fontSize: 13.5, color: 'var(--ink)',
     fontFamily: 'inherit', outline: 'none',
     boxSizing: 'border-box',
-    transition: 'border-color 120ms ease',
+    transition: 'border-color 120ms ease, box-shadow 120ms ease',
   }
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--color-bg, #F7F6F3)',
+      background: 'var(--offwhite)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '40px 24px',
-      fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+      fontFamily: 'var(--font-body)',
     }}>
       <div style={{
         width: '100%', maxWidth: 420,
-        background: 'var(--color-card, white)',
-        border: '1px solid var(--color-border, #E2DFD8)',
-        borderRadius: 12,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+        background: 'var(--white)',
+        border: '1px solid var(--border)',
         padding: 40,
       }}>
         {/* Logo */}
@@ -128,13 +125,14 @@ export default function LoginPage() {
 
         {/* Heading */}
         <h1 style={{
+          fontFamily: 'var(--font-display)',
           fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em',
-          color: 'var(--color-ink-1, #0F0F0F)', margin: '24px 0 0',
+          color: 'var(--ink)', margin: '24px 0 0',
         }}>
           Welcome back
         </h1>
         <p style={{
-          fontSize: 13.5, color: 'var(--color-ink-3, #6B6963)',
+          fontSize: 13, color: 'var(--gray)',
           margin: '6px 0 28px',
         }}>
           Sign in to your account
@@ -144,8 +142,10 @@ export default function LoginPage() {
           {/* Email */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <label style={{
-              fontSize: 13, fontWeight: 500,
-              color: 'var(--color-ink-1, #0F0F0F)', marginBottom: 5,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11, fontWeight: 400,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: 'var(--gray)', marginBottom: 6,
               display: 'block',
             }}>
               Email
@@ -165,15 +165,17 @@ export default function LoginPage() {
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
               <label style={{
-                fontSize: 13, fontWeight: 500,
-                color: 'var(--color-ink-1, #0F0F0F)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11, fontWeight: 400,
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'var(--gray)',
                 display: 'block',
               }}>
                 Password
               </label>
               <Link
                 href="/forgot-password"
-                style={{ fontSize: 12.5, color: 'var(--color-accent, #0A1FB8)', fontWeight: 500, textDecoration: 'none' }}
+                style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 500, textDecoration: 'none', fontFamily: 'var(--font-mono)' }}
               >
                 Forgot password?
               </Link>
@@ -212,13 +214,8 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            style={{
-              width: '100%', height: 40, borderRadius: 7,
-              background: isDark ? '#B8B7B0' : 'var(--color-ink-1, #0F0F0F)', color: isDark ? '#0F0F0F' : 'white',
-              border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-              opacity: loading ? 0.7 : 1,
-            }}
+            className="btn btn-primary"
+            style={{ width: '100%', opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
