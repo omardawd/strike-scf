@@ -75,6 +75,71 @@ export async function GET() {
       enrolled_org_count  = enrolledResult.count ?? 0
     }
 
+    // Suppliers at risk (red tier)
+    const { data: riskOrgs } = await adminClient
+      .from('organizations')
+      .select('id, legal_name, risk_tier, risk_score, risk_flags')
+      .eq('bank_id', userData.bank_id)
+      .eq('risk_tier', 'red')
+      .not('risk_score', 'is', null)
+
+    // Tariff-exposed volume
+    const { data: tariffOrgs } = await adminClient
+      .from('organizations')
+      .select('id')
+      .eq('bank_id', userData.bank_id)
+      .contains('risk_flags', '[{"code":"tariff_exposed"}]')
+
+    // Total outstanding funded balance
+    const { data: fundedTxns } = await adminClient
+      .from('transactions')
+      .select('financing_amount_approved')
+      .in('program_id', programIds.length > 0 ? programIds : ['__none__'])
+      .eq('status', 'funded')
+
+    const outstandingBalance = (fundedTxns ?? []).reduce(
+      (sum, t) => sum + (t.financing_amount_approved ?? 0), 0
+    )
+
+    const marginAtRisk = (riskOrgs?.length ?? 0) > 0
+      ? `${riskOrgs!.length} supplier${riskOrgs!.length > 1 ? 's' : ''} at risk`
+      : 'No suppliers flagged'
+
+    const { data: pendingTxns } = await adminClient
+      .from('transactions')
+      .select(`
+        id, invoice_number, invoice_amount,
+        financing_amount_requested,
+        financing_rate_apr, status, created_at,
+        type, supplier_id,
+        organizations!transactions_supplier_id_fkey(
+          legal_name, risk_tier, risk_score,
+          risk_flags, performance_tier,
+          country_of_origin
+        )
+      `)
+      .in('program_id', programIds.length > 0 ? programIds : ['__none__'])
+      .in('status', ['pending_bank_review', 'pending_supplier_counter_review'])
+      .order('created_at', { ascending: true })
+
+    const rankedQueue = (pendingTxns ?? [])
+      .map((t: any) => {
+        const org = t.organizations
+        let score = 0
+        score += Math.min((t.invoice_amount ?? 0) / 10000, 30)
+        if (org?.risk_tier === 'red') score += 40
+        else if (org?.risk_tier === 'amber') score += 20
+        const flags = org?.risk_flags ?? []
+        if (flags.some((f: any) => f.code === 'tariff_exposed')) score += 25
+        if (org?.performance_tier === 'preferred') score += 15
+        const daysWaiting = Math.floor(
+          (Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        score += Math.min(daysWaiting * 5, 25)
+        return { ...t, priority_score: Math.round(score), days_waiting: daysWaiting }
+      })
+      .sort((a: any, b: any) => b.priority_score - a.priority_score)
+      .slice(0, 10)
+
     console.log('Bank dashboard raw:', {
       kyb_pending, pending_bank_review, active_transactions,
       programIds, program_count, active_program_count, enrolled_org_count,
@@ -89,6 +154,12 @@ export async function GET() {
       kyb_pending:          kyb_pending          ?? 0,
       pending_bank_review,
       active_transactions,
+      suppliers_at_risk:    riskOrgs?.length     ?? 0,
+      tariff_exposed_count: tariffOrgs?.length   ?? 0,
+      outstanding_balance:  outstandingBalance,
+      margin_at_risk_label: marginAtRisk,
+      at_risk_suppliers:    riskOrgs?.slice(0, 5) ?? [],
+      funding_queue:        rankedQueue,
     })
   }
 
@@ -116,14 +187,24 @@ export async function GET() {
     const programIds = (programs as Array<{ id: string }>).map((p) => p.id)
     let enrolled_supplier_count = 0
 
-    // Count pending approval directly by anchor_id — no program_id gate
-    const { count: pendingCount } = await adminClient
-      .from('transactions')
-      .select('*', { count: 'exact', head: true })
-      .eq('anchor_id', userData.org_id)
-      .eq('status', 'pending_anchor_approval')
+    const [{ count: pendingCount }, { data: ddSavingsRows }] = await Promise.all([
+      adminClient
+        .from('transactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('anchor_id', userData.org_id)
+        .eq('status', 'pending_anchor_approval'),
+      adminClient
+        .from('transactions')
+        .select('discount_amount')
+        .eq('anchor_id', userData.org_id)
+        .eq('type', 'dynamic_discounting')
+        .eq('status', 'completed'),
+    ])
 
     const pending_approval = pendingCount ?? 0
+    const dd_savings = (ddSavingsRows ?? []).reduce(
+      (sum: number, t: { discount_amount: number | null }) => sum + (t.discount_amount ?? 0), 0
+    )
 
     if (programIds.length > 0) {
       const { count: supCount } = await adminClient
@@ -135,15 +216,31 @@ export async function GET() {
       enrolled_supplier_count = supCount ?? 0
     }
 
-    return NextResponse.json({ portal: 'anchor', org_name, programs, enrolled_supplier_count, pending_approval })
+    return NextResponse.json({ portal: 'anchor', org_name, programs, enrolled_supplier_count, pending_approval, dd_savings })
   }
 
   // ── SUPPLIER ──────────────────────────────────────────────────────────────
-  const { count: active_transactions } = await adminClient
-    .from('transactions')
-    .select('*', { count: 'exact', head: true })
-    .eq('supplier_id', userData.org_id)
-    .not('status', 'in', '("completed","rejected","cancelled")')
+  const [{ count: active_transactions }, { data: perfData }] = await Promise.all([
+    adminClient
+      .from('transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('supplier_id', userData.org_id)
+      .not('status', 'in', '("completed","rejected","cancelled")'),
+    adminClient
+      .from('supplier_performance')
+      .select('*')
+      .eq('org_id', userData.org_id)
+      .maybeSingle(),
+  ])
 
-  return NextResponse.json({ portal: 'supplier', org_name, programs, active_transactions: active_transactions ?? 0 })
+  return NextResponse.json({
+    portal: 'supplier',
+    org_name,
+    programs,
+    active_transactions: active_transactions ?? 0,
+    performance_tier: perfData?.performance_tier ?? 'standard',
+    performance_score: perfData?.performance_score ?? null,
+    on_time_rate: perfData?.on_time_payment_rate ?? null,
+    total_financed: perfData?.total_financed ?? 0,
+  })
 }

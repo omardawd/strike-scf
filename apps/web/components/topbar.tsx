@@ -95,7 +95,7 @@ function NotifBell() {
             position:        'absolute',
             top:             -3,
             right:           -3,
-            background:      'var(--color-red, #dc2626)',
+            background:      '#DC2626',
             color:           'white',
             borderRadius:    '50%',
             width:           15,
@@ -131,7 +131,7 @@ function NotifBell() {
             alignItems:     'center',
             justifyContent: 'space-between',
           }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
               Notifications
             </span>
             {unreadCount > 0 && (
@@ -153,7 +153,7 @@ function NotifBell() {
           </div>
 
           {notifs.length === 0 ? (
-            <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--color-ink-4)' }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
               No notifications yet
             </div>
           ) : (
@@ -171,15 +171,15 @@ function NotifBell() {
                     transition:   'background 0.1s',
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: n.read ? 400 : 500, color: 'var(--color-ink-1)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 13, fontWeight: n.read ? 400 : 500, color: 'var(--ink)', marginBottom: 2 }}>
                     {n.title}
                   </div>
                   {n.body && (
-                    <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>
                       {n.body}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>
                     {new Date(n.created_at).toLocaleDateString('en-US', {
                       month: 'short', day: 'numeric',
                       hour: '2-digit', minute: '2-digit',

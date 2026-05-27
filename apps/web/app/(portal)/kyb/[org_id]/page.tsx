@@ -5,6 +5,7 @@ import { useUser } from '@/lib/user-context'
 import { KYB_REFERRER_KEY } from '@/lib/kyb-referrer'
 import { Topbar, NotifBell } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
+import { RiskBadge } from '@/components/risk-badge'
 import type { CreditDecision, RiskTier } from '@strike-scf/types'
 
 interface Document {
@@ -167,6 +168,8 @@ export default function KYBDetailPage() {
   const [latestDecision, setLatestDecision] = useState<DecisionRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [riskData, setRiskData] = useState<any>(null)
 
   // Decision panel state
   const [mode, setMode] = useState<DecisionMode>('none')
@@ -225,6 +228,15 @@ export default function KYBDetailPage() {
     }
     fetchData()
   }, [isAuthorized, fetchData, router])
+
+  useEffect(() => {
+    if (!isAuthorized || !orgId) return
+    fetch('/api/risk/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId }),
+    }).then(res => { if (res.ok) res.json().then(setRiskData) }).catch(() => {})
+  }, [isAuthorized, orgId])
 
   async function submitDecision(decision: CreditDecision) {
     setSubmitting(true)
@@ -296,6 +308,15 @@ export default function KYBDetailPage() {
             <span className="id-text">{org.legal_name}</span>
             <span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status)}</span>
             <span className="badge badge-draft" style={{ textTransform: 'capitalize' }}>{org.type}</span>
+            {riskData && (
+              <RiskBadge
+                score={riskData.risk_score}
+                tier={riskData.risk_tier}
+                flags={riskData.risk_flags}
+                showScore={true}
+                size="sm"
+              />
+            )}
           </h1>
         )}
         {org && (
@@ -321,7 +342,7 @@ export default function KYBDetailPage() {
 
       {loading ? (
         <div className="card">
-          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-3)' }}>Loading…</div>
+          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>
         </div>
       ) : org ? (
         <div className="split-60">
@@ -371,7 +392,7 @@ export default function KYBDetailPage() {
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
               {documents.length === 0 ? (
-                <div style={{ padding: '16px', color: 'var(--color-ink-3)' }}>No documents uploaded.</div>
+                <div style={{ padding: '16px', color: 'var(--gray)' }}>No documents uploaded.</div>
               ) : (
                 <div>
                   {documents.map(doc => (
@@ -382,7 +403,7 @@ export default function KYBDetailPage() {
                       {doc.signed_url ? (
                         <a className="doc-link" href={doc.signed_url} target="_blank" rel="noopener noreferrer">View</a>
                       ) : (
-                        <span className="doc-link" style={{ color: 'var(--color-ink-4)' }}>Unavailable</span>
+                        <span className="doc-link" style={{ color: 'var(--gray)' }}>Unavailable</span>
                       )}
                     </div>
                   ))}
@@ -409,17 +430,17 @@ export default function KYBDetailPage() {
                         <span className="tl-action">{decisionLabel(latestDecision.decision)}</span>
                       </div>
                       {latestDecision.rejection_reason && (
-                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-ink-2)' }}>
+                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
                           Reason: {latestDecision.rejection_reason}
                         </div>
                       )}
                       {latestDecision.info_request_message && (
-                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-ink-2)' }}>
+                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
                           Message: {latestDecision.info_request_message}
                         </div>
                       )}
                       {latestDecision.override_reason && (
-                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--color-ink-2)' }}>
+                        <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
                           Override note: {latestDecision.override_reason}
                         </div>
                       )}
@@ -448,6 +469,10 @@ export default function KYBDetailPage() {
                     annual_revenue: (org as unknown as Record<string, unknown>)?.annual_revenue_range,
                     document_count: documents?.length ?? 0,
                     ein_provided: !!org?.ein,
+                    risk_score: riskData?.risk_score,
+                    risk_tier: riskData?.risk_tier,
+                    risk_flags: riskData?.risk_flags,
+                    tariff_exposure: riskData?.tariff_exposure,
                   }}
                   collapsed={false}
                 />
@@ -595,22 +620,22 @@ export default function KYBDetailPage() {
                     <>
                       <span className="badge badge-active" style={{ alignSelf: 'flex-start' }}>Approved</span>
                       {org.credit_reviewed_at && (
-                        <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                           Reviewed {formatDate(org.credit_reviewed_at)}
                         </div>
                       )}
                       {org.risk_tier && (
-                        <div style={{ fontSize: 13, color: 'var(--color-ink-2)' }}>
+                        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                           Risk tier: <strong>{org.risk_tier}</strong>
                         </div>
                       )}
                       {latestDecision?.rejection_reason && (
-                        <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                           {latestDecision.rejection_reason}
                         </div>
                       )}
                       {org.credit_score != null && (
-                        <div style={{ fontSize: 13, color: 'var(--color-ink-2)' }}>
+                        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                           Credit score: <strong>{org.credit_score}</strong>
                         </div>
                       )}
@@ -620,19 +645,19 @@ export default function KYBDetailPage() {
                     <>
                       <span className="badge badge-rejected" style={{ alignSelf: 'flex-start' }}>Rejected</span>
                       {org.credit_reviewed_at && (
-                        <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                           Decided {formatDate(org.credit_reviewed_at)}
                         </div>
                       )}
                       {latestDecision?.rejection_reason && (
-                        <div style={{ fontSize: 13, color: 'var(--color-red)' }}>
+                        <div style={{ fontSize: 13, color: '#DC2626' }}>
                           Reason: {latestDecision.rejection_reason}
                         </div>
                       )}
                     </>
                   )}
                   {!['approved', 'rejected'].includes(org.kyb_status) && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                       {kybStatusLabel(org.kyb_status)}
                     </div>
                   )}

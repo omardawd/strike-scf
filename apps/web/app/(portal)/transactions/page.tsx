@@ -180,20 +180,20 @@ export default function TransactionsPage() {
 
         {loading ? (
           <div className="card">
-            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-4)', opacity: 0.6 }}>
+            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>
               Loading transactions…
             </div>
           </div>
         ) : visible.length === 0 ? (
           <div className="card">
             <div className="card-body" style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ color: 'var(--color-ink-4)', marginBottom: 12 }}>
+              <div style={{ color: 'var(--gray)', marginBottom: 12 }}>
                 <Icon name="invoice" size={32} />
               </div>
-              <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-ink-2)', marginBottom: 6 }}>
+              <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>
                 {filter !== 'all' ? `No ${filter} transactions` : 'No transactions yet'}
               </div>
-              <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 20 }}>
+              <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>
                 {portal === 'supplier'
                   ? 'Submit your first invoice to get started'
                   : 'Transactions will appear here'}
@@ -233,7 +233,7 @@ export default function TransactionsPage() {
                     onClick={() => pushTransactionDetail(router, t.id)}
                   >
                     <td className="strike-id">{shortId(t.id)}</td>
-                    <td style={{ color: 'var(--color-ink-2)' }}>{counterparty(t)}</td>
+                    <td style={{ color: 'var(--ink)' }}>{counterparty(t)}</td>
                     <td className="amount">{fmtAmt(t.invoice_amount)}</td>
                     <td className="amount">{fmtAmt(t.financing_amount_requested)}</td>
                     <td>

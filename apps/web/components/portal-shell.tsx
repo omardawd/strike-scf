@@ -128,24 +128,24 @@ export function NotifBell() {
           top:        'calc(100% + 4px)',
           right:      0,
           width:      320,
-          background: 'var(--color-card)',
-          border:     '1px solid var(--color-border)',
+          background: 'var(--offwhite)',
+          border:     '1px solid var(--border)',
           borderRadius: 8,
           boxShadow:  '0 4px 16px rgba(0,0,0,0.12)',
           zIndex:     100,
         }}>
           <div style={{
             padding:      '10px 14px 8px',
-            borderBottom: '1px solid var(--color-border)',
+            borderBottom: '1px solid var(--border)',
             fontWeight:   600,
             fontSize:     13,
-            color:        'var(--color-ink-1)',
+            color:        'var(--ink)',
           }}>
             Notifications
           </div>
 
           {notifications.length === 0 ? (
-            <div style={{ padding: 28, textAlign: 'center', color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
               No notifications
             </div>
           ) : (
@@ -154,22 +154,22 @@ export function NotifBell() {
                 <div key={n.id} style={{
                   padding:    '10px 14px',
                   background: n.read ? 'transparent' : 'var(--color-accent-bg, rgba(37,99,235,0.06))',
-                  borderBottom: '1px solid var(--color-border)',
+                  borderBottom: '1px solid var(--border)',
                 }}>
                   <div style={{
                     fontSize:   13,
                     fontWeight: n.read ? 400 : 600,
-                    color:      'var(--color-ink-1)',
+                    color:      'var(--ink)',
                     lineHeight: 1.3,
                   }}>
                     {n.title}
                   </div>
                   {n.body && (
-                    <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 3, lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 3, lineHeight: 1.4 }}>
                       {n.body}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
                     {new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </div>

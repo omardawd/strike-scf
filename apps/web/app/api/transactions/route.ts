@@ -84,6 +84,9 @@ export async function POST(request: Request) {
     invoice_amount,
     financing_amount_requested,
     goods_services_description,
+    discount_rate,
+    early_payment_date,
+    discount_amount,
   } = body
 
   if (!program_id || !invoice_number || !invoice_date || !invoice_amount || !financing_amount_requested || !goods_services_description) {
@@ -180,6 +183,8 @@ export async function POST(request: Request) {
 
   console.log('[transaction create] type:', financingType, 'initialStatus:', initialStatus)
 
+  const isDD = financingType === 'dynamic_discounting'
+
   const { data: transaction, error: txnError } = await adminClient
     .from('transactions')
     .insert({
@@ -196,6 +201,11 @@ export async function POST(request: Request) {
       invoice_amount:              invoiceAmt,
       financing_amount_requested:  financingAmt,
       goods_services_description:  String(goods_services_description),
+      ...(isDD ? {
+        discount_rate:      discount_rate != null ? Number(discount_rate) : null,
+        early_payment_date: early_payment_date ? String(early_payment_date) : null,
+        discount_amount:    discount_amount != null ? Number(discount_amount) : null,
+      } : {}),
     })
     .select()
     .single()

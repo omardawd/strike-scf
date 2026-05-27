@@ -21,6 +21,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  isDocument?: boolean
 }
 
 interface AIPanelProps {
@@ -30,21 +31,33 @@ interface AIPanelProps {
 }
 
 function buildSystemPrompt(ctx: AIPanelContext): string {
-  return `You are Strike AI, an intelligent assistant embedded in a Supply Chain Finance platform.
+  return `You are Strike AI, the intelligent co-pilot embedded in Strike SCF — a Supply Chain Finance and supply chain intelligence platform.
 
-Current user: ${ctx.userName}
-Organization: ${ctx.orgName}
+CRITICAL RULES:
+1. ONLY reference data that is explicitly provided in the context below. Never invent transaction amounts, supplier names, risk scores, or any other platform data.
+2. If data is not in the context, say "I don't have that information in the current view — try navigating to the relevant page."
+3. When discussing risk, use the actual risk_tier and risk_flags from the context.
+4. When discussing financials, use exact numbers from the context — do not round or estimate unless asked.
+5. For document generation requests, generate a complete professional document using ONLY the data provided in the context.
+
+Current user: ${ctx.userName ?? 'Unknown'}
+Organization: ${ctx.orgName ?? 'Unknown'}
 Portal: ${ctx.portal}
 Current page: ${ctx.page}
-${ctx.entityData ? `\nCurrent context data:\n${JSON.stringify(ctx.entityData, null, 2)}\n` : ''}
-You help with:
+${ctx.entityType ? `Entity type: ${ctx.entityType}` : ''}
+${ctx.entityData
+  ? `\nCurrent page data:\n${JSON.stringify(ctx.entityData, null, 2)}`
+  : '\nNo entity data available for this page.'}
+
+You can help with:
 - Analyzing transactions, offers, and counterparty risk
 - Explaining SCF concepts and workflows
-- Generating summaries and insights
-- Drafting communications
-- Answering questions about the platform
+- Answering questions about what you see on this page
+- Generating formatted documents from the data above
+- Summarizing analytics and reporting data
+- Explaining tariff exposure and geopolitical risk
 
-Be concise, professional, and data-aware. When discussing numbers, always format them as currency or percentages as appropriate. Never make up data — only reference what is in the context provided.`
+Always be concise. Use bullet points for lists. Format currency as $X,XXX. Format percentages as X.X%.`
 }
 
 export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
@@ -66,26 +79,50 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
     setMessages(newMessages)
     setInput('')
 
+    const docKeywords = [
+      'generate', 'create document', 'make a report',
+      'bcbs', 'mas 610', 'eba finrep', 'finrep',
+      'transaction summary', 'kyb summary',
+      'invoice confirmation', 'anchor payment',
+      'download', 'export document', 'create report'
+    ]
+    const isDocRequest = docKeywords.some(k =>
+      userMessage.toLowerCase().includes(k))
+
+    const systemPrompt = buildSystemPrompt(context) + (isDocRequest
+      ? `\n\nIMPORTANT: The user is requesting a document. Generate a complete, well-formatted document in Markdown format. Use proper headers (##), bold labels (**Label:**), tables where appropriate, and clear sections. Make it professional and ready to download. Include all relevant data from the context provided.`
+      : '')
+
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: buildSystemPrompt(context),
+          feature: 'chat',
+          system: systemPrompt,
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          max_tokens: isDocRequest ? 4096 : 1024,
         }),
       })
-      const data = await response.json()
+      if (res.status === 429) {
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Daily AI limit reached. Resets at midnight UTC.',
+            timestamp: new Date(),
+          },
+        ])
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
       const assistantMessage: string = data.content?.[0]?.text ?? 'No response'
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: assistantMessage, timestamp: new Date() },
+        { role: 'assistant', content: assistantMessage, timestamp: new Date(), isDocument: isDocRequest },
       ])
     } catch {
       setMessages(prev => [
@@ -223,6 +260,35 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
               >
                 {m.content}
               </div>
+              {m.role === 'assistant' && m.isDocument && (
+                <button
+                  onClick={() => {
+                    const blob = new Blob([m.content], { type: 'text/plain' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `strike_document_${Date.now()}.md`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 6,
+                    padding: '5px 12px',
+                    background: 'none',
+                    border: '1px solid var(--blue)',
+                    color: 'var(--blue)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}>
+                  ↓ Download document
+                </button>
+              )}
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -282,7 +348,13 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
                 if (input.trim()) sendMessage(input.trim())
               }
             }}
-            placeholder="Ask anything..."
+            placeholder={
+              context.entityType === 'transaction'
+                ? "Ask anything or say 'generate transaction summary'..."
+                : context.entityType === 'kyb'
+                ? "Ask anything or say 'generate KYB summary'..."
+                : "Ask anything..."
+            }
             rows={2}
             style={{
               flex: 1,

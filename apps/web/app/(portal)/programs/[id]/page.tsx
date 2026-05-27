@@ -6,6 +6,7 @@ import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
 import { BulkInviteModal } from '@/components/bulk-invite-modal'
+import { RiskBadge } from '@/components/risk-badge'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -45,6 +46,10 @@ interface SupplierNetEntry {
   enrolled_at?: string | null
   transaction_count: number
   latest_transaction_status: string | null
+  risk_tier?: string | null
+  risk_flags?: any[] | null
+  performance_tier?: string | null
+  country_of_origin?: string | null
 }
 
 interface AnchorNetEntry {
@@ -54,6 +59,10 @@ interface AnchorNetEntry {
   status: string
   transaction_count: number
   outstanding_balance: number
+  risk_tier?: string | null
+  risk_flags?: any[] | null
+  performance_tier?: string | null
+  country_of_origin?: string | null
 }
 
 interface PendingAnchorInv {
@@ -130,12 +139,18 @@ function NetworkCard({
   kybStatus,
   stats,
   suppliers,
+  riskTier,
+  riskFlags,
+  countryOfOrigin,
   onClick,
 }: {
   name: string
   kybStatus: string
   stats: Array<{ label: string; value: string | number; red?: boolean }>
   suppliers?: SupplierEntry[]
+  riskTier?: string | null
+  riskFlags?: any[] | null
+  countryOfOrigin?: string | null
   onClick: () => void
 }) {
   return (
@@ -152,6 +167,27 @@ function NetworkCard({
             {kybStatus === 'approved' && <span className="verified-dot" />}
             <span className={`badge ${kybBadge(kybStatus)}`}>{kybLabel(kybStatus)}</span>
           </div>
+          {riskTier && (
+            <div style={{ marginTop: 4 }}>
+              <RiskBadge
+                tier={riskTier as 'green' | 'amber' | 'red'}
+                flags={riskFlags?.slice(0, 1)}
+                size="sm"
+              />
+            </div>
+          )}
+          {countryOfOrigin && (
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--gray)',
+              marginTop: 3,
+            }}>
+              ⊙ {countryOfOrigin}
+            </div>
+          )}
         </div>
         {suppliers && suppliers.length > 0 && (
           <div className="supplier-stack">
@@ -159,7 +195,7 @@ function NetworkCard({
               <div key={i} className="savatar" title={s.legal_name}>{initials(s.legal_name)}</div>
             ))}
             {suppliers.length > 3 && (
-              <span style={{ fontSize: 11, color: 'var(--color-ink-3)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--gray)', whiteSpace: 'nowrap' }}>
                 +{suppliers.length - 3}
               </span>
             )}
@@ -174,13 +210,13 @@ function NetworkCard({
           <div key={i}>
             <div
               className="network-stat-label"
-              style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}
+              style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}
             >
               {s.label}
             </div>
             <div
               className="network-stat-value"
-              style={{ fontSize: 14, fontWeight: 600, color: s.red ? 'var(--color-red)' : 'var(--color-ink-1)' }}
+              style={{ fontSize: 14, fontWeight: 600, color: s.red ? '#DC2626' : 'var(--ink)' }}
             >
               {s.value}
             </div>
@@ -454,8 +490,8 @@ export default function ProgramDetailPage() {
         />
         <div className="page">
           <div className="page-header">
-            <div style={{ height: 28, width: 220, background: 'var(--color-border)', borderRadius: 6 }} />
-            <div style={{ height: 16, width: 180, background: 'var(--color-border)', borderRadius: 4, marginTop: 8 }} />
+            <div style={{ height: 28, width: 220, background: 'var(--border)', borderRadius: 6 }} />
+            <div style={{ height: 16, width: 180, background: 'var(--border)', borderRadius: 4, marginTop: 8 }} />
           </div>
         </div>
       </PortalShell>
@@ -541,7 +577,7 @@ export default function ProgramDetailPage() {
                               type="button"
                               onClick={handleDelete}
                               disabled={deleting}
-                              style={{ color: 'var(--color-red)' }}>
+                              style={{ color: '#DC2626' }}>
                               {deleting ? 'Deleting…' : 'Delete program'}
                             </button>
                           </>
@@ -552,7 +588,7 @@ export default function ProgramDetailPage() {
                   </div>
                   {editing ? (
                     <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {editError && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{editError}</div>}
+                      {editError && <div style={{ color: '#DC2626', fontSize: 13 }}>{editError}</div>}
                       <div>
                         <label className="form-label">Program name</label>
                         <input className="form-input" value={editName} onChange={e => setEditName(e.target.value)} />
@@ -618,18 +654,18 @@ export default function ProgramDetailPage() {
                       <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                     </div>
                     <div className="card-body">
-                      <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
-                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Total Transactions</div>
-                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
+                      <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
+                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Transactions</div>
+                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
                         </div>
-                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
+                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
                         </div>
-                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
-                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? analytics.avg_financing_rate.toFixed(1) + '%' : '—'}</div>
+                        <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                          <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? analytics.avg_financing_rate.toFixed(1) + '%' : '—'}</div>
                         </div>
                       </div>
                       <LineChart data={analytics.monthly_volume ?? []} height={220} color="#2563EB" />
@@ -666,7 +702,7 @@ export default function ProgramDetailPage() {
                 {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers enrolled yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>No suppliers enrolled yet.</div>
                       <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
                         <Icon name="plus" size={14} /> Invite a supplier
                       </button>
@@ -685,6 +721,9 @@ export default function ProgramDetailPage() {
                         key={s.id}
                         name={s.legal_name}
                         kybStatus={s.kyb_status}
+                        riskTier={s.risk_tier}
+                        riskFlags={s.risk_flags}
+                        countryOfOrigin={s.country_of_origin}
                         stats={[
                           { label: 'Transactions', value: s.transaction_count },
                           { label: 'KYB Status',   value: kybLabel(s.kyb_status) },
@@ -709,7 +748,7 @@ export default function ProgramDetailPage() {
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span className="badge badge-pending">Invited</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
+                                <span style={{ fontSize: 11, color: 'var(--gray)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
                               </div>
                             </div>
                             <button className="btn btn-ghost btn-sm" type="button" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }} onClick={() => cancelInvite(inv.id, 'supplier')}>
@@ -719,8 +758,8 @@ export default function ProgramDetailPage() {
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                             {['Transactions', 'KYB Status'].map(label => (
                               <div key={label}>
-                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                               </div>
                             ))}
                           </div>
@@ -739,7 +778,7 @@ export default function ProgramDetailPage() {
                 {anchors.length === 0 && pendingAnchors.length === 0 && kybAnchors.length === 0 && signedUpAnchors.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No anchors enrolled yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>No anchors enrolled yet.</div>
                       <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('anchor')}>
                         <Icon name="plus" size={14} /> Invite an anchor
                       </button>
@@ -759,6 +798,9 @@ export default function ProgramDetailPage() {
                         name={anchor.legal_name}
                         kybStatus={anchor.kyb_status}
                         suppliers={anchor.suppliers}
+                        riskTier={(anchor as any).risk_tier}
+                        riskFlags={(anchor as any).risk_flags}
+                        countryOfOrigin={(anchor as any).country_of_origin}
                         stats={[
                           { label: 'Suppliers',    value: anchor.supplier_count },
                           { label: 'Transactions', value: anchor.transaction_count },
@@ -781,15 +823,15 @@ export default function ProgramDetailPage() {
                             <div className="network-name">{org.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Review KYB →</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Review KYB →</span>
                             </div>
                           </div>
                         </div>
                         <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
                           {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
                             <div key={label}>
-                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                             </div>
                           ))}
                         </div>
@@ -808,15 +850,15 @@ export default function ProgramDetailPage() {
                             <div className="network-name">{org.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Supplier · Review KYB →</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Supplier · Review KYB →</span>
                             </div>
                           </div>
                         </div>
                         <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                           {['Transactions', 'KYB Status'].map(label => (
                             <div key={label}>
-                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>
                                 {label === 'KYB Status' ? kybLabel(org.kyb_status) : '—'}
                               </div>
                             </div>
@@ -840,7 +882,7 @@ export default function ProgramDetailPage() {
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span className="badge badge-pending">Invited</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
+                                <span style={{ fontSize: 11, color: 'var(--gray)' }}>Invitation sent {fmtDate(inv.invited_at)}</span>
                               </div>
                             </div>
                             <button className="btn btn-ghost btn-sm" type="button" style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }} onClick={() => cancelInvite(inv.id, 'anchor')}>
@@ -850,8 +892,8 @@ export default function ProgramDetailPage() {
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
                             {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
                               <div key={label}>
-                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                               </div>
                             ))}
                           </div>
@@ -870,15 +912,15 @@ export default function ProgramDetailPage() {
                             <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className="badge badge-draft">Setting up</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Completing onboarding</span>
                             </div>
                           </div>
                         </div>
                         <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
                           {['Suppliers', 'Transactions', 'KYB Pending'].map(label => (
                             <div key={label}>
-                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                             </div>
                           ))}
                         </div>
@@ -903,7 +945,7 @@ export default function ProgramDetailPage() {
                 {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>No suppliers yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>No suppliers yet.</div>
                       {user?.org_id && (
                         <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
                           <Icon name="plus" size={14} /> Invite a supplier
@@ -924,6 +966,9 @@ export default function ProgramDetailPage() {
                         key={s.id}
                         name={s.legal_name}
                         kybStatus={s.kyb_status}
+                        riskTier={s.risk_tier}
+                        riskFlags={s.risk_flags}
+                        countryOfOrigin={s.country_of_origin}
                         stats={[
                           { label: 'Transactions',  value: s.transaction_count },
                           { label: 'Latest status', value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
@@ -948,7 +993,7 @@ export default function ProgramDetailPage() {
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span className="badge badge-pending">Invited</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>
+                                <span style={{ fontSize: 11, color: 'var(--gray)' }}>
                                   Invitation sent {fmtDate(inv.invited_at)}
                                 </span>
                               </div>
@@ -965,8 +1010,8 @@ export default function ProgramDetailPage() {
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                             {['Transactions', 'Latest status'].map(label => (
                               <div key={label}>
-                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                               </div>
                             ))}
                           </div>
@@ -989,7 +1034,7 @@ export default function ProgramDetailPage() {
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 {isApproved && <span className="verified-dot" />}
                                 <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
-                                <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>
+                                <span style={{ fontSize: 11, color: 'var(--gray)' }}>
                                   {isApproved ? 'View supplier →' : 'Awaiting KYB approval'}
                                 </span>
                               </div>
@@ -998,8 +1043,8 @@ export default function ProgramDetailPage() {
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                             {['Transactions', 'Latest status'].map(label => (
                               <div key={label}>
-                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                                <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                                <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                               </div>
                             ))}
                           </div>
@@ -1018,15 +1063,15 @@ export default function ProgramDetailPage() {
                             <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className="badge badge-draft">Setting up</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Completing onboarding</span>
                             </div>
                           </div>
                         </div>
                         <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                           {['Transactions', 'Latest status'].map(label => (
                             <div key={label}>
-                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>{label}</div>
-                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>—</div>
+                              <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
+                              <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
                             </div>
                           ))}
                         </div>
@@ -1043,7 +1088,7 @@ export default function ProgramDetailPage() {
                 <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
                 {anchorList.length === 0 ? (
                   <div className="card">
-                    <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--color-ink-3)' }}>
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
                       No anchor relationships yet.
                     </div>
                   </div>
@@ -1053,6 +1098,9 @@ export default function ProgramDetailPage() {
                       key={a.id}
                       name={a.legal_name}
                       kybStatus={a.kyb_status}
+                      riskTier={a.risk_tier}
+                      riskFlags={a.risk_flags}
+                      countryOfOrigin={a.country_of_origin}
                       stats={[
                         { label: 'Transactions', value: a.transaction_count },
                         { label: 'KYB Status',   value: kybLabel(a.kyb_status) },
@@ -1070,7 +1118,7 @@ export default function ProgramDetailPage() {
                 <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
                 {anchorList.length === 0 ? (
                   <div className="card">
-                    <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--color-ink-3)' }}>
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
                       No anchor connected yet.
                     </div>
                   </div>
@@ -1080,6 +1128,9 @@ export default function ProgramDetailPage() {
                       key={a.id}
                       name={a.legal_name}
                       kybStatus={a.kyb_status}
+                      riskTier={a.risk_tier}
+                      riskFlags={a.risk_flags}
+                      countryOfOrigin={a.country_of_origin}
                       stats={[
                         { label: 'Transactions',        value: a.transaction_count },
                         { label: 'Outstanding balance', value: a.outstanding_balance > 0 ? fmtMoney(a.outstanding_balance) : '—' },
@@ -1271,7 +1322,7 @@ export default function ProgramDetailPage() {
                       </div>
                     </div>
                   )}
-                  {inviteError && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{inviteError}</div>}
+                  {inviteError && <div style={{ color: '#DC2626', fontSize: 13 }}>{inviteError}</div>}
                   <button className="btn btn-primary" type="button" disabled={inviteLoading} onClick={handleSendInvite}>
                     {inviteLoading ? 'Sending…' : 'Send invite'}
                   </button>

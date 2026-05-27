@@ -6,7 +6,9 @@ import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { pushKybDetail } from '@/lib/kyb-referrer'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
+import { PerformanceScorecard } from '@/components/performance-scorecard'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+import { RiskBadge } from '@/components/risk-badge'
 
 const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
@@ -250,7 +252,7 @@ function AddCollateralForm({
           <label className="form-label">Deadline</label>
           <input className="form-input" type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
-        {err && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{err}</div>}
+        {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
         <button className="btn btn-primary" type="button" disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Add requirement'}
         </button>
@@ -280,6 +282,9 @@ export default function SupplierDetailPage() {
   const [showAddColl, setShowAddColl]   = useState(false)
   const [collVersion, setCollVersion]   = useState(0)
   const [volPeriod, setVolPeriod]       = useState<Period>('monthly')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [riskData, setRiskData]         = useState<any>(null)
+  const [scoringRisk, setScoringRisk]   = useState(false)
 
   const [anchorCrumbName, setAnchorCrumbName] = useState('Anchor')
 
@@ -325,6 +330,13 @@ export default function SupplierDetailPage() {
         if (analyticsRes.ok) {
           setAnalytics(await analyticsRes.json())
         }
+
+        const riskRes = await fetch('/api/risk/score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_id: supplierId }),
+        })
+        if (riskRes.ok) setRiskData(await riskRes.json())
       } else {
         const [kybRes, txRes, analyticsRes] = await Promise.all([
           fetch(`/api/kyb/${supplierId}`),
@@ -402,7 +414,7 @@ export default function SupplierDetailPage() {
         />
         <div className="page">
           <div className="page-header">
-            <div style={{ height: 28, width: 200, background: 'var(--color-border)', borderRadius: 6 }} />
+            <div style={{ height: 28, width: 200, background: 'var(--border)', borderRadius: 6 }} />
           </div>
         </div>
       </PortalShell>
@@ -472,24 +484,24 @@ export default function SupplierDetailPage() {
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
-                  <div style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
+                  <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
                     </div>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
                     </div>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                     </div>
                   </div>
                   <style>{PULSE_KF}</style>
                   {analytics
                     ? <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
-                    : <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+                    : <div style={{ height: 80, background: 'var(--offwhite)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
                   }
                 </div>
               </div>
@@ -506,7 +518,7 @@ export default function SupplierDetailPage() {
                   </button> */}
                 </div>
                 {transactions.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No transactions yet with this supplier.
                   </div>
                 ) : (
@@ -529,8 +541,8 @@ export default function SupplierDetailPage() {
                               : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
                           </td>
                           <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
-                          <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
-                          <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
+                          <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                          <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                         </tr>
                       ))}
                     </tbody>
@@ -541,6 +553,12 @@ export default function SupplierDetailPage() {
 
             {/* ── RIGHT: KYB status (read-only) + documents ── */}
             <div>
+              {portal === 'supplier' && (
+                <div style={{ marginBottom: 16 }}>
+                  <PerformanceScorecard orgId={user?.org_id ?? ''} showRefresh={false} />
+                </div>
+              )}
+
               <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-head"><h3 className="t-card-head">KYB Status</h3></div>
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -550,24 +568,24 @@ export default function SupplierDetailPage() {
                     </span>
                   </div>
                   {(!org?.kyb_status || org.kyb_status === 'draft') && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB not submitted yet. The supplier needs to complete their application.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet. The supplier needs to complete their application.</div>
                   )}
                   {org?.kyb_status === 'submitted' && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB submitted and awaiting bank review.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB submitted and awaiting bank review.</div>
                   )}
                   {org?.kyb_status === 'under_review' && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB is currently under review by the bank.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB is currently under review by the bank.</div>
                   )}
                   {org?.kyb_status === 'approved' && (
                     <div style={{ fontSize: 13, color: 'var(--color-green)' }}>KYB approved. Supplier is eligible for financing.</div>
                   )}
                   {org?.kyb_status === 'rejected' && (
-                    <div style={{ fontSize: 13, color: 'var(--color-red)' }}>KYB rejected. Supplier cannot participate in financing.</div>
+                    <div style={{ fontSize: 13, color: '#DC2626' }}>KYB rejected. Supplier cannot participate in financing.</div>
                   )}
                   {org?.kyb_status === 'more_info_requested' && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>Additional information requested from supplier.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>Additional information requested from supplier.</div>
                   )}
-                  <div style={{ fontSize: 12, color: 'var(--color-ink-4)', paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
                     KYB approval is managed by the bank and cannot be actioned here.
                   </div>
                 </div>
@@ -576,7 +594,7 @@ export default function SupplierDetailPage() {
               <div className="card">
                 <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
                 {docs.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     Documents will appear here once KYB is submitted.
                   </div>
                 ) : (
@@ -585,7 +603,7 @@ export default function SupplierDetailPage() {
                       <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{getDocLabel(doc)}</div>
-                          <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{fmtDate(doc.created_at)}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(doc.created_at)}</div>
                         </div>
                         {doc.signed_url && (
                           <a href={doc.signed_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
@@ -664,18 +682,18 @@ export default function SupplierDetailPage() {
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
-                  <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
+                  <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
                     </div>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
                     </div>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
                   <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
@@ -695,7 +713,7 @@ export default function SupplierDetailPage() {
                 </button>
               </div>
               {transactions.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No transactions yet.
                 </div>
               ) : (
@@ -718,8 +736,8 @@ export default function SupplierDetailPage() {
                             : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
                         </td>
                         <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
-                        <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
-                        <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
+                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                        <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                       </tr>
                     ))}
                   </tbody>
@@ -728,11 +746,129 @@ export default function SupplierDetailPage() {
             </div>
           </div>
 
-          {/* ── RIGHT: KYB + Credit score + Collateral + Documents ── */}
+          {/* ── RIGHT: Risk Assessment + KYB + Credit score + Collateral + Documents ── */}
           <div>
+            <div style={{ border: '1px solid var(--border)', background: 'var(--offwhite)', marginBottom: 16 }}>
+              <div style={{
+                padding: '12px 20px',
+                borderBottom: '1px solid var(--border)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--gray)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span>Risk Assessment</span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  onClick={async () => {
+                    setScoringRisk(true)
+                    const res = await fetch('/api/risk/score', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ org_id: supplierId }),
+                    })
+                    if (res.ok) setRiskData(await res.json())
+                    setScoringRisk(false)
+                  }}
+                  disabled={scoringRisk}
+                >
+                  {scoringRisk ? 'Scoring...' : '↻ Refresh'}
+                </button>
+              </div>
+
+              <div style={{ padding: '16px 20px' }}>
+                {riskData ? (
+                  <>
+                    <div style={{ marginBottom: 12 }}>
+                      <RiskBadge
+                        score={riskData.risk_score}
+                        tier={riskData.risk_tier}
+                        flags={riskData.risk_flags}
+                        showScore={true}
+                        size="md"
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '1px', background: 'var(--border)', marginBottom: 12 }}>
+                      {([
+                        ['KYB / Compliance', riskData.breakdown?.kyb_score, 25],
+                        ['Tariff / Geo', riskData.breakdown?.tariff_score, 25],
+                        ['Performance', riskData.breakdown?.performance_score, 25],
+                        ['Financial', riskData.breakdown?.financial_score, 25],
+                      ] as [string, number, number][]).map(([label, score, max]) => (
+                        <div key={label} style={{
+                          background: 'var(--offwhite)',
+                          padding: '8px 12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}>
+                          <span style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            letterSpacing: '0.1em',
+                            textTransform: 'uppercase',
+                            color: 'var(--gray)',
+                          }}>{label}</span>
+                          <span style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 12,
+                            color: 'var(--ink)',
+                          }}>{score}/{max}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {riskData.tariff_exposure && (
+                      <div style={{
+                        padding: '10px 12px',
+                        background: riskData.tariff_exposure.tariff_risk === 'high'
+                          ? 'rgba(220,38,38,0.04)' : 'var(--offwhite)',
+                        border: '1px solid',
+                        borderColor: riskData.tariff_exposure.tariff_risk === 'high'
+                          ? 'rgba(220,38,38,0.2)' : 'var(--border)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        color: riskData.tariff_exposure.tariff_risk === 'high' ? '#DC2626' : 'var(--gray)',
+                      }}>
+                        ⚠{' '}{riskData.tariff_exposure.label}{' · '}{riskData.tariff_exposure.hts_tariff_pct}% HTS tariff
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    color: 'var(--gray)',
+                    letterSpacing: '0.1em',
+                  }}>
+                    {scoringRisk ? 'Analyzing supplier...' : 'Click refresh to run risk assessment'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {portal === 'bank' && (
+              <div style={{ marginBottom: 16 }}>
+                <PerformanceScorecard orgId={supplierId} showRefresh={true} />
+              </div>
+            )}
+            {portal === 'supplier' && (
+              <div style={{ marginBottom: 16 }}>
+                <PerformanceScorecard orgId={user?.org_id ?? ''} showRefresh={false} />
+              </div>
+            )}
+
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head"><h3 className="t-card-head">KYB &amp; Credit</h3></div>
-              <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 0, marginBottom: 0 }}>
+              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 0, marginBottom: 0 }}>
                 <div className="card-body">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -752,21 +888,21 @@ export default function SupplierDetailPage() {
                         </span>
                       )}
                       {org?.credit_reviewed_at && org?.kyb_status === 'approved' && (
-                        <span style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                        <span style={{ fontSize: 12, color: 'var(--gray)' }}>
                           Reviewed {fmtDate(org.credit_reviewed_at)}
                         </span>
                       )}
                     </div>
                     {(!org?.kyb_status || org?.kyb_status === 'not_started' || org?.kyb_status === 'draft') && (
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB not submitted yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet.</div>
                     )}
                     {org?.kyb_status === 'rejected' && (
-                      <div style={{ fontSize: 13, color: 'var(--color-red)' }}>
+                      <div style={{ fontSize: 13, color: '#DC2626' }}>
                         KYB rejected. Supplier cannot participate in financing.
                       </div>
                     )}
                     {org?.kyb_status === 'more_info_requested' && (
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                         Additional information requested from supplier.
                       </div>
                     )}
@@ -785,7 +921,7 @@ export default function SupplierDetailPage() {
               {creditScore ? (
                 <div className="score-block">
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                    <span style={{ fontSize: 36, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--color-ink-1)', lineHeight: 1 }}>
+                    <span style={{ fontSize: 36, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--ink)', lineHeight: 1 }}>
                       {creditScore.total_score ?? '—'}
                     </span>
                     {creditScore.risk_tier && (
@@ -794,15 +930,15 @@ export default function SupplierDetailPage() {
                       </span>
                     )}
                   </div>
-                  <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>
+                  <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>
                     Credit score
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>
                     Scored {fmtDate(creditScore.created_at)}
                   </div>
                 </div>
               ) : (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   Credit review pending.
                 </div>
               )}
@@ -829,7 +965,7 @@ export default function SupplierDetailPage() {
                 </div>
               )}
               {collateral.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No collateral requirements.
                 </div>
               ) : (
@@ -842,14 +978,14 @@ export default function SupplierDetailPage() {
                           background: c.status === 'accepted'
                             ? 'var(--color-green)'
                             : c.status === 'rejected'
-                              ? 'var(--color-red)'
+                              ? '#DC2626'
                               : 'var(--color-amber)',
                         }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{collTypeLabel(c.collateral_type)}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.description}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray)' }}>{c.description}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
                           Due {fmtDate(c.deadline)}
                           {c.required_value != null && ` · ${fmtCurrency(c.required_value)}`}
                         </div>
@@ -866,7 +1002,7 @@ export default function SupplierDetailPage() {
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
               {docs.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No documents uploaded.
                 </div>
               ) : (
@@ -875,7 +1011,7 @@ export default function SupplierDetailPage() {
                     <div key={doc.id} className="doc-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{getDocLabel(doc)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{fmtDate(doc.created_at)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(doc.created_at)}</div>
                       </div>
                       {doc.signed_url && (
                         <a

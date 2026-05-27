@@ -272,7 +272,7 @@ export function Sidebar() {
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: 'var(--color-error)',
+                fontSize: 13, color: '#DC2626',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >

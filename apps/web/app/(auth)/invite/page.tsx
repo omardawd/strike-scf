@@ -26,11 +26,11 @@ const inputStyle: React.CSSProperties = {
   height: 40,
   width: '100%',
   padding: '0 12px',
-  border: '1px solid var(--color-border, #E2DFD8)',
+  border: '1px solid var(--border)',
   borderRadius: 6,
-  background: 'var(--color-card, white)',
+  background: 'var(--offwhite)',
   fontSize: 13.5,
-  color: 'var(--color-ink-1, #0F0F0F)',
+  color: 'var(--ink)',
   fontFamily: 'inherit',
   outline: 'none',
   boxSizing: 'border-box',
@@ -39,7 +39,7 @@ const inputStyle: React.CSSProperties = {
 
 function PasswordRule({ met, label }: { met: boolean; label: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: met ? '#16a34a' : 'var(--color-ink-4, #9C9890)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: met ? '#16a34a' : 'var(--gray)' }}>
       <span style={{ fontSize: 13, fontWeight: 600 }}>{met ? '✓' : '○'}</span>
       {label}
     </div>
@@ -154,29 +154,29 @@ function InvitePageContent() {
 
   if (checking) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)' }}>
-        <div style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Checking invitation…</div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--offwhite)' }}>
+        <div style={{ color: 'var(--gray)', fontSize: 14 }}>Checking invitation…</div>
       </div>
     )
   }
 
   if (!valid) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)', padding: 24 }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--offwhite)', padding: 24 }}>
         <div style={{
           maxWidth: 420, width: '100%',
-          background: 'var(--color-card, white)',
-          border: '1px solid var(--color-border, #E2DFD8)',
+          background: 'var(--offwhite)',
+          border: '1px solid var(--border)',
           borderRadius: 12,
           boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
           padding: 40,
           textAlign: 'center',
         }}>
           <div style={{ fontSize: 36, marginBottom: 16 }}>⚠️</div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--color-ink-1, #0F0F0F)', letterSpacing: '-0.02em' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--ink)', letterSpacing: '-0.02em' }}>
             Invitation unavailable
           </h2>
-          <p style={{ fontSize: 14, color: 'var(--color-ink-3, #6B6963)', marginBottom: 28, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: 'var(--gray)', marginBottom: 28, lineHeight: 1.6 }}>
             {expiredMsg}
           </p>
           <a
@@ -203,15 +203,15 @@ function InvitePageContent() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--color-bg, #F7F6F3)',
+      background: 'var(--offwhite)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '40px 24px',
       fontFamily: 'var(--font-sans, system-ui, sans-serif)',
     }}>
       <div style={{
         width: '100%', maxWidth: 460,
-        background: 'var(--color-card, white)',
-        border: '1px solid var(--color-border, #E2DFD8)',
+        background: 'var(--offwhite)',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
         padding: 40,
@@ -230,10 +230,10 @@ function InvitePageContent() {
 
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--color-ink-1, #0F0F0F)', margin: '0 0 6px' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--ink)', margin: '0 0 6px' }}>
             You&apos;ve been invited
           </h1>
-          <p style={{ fontSize: 13.5, color: 'var(--color-ink-3, #6B6963)', margin: 0 }}>
+          <p style={{ fontSize: 13.5, color: 'var(--gray)', margin: 0 }}>
             Set up your account to join Strike SCF.
           </p>
         </div>
@@ -241,21 +241,21 @@ function InvitePageContent() {
         {/* Invitation info banner */}
         {invitation && (
           <div style={{
-            background: 'var(--color-bg, #F7F6F3)',
-            border: '1px solid var(--color-border, #E2DFD8)',
+            background: 'var(--offwhite)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             padding: '12px 14px',
             marginBottom: 24,
             display: 'flex', flexDirection: 'column', gap: 4,
           }}>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4, #9C9890)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 12, color: 'var(--gray)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Invitation for
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink-1, #0F0F0F)' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>
               {invitation.email}
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3, #6B6963)' }}>
-              Role: <strong style={{ color: 'var(--color-ink-2, #3D3C3A)' }}>{ROLE_LABELS[invitation.role] ?? invitation.role}</strong>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>
+              Role: <strong style={{ color: 'var(--ink)' }}>{ROLE_LABELS[invitation.role] ?? invitation.role}</strong>
             </div>
           </div>
         )}
@@ -306,9 +306,9 @@ function InvitePageContent() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Email read-only */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Email</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>Email</label>
             <input
-              style={{ ...inputStyle, background: 'var(--color-bg, #F7F6F3)', color: 'var(--color-ink-3, #6B6963)', cursor: 'default' }}
+              style={{ ...inputStyle, background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'default' }}
               type="email"
               value={invitation?.email ?? ''}
               readOnly
@@ -317,7 +317,7 @@ function InvitePageContent() {
 
           {/* Full name */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Full name</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>Full name</label>
             <input
               style={inputStyle}
               type="text"
@@ -331,7 +331,7 @@ function InvitePageContent() {
 
           {/* Password */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Password</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>Password</label>
             <div style={{ position: 'relative' }}>
               <input
                 style={{ ...inputStyle, paddingRight: 42 }}
@@ -347,7 +347,7 @@ function InvitePageContent() {
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--color-ink-3)', padding: 4,
+                  color: 'var(--gray)', padding: 4,
                   display: 'flex', alignItems: 'center',
                 }}
               >
@@ -372,7 +372,7 @@ function InvitePageContent() {
 
           {/* Confirm password */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1, #0F0F0F)' }}>Confirm password</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>Confirm password</label>
             <div style={{ position: 'relative' }}>
               <input
                 style={{ ...inputStyle, paddingRight: 42 }}
@@ -388,7 +388,7 @@ function InvitePageContent() {
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--color-ink-3)', padding: 4,
+                  color: 'var(--gray)', padding: 4,
                   display: 'flex', alignItems: 'center',
                 }}
               >
@@ -422,9 +422,9 @@ function InvitePageContent() {
           </button>
         </form>
 
-        <div style={{ height: 1, background: 'var(--color-border, #E2DFD8)', margin: '20px 0 16px' }} />
+        <div style={{ height: 1, background: 'var(--border)', margin: '20px 0 16px' }} />
 
-        <p style={{ fontSize: 13, color: 'var(--color-ink-3, #6B6963)', margin: 0, textAlign: 'center' }}>
+        <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0, textAlign: 'center' }}>
           Already have an account?{' '}
           <a href="/login" style={{ color: '#0A1FB8', fontWeight: 500, textDecoration: 'none' }}>Sign in</a>
         </p>
@@ -436,8 +436,8 @@ function InvitePageContent() {
 export default function InvitePage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #F7F6F3)' }}>
-        <div style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Loading…</div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--offwhite)' }}>
+        <div style={{ color: 'var(--gray)', fontSize: 14 }}>Loading…</div>
       </div>
     }>
       <InvitePageContent />

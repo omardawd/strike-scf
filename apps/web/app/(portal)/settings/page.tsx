@@ -57,7 +57,7 @@ function EditableInput({
         placeholder={placeholder}
         readOnly={readOnly}
         style={readOnly
-          ? { background: 'var(--color-bg-2)', color: 'var(--color-ink-3)', cursor: 'default' }
+          ? { background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'default' }
           : undefined}
       />
     </div>
@@ -402,7 +402,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>{profile.full_name || '—'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
                     {ROLE_LABELS[profile.role] ?? profile.role}
                   </div>
                 </div>
@@ -426,9 +426,9 @@ export default function SettingsPage() {
                     className="form-input"
                     value={profile.email}
                     readOnly
-                    style={{ background: 'var(--color-bg-2)', color: 'var(--color-ink-3)', cursor: 'default' }}
+                    style={{ background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'default' }}
                   />
-                  <span style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 2 }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}>
                     Contact support to change email
                   </span>
                 </div>
@@ -483,10 +483,10 @@ export default function SettingsPage() {
                     <img
                       src={orgProfile.logo_url}
                       alt="Logo"
-                      style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-2)' }}
+                      style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--offwhite)' }}
                     />
                   ) : (
-                    <div style={{ width: 56, height: 56, borderRadius: 6, border: '1px dashed var(--color-border)', background: 'var(--color-bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--color-ink-4)' }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 6, border: '1px dashed var(--border)', background: 'var(--offwhite)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--gray)' }}>
                       No logo
                     </div>
                   )}
@@ -507,7 +507,7 @@ export default function SettingsPage() {
                       >
                         {logoUploading ? 'Uploading…' : 'Upload logo'}
                       </button>
-                      <span style={{ fontSize: 11.5, color: 'var(--color-ink-4)' }}>PNG, JPG, SVG · max 2 MB</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>PNG, JPG, SVG · max 2 MB</span>
                     </>
                   )}
                 </div>
@@ -521,7 +521,7 @@ export default function SettingsPage() {
                   <EditableInput label="Website"               value={orgField('website')}               onChange={v => setOrgField('website', v)}               readOnly={!isAdmin} />
                   <EditableInput label="Primary contact name"  value={orgField('primary_contact_name')}  onChange={v => setOrgField('primary_contact_name', v)}  readOnly={!isAdmin} />
                   <EditableInput label="Primary contact email" value={orgField('primary_contact_email')} onChange={v => setOrgField('primary_contact_email', v)} readOnly={!isAdmin} />
-                  <div className="kv-row" style={{ padding: '10px 0', borderTop: '1px solid var(--color-border)' }}>
+                  <div className="kv-row" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
                     <span className="k">Routing number</span>
                     <span className="v">{orgField('routing_number') || '—'}</span>
                   </div>
@@ -541,7 +541,7 @@ export default function SettingsPage() {
                     <EditableInput label="ZIP"   value={orgField('zip')}   onChange={v => setOrgField('zip', v)}   readOnly={!isAdmin} />
                   </div>
                   <EditableInput label="Primary contact phone" value={orgField('primary_contact_phone')} onChange={v => setOrgField('primary_contact_phone', v)} readOnly={!isAdmin} />
-                  <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 0 }}>
                     <div className="kv-row" style={{ padding: '9px 0' }}>
                       <span className="k">EIN</span>
                       <span className="v">{orgField('ein') ? `**-***${orgField('ein').slice(-4)}` : '—'}</span>
@@ -598,9 +598,9 @@ export default function SettingsPage() {
                 )}
               </div>
               {teamLoading ? (
-                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-4)', opacity: 0.6 }}>Loading…</div>
+                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
               ) : members.length === 0 ? (
-                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-3)' }}>No team members yet.</div>
+                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>No team members yet.</div>
               ) : (
                 <table className="table">
                   <thead>
@@ -627,7 +627,7 @@ export default function SettingsPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>{m.full_name ?? '—'}</div>
-                                <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{m.email}</div>
+                                <div style={{ fontSize: 12, color: 'var(--gray)' }}>{m.email}</div>
                               </div>
                             </div>
                           </td>
@@ -637,13 +637,13 @@ export default function SettingsPage() {
                               ? <span className="badge badge-active">Active</span>
                               : <span className="badge badge-rejected">Inactive</span>}
                           </td>
-                          <td className="mono" style={{ color: 'var(--color-ink-3)', fontSize: 12 }}>{fmtDate(m.created_at)}</td>
+                          <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>{fmtDate(m.created_at)}</td>
                           <td className="row-actions">
                             {isMe ? (
                               <span className="badge badge-draft">You</span>
                             ) : isConfirming ? (
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                <span style={{ fontSize: 12, color: 'var(--color-ink-2)', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontSize: 12, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
                                   Deactivate {m.full_name?.split(' ')[0] ?? 'user'}? They will lose access.
                                 </span>
                                 <button className="btn btn-danger btn-sm" type="button" disabled={isActing} onClick={() => handleToggle(m.id, false)}>
@@ -677,7 +677,7 @@ export default function SettingsPage() {
                 <h3 className="t-card-head">Pending invitations</h3>
               </div>
               {invitations.length === 0 ? (
-                <div className="card-body" style={{ padding: 24, color: 'var(--color-ink-3)', fontSize: 13 }}>
+                <div className="card-body" style={{ padding: 24, color: 'var(--gray)', fontSize: 13 }}>
                   No pending invitations
                 </div>
               ) : (
@@ -694,8 +694,8 @@ export default function SettingsPage() {
                         <tr key={inv.id}>
                           <td style={{ fontSize: 13 }}>{inv.email}</td>
                           <td><span className={roleBadgeClass(inv.role)}>{ROLE_LABELS[inv.role] ?? inv.role}</span></td>
-                          <td className="mono" style={{ color: 'var(--color-ink-3)', fontSize: 12 }}>{fmtDate(inv.created_at)}</td>
-                          <td className="mono" style={{ fontSize: 12, color: expiringSoon ? 'var(--color-red)' : 'var(--color-ink-3)' }}>
+                          <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>{fmtDate(inv.created_at)}</td>
+                          <td className="mono" style={{ fontSize: 12, color: expiringSoon ? '#DC2626' : 'var(--gray)' }}>
                             {fmtDate(inv.expires_at)}
                           </td>
                           <td className="row-actions">
@@ -736,7 +736,7 @@ export default function SettingsPage() {
                 <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--color-ink-4)' }}>(optional)</span></label>
+                      <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span></label>
                       <input
                         id="add-fullname"
                         className="input"
@@ -779,7 +779,7 @@ export default function SettingsPage() {
                           style={{
                             position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                             background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--color-ink-3)', padding: 4,
+                            color: 'var(--gray)', padding: 4,
                             display: 'flex', alignItems: 'center',
                           }}
                         >
@@ -804,7 +804,7 @@ export default function SettingsPage() {
                         required
                       />
                       {addConfirmPw.length > 0 && addPassword !== addConfirmPw && (
-                        <div style={{ fontSize: 12, color: 'var(--color-red)', marginTop: 4 }}>Passwords don&apos;t match</div>
+                        <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>Passwords don&apos;t match</div>
                       )}
                     </div>
                   </div>

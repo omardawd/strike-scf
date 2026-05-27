@@ -5,12 +5,15 @@ import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
 import { VolumeChart, ProgramPieChart, PeriodToggle, type Period } from '@/components/charts'
 import { AIInsight } from '@/components/ai-insight'
+import { RecommendationsPanel } from '@/components/recommendations-panel'
+import { SupplyGraph } from '@/components/supply-graph'
+import { RiskBadge } from '@/components/risk-badge'
 
 // ============== Types ==============
 interface DashProgram { id: string; name: string; financing_types: string[]; status: string }
-interface BankData { portal: 'bank'; bank_name: string | null; program_count: number; active_program_count: number; enrolled_org_count: number; kyb_pending: number; pending_bank_review: number; active_transactions: number }
-interface AnchorData { portal: 'anchor'; org_name: string | null; programs: DashProgram[]; enrolled_supplier_count: number; pending_approval: number }
-interface SupplierData { portal: 'supplier'; org_name: string | null; programs: DashProgram[]; active_transactions: number }
+interface BankData { portal: 'bank'; bank_name: string | null; program_count: number; active_program_count: number; enrolled_org_count: number; kyb_pending: number; pending_bank_review: number; active_transactions: number; suppliers_at_risk: number; tariff_exposed_count: number; outstanding_balance: number; margin_at_risk_label: string; at_risk_suppliers: Array<{ id: string; legal_name: string; risk_tier: string; risk_score: number | null; risk_flags: unknown }>; funding_queue?: any[] }
+interface AnchorData { portal: 'anchor'; org_name: string | null; programs: DashProgram[]; enrolled_supplier_count: number; pending_approval: number; dd_savings?: number | null }
+interface SupplierData { portal: 'supplier'; org_name: string | null; programs: DashProgram[]; active_transactions: number; performance_tier?: string; performance_score?: number | null; on_time_rate?: number | null; total_financed?: number }
 type DashData = BankData | AnchorData | SupplierData
 
 interface RouteState {
@@ -49,6 +52,13 @@ function fmtCurrency(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`
   return `$${Math.round(n).toLocaleString('en-US')}`
+}
+
+function fmtMoney(n: number) {
+  if (!n) return '$0'
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K'
+  return '$' + n.toFixed(0)
 }
 
 // ============== Icon ==============
@@ -177,10 +187,10 @@ function NotifBell() {
       {open && (
         <div style={{
           position: 'absolute', top: 48, right: 0, width: 320,
-          background: 'var(--color-card)', border: '1px solid var(--color-border)',
+          background: 'var(--white)', border: '1px solid var(--border)',
           borderRadius: 10, boxShadow: '0 4px 16px var(--color-shadow)', zIndex: 100,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Notifications</span>
             {unreadCount > 0 && (
               <button type="button" style={{ fontSize: 12, color: 'var(--color-accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} onClick={markAllRead}>
@@ -198,7 +208,7 @@ function NotifBell() {
                 <div
                   key={n.id}
                   style={{
-                    padding: '12px 16px', borderBottom: '1px solid var(--color-border)',
+                    padding: '12px 16px', borderBottom: '1px solid var(--border)',
                     cursor: 'pointer',
                     borderLeft: n.read ? '2px solid transparent' : '2px solid var(--color-accent)',
                   }}
@@ -271,7 +281,7 @@ function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number 
   return (
     <div>
       <div className="portfolio-bar">
-        <div style={{ width: '100%', height: '100%', background: 'var(--color-border)', borderRadius: 4 }} />
+        <div style={{ width: '100%', height: '100%', background: 'var(--border)', borderRadius: 4 }} />
       </div>
       <div className="portfolio-meta">
         {activeProgramCount} active program{activeProgramCount !== 1 ? 's' : ''} · No portfolio data yet
@@ -284,6 +294,10 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
+  const [recsExpanded, setRecsExpanded] = useState(false)
+  const [graphExpanded, setGraphExpanded] = useState(false)
+
+  const queue = data?.funding_queue ?? []
 
   const bankSnap    = reportingSnap?.role === 'bank' ? reportingSnap : null
   const bankMonthly = bankSnap?.monthly_volume.map(m => m.count) ?? []
@@ -326,7 +340,63 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
           }}
         />
 
-        <div className="kpi-strip-5" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '1px',
+          background: 'var(--border)',
+          marginBottom: 1,
+          marginTop: 24,
+        }}>
+          {[
+            {
+              label: 'Suppliers at risk',
+              value: data?.suppliers_at_risk ?? 0,
+              color: (data?.suppliers_at_risk ?? 0) > 0 ? '#DC2626' : 'var(--ink)',
+              sub: 'Red tier score',
+            },
+            {
+              label: 'Tariff exposed',
+              value: data?.tariff_exposed_count ?? 0,
+              color: (data?.tariff_exposed_count ?? 0) > 0 ? '#D97706' : 'var(--ink)',
+              sub: 'High tariff risk',
+            },
+            {
+              label: 'Outstanding',
+              value: fmtCurrency(data?.outstanding_balance ?? 0),
+              color: 'var(--blue)',
+              sub: 'Funded transactions',
+            },
+          ].map(kpi => (
+            <div key={kpi.label} style={{ background: 'var(--white)', padding: '20px 24px' }}>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: 'var(--gray)',
+                marginBottom: 8,
+              }}>{kpi.label}</div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 28,
+                fontWeight: 600,
+                letterSpacing: '-0.02em',
+                color: kpi.color,
+              }}>{kpi.value}</div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--gray)',
+                marginTop: 4,
+              }}>{kpi.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="kpi-strip-5" style={{ gap: '1px', background: 'var(--border)' }}>
           {kpis.map((k, i) => (
             <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
@@ -336,6 +406,232 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
             </div>
           ))}
         </div>
+
+        <div style={{ marginTop: 24 }}>
+          <RecommendationsPanel
+            bankId={data?.bank_name ?? ''}
+            maxItems={recsExpanded ? undefined : 2}
+          />
+          <button
+            onClick={() => setRecsExpanded(v => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--gray)',
+              padding: '8px 0',
+              marginTop: 4,
+            }}>
+            {recsExpanded ? '▲ Show less' : '▼ Show all'}
+          </button>
+        </div>
+
+        <div style={{
+          border: '1px solid var(--border)',
+          background: 'var(--white)',
+          marginTop: 24,
+        }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--ink)',
+            }}>
+              Funding Queue
+              {queue.length > 0 && (
+                <span style={{ marginLeft: 8, color: 'var(--blue)' }}>· {queue.length}</span>
+              )}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--gray)',
+            }}>AI-prioritized</span>
+          </div>
+
+          {queue.length === 0 ? (
+            <div style={{
+              padding: '24px 20px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color: 'var(--gray)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              textAlign: 'center',
+            }}>
+              No pending financing decisions
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
+              gap: 1,
+              background: 'var(--border)',
+            }}>
+              {['Supplier', 'Amount', 'Status', 'Waiting', 'Action'].map(h => (
+                <div key={h} style={{
+                  background: 'var(--offwhite)',
+                  padding: '8px 14px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 9,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: 'var(--gray)',
+                }}>{h}</div>
+              ))}
+            </div>
+          )}
+
+          {queue.map((item: any) => (
+            <div key={item.id} style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
+              gap: 1,
+              background: 'var(--border)',
+              borderLeft: item.priority_score >= 60
+                ? '3px solid #DC2626'
+                : item.priority_score >= 35
+                ? '3px solid #D97706'
+                : '3px solid transparent',
+            }}>
+              <div style={{ background: 'var(--white)', padding: '10px 14px' }}>
+                <div style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 13,
+                  color: 'var(--ink)',
+                  marginBottom: 3,
+                }}>
+                  {item.organizations?.legal_name}
+                </div>
+                <RiskBadge
+                  tier={item.organizations?.risk_tier}
+                  flags={item.organizations?.risk_flags?.slice(0, 1)}
+                  size="sm"
+                />
+              </div>
+              <div style={{
+                background: 'var(--white)',
+                padding: '10px 14px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                color: 'var(--ink)',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                {fmtMoney(item.invoice_amount)}
+              </div>
+              <div style={{
+                background: 'var(--white)',
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 9,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: item.status === 'pending_bank_review' ? 'var(--blue)' : 'var(--gray)',
+                }}>
+                  {item.status === 'pending_bank_review' ? 'Awaiting review' : 'Counter review'}
+                </span>
+              </div>
+              <div style={{
+                background: 'var(--white)',
+                padding: '10px 14px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                color: item.days_waiting > 3 ? '#DC2626' : 'var(--gray)',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                {item.days_waiting}d
+              </div>
+              <div style={{
+                background: 'var(--white)',
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                <a
+                  href={`/transactions/${item.id}`}
+                  className="btn btn-primary btn-sm"
+                  style={{ fontSize: 11 }}>
+                  Review
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {!graphExpanded ? (
+          <div style={{
+            border: '1px solid var(--border)',
+            background: 'var(--white)',
+            marginTop: 24,
+          }}>
+            <div style={{
+              padding: '14px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+            onClick={() => setGraphExpanded(true)}>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--gray)',
+              }}>Supply Graph</span>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                color: 'var(--gray)',
+              }}>▼ Expand</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 24 }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginBottom: 4,
+            }}>
+              <button
+                onClick={() => setGraphExpanded(false)}
+                style={{
+                  background: 'none', border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10, color: 'var(--gray)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}>
+                ▲ Collapse
+              </button>
+            </div>
+            <SupplyGraph bankId={''} />
+          </div>
+        )}
 
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div className="card">
@@ -407,7 +703,7 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
                         <span style={{ fontSize: 11, color: 'var(--color-ink-2)' }}>{STATUS_LABELS[row.status] ?? row.status}</span>
                         <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{row.count} ({pct}%)</span>
                       </div>
-                      <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
+                      <div style={{ height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%', width: `${pct}%`, borderRadius: 2, transition: 'width 0.4s',
                           background: row.status === 'completed' ? 'var(--color-green)' : row.status === 'rejected' ? 'var(--color-red)' : 'var(--color-accent)',
@@ -480,12 +776,13 @@ function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap, volPe
           }}
         />
 
-        <div className="kpi-strip-4" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
+        <div className="kpi-strip-5" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
           {[
             { label: 'Payables financed',   value: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? fmtCurrency(totalPayablesFinanced) : '—', delta: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? 'Last 6 months' : 'No data yet', color: 'var(--color-anchor)', sparkData: anchorMonthly },
             { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',                                          delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',  color: 'var(--color-amber)',  sparkData: [] as number[] },
             { label: 'Financed this month', value: currentMonthFinanced != null && currentMonthFinanced > 0 ? fmtCurrency(currentMonthFinanced) : '—', delta: currentMonthFinanced != null && currentMonthFinanced > 0 ? 'This month' : 'No data yet', color: 'var(--color-green)',  sparkData: anchorMonthly },
             { label: 'Due in 30 days',      value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-amber)',  sparkData: [] as number[] },
+            { label: 'DD Savings captured', value: (data?.dd_savings ?? 0) > 0 ? fmtCurrency(data!.dd_savings!) : '—', delta: (data?.dd_savings ?? 0) > 0 ? 'From completed early payments' : 'No DD transactions yet', color: 'var(--blue)', sparkData: [] as number[] },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
@@ -614,9 +911,16 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, vol
         <div className="kpi-strip-4" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
           {[
             { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
-            { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--color-ink-3)', sparkData: [] as number[] },
+            { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--gray)', sparkData: [] as number[] },
             { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
             { label: 'Acceptance rate',      value: acceptanceRate != null ? `${acceptanceRate}%` : '—',                   delta: acceptanceRate != null ? 'Of submitted txns' : 'No data yet',            color: 'var(--color-green)', sparkData: [] as number[] },
+            {
+              label: 'Trust tier',
+              value: (data?.performance_tier ?? 'standard').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+              delta: data?.performance_score != null ? `Score ${data.performance_score}/100` : 'Build your record',
+              color: data?.performance_tier === 'preferred' ? '#059669' : data?.performance_tier === 'under_review' ? '#DC2626' : 'var(--ink)',
+              sparkData: [] as number[],
+            },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
@@ -702,7 +1006,7 @@ function ComingSoon({ screen }: { screen: string }) {
         <div className="subtitle">Coming soon</div>
       </div>
       <div className="card">
-        <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-3)' }}>
+        <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>
           This section is under construction.
         </div>
       </div>

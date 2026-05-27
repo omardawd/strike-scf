@@ -179,24 +179,24 @@ function KybSection({
           <span className={`badge ${riskTierBadge(creditScore.risk_tier)}`}>Risk {creditScore.risk_tier}</span>
         )}
         {creditReviewedAt && s === 'approved' && (
-          <span style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Reviewed {fmtDate(creditReviewedAt)}</span>
+          <span style={{ fontSize: 12, color: 'var(--gray)' }}>Reviewed {fmtDate(creditReviewedAt)}</span>
         )}
       </div>
       {(s === 'not_started' || s === 'draft') && (
-        <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB not submitted yet.</div>
+        <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet.</div>
       )}
       {s === 'approved' && creditScore?.total_score != null && (
-        <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--color-ink-1)', lineHeight: 1 }}>
+        <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--ink)', lineHeight: 1 }}>
           {creditScore.total_score}
         </div>
       )}
       {s === 'rejected' && (
-        <div style={{ fontSize: 13, color: 'var(--color-red)' }}>
+        <div style={{ fontSize: 13, color: '#DC2626' }}>
           KYB rejected. {orgType} cannot participate in financing.
         </div>
       )}
       {s === 'more_info_requested' && (
-        <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
           Additional information requested from {orgType.toLowerCase()}.
         </div>
       )}
@@ -428,7 +428,7 @@ export default function AnchorDetailPage() {
         />
         <div className="page">
           <div className="page-header">
-            <div style={{ height: 28, width: 200, background: 'var(--color-border)', borderRadius: 6 }} />
+            <div style={{ height: 28, width: 200, background: 'var(--border)', borderRadius: 6 }} />
           </div>
         </div>
       </PortalShell>
@@ -512,28 +512,28 @@ export default function AnchorDetailPage() {
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
-                  <div style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
+                  <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
                     </div>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
                     </div>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                     </div>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
+                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
                   <style>{PULSE_KF}</style>
                   {analytics
                     ? <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
-                    : <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+                    : <div style={{ height: 80, background: 'var(--offwhite)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
                   }
                 </div>
               </div>
@@ -546,7 +546,7 @@ export default function AnchorDetailPage() {
                   </button>
                 </div>
                 {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No suppliers yet.
                   </div>
                 ) : (
@@ -567,7 +567,7 @@ export default function AnchorDetailPage() {
                               <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
                             </div>
                           </div>
-                          <span style={{ color: 'var(--color-ink-4)', fontSize: 16 }}>›</span>
+                          <span style={{ color: 'var(--gray)', fontSize: 16 }}>›</span>
                         </div>
                       </div>
                     ))}
@@ -584,10 +584,10 @@ export default function AnchorDetailPage() {
                             <div className="network-name">{s.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Review KYB →</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Review KYB →</span>
                             </div>
                           </div>
-                          <span style={{ color: 'var(--color-ink-4)', fontSize: 16 }}>›</span>
+                          <span style={{ color: 'var(--gray)', fontSize: 16 }}>›</span>
                         </div>
                       </div>
                     ))}
@@ -603,7 +603,7 @@ export default function AnchorDetailPage() {
                             <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className="badge badge-draft">Setting up</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>Completing onboarding</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Completing onboarding</span>
                             </div>
                           </div>
                         </div>
@@ -623,7 +623,7 @@ export default function AnchorDetailPage() {
                             </div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span className="badge badge-pending">Invited</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-ink-3)' }}>{fmtDate(inv.invited_at)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(inv.invited_at)}</span>
                             </div>
                           </div>
                           <button
@@ -661,7 +661,7 @@ export default function AnchorDetailPage() {
               <div className="card">
                 <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
                 {docs.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No documents uploaded.
                   </div>
                 ) : (
@@ -670,7 +670,7 @@ export default function AnchorDetailPage() {
                       <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{doc.file_name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{fmtDate(doc.created_at)}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(doc.created_at)}</div>
                         </div>
                         {doc.signed_url && (
                           <a href={doc.signed_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
@@ -691,7 +691,7 @@ export default function AnchorDetailPage() {
               <h3 className="t-card-head">Transactions</h3>
             </div>
             {transactions.length === 0 ? (
-              <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+              <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                 No transactions yet.
               </div>
             ) : (
@@ -720,7 +720,7 @@ export default function AnchorDetailPage() {
                           {STATUS_LABELS[t.status] ?? t.status}
                         </span>
                       </td>
-                      <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
+                      <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -896,7 +896,7 @@ export default function AnchorDetailPage() {
                         </div>
                       </div>
                     )}
-                    {inviteError && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{inviteError}</div>}
+                    {inviteError && <div style={{ color: '#DC2626', fontSize: 13 }}>{inviteError}</div>}
                     <button className="btn btn-primary" type="button" disabled={inviteLoading} onClick={handleSendInvite}>
                       {inviteLoading ? 'Sending…' : 'Send invite'}
                     </button>
@@ -978,23 +978,23 @@ export default function AnchorDetailPage() {
                 <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
-                <div style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
+                <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
                   </div>
-                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
+                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
                   </div>
-                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
+                  <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                   </div>
                 </div>
                 {analytics
                   ? <LineChart data={analytics.monthly_volume ?? []} height={80} color="var(--color-accent)" />
-                  : <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+                  : <div style={{ height: 80, background: 'var(--offwhite)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
                 }
               </div>
             </div>
@@ -1007,7 +1007,7 @@ export default function AnchorDetailPage() {
                 </button>
               </div>
               {transactions.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No transactions yet with this anchor.
                 </div>
               ) : (
@@ -1035,8 +1035,8 @@ export default function AnchorDetailPage() {
                         <td>
                           <span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span>
                         </td>
-                        <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
-                        <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
+                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                        <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1050,7 +1050,7 @@ export default function AnchorDetailPage() {
             {/* <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head"><h3 className="t-card-head">Program</h3></div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                   You are enrolled in this program as a supplier under {orgName}.
                 </div>
                 <button
@@ -1066,7 +1066,7 @@ export default function AnchorDetailPage() {
 
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
-              <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+              <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                 No documents shared by anchor.
               </div>
             </div>

@@ -21,6 +21,15 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function createNotification({ userId, event, title, body: notifBody, deepLink }: {
+  userId: string; event: string; title: string; body: string; deepLink: string
+}) {
+  await adminClient.from('notifications').insert({
+    user_id: userId, event, title, body: notifBody,
+    deep_link: deepLink, read: false,
+  }).catch(() => {})
+}
+
 const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
 const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
 const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
@@ -176,6 +185,25 @@ export async function PATCH(
 
   const { action } = body
 
+  const ALLOWED_ACTIONS = [
+    'approve', 'reject', 'counter_offer',
+    'accept_counter', 'reject_counter',
+    'disburse', 'submit_invoice',
+    'mark_repaid', 'mark_paid', 'send_repayment_info',
+    'request_extension', 'request_installment',
+    'accept_anchor_counter', 'reject_anchor_counter',
+    'review_repayment_request',
+    'approve_extension', 'reject_extension',
+    'approve_installment', 'reject_installment',
+    'approve_with_extension', 'approve_with_installment',
+    'supplier_counter',
+    'accept_repayment_counter', 'reject_repayment_counter',
+    'send_wire_info', 'request_info',
+  ]
+  if (!ALLOWED_ACTIONS.includes(body.action as string)) {
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  }
+
   // ── Anchor approval ────────────────────────────────────────────
   if (ANCHOR_ROLES.includes(userData.role)) {
     if (transaction.anchor_id !== userData.org_id) {
@@ -183,6 +211,78 @@ export async function PATCH(
     }
     if (transaction.type === 'invoice_factoring') {
       return NextResponse.json({ error: 'Anchor approval not required for invoice factoring' }, { status: 400 })
+    }
+
+    // ── Dynamic Discounting: 2-party state machine (no bank) ──────────────────
+    if (transaction.type === 'dynamic_discounting') {
+      if (action === 'approve' && transaction.status === 'pending_anchor_approval') {
+        const { data: updated, error } = await adminClient
+          .from('transactions')
+          .update({ status: 'funded', updated_at: new Date().toISOString() })
+          .eq('id', id).select().single()
+        if (error) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+        await adminClient.from('transaction_events').insert({
+          transaction_id: id, event_type: 'anchor_approved',
+          from_status: transaction.status, to_status: 'funded',
+          actor_id: user.id, actor_type: 'anchor',
+          notes: body.notes ? String(body.notes) : 'Anchor approved early payment request',
+        })
+        const { data: supplierAdmin } = await adminClient.from('users').select('id, email, full_name')
+          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle()
+        if (supplierAdmin?.email) {
+          await sendEmail({
+            to: supplierAdmin.email,
+            subject: `Early payment approved: Invoice ${transaction.invoice_number ?? id}`,
+            html: transactionStatusEmailHtml({
+              recipientName: supplierAdmin.full_name ?? 'Supplier Admin',
+              eventBody: `Your early payment request for invoice ${transaction.invoice_number ?? id} has been approved. Payment of ${fmtMoney(transaction.financing_amount_requested)} will be sent shortly.`,
+              transactionId: id,
+            }),
+          })
+        }
+        if (supplierAdmin?.id) {
+          await createNotification({
+            userId: supplierAdmin.id,
+            event: 'transaction_approved',
+            title: 'Early payment approved',
+            body: `Your early payment request for invoice ${transaction.invoice_number ?? id} has been approved.`,
+            deepLink: `/transactions/${id}`,
+          })
+        }
+        return NextResponse.json({ transaction: updated })
+      }
+
+      if (action === 'reject' && transaction.status === 'pending_anchor_approval') {
+        const { data: updated, error } = await adminClient
+          .from('transactions')
+          .update({ status: 'rejected', updated_at: new Date().toISOString() })
+          .eq('id', id).select().single()
+        if (error) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+        await adminClient.from('transaction_events').insert({
+          transaction_id: id, event_type: 'anchor_rejected',
+          from_status: transaction.status, to_status: 'rejected',
+          actor_id: user.id, actor_type: 'anchor',
+          notes: body.notes ? String(body.notes) : 'Anchor declined early payment request',
+        })
+        return NextResponse.json({ transaction: updated })
+      }
+
+      if (action === 'mark_paid' && transaction.status === 'funded') {
+        const { data: updated, error } = await adminClient
+          .from('transactions')
+          .update({ status: 'completed', repaid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', id).select().single()
+        if (error) return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+        await adminClient.from('transaction_events').insert({
+          transaction_id: id, event_type: 'disbursement_marked',
+          from_status: transaction.status, to_status: 'completed',
+          actor_id: user.id, actor_type: 'anchor',
+          notes: 'Anchor marked payment as sent to supplier',
+        })
+        return NextResponse.json({ transaction: updated })
+      }
+
+      return NextResponse.json({ error: 'Invalid action or status for dynamic discounting transaction' }, { status: 400 })
     }
 
     if (transaction.type === 'po_financing' && action === 'approve') {
@@ -394,6 +494,18 @@ export async function PATCH(
         notes:          `Anchor rejected invoice: ${body.notes ?? 'No reason given'}`,
       })
 
+      const { data: rejSupplierAdmin } = await adminClient.from('users').select('id')
+        .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle()
+      if (rejSupplierAdmin?.id) {
+        await createNotification({
+          userId: rejSupplierAdmin.id,
+          event: 'transaction_rejected',
+          title: 'Invoice rejected',
+          body: `Your invoice ${transaction.invoice_number ?? id} has been rejected by the anchor.`,
+          deepLink: `/transactions/${id}`,
+        })
+      }
+
       return NextResponse.json({ transaction: updated })
     }
 
@@ -447,7 +559,7 @@ export async function PATCH(
 
     const { data: bankAdmin } = await adminClient
       .from('users')
-      .select('email, full_name')
+      .select('id, email, full_name')
       .eq('bank_id', transaction.bank_id)
       .eq('role', 'bank_admin')
       .limit(1)
@@ -462,6 +574,15 @@ export async function PATCH(
           eventBody:     `An invoice (${invoiceRef}) worth ${fmtMoney(transaction.invoice_amount)} has been approved by the anchor and is awaiting your bank review.`,
           transactionId: id,
         }),
+      })
+    }
+    if (bankAdmin?.id) {
+      await createNotification({
+        userId: bankAdmin.id,
+        event: 'transaction_pending_review',
+        title: 'Invoice ready for review',
+        body: `Invoice ${transaction.invoice_number ?? id} (${fmtMoney(transaction.invoice_amount)}) has been approved by the anchor and is awaiting your review.`,
+        deepLink: `/transactions/${id}`,
       })
     }
 
@@ -564,8 +685,20 @@ export async function PATCH(
         to_status:      acNewStatus,
         actor_id:       user.id,
         actor_type:     'supplier',
-        notes:          `Supplier accepted bank offer: ${transaction.financing_rate_apr ?? transaction.apr}% advance rate`,
+        notes:          `Supplier accepted bank offer: ${transaction.financing_rate_apr ?? (transaction as Record<string, unknown>).apr}% advance rate`,
       })
+
+      const { data: acceptBankAdmin } = await adminClient.from('users').select('id')
+        .eq('bank_id', transaction.bank_id).eq('role', 'bank_admin').limit(1).maybeSingle()
+      if (acceptBankAdmin?.id) {
+        await createNotification({
+          userId: acceptBankAdmin.id,
+          event: 'transaction_counter_accepted',
+          title: 'Supplier accepted counter-offer',
+          body: `The supplier has accepted your counter-offer on invoice ${transaction.invoice_number ?? id}.`,
+          deepLink: `/transactions/${id}`,
+        })
+      }
 
       return NextResponse.json({ transaction: updated })
     }
@@ -625,7 +758,7 @@ export async function PATCH(
       // Notify bank
       const { data: bankAdmin } = await adminClient
         .from('users')
-        .select('email, full_name')
+        .select('id, email, full_name')
         .eq('bank_id', transaction.bank_id)
         .eq('role', 'bank_admin')
         .limit(1)
@@ -640,6 +773,15 @@ export async function PATCH(
             eventBody:     `The supplier has submitted a counter-offer on invoice ${invoiceRef}. Advance rate: ${rateApr}%, Amount: ${fmtMoney(amountApproved)}. Please review.`,
             transactionId: id,
           }),
+        })
+      }
+      if (bankAdmin?.id) {
+        await createNotification({
+          userId: bankAdmin.id,
+          event: 'transaction_supplier_counter',
+          title: 'Supplier counter-offer received',
+          body: `The supplier has submitted a counter-offer on invoice ${transaction.invoice_number ?? id}: ${rateApr}% advance rate.`,
+          deepLink: `/transactions/${id}`,
         })
       }
 
@@ -678,6 +820,9 @@ export async function PATCH(
     if (transaction.bank_id !== userData.bank_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    if (transaction.type === 'dynamic_discounting') {
+      return NextResponse.json({ error: 'Bank actions are not applicable for dynamic discounting transactions' }, { status: 400 })
+    }
 
     // send_repayment_info: at funded (RF) or repayment_due (PO)
     if (action === 'send_repayment_info') {
@@ -690,8 +835,12 @@ export async function PATCH(
       const repaymentAmount       = body.repayment_amount != null ? Number(body.repayment_amount)        : null
 
       const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-      if (repaymentDueDate)      updatePayload.repayment_due_date  = repaymentDueDate
-      if (repaymentInstructions) updatePayload.bank_approval_notes = repaymentInstructions
+      if (repaymentDueDate) updatePayload.repayment_due_date = repaymentDueDate
+      if (repaymentInstructions) {
+        const repState = getNegotiationState(transaction as Record<string, unknown>)
+        repState.repayment_instructions = repaymentInstructions
+        updatePayload.bank_approval_notes = setNegotiationState(repState)
+      }
 
       const { data: updated, error } = await adminClient
         .from('transactions')
@@ -931,7 +1080,7 @@ export async function PATCH(
       const invoiceRef = transaction.invoice_number ?? id
 
       const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
-        adminClient.from('users').select('email, full_name')
+        adminClient.from('users').select('id, email, full_name')
           .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
         adminClient.from('users').select('email, full_name')
           .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
@@ -946,6 +1095,15 @@ export async function PATCH(
             eventBody:     `The bank has made a counter-offer on invoice ${invoiceRef}. Advance rate: ${rateApr}%, Amount: ${fmtMoney(amountApproved)}. Please review and accept or decline.`,
             transactionId: id,
           }),
+        })
+      }
+      if (supplierAdmin?.id) {
+        await createNotification({
+          userId: supplierAdmin.id,
+          event: 'transaction_counter_offer',
+          title: 'Bank counter-offer received',
+          body: `The bank has made a counter-offer on invoice ${invoiceRef}: ${rateApr}% advance rate, ${fmtMoney(amountApproved)}.`,
+          deepLink: `/transactions/${id}`,
         })
       }
       if (anchorAdmin?.email) {
@@ -1225,7 +1383,7 @@ export async function PATCH(
     if (action === 'approve') {
       const { data: supplierAdmin } = await adminClient
         .from('users')
-        .select('email, full_name')
+        .select('id, email, full_name')
         .eq('org_id', transaction.supplier_id)
         .eq('role', 'supplier_admin')
         .limit(1)
@@ -1241,13 +1399,22 @@ export async function PATCH(
           }),
         })
       }
+      if (supplierAdmin?.id) {
+        await createNotification({
+          userId: supplierAdmin.id,
+          event: 'transaction_approved',
+          title: 'Financing approved',
+          body: `Your financing request for invoice ${invoiceRef2} has been approved. Amount: ${fmtMoney(updated?.financing_amount_approved ?? transaction.financing_amount_requested)}.`,
+          deepLink: `/transactions/${id}`,
+        })
+      }
     }
 
     if (action === 'reject') {
       const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
-        adminClient.from('users').select('email, full_name')
+        adminClient.from('users').select('id, email, full_name')
           .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
-        adminClient.from('users').select('email, full_name')
+        adminClient.from('users').select('id, email, full_name')
           .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
       ])
       const rejectReason = body.rejection_reason ? String(body.rejection_reason) : null
@@ -1262,6 +1429,15 @@ export async function PATCH(
           }),
         })
       }
+      if (supplierAdmin?.id) {
+        await createNotification({
+          userId: supplierAdmin.id,
+          event: 'transaction_rejected',
+          title: 'Financing declined',
+          body: `Your financing request for invoice ${invoiceRef2} has been declined by the bank.${rejectReason ? ` Reason: ${rejectReason}` : ''}`,
+          deepLink: `/transactions/${id}`,
+        })
+      }
       if (anchorAdmin?.email) {
         await sendEmail({
           to:      anchorAdmin.email,
@@ -1271,6 +1447,15 @@ export async function PATCH(
             eventBody:     `Invoice ${invoiceRef2} has been declined by the bank.${rejectReason ? `\n\nReason: ${rejectReason}` : ''}`,
             transactionId: id,
           }),
+        })
+      }
+      if (anchorAdmin?.id) {
+        await createNotification({
+          userId: anchorAdmin.id,
+          event: 'transaction_rejected',
+          title: 'Invoice declined by bank',
+          body: `Invoice ${invoiceRef2} has been declined by the bank.${rejectReason ? ` Reason: ${rejectReason}` : ''}`,
+          deepLink: `/transactions/${id}`,
         })
       }
     }

@@ -5,7 +5,6 @@ import { usePortal } from '@/lib/portal-context'
 import { TRANSACTION_REFERRER_KEY } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
-import { DocGenerator } from '@/components/doc-generator'
 
 interface Transaction {
   id: string
@@ -36,6 +35,9 @@ interface Transaction {
   anchor_id: string | null
   anchor_name: string | null
   bank_name: string | null
+  discount_rate: number | null
+  early_payment_date: string | null
+  discount_amount: number | null
   created_at: string
   updated_at: string
 }
@@ -92,7 +94,10 @@ function parseWireInfo(raw: string | null): WireInfo | null {
 
 function getRepaymentInstructions(raw: string | null): string | null {
   if (!raw) return null
-  try { JSON.parse(raw); return null } catch { return raw }
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed.repayment_instructions === 'string' ? parsed.repayment_instructions : null
+  } catch { return raw }
 }
 
 function formatCollateralType(type: string): string {
@@ -209,6 +214,25 @@ function poStepperState(stepKey: string, status: string): 'done' | 'current' | '
   const currentIdx = poStatusToStepIndex(status)
 
   if (currentIdx === -1 || stepIdx === -1) return 'todo'
+  if (stepIdx < currentIdx)  return 'done'
+  if (stepIdx === currentIdx) return 'current'
+  return 'todo'
+}
+
+const DD_STEPPER_STEPS = [
+  { key: 'pending_anchor_approval', label: 'Anchor Review' },
+  { key: 'funded',                  label: 'Payment Approved' },
+  { key: 'completed',               label: 'Completed' },
+]
+
+const DD_STATUS_ORDER = DD_STEPPER_STEPS.map(s => s.key)
+
+function ddStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
+  let eff = status
+  if (status === 'rejected') eff = 'pending_anchor_approval'
+  const stepIdx    = DD_STATUS_ORDER.indexOf(stepKey)
+  const currentIdx = DD_STATUS_ORDER.indexOf(eff)
+  if (currentIdx === -1) return 'todo'
   if (stepIdx < currentIdx)  return 'done'
   if (stepIdx === currentIdx) return 'current'
   return 'todo'
@@ -350,13 +374,13 @@ function AnchorStandaloneRepaymentSection({
   if (mode === 'extension') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Request repayment extension</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Request repayment extension</div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Requested date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Requested date</div>
           <input type="date" className="input" value={extDate} onChange={e => setExtDate(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
           <textarea className="form-input" rows={2} value={extNotes} onChange={e => setExtNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -373,14 +397,14 @@ function AnchorStandaloneRepaymentSection({
   if (mode === 'installment') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Request installment structure</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Request installment structure</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Installments</div>
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Installments</div>
             <input type="number" className="input" min="2" max="52" value={instCount} onChange={e => setInstCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
             <select className="input" value={instStructure} onChange={e => setInstStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-weekly</option>
@@ -390,7 +414,7 @@ function AnchorStandaloneRepaymentSection({
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
           <textarea className="form-input" rows={2} value={instNotes} onChange={e => setInstNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -409,16 +433,16 @@ function AnchorStandaloneRepaymentSection({
       {repRequest?.status === 'rejected' ? (
         <div style={{
           padding: '10px 14px',
-          background: 'var(--color-bg-2)',
+          background: 'var(--offwhite)',
           borderRadius: 8,
           fontSize: 13,
-          color: 'var(--color-ink-3)',
+          color: 'var(--gray)',
         }}>
           Your repayment request was declined. Standard repayment terms apply.
         </div>
       ) : !repRequest ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+          <div style={{ fontSize: 12, color: 'var(--gray)' }}>
             Request a payment extension or installment plan from the bank.
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -428,22 +452,22 @@ function AnchorStandaloneRepaymentSection({
         </div>
       ) : repRequest.status === 'pending_bank_review' ? (
         <div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 4 }}>Awaiting bank review</div>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>Awaiting bank review</div>
           {repRequest.type === 'extension' && repRequest.requested_date && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested date: {repRequest.requested_date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested date: {repRequest.requested_date}</div>
           )}
           {repRequest.type === 'installment' && repRequest.count && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>{repRequest.count} {repRequest.structure} installments</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{repRequest.count} {repRequest.structure} installments</div>
           )}
         </div>
       ) : repRequest.status === 'bank_countered' ? (
         <div>
           <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-amber)', marginBottom: 6 }}>Bank has a counter-proposal</div>
           {repRequest.bank_counter?.date && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Counter date: {repRequest.bank_counter.date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Counter date: {repRequest.bank_counter.date}</div>
           )}
           {repRequest.bank_counter?.count != null && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
               Counter: {repRequest.bank_counter.count} {repRequest.bank_counter.structure} installments
             </div>
           )}
@@ -488,17 +512,17 @@ function BankAnchorRepaymentRequestCard({
   if (!repRequest) return null
 
   return (
-    <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12, marginTop: 4 }}>
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Anchor Repayment Request</div>
 
       {repRequest.type === 'extension' && repRequest.requested_date && (
-        <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Extension to: {repRequest.requested_date}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Extension to: {repRequest.requested_date}</div>
       )}
       {repRequest.type === 'installment' && repRequest.count != null && (
-        <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>{repRequest.count} {repRequest.structure} installments</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{repRequest.count} {repRequest.structure} installments</div>
       )}
       {repRequest.notes && (
-        <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>Notes: {repRequest.notes}</div>
+        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>Notes: {repRequest.notes}</div>
       )}
 
       {repRequest.status === 'pending_bank_review' && !counterMode && (
@@ -509,7 +533,7 @@ function BankAnchorRepaymentRequestCard({
           </button>
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(true)}>Counter-offer</button>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Rejection reason (optional)</div>
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Rejection reason (optional)</div>
             <input className="input" style={{ width: '100%' }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason…" />
           </div>
           <button className="btn btn-danger btn-sm" type="button" disabled={acting}
@@ -523,18 +547,18 @@ function BankAnchorRepaymentRequestCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {repRequest.type === 'extension' && (
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter date</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter date</div>
               <input type="date" className="input" value={counterDate} onChange={e => setCounterDate(e.target.value)} style={{ width: '100%' }} />
             </div>
           )}
           {repRequest.type === 'installment' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Installments</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Installments</div>
                 <input type="number" className="input" min="2" value={counterCount} onChange={e => setCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
                 <select className="input" value={counterStructure} onChange={e => setCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
                   <option value="weekly">Weekly</option>
                   <option value="biweekly">Bi-weekly</option>
@@ -559,7 +583,7 @@ function BankAnchorRepaymentRequestCard({
       )}
 
       {repRequest.status === 'bank_countered' && (
-        <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>
           Counter-offer sent — awaiting anchor response
           {repRequest.bank_counter?.date && <div style={{ marginTop: 4 }}>Counter date: {repRequest.bank_counter.date}</div>}
           {repRequest.bank_counter?.count != null && (
@@ -575,7 +599,7 @@ function BankAnchorRepaymentRequestCard({
       )}
 
       {repRequest.status === 'rejected' && (
-        <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)', marginTop: 4 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 4 }}>
           Request declined{repRequest.rejection_reason ? ` — ${repRequest.rejection_reason}` : ''}
         </div>
       )}
@@ -684,7 +708,7 @@ function BankActionPanel({
 
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
           Send wire transfer to supplier
         </p>
         <div className="calc-panel">
@@ -706,7 +730,7 @@ function BankActionPanel({
           )}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Wire reference / memo</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Wire reference / memo</div>
           <input
             className="input"
             placeholder="e.g. invoice number or internal ref"
@@ -715,7 +739,7 @@ function BankActionPanel({
             style={{ width: '100%' }}
           />
         </div>
-        {disbError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{disbError}</div>}
+        {disbError && <div style={{ fontSize: 12, color: '#DC2626' }}>{disbError}</div>}
         <button className="btn btn-primary btn-full" type="button" disabled={disbursing} onClick={handleDisburse}>
           {disbursing ? 'Processing…' : 'Mark as disbursed'}
         </button>
@@ -801,7 +825,7 @@ function BankActionPanel({
               </div>
             )}
           </div>
-          {repaidError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaidError}</div>}
+          {repaidError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaidError}</div>}
           <button
             className="btn btn-primary btn-full"
             type="button"
@@ -816,11 +840,11 @@ function BankActionPanel({
 
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
           Send repayment instructions to anchor
         </p>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment amount ($)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment amount ($)</div>
           <input
             className="input mono"
             placeholder="0.00"
@@ -830,7 +854,7 @@ function BankActionPanel({
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment due date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment due date</div>
           <input
             type="date"
             className="input"
@@ -840,7 +864,7 @@ function BankActionPanel({
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Instructions / wire details</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Instructions / wire details</div>
           <textarea
             className="form-input"
             rows={3}
@@ -850,7 +874,7 @@ function BankActionPanel({
             style={{ width: '100%', resize: 'vertical' }}
           />
         </div>
-        {repaymentError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaymentError}</div>}
+        {repaymentError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaymentError}</div>}
         <button
           className="btn btn-primary btn-full"
           type="button"
@@ -935,7 +959,7 @@ function BankActionPanel({
               </div>
             )}
           </div>
-          {repaidError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaidError}</div>}
+          {repaidError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaidError}</div>}
           <button className="btn btn-primary btn-full" type="button" disabled={markingRepaid} onClick={handleMarkRepaidPO}>
             {markingRepaid ? 'Processing…' : 'Mark as repaid'}
           </button>
@@ -945,22 +969,22 @@ function BankActionPanel({
 
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+        <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
           Send repayment instructions to anchor
         </p>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment amount ($)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment amount ($)</div>
           <input className="input mono" placeholder="0.00" value={repaymentAmount} onChange={e => setRepaymentAmount(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Repayment due date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment due date</div>
           <input type="date" className="input" value={repaymentDueDate} onChange={e => setRepaymentDueDate(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Instructions / wire details</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Instructions / wire details</div>
           <textarea className="form-input" rows={3} placeholder="IBAN, wire instructions, or payment reference…" value={repaymentInstructions} onChange={e => setRepaymentInstructions(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
-        {repaymentError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{repaymentError}</div>}
+        {repaymentError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaymentError}</div>}
         <button className="btn btn-primary btn-full" type="button" disabled={sendingRepayment || !repaymentDueDate} onClick={handleSendRepaymentPO}>
           {sendingRepayment ? 'Sending…' : 'Send to anchor'}
         </button>
@@ -983,7 +1007,7 @@ function BankActionPanel({
   if (mode === 'reject') {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', margin: 0 }}>Supplier financing — rejection reason</p>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>Supplier financing — rejection reason</p>
         <textarea
           className="form-input"
           rows={4}
@@ -1028,8 +1052,8 @@ function BankActionPanel({
       <div className="action-block">
 
       {/* ── Panel 1: Supplier financing offer ── */}
-      <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)' }}>Supplier financing offer</div>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Supplier financing offer</div>
 
         {supplierNeg?.status === 'approved' ? (
           <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Financing approved ✓</div>
@@ -1037,7 +1061,7 @@ function BankActionPanel({
           supplierNeg.supplier_counter ? (
             <>
               <div className="calc-panel">
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier counter-offer</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>Supplier counter-offer</div>
                 <div className="calc-row">
                   <span>Supplier&apos;s counter rate</span>
                   <span style={{ fontWeight: 600 }}>{supplierNeg.supplier_counter.advance_rate}%</span>
@@ -1045,7 +1069,7 @@ function BankActionPanel({
                 {supplierNeg.bank_counter_rate != null && (
                   <div className="calc-row">
                     <span>Bank&apos;s offer</span>
-                    <span style={{ color: 'var(--color-ink-3)', textDecoration: 'line-through', fontSize: 12 }}>
+                    <span style={{ color: 'var(--gray)', textDecoration: 'line-through', fontSize: 12 }}>
                       {supplierNeg.bank_counter_rate}%
                     </span>
                   </div>
@@ -1060,7 +1084,7 @@ function BankActionPanel({
               {isCounter ? (
                 <>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter advance rate (%)</div>
                     <div style={{ position: 'relative' }}>
                       <input
                         className="form-input mono"
@@ -1070,7 +1094,7 @@ function BankActionPanel({
                         onChange={e => setCounterRate(e.target.value)}
                         onWheel={e => (e.target as HTMLInputElement).blur()}
                       />
-                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+                      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', fontSize: 14, pointerEvents: 'none' }}>%</span>
                     </div>
                   </div>
                   {counterRateNum > 0 && (
@@ -1087,10 +1111,10 @@ function BankActionPanel({
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
                     <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
                   </div>
-                  {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                  {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                   <button
                     className="btn btn-primary btn-full"
                     type="button"
@@ -1123,7 +1147,7 @@ function BankActionPanel({
                       <span className="input-suffix">USD</span>
                     </div>
                   </div>
-                  {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                  {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                   <button
                     className="btn btn-primary btn-full"
                     type="button"
@@ -1152,13 +1176,13 @@ function BankActionPanel({
               )}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting supplier</div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Counter-offer sent — awaiting supplier</div>
           )
         ) : (
           <>
             {/* Supplier's offer */}
             <div className="calc-panel">
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 8 }}>Supplier&apos;s offer</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>Supplier&apos;s offer</div>
               <div className="calc-row"><span>Invoice amount</span><span>{fmtAmt(transaction.invoice_amount)}</span></div>
               <div className="calc-row"><span>Requested advance rate</span><span>{supplierRatePct}%</span></div>
               <div className="calc-row"><span>Requested amount</span><span>{fmtAmt(transaction.financing_amount_requested)}</span></div>
@@ -1167,7 +1191,7 @@ function BankActionPanel({
             {isCounter ? (
               <>
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter advance rate (%)</div>
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input mono"
@@ -1177,7 +1201,7 @@ function BankActionPanel({
                       onChange={e => setCounterRate(e.target.value)}
                       onWheel={e => (e.target as HTMLInputElement).blur()}
                     />
-                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', fontSize: 14, pointerEvents: 'none' }}>%</span>
                   </div>
                 </div>
                 {counterRateNum > 0 && (
@@ -1194,10 +1218,10 @@ function BankActionPanel({
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
                   <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
                 </div>
-                {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                 <button
                   className="btn btn-primary btn-full"
                   type="button"
@@ -1229,9 +1253,9 @@ function BankActionPanel({
                     <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                     <span className="input-suffix">USD</span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>Fee charged for early payment</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>Fee charged for early payment</div>
                 </div>
-                {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+                {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                 <button
                   className="btn btn-primary btn-full"
                   type="button"
@@ -1267,13 +1291,13 @@ function BankActionPanel({
 
           {/* Request details */}
           {anchorNeg.type === 'extension' && anchorNeg.anchor_request?.date && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested repayment date: {anchorNeg.anchor_request.date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested repayment date: {anchorNeg.anchor_request.date}</div>
           )}
           {anchorNeg.type === 'installment' && anchorNeg.anchor_request && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)' }}>Requested: {anchorNeg.anchor_request.count} {anchorNeg.anchor_request.structure} installments</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested: {anchorNeg.anchor_request.count} {anchorNeg.anchor_request.structure} installments</div>
           )}
           {anchorNeg.anchor_request?.notes && (
-            <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Notes: {anchorNeg.anchor_request.notes}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray)' }}>Notes: {anchorNeg.anchor_request.notes}</div>
           )}
 
           {anchorNeg.status === 'pending' && !anchorCounterMode && (
@@ -1296,18 +1320,18 @@ function BankActionPanel({
             <>
               {anchorNeg.type === 'extension' && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Counter repayment date</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter repayment date</div>
                   <input type="date" className="input" value={anchorCounterDate} onChange={e => setAnchorCounterDate(e.target.value)} style={{ width: '100%' }} />
                 </div>
               )}
               {anchorNeg.type === 'installment' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Number of installments</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Number of installments</div>
                     <input type="number" className="input" min="2" max="52" value={anchorCounterCount} onChange={e => setAnchorCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Frequency</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
                     <select className="input" value={anchorCounterStructure} onChange={e => setAnchorCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
                       <option value="weekly">Weekly</option>
                       <option value="biweekly">Bi-weekly</option>
@@ -1336,9 +1360,9 @@ function BankActionPanel({
 
           {anchorNeg.status === 'counter_offered' && (
             <div>
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Counter-offer sent — awaiting anchor response</div>
-              {anchorNeg.bank_counter?.date && <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginTop: 4 }}>Counter date: {anchorNeg.bank_counter.date}</div>}
-              {anchorNeg.bank_counter?.count != null && <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginTop: 4 }}>Counter: {anchorNeg.bank_counter.count} {anchorNeg.bank_counter.structure} installments</div>}
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Counter-offer sent — awaiting anchor response</div>
+              {anchorNeg.bank_counter?.date && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>Counter date: {anchorNeg.bank_counter.date}</div>}
+              {anchorNeg.bank_counter?.count != null && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>Counter: {anchorNeg.bank_counter.count} {anchorNeg.bank_counter.structure} installments</div>}
             </div>
           )}
 
@@ -1347,7 +1371,7 @@ function BankActionPanel({
           )}
 
           {anchorNeg.status === 'rejected' && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Standard repayment terms apply</div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Standard repayment terms apply</div>
           )}
         </div>
       )}
@@ -1365,6 +1389,7 @@ function AnchorActionPanel({
   onSuccess,
   isInvoiceFactoring,
   isPOFinancing,
+  isDynamicDiscounting,
 }: {
   transaction: Transaction
   onAction: (body: Record<string, unknown>) => Promise<void>
@@ -1372,11 +1397,53 @@ function AnchorActionPanel({
   onSuccess: (msg: string) => void
   isInvoiceFactoring?: boolean
   isPOFinancing?: boolean
+  isDynamicDiscounting?: boolean
 }) {
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason]     = useState('')
   const [disputeReason, setDisputeReason]   = useState('')
   const [showDisputeForm, setShowDisputeForm] = useState(false)
+
+  // ── Dynamic Discounting: 2-party state machine ────────────────────────────
+  if (isDynamicDiscounting) {
+    if (transaction.status === 'funded') {
+      return (
+        <div className="action-block">
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-green)', margin: 0 }}>
+            Early payment approved
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
+            Send payment to the supplier then mark as sent.
+          </p>
+          {transaction.financing_amount_requested != null && (
+            <div className="calc-panel">
+              <div className="calc-row">
+                <span>Amount to send</span>
+                <strong style={{ color: 'var(--blue)' }}>{fmtAmt(transaction.financing_amount_requested)}</strong>
+              </div>
+              {transaction.invoice_due_date && (
+                <div className="calc-row">
+                  <span>Pay by</span>
+                  <span>{fmtDate(transaction.invoice_due_date)}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <button className="btn btn-primary btn-full" type="button" disabled={acting}
+            onClick={() => { onAction({ action: 'mark_paid' }); onSuccess('Payment marked as sent') }}>
+            {acting ? 'Processing…' : 'Mark payment as sent'}
+          </button>
+        </div>
+      )
+    }
+    if (transaction.status === 'completed') {
+      return <div className="action-passive muted">Payment sent — transaction completed.</div>
+    }
+    if (transaction.status === 'rejected') {
+      return <div className="action-passive" style={{ color: '#DC2626' }}>Request declined.</div>
+    }
+    // pending_anchor_approval: fall through to approve/reject below
+  }
 
   // PO financing: passive until pending_anchor_confirmation
   if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
@@ -1388,7 +1455,7 @@ function AnchorActionPanel({
     if (showDisputeForm) {
       return (
         <div className="action-block">
-          <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
+          <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>Rejection reason</p>
           <textarea
             className="form-input"
             rows={4}
@@ -1416,7 +1483,7 @@ function AnchorActionPanel({
     // Extend/installment is reverse factoring only
     return (
       <div className="action-block">
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
           Invoice ready for approval
         </p>
         <div className="calc-panel">
@@ -1482,7 +1549,7 @@ function AnchorActionPanel({
             )}
           </div>
         ) : (
-          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
             Awaiting repayment instructions from bank
           </p>
         )}
@@ -1516,7 +1583,7 @@ function AnchorActionPanel({
             )}
           </div>
         ) : (
-          <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
             Awaiting repayment instructions from bank
           </p>
         )}
@@ -1554,8 +1621,8 @@ function AnchorActionPanel({
     return (
       <div className="action-block">
         {/* Card 1: Invoice approval — read-only */}
-        <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 14px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 4 }}>Your invoice approval</div>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>Your invoice approval</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Approved — awaiting bank review</div>
         </div>
 
@@ -1565,33 +1632,33 @@ function AnchorActionPanel({
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Your repayment request</div>
 
             {anchorNegV.type === 'extension' && anchorNegV.anchor_request?.date && (
-              <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
                 Requested date: {anchorNegV.anchor_request.date}
               </div>
             )}
             {anchorNegV.type === 'installment' && anchorNegV.anchor_request && (
-              <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
                 Requested: {anchorNegV.anchor_request.count} {anchorNegV.anchor_request.structure} installments
               </div>
             )}
             {anchorNegV.anchor_request?.notes && (
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>
                 Notes: {anchorNegV.anchor_request.notes}
               </div>
             )}
 
             {anchorNegV.status === 'pending' && (
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Awaiting bank decision</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Awaiting bank decision</div>
             )}
 
             {anchorNegV.status === 'counter_offered' && (
               <>
-                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-ink-1)', marginBottom: 6 }}>Bank counter-proposal:</div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>Bank counter-proposal:</div>
                 {anchorNegV.bank_counter?.date && (
-                  <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>Counter date: {anchorNegV.bank_counter.date}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Counter date: {anchorNegV.bank_counter.date}</div>
                 )}
                 {anchorNegV.bank_counter?.count != null && (
-                  <div style={{ fontSize: 12.5, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
                     Counter: {anchorNegV.bank_counter.count} {anchorNegV.bank_counter.structure} installments
                   </div>
                 )}
@@ -1612,7 +1679,7 @@ function AnchorActionPanel({
               <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Your repayment request was approved</div>
             )}
             {anchorNegV.status === 'rejected' && (
-              <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>Bank declined — standard terms apply</div>
+              <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Bank declined — standard terms apply</div>
             )}
           </div>
         )}
@@ -1639,7 +1706,7 @@ function AnchorActionPanel({
   if (showRejectForm) {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>Rejection reason</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>Rejection reason</p>
         <textarea
           className="form-input"
           rows={4}
@@ -1670,8 +1737,10 @@ function AnchorActionPanel({
 
   return (
     <div className="action-block">
-      <p style={{ fontSize: 12.5, color: 'var(--color-ink-2)', margin: 0 }}>
-        Review and confirm this invoice before it is sent to the bank for financing.
+      <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>
+        {isDynamicDiscounting
+          ? 'Review this early payment request. Approving commits you to funding from your own cash.'
+          : 'Review and confirm this invoice before it is sent to the bank for financing.'}
       </p>
       <AIInsight
         title="Invoice Assessment"
@@ -1689,9 +1758,12 @@ function AnchorActionPanel({
         className="btn btn-primary btn-full"
         type="button"
         disabled={acting}
-        onClick={async () => { await onAction({ action: 'approve' }); onSuccess('Invoice approved — sent to bank for review') }}
+        onClick={async () => {
+          await onAction({ action: 'approve' })
+          onSuccess(isDynamicDiscounting ? 'Early payment approved' : 'Invoice approved — sent to bank for review')
+        }}
       >
-        {acting ? 'Processing…' : 'Approve'}
+        {acting ? 'Processing…' : isDynamicDiscounting ? 'Approve early payment' : 'Approve'}
       </button>
       <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
         Reject
@@ -1708,6 +1780,7 @@ function SupplierActionPanel({
   acting,
   isInvoiceFactoring,
   isPOFinancing,
+  isDynamicDiscounting,
   txnId,
   onRefresh,
 }: {
@@ -1716,6 +1789,7 @@ function SupplierActionPanel({
   acting: boolean
   isInvoiceFactoring?: boolean
   isPOFinancing?: boolean
+  isDynamicDiscounting?: boolean
   txnId: string
   onRefresh: () => void
 }) {
@@ -1747,11 +1821,11 @@ function SupplierActionPanel({
       if (counterMode) {
         return (
           <div className="action-block">
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
               Your counter-offer
             </p>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Your advance rate (%)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Your advance rate (%)</div>
               <div style={{ position: 'relative' }}>
                 <input
                   className="form-input mono"
@@ -1765,7 +1839,7 @@ function SupplierActionPanel({
                   placeholder={rate != null ? String(rate) : ''}
                   onWheel={e => (e.target as HTMLInputElement).blur()}
                 />
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none' }}>%</span>
+                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', fontSize: 14, pointerEvents: 'none' }}>%</span>
               </div>
             </div>
             {counterRateNum > 0 && (
@@ -1775,7 +1849,7 @@ function SupplierActionPanel({
               </div>
             )}
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Notes (optional)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
               <textarea
                 className="form-input"
                 rows={2}
@@ -1785,7 +1859,7 @@ function SupplierActionPanel({
                 placeholder="Reason for counter-offer…"
               />
             </div>
-            {counterError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{counterError}</div>}
+            {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
             <button
               className="btn btn-primary btn-full"
               type="button"
@@ -1814,7 +1888,7 @@ function SupplierActionPanel({
 
       return (
         <div className="action-block">
-          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
             Bank has made a counter-offer
           </p>
           <div className="calc-panel">
@@ -1886,7 +1960,7 @@ function SupplierActionPanel({
           </p>
           {hasWire ? (
             <>
-              <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-ink-1)', margin: 0 }}>
+              <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
                 Wire transfer details
               </p>
               <div className="calc-panel">
@@ -1894,7 +1968,7 @@ function SupplierActionPanel({
               </div>
             </>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
+            <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
               Wire transfer details will be sent shortly
             </p>
           )}
@@ -1903,6 +1977,27 @@ function SupplierActionPanel({
     }
 
     case 'funded':
+      if (isDynamicDiscounting) {
+        return (
+          <div className="action-block">
+            <div className="action-passive green" style={{ marginBottom: 8 }}>
+              <Icon name="check" size={14} />
+              Early payment approved
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
+              Your anchor is processing the payment to your account.
+            </p>
+            {transaction.financing_amount_requested != null && (
+              <div className="calc-panel" style={{ marginTop: 8 }}>
+                <div className="calc-row">
+                  <span>You will receive</span>
+                  <strong style={{ color: 'var(--blue)' }}>{fmtAmt(transaction.financing_amount_requested)}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      }
       if (isPOFinancing) {
         const handleSubmitInvoice = async () => {
           if (!invoiceNum.trim() || !invoiceAmt2 || !invoiceDateVal) {
@@ -1927,26 +2022,26 @@ function SupplierActionPanel({
 
         return (
           <div className="action-block">
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-1)', margin: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
               Goods delivered? Submit your invoice
             </p>
-            <p style={{ fontSize: 12, color: 'var(--color-ink-3)', margin: 0 }}>
+            <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
               Once the anchor has received the goods, submit the invoice to proceed.
             </p>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice number</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice number</div>
               <input className="form-input" style={{ width: '100%' }} value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} placeholder="INV-001" />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice amount ($)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice amount ($)</div>
               <input className="form-input mono" style={{ width: '100%' }} value={invoiceAmt2} onChange={e => setInvoiceAmt2(e.target.value)} placeholder="0.00" />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Invoice date</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice date</div>
               <input type="date" className="form-input" style={{ width: '100%' }} value={invoiceDateVal} onChange={e => setInvoiceDateVal(e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Upload invoice document</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Upload invoice document</div>
               <input
                 type="file"
                 accept=".pdf,image/*"
@@ -1962,7 +2057,7 @@ function SupplierActionPanel({
                 {invoiceFile ? invoiceFile.name : 'Choose file'}
               </label>
             </div>
-            {invError && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{invError}</div>}
+            {invError && <div style={{ fontSize: 12, color: '#DC2626' }}>{invError}</div>}
             <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleSubmitInvoice}>
               {acting ? 'Submitting…' : 'Submit Invoice'}
             </button>
@@ -1994,7 +2089,7 @@ function SupplierActionPanel({
       return <div className="action-passive muted">Repayment due — transaction completing</div>
 
     case 'in_dispute':
-      return <div className="action-passive" style={{ color: 'var(--color-red)' }}>Invoice in dispute.</div>
+      return <div className="action-passive" style={{ color: '#DC2626' }}>Invoice in dispute.</div>
 
     case 'completed':
       return (
@@ -2007,7 +2102,7 @@ function SupplierActionPanel({
       )
 
     case 'rejected':
-      return <div className="action-passive" style={{ color: 'var(--color-red)' }}>Transaction rejected.</div>
+      return <div className="action-passive" style={{ color: '#DC2626' }}>Transaction rejected.</div>
 
     default:
       return <div className="action-passive muted">Awaiting update</div>
@@ -2054,7 +2149,7 @@ function SupplierCollateralSubmitForm({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0' }}>
       <div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Details / notes</div>
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Details / notes</div>
         <textarea
           className="input"
           rows={3}
@@ -2065,7 +2160,7 @@ function SupplierCollateralSubmitForm({
         />
       </div>
       <div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Supporting document (optional)</div>
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Supporting document (optional)</div>
         <input
           ref={fileRef}
           type="file"
@@ -2076,7 +2171,7 @@ function SupplierCollateralSubmitForm({
         {file ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <span>{file.name}</span>
-            <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)', fontSize: 14 }} onClick={() => setFile(null)}>×</button>
+            <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: 14 }} onClick={() => setFile(null)}>×</button>
           </div>
         ) : (
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => fileRef.current?.click()}>
@@ -2084,7 +2179,7 @@ function SupplierCollateralSubmitForm({
           </button>
         )}
       </div>
-      {error && <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: '#DC2626' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-primary btn-sm" type="button" disabled={saving} onClick={handleSubmit}>
           {saving ? 'Submitting…' : 'Submit collateral'}
@@ -2258,8 +2353,9 @@ export default function TransactionDetailPage() {
 
   const txn = transaction
 
-  const isPOFinancing = txn?.type === 'po_financing' || txn?.financing_type === 'po_financing'
-  const isInvoiceFactoring = txn?.type === 'invoice_factoring' || txn?.financing_type === 'invoice_factoring'
+  const isPOFinancing        = txn?.type === 'po_financing'        || txn?.financing_type === 'po_financing'
+  const isInvoiceFactoring   = txn?.type === 'invoice_factoring'   || txn?.financing_type === 'invoice_factoring'
+  const isDynamicDiscounting = txn?.type === 'dynamic_discounting' || txn?.financing_type === 'dynamic_discounting'
 
   const txnNegState = (() => { try { return JSON.parse(txn?.bank_approval_notes ?? '{}') } catch { return {} } })()
   const txnAnchorNeg = txnNegState.anchor_negotiation as { type?: string; status?: string } | undefined
@@ -2275,10 +2371,7 @@ export default function TransactionDetailPage() {
     } catch { return undefined }
   })()
 
-  const repaymentInstructionsText = (() => {
-    if (!txn?.bank_approval_notes) return null
-    try { JSON.parse(txn.bank_approval_notes); return null } catch { return txn.bank_approval_notes }
-  })()
+  const repaymentInstructionsText = getRepaymentInstructions(txn?.bank_approval_notes ?? null)
 
   const rejectionEvent = events.find(e => e.event_type === 'status_change' && e.to_status === 'rejected')
     ?? events.find(e => e.to_status === 'rejected')
@@ -2326,8 +2419,8 @@ export default function TransactionDetailPage() {
       <div className="page">
         {loading ? (
           <div className="page-header">
-            <div style={{ height: 28, width: 240, background: 'var(--color-border)', borderRadius: 6 }} />
-            <div style={{ height: 16, width: 320, background: 'var(--color-border)', borderRadius: 4, marginTop: 8 }} />
+            <div style={{ height: 28, width: 240, background: 'var(--border)', borderRadius: 6 }} />
+            <div style={{ height: 16, width: 320, background: 'var(--border)', borderRadius: 4, marginTop: 8 }} />
           </div>
         ) : error ? (
           <div className="alert alert-error" style={{ marginBottom: 24 }}>
@@ -2358,29 +2451,51 @@ export default function TransactionDetailPage() {
                   <div className="card-head">
                     <h3 className="t-card-head">Financial summary</h3>
                   </div>
-                  <div className="fs-grid">
-                    <div className="fs-cell">
-                      <span className="fs-label">Invoice amount</span>
-                      <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
+                  {isDynamicDiscounting ? (
+                    <div className="fs-grid">
+                      <div className="fs-cell">
+                        <span className="fs-label">Invoice amount</span>
+                        <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">Discount rate</span>
+                        <span className="fs-value">{txn.discount_rate != null ? `${txn.discount_rate}%` : '—'}</span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">You receive</span>
+                        <span className="fs-value blue">
+                          {txn.financing_amount_requested != null ? fmtAmt(txn.financing_amount_requested) : '—'}
+                        </span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">Discount amount</span>
+                        <span className="fs-value">{txn.discount_amount != null ? fmtAmt(txn.discount_amount) : '—'}</span>
+                      </div>
                     </div>
-                    <div className="fs-cell">
-                      <span className="fs-label">Advance rate</span>
-                      <span className="fs-value">
-                        {showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
-                      </span>
+                  ) : (
+                    <div className="fs-grid">
+                      <div className="fs-cell">
+                        <span className="fs-label">Invoice amount</span>
+                        <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">Advance rate</span>
+                        <span className="fs-value">
+                          {showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
+                        </span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">Amount disbursed</span>
+                        <span className={`fs-value ${amountDisbursed != null && amountDisbursed > 0 ? 'green' : ''}`}>
+                          {amountDisbursed != null ? fmtAmt(parseFloat(amountDisbursed.toFixed(2))) : '—'}
+                        </span>
+                      </div>
+                      <div className="fs-cell">
+                        <span className="fs-label">Discount fee</span>
+                        <span className="fs-value">{showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
+                      </div>
                     </div>
-                    <div className="fs-cell">
-                      <span className="fs-label">Amount disbursed</span>
-                      <span className={`fs-value ${amountDisbursed != null && amountDisbursed > 0 ? 'green' : ''}`}>
-                        {amountDisbursed != null ? fmtAmt(parseFloat(amountDisbursed.toFixed(2))) : '—'}
-                      </span>
-                    </div>
-                    <div className="fs-cell">
-                      <span className="fs-label">Discount fee</span>
-                      <span className="fs-value">{showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
-                    </div>
-                  </div>
-                  
+                  )}
                 </div>
 
                 {/* Invoice details */}
@@ -2508,7 +2623,7 @@ export default function TransactionDetailPage() {
                     {collateral.length === 0
                       ? portal === 'bank' && (
                           <div className="card-body">
-                            <p style={{ fontSize: 13, color: 'var(--color-ink-3)', margin: 0 }}>
+                            <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0 }}>
                               No collateral requirements
                             </p>
                           </div>
@@ -2520,7 +2635,7 @@ export default function TransactionDetailPage() {
                                 background: item.status === 'accepted'
                                   ? 'var(--color-green)'
                                   : item.status === 'rejected'
-                                  ? 'var(--color-red)'
+                                  ? '#DC2626'
                                   : item.status === 'submitted'
                                   ? 'var(--color-accent)'
                                   : 'var(--color-amber)',
@@ -2529,7 +2644,7 @@ export default function TransactionDetailPage() {
                                 <div style={{ fontSize: 13, fontWeight: 500 }}>
                                   {formatCollateralType(item.collateral_type)}
                                 </div>
-                                <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                                <div style={{ fontSize: 12, color: 'var(--gray)' }}>
                                   {item.description}
                                 </div>
                               </div>
@@ -2568,7 +2683,7 @@ export default function TransactionDetailPage() {
                             </div>
                             {/* Supplier submission form */}
                             {portal === 'supplier' && submittingCollateral?.id === item.id && (
-                              <div className="card-body" style={{ borderTop: '1px solid var(--color-border)' }}>
+                              <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                                 <SupplierCollateralSubmitForm
                                   item={item}
                                   txnId={id}
@@ -2585,7 +2700,7 @@ export default function TransactionDetailPage() {
                     }
 
                     {reviewingCollateral && (
-                      <div className="card-body" style={{ borderTop: '1px solid var(--color-border)' }}>
+                      <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
                           Review: {formatCollateralType(reviewingCollateral.collateral_type)}
                         </div>
@@ -2638,10 +2753,10 @@ export default function TransactionDetailPage() {
                     )}
 
                     {showAddCollateral && (
-                      <div className="card-body" style={{ borderTop: '1px solid var(--color-border)' }}>
+                      <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Type</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Type</div>
                             <select
                               className="input"
                               value={addCollForm.collateral_type}
@@ -2657,7 +2772,7 @@ export default function TransactionDetailPage() {
                             </select>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Description *</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Description *</div>
                             <textarea
                               className="input"
                               value={addCollForm.description}
@@ -2667,7 +2782,7 @@ export default function TransactionDetailPage() {
                             />
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Required value (optional)</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Required value (optional)</div>
                             <input
                               className="input mono"
                               value={addCollForm.required_value}
@@ -2677,7 +2792,7 @@ export default function TransactionDetailPage() {
                             />
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginBottom: 4 }}>Deadline *</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Deadline *</div>
                             <input
                               type="date"
                               className="input"
@@ -2687,7 +2802,7 @@ export default function TransactionDetailPage() {
                             />
                           </div>
                           {addCollError && (
-                            <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{addCollError}</div>
+                            <div style={{ fontSize: 12, color: '#DC2626' }}>{addCollError}</div>
                           )}
                           {addCollSuccess && (
                             <div style={{ fontSize: 12, color: 'var(--color-green)' }}>Requirement added</div>
@@ -2723,7 +2838,7 @@ export default function TransactionDetailPage() {
                     </div>
                     {documents.length === 0 ? (
                       <div className="card-body">
-                        <p style={{ fontSize: 13, color: 'var(--color-ink-4)', margin: 0 }}>
+                        <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0 }}>
                           No documents uploaded
                         </p>
                       </div>
@@ -2761,40 +2876,13 @@ export default function TransactionDetailPage() {
                   </div>
                 )}
 
-                {/* AI Document Generator */}
-                <DocGenerator
-                  entityType="transaction"
-                  portal={portal}
-                  entityData={{
-                    transaction_id: txn.id,
-                    type: txn.type,
-                    status: txn.status,
-                    invoice_number: txn.invoice_number,
-                    invoice_amount: txn.invoice_amount,
-                    invoice_date: txn.invoice_date,
-                    invoice_due_date: txn.invoice_due_date,
-                    financing_rate_apr: txn.financing_rate_apr,
-                    financing_amount_approved: txn.financing_amount_approved,
-                    fee_amount: txn.fee_amount,
-                    net_proceeds: txn.net_proceeds,
-                    description: txn.description,
-                    created_at: txn.created_at,
-                    events: events?.map(e => ({
-                      type: e.event_type,
-                      actor: e.actor,
-                      notes: e.notes,
-                      date: e.created_at,
-                    })),
-                  }}
-                />
-
                 {/* Event history */}
                 <div className="card">
                   <div className="card-head">
                     <h3 className="t-card-head">History</h3>
                   </div>
                   {events.length === 0 ? (
-                    <div className="card-body" style={{ color: 'var(--color-ink-4)', fontSize: 12 }}>
+                    <div className="card-body" style={{ color: 'var(--gray)', fontSize: 12 }}>
                       No events yet
                     </div>
                   ) : (
@@ -2821,7 +2909,7 @@ export default function TransactionDetailPage() {
                                 <span className="tl-action">{displayAction}</span>
                               </div>
                               {displayNotes && (
-                                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-ink-3)' }}>
+                                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--gray)' }}>
                                   {displayNotes}
                                 </div>
                               )}
@@ -2839,10 +2927,10 @@ export default function TransactionDetailPage() {
               <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start' }}>
                 {txn.status === 'rejected' && (
                   <div style={{
-                    background: 'var(--color-red-bg, rgba(220,38,38,0.08))',
-                    border: '1px solid var(--color-red, #dc2626)',
+                    background: 'rgba(220,38,38,0.08)',
+                    border: '1px solid #DC2626',
                     borderRadius: 8, padding: '10px 14px',
-                    fontSize: 13, color: 'var(--color-red, #dc2626)',
+                    fontSize: 13, color: '#DC2626',
                     fontWeight: 500, marginBottom: 12,
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}>
@@ -2858,11 +2946,11 @@ export default function TransactionDetailPage() {
                   <div className="stepper">
                     {(() => {
                       // For RF transactions with an anchor repayment request, inject a dynamic step
-                      let steps = isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS
+                      let steps = isDynamicDiscounting ? DD_STEPPER_STEPS : isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS
                       type StepDef = { key: string; label: string; stateOverride?: 'done'|'current'|'todo' }
                       let stepsWithOverride: StepDef[] = steps
 
-                      if (!isPOFinancing && !isInvoiceFactoring && hasAnchorRepaymentRequest) {
+                      if (!isDynamicDiscounting && !isPOFinancing && !isInvoiceFactoring && hasAnchorRepaymentRequest) {
                         const anchorStepState: 'done'|'current'|'todo' =
                           txn.status === 'pending_anchor_approval' ? 'todo'
                           : txnAnchorNeg?.status === 'pending' || txnAnchorNeg?.status === 'counter_offered' ? 'current'
@@ -2878,7 +2966,9 @@ export default function TransactionDetailPage() {
 
                       return stepsWithOverride.map((step, i) => {
                       const state: 'done'|'current'|'todo' = (step as StepDef).stateOverride ?? (
-                        isPOFinancing
+                        isDynamicDiscounting
+                          ? ddStepperState(step.key, txn.status)
+                          : isPOFinancing
                           ? poStepperState(step.key, txn.status)
                           : isInvoiceFactoring
                           ? ifStepperState(step.key, txn.status)
@@ -2890,7 +2980,7 @@ export default function TransactionDetailPage() {
                           {isRejectedStep ? (
                             <div style={{
                               width: 22, height: 22, borderRadius: '50%',
-                              background: 'var(--color-red, #dc2626)',
+                              background: '#DC2626',
                               display: 'flex', alignItems: 'center',
                               justifyContent: 'center',
                               color: 'white', fontSize: 11, fontWeight: 700,
@@ -2926,12 +3016,12 @@ export default function TransactionDetailPage() {
                   )}
 
                   {actionError && (
-                    <div style={{ padding: '8px 16px', color: 'var(--color-red)', fontSize: 12 }}>
+                    <div style={{ padding: '8px 16px', color: '#DC2626', fontSize: 12 }}>
                       {actionError}
                     </div>
                   )}
 
-                  {portal === 'bank' && (
+                  {portal === 'bank' && !isDynamicDiscounting && (
                     <BankActionPanel
                       transaction={txn}
                       onAction={handleAction}
@@ -2942,12 +3032,17 @@ export default function TransactionDetailPage() {
                       isPOFinancing={isPOFinancing}
                     />
                   )}
-                  {portal === 'bank' && !isInvoiceFactoring && !isPOFinancing && (
+                  {portal === 'bank' && !isDynamicDiscounting && !isInvoiceFactoring && !isPOFinancing && (
                     <BankAnchorRepaymentRequestCard
                       transaction={txn}
                       onAction={handleAction}
                       acting={acting}
                     />
+                  )}
+                  {portal === 'bank' && isDynamicDiscounting && (
+                    <div className="action-passive muted" style={{ padding: '12px 16px' }}>
+                      Dynamic discounting — no bank involvement.
+                    </div>
                   )}
                   {portal === 'anchor' && (
                     <AnchorActionPanel
@@ -2957,6 +3052,7 @@ export default function TransactionDetailPage() {
                       onSuccess={handleSuccess}
                       isInvoiceFactoring={isInvoiceFactoring}
                       isPOFinancing={isPOFinancing}
+                      isDynamicDiscounting={isDynamicDiscounting}
                     />
                   )}
                   {portal === 'supplier' && (
@@ -2966,12 +3062,13 @@ export default function TransactionDetailPage() {
                       acting={acting}
                       isInvoiceFactoring={isInvoiceFactoring}
                       isPOFinancing={isPOFinancing}
+                      isDynamicDiscounting={isDynamicDiscounting}
                       txnId={id}
                       onRefresh={load}
                     />
                   )}
                 </div>
-                {portal === 'anchor' && !isInvoiceFactoring && !isPOFinancing &&
+                {portal === 'anchor' && !isInvoiceFactoring && !isPOFinancing && !isDynamicDiscounting &&
                   !['draft', 'rejected', 'cancelled', 'completed'].includes(txn.status) && (
                   <div className="card" style={{ width: '100%', marginTop: 12 }}>
                     <div className="card-head">

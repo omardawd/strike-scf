@@ -143,13 +143,13 @@ export default function KYBQueuePage() {
 
       {loading ? (
         <div className="card">
-          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-ink-3)' }}>
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--gray)' }}>
             Loading…
           </div>
         </div>
       ) : orgs.length === 0 && !error ? (
         <div className="card">
-          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-3)' }}>
+          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--gray)' }}>
             No applications found{statusFilter ? ` for status "${kybStatusLabel(statusFilter)}"` : ''}.
           </div>
         </div>
@@ -172,10 +172,10 @@ export default function KYBQueuePage() {
                   <td>
                     <div>{org.legal_name}</div>
                     {org.primary_contact_name && (
-                      <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{org.primary_contact_name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--gray)' }}>{org.primary_contact_name}</div>
                     )}
                   </td>
-                  <td style={{ color: 'var(--color-ink-2)', textTransform: 'capitalize' }}>{org.type}</td>
+                  <td style={{ color: 'var(--ink)', textTransform: 'capitalize' }}>{org.type}</td>
                   <td className="mono">{formatDate(org.kyb_submitted_at ?? org.created_at)}</td>
                   <td className="mono">{daysWaiting(org.kyb_submitted_at ?? org.created_at)}</td>
                   <td><span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status)}</span></td>

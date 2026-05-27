@@ -237,7 +237,7 @@ export async function GET(
     const [{ data: anchorOrgs }, txnsResult, supplierOrgsResult] = await Promise.all([
       adminClient
         .from('organizations')
-        .select('id, legal_name, kyb_status, status')
+        .select('id, legal_name, kyb_status, status, risk_tier, risk_score, risk_flags, performance_tier, country_of_origin')
         .in('id', anchorIds),
       adminClient
         .from('transactions')
@@ -247,14 +247,23 @@ export async function GET(
       allSupplierIds.length > 0
         ? adminClient
             .from('organizations')
-            .select('id, legal_name, kyb_status, status')
+            .select('id, legal_name, kyb_status, status, risk_tier, risk_score, risk_flags, performance_tier, country_of_origin')
             .in('id', allSupplierIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; legal_name: string; kyb_status: string; status: string }> }),
+        : Promise.resolve({ data: [] as Array<{ id: string; legal_name: string; kyb_status: string; status: string; risk_tier: string | null; risk_score: number | null; risk_flags: unknown; performance_tier: string | null; country_of_origin: string | null }> }),
     ])
 
-    const supplierOrgMap = new Map<string, { legal_name: string; kyb_status: string; status: string }>()
+    const supplierOrgMap = new Map<string, { legal_name: string; kyb_status: string; status: string; risk_tier: string | null; risk_score: number | null; risk_flags: unknown; performance_tier: string | null; country_of_origin: string | null }>()
     for (const org of (supplierOrgsResult.data ?? [])) {
-      supplierOrgMap.set(org.id, { legal_name: org.legal_name, kyb_status: org.kyb_status, status: org.status })
+      supplierOrgMap.set(org.id, {
+        legal_name: org.legal_name,
+        kyb_status: org.kyb_status,
+        status: org.status,
+        risk_tier: (org as any).risk_tier ?? null,
+        risk_score: (org as any).risk_score ?? null,
+        risk_flags: (org as any).risk_flags ?? null,
+        performance_tier: (org as any).performance_tier ?? null,
+        country_of_origin: (org as any).country_of_origin ?? null,
+      })
     }
 
     const txnCountByAnchor = new Map<string, number>()
@@ -265,7 +274,7 @@ export async function GET(
     const anchors = (anchorOrgs ?? []).map(org => {
       const supplierIds = Array.from(anchorMap.get(org.id) ?? new Set<string>())
       const suppliers = supplierIds.map(sid => {
-        const s = supplierOrgMap.get(sid) ?? { legal_name: '', kyb_status: 'draft', status: 'pending' }
+        const s = supplierOrgMap.get(sid) ?? { legal_name: '', kyb_status: 'draft', status: 'pending', risk_tier: null, risk_score: null, risk_flags: null, performance_tier: null, country_of_origin: null }
         return { id: sid, ...s, enrolled_at: supplierEnrolledAt.get(sid) ?? null }
       })
       return {
@@ -274,6 +283,11 @@ export async function GET(
         kyb_status:        org.kyb_status,
         status:            org.status,
         enrolled_at:       anchorEnrolledAt.get(org.id) ?? null,
+        risk_tier:         (org as any).risk_tier ?? null,
+        risk_score:        (org as any).risk_score ?? null,
+        risk_flags:        (org as any).risk_flags ?? null,
+        performance_tier:  (org as any).performance_tier ?? null,
+        country_of_origin: (org as any).country_of_origin ?? null,
         suppliers,
         supplier_count:    suppliers.length,
         pending_kyb_count: suppliers.filter(s => s.kyb_status === 'submitted').length,
@@ -397,7 +411,7 @@ export async function GET(
     const [{ data: supplierOrgs }, { data: txns }] = await Promise.all([
       adminClient
         .from('organizations')
-        .select('id, legal_name, kyb_status, status')
+        .select('id, legal_name, kyb_status, status, risk_tier, risk_score, risk_flags, performance_tier, country_of_origin')
         .in('id', supplierIds),
       adminClient
         .from('transactions')
@@ -419,6 +433,11 @@ export async function GET(
       kyb_status:                org.kyb_status,
       status:                    org.status,
       enrolled_at:               enrolledAtBySupplier.get(org.id) ?? null,
+      risk_tier:                 (org as any).risk_tier ?? null,
+      risk_score:                (org as any).risk_score ?? null,
+      risk_flags:                (org as any).risk_flags ?? null,
+      performance_tier:          (org as any).performance_tier ?? null,
+      country_of_origin:         (org as any).country_of_origin ?? null,
       transaction_count:         txnBySup.get(org.id)?.count ?? 0,
       latest_transaction_status: txnBySup.get(org.id)?.latest_status ?? null,
     }))
@@ -494,7 +513,7 @@ export async function GET(
   const [{ data: anchorOrgs2 }, { data: txns2 }] = await Promise.all([
     adminClient
       .from('organizations')
-      .select('id, legal_name, kyb_status, status, city, state, primary_contact_name, industry_naics, created_at, doing_business_as')
+      .select('id, legal_name, kyb_status, status, city, state, primary_contact_name, industry_naics, created_at, doing_business_as, risk_tier, risk_score, risk_flags, performance_tier, country_of_origin')
       .in('id', anchorIds2),
     adminClient
       .from('transactions')
@@ -524,6 +543,11 @@ export async function GET(
     industry_naics:        org.industry_naics,
     created_at:            org.created_at,
     doing_business_as:     org.doing_business_as,
+    risk_tier:             (org as any).risk_tier ?? null,
+    risk_score:            (org as any).risk_score ?? null,
+    risk_flags:            (org as any).risk_flags ?? null,
+    performance_tier:      (org as any).performance_tier ?? null,
+    country_of_origin:     (org as any).country_of_origin ?? null,
     transaction_count:     txnByAnchor2.get(org.id)?.count ?? 0,
     outstanding_balance:   txnByAnchor2.get(org.id)?.outstanding ?? 0,
   }))

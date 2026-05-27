@@ -7,6 +7,7 @@ import {
   TRANSACTION_NEW_REFERRER_KEY,
 } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, fmtMoney } from '@/components/portal-shell'
+import { LiquidityRouting } from '@/components/liquidity-routing'
 
 const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
 const STEPS = ['Select Program', 'Invoice Details', 'Review & Submit']
@@ -22,13 +23,14 @@ interface Program {
   max_invoice_amount: number | null
   min_invoice_amount: number | null
   max_financing_pct: number | null
+  discount_schedule?: string | null
 }
 
 function fmtFinancingType(t: string) {
   return t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
-const errStyle: React.CSSProperties = { color: 'var(--color-red)', fontSize: 12, marginTop: 4 }
+const errStyle: React.CSSProperties = { color: '#DC2626', fontSize: 12, marginTop: 4 }
 
 function formatNumberWithCommas(value: string): string {
   if (!value) return ''
@@ -77,7 +79,7 @@ function StepPrograms({ programs, loading, onSelect }: {
 }) {
   const eligiblePrograms = programs.filter(p => {
     const types = p.financing_types ?? []
-    return types.some(t => t === 'reverse_factoring' || t === 'invoice_factoring' || t === 'po_financing')
+    return types.some(t => t === 'reverse_factoring' || t === 'invoice_factoring' || t === 'po_financing' || t === 'dynamic_discounting')
   })
   if (loading) return <p style={{ color: 'var(--color-text-2)' }}>Loading programs…</p>
   if (!eligiblePrograms.length) {
@@ -229,12 +231,12 @@ function StepInvoice({
             />
             <span style={{
               position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none',
+              color: 'var(--gray)', fontSize: 14, pointerEvents: 'none',
             }}>%</span>
           </div>
           {errors.offerRate && <div style={errStyle}>{errors.offerRate}</div>}
           {invoiceAmt > 0 && rate > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>
               You are requesting: ${' '}
               <strong style={{ color: 'var(--color-green)' }}>
                 {advanceAmount.toLocaleString('en-US', {
@@ -270,7 +272,7 @@ function StepInvoice({
             <span>Advance Rate</span>
             <span>{rate > 0 ? `${rate}%` : '—'}</span>
           </div>
-          <div style={{ borderTop: '1px solid var(--color-border)', margin: '10px 0' }} />
+          <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0' }} />
           <div className="calc-row" style={{ fontWeight: 600 }}>
             <span>You receive upfront</span>
             <span style={{ color: 'var(--color-green)' }}>
@@ -356,7 +358,7 @@ function StepPODetails({
             min={new Date().toISOString().slice(0, 10)}
             onChange={(e) => onChange('poInvoiceDueDate', e.target.value)}
           />
-          <div style={{ fontSize: 11.5, color: 'var(--color-ink-4)', marginTop: 4 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>
             When the anchor is expected to pay the invoice
           </div>
           {errors.poInvoiceDueDate && <div style={errStyle}>{errors.poInvoiceDueDate}</div>}
@@ -391,12 +393,12 @@ function StepPODetails({
             />
             <span style={{
               position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--color-ink-3)', fontSize: 14, pointerEvents: 'none',
+              color: 'var(--gray)', fontSize: 14, pointerEvents: 'none',
             }}>%</span>
           </div>
           {errors.offerRate && <div style={errStyle}>{errors.offerRate}</div>}
           {poAmt > 0 && rate > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>
               You will receive approximately:{' '}
               <strong style={{ color: 'var(--color-green)' }}>
                 ${advanceAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })}
@@ -417,7 +419,7 @@ function StepPODetails({
             <span>Advance Rate</span>
             <span>{rate > 0 ? `${rate}%` : '—'}</span>
           </div>
-          <div style={{ borderTop: '1px solid var(--color-border)', margin: '10px 0' }} />
+          <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0' }} />
           <div className="calc-row" style={{ fontWeight: 600 }}>
             <span>You receive upfront</span>
             <span style={{ color: 'var(--color-green)' }}>
@@ -435,9 +437,178 @@ function StepPODetails({
   )
 }
 
+function StepDDInvoice({
+  invoiceNumber, invoiceDate, invoiceAmount, description, errors, onChange,
+  schedule, selectedTier, onSelectTier,
+}: {
+  invoiceNumber: string
+  invoiceDate: string
+  invoiceAmount: string
+  description: string
+  errors: Record<string, string>
+  onChange: (field: string, value: string) => void
+  schedule: Array<{ days: number; rate: number }>
+  selectedTier: { days: number; rate: number } | null
+  onSelectTier: (tier: { days: number; rate: number }) => void
+}) {
+  const invoiceAmt = parseFloat(invoiceAmount) || 0
+
+  return (
+    <div className="form-split">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="form-field">
+          <label className="form-label">Invoice Number</label>
+          <input
+            className="form-input"
+            value={invoiceNumber}
+            onChange={(e) => onChange('invoiceNumber', e.target.value)}
+            placeholder="INV-001"
+          />
+          {errors.invoiceNumber && <div style={errStyle}>{errors.invoiceNumber}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Invoice Date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={invoiceDate}
+            onChange={(e) => onChange('invoiceDate', e.target.value)}
+          />
+          {errors.invoiceDate && <div style={errStyle}>{errors.invoiceDate}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Invoice Amount ($)</label>
+          <input
+            className="form-input"
+            type="text"
+            inputMode="decimal"
+            value={formatNumberWithCommas(invoiceAmount)}
+            onChange={(e) => onChange('invoiceAmount', sanitizeNumericInput(e.target.value))}
+            placeholder="100,000"
+          />
+          {errors.invoiceAmount && <div style={errStyle}>{errors.invoiceAmount}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Goods / Services Description</label>
+          <textarea
+            className="form-input"
+            rows={3}
+            value={description}
+            onChange={(e) => onChange('description', e.target.value)}
+            placeholder="Steel components Q1 2026"
+            style={{ resize: 'vertical' }}
+          />
+          {errors.description && <div style={errStyle}>{errors.description}</div>}
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">When do you want to be paid?</label>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>
+            Earlier payment means a higher discount rate.
+          </div>
+          {schedule.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--gray)' }}>No payment tiers configured for this program.</div>
+          ) : (
+            schedule.map((tier, i) => (
+              <div
+                key={i}
+                onClick={() => onSelectTier(tier)}
+                style={{
+                  border: '1.5px solid',
+                  borderColor: selectedTier?.days === tier.days ? 'var(--blue)' : 'var(--border)',
+                  background: selectedTier?.days === tier.days ? 'rgba(0,82,255,0.03)' : 'var(--white)',
+                  padding: '16px 20px',
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 16, fontWeight: 600,
+                      color: 'var(--ink)',
+                    }}>
+                      Pay within {tier.days} days
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      color: 'var(--gray)',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      marginTop: 4,
+                    }}>
+                      {tier.rate}% discount applied
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 20, fontWeight: 700,
+                      color: 'var(--blue)',
+                    }}>
+                      {invoiceAmt > 0
+                        ? fmtMoney(invoiceAmt * (1 - tier.rate / 100))
+                        : '—'}
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      color: 'var(--gray)',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      marginTop: 2,
+                    }}>You receive</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+          {errors.selectedTier && <div style={errStyle}>{errors.selectedTier}</div>}
+        </div>
+      </div>
+
+      <div className="form-summary">
+        <div className="calc-panel">
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>Payment Summary</div>
+          <div className="calc-row">
+            <span>Invoice Amount</span>
+            <span>{invoiceAmt > 0 ? fmtMoney(invoiceAmt) : '—'}</span>
+          </div>
+          <div className="calc-row">
+            <span>Discount Rate</span>
+            <span>{selectedTier ? `${selectedTier.rate}%` : '—'}</span>
+          </div>
+          <div className="calc-row">
+            <span>Payment Timeline</span>
+            <span>{selectedTier ? `${selectedTier.days} days` : '—'}</span>
+          </div>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+          <div className="calc-row" style={{ fontWeight: 600 }}>
+            <span>You receive</span>
+            <span style={{ color: 'var(--blue)' }}>
+              {selectedTier && invoiceAmt > 0
+                ? fmtMoney(invoiceAmt * (1 - selectedTier.rate / 100))
+                : '—'}
+            </span>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--color-text-2)', marginTop: 10 }}>
+          Your anchor pays from their own cash — no bank involvement.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function StepReview({
   program, invoiceNumber, invoiceDate, invoiceDueDate, invoiceAmount, offerRate, description, docFiles, submitError, isInvoiceFactoring,
   isPOFinancing, poNumber, poValue, expectedDeliveryDate, poInvoiceDueDate,
+  isDynamicDiscounting, selectedTier,
 }: {
   program: Program
   invoiceNumber: string
@@ -454,10 +625,53 @@ function StepReview({
   poValue: string
   expectedDeliveryDate: string
   poInvoiceDueDate: string
+  isDynamicDiscounting?: boolean
+  selectedTier?: { days: number; rate: number } | null
 }) {
   const baseAmt = isPOFinancing ? (parseFloat(poValue) || 0) : (parseFloat(invoiceAmount) || 0)
   const rate = parseFloat(offerRate) || 0
   const advanceAmount = baseAmt * (rate / 100)
+
+  if (isDynamicDiscounting && selectedTier) {
+    const invoiceAmt = parseFloat(invoiceAmount) || 0
+    const receiveAmt = invoiceAmt * (1 - selectedTier.rate / 100)
+    const discountAmt = invoiceAmt * (selectedTier.rate / 100)
+    const payDate = new Date()
+    payDate.setDate(payDate.getDate() + selectedTier.days)
+    const payDateStr = payDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+    return (
+      <div style={{ maxWidth: 560 }}>
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-head"><span className="t-card-head">Program</span></div>
+          <div className="kv-rows">
+            <div className="kv-row"><span className="k">Name</span><span className="v plain">{program.name}</span></div>
+            <div className="kv-row"><span className="k">Type</span><span className="v plain">Dynamic Discounting</span></div>
+            <div className="kv-row"><span className="k">Next step</span><span className="v plain">Anchor approval</span></div>
+          </div>
+        </div>
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-head"><span className="t-card-head">Invoice</span></div>
+          <div className="kv-rows">
+            <div className="kv-row"><span className="k">Invoice #</span><span className="v">{invoiceNumber}</span></div>
+            <div className="kv-row"><span className="k">Invoice Amount</span><span className="v">{fmtMoney(invoiceAmt)}</span></div>
+            <div className="kv-row"><span className="k">Invoice Date</span><span className="v plain">{invoiceDate}</span></div>
+            {description && <div className="kv-row"><span className="k">Description</span><span className="v plain">{description}</span></div>}
+          </div>
+        </div>
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-head"><span className="t-card-head">Payment Tier</span></div>
+          <div className="kv-rows">
+            <div className="kv-row"><span className="k">Payment timeline</span><span className="v">Pay in {selectedTier.days} days at {selectedTier.rate}% discount</span></div>
+            <div className="kv-row"><span className="k">You receive</span><span className="v" style={{ color: 'var(--blue)', fontWeight: 600 }}>{fmtMoney(receiveAmt)}</span></div>
+            <div className="kv-row"><span className="k">Discount amount</span><span className="v">{fmtMoney(discountAmt)}</span></div>
+            <div className="kv-row"><span className="k">Expected payment</span><span className="v plain">{payDateStr}</span></div>
+          </div>
+        </div>
+        {submitError && <div className="alert" style={{ marginTop: 12 }}>{submitError}</div>}
+      </div>
+    )
+  }
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -568,7 +782,7 @@ function StepReview({
             ))
           ) : (
             <div className="kv-row">
-              <span className="k" style={{ color: 'var(--color-ink-3)' }}>No document attached</span>
+              <span className="k" style={{ color: 'var(--gray)' }}>No document attached</span>
             </div>
           )}
         </div>
@@ -605,7 +819,14 @@ export default function NewTransactionPage() {
   const [expectedDeliveryDate, setExpectedDeliveryDate] = React.useState('')
   const [poInvoiceDueDate, setPoInvoiceDueDate] = React.useState('')
 
-  const isPOFinancing = selectedProgram?.financing_types?.includes('po_financing') ?? false
+  const isPOFinancing        = selectedProgram?.financing_types?.includes('po_financing') ?? false
+  const isDynamicDiscounting = selectedProgram?.financing_types?.includes('dynamic_discounting') ?? false
+
+  const ddSchedule: Array<{ days: number; rate: number }> = React.useMemo(() => {
+    try { return JSON.parse(selectedProgram?.discount_schedule ?? '[]') } catch { return [] }
+  }, [selectedProgram?.discount_schedule])
+
+  const [selectedTier, setSelectedTier] = React.useState<{ days: number; rate: number } | null>(null)
 
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [submitting, setSubmitting] = React.useState(false)
@@ -743,7 +964,25 @@ export default function NewTransactionPage() {
       let body: Record<string, unknown>
       let docKind: string
 
-      if (isPOFinancing) {
+      if (isDynamicDiscounting && selectedTier) {
+        const invoiceAmt = parseFloat(invoiceAmount)
+        const d = new Date()
+        d.setDate(d.getDate() + selectedTier.days)
+        const earlyPaymentDate = d.toISOString().split('T')[0]
+        body = {
+          program_id: selectedProgram!.id,
+          invoice_number: invoiceNumber.trim(),
+          invoice_date: invoiceDate,
+          invoice_due_date: earlyPaymentDate,
+          invoice_amount: invoiceAmt,
+          financing_amount_requested: parseFloat((invoiceAmt * (1 - selectedTier.rate / 100)).toFixed(2)),
+          goods_services_description: description.trim(),
+          discount_rate: selectedTier.rate,
+          early_payment_date: earlyPaymentDate,
+          discount_amount: parseFloat((invoiceAmt * (selectedTier.rate / 100)).toFixed(2)),
+        }
+        docKind = 'invoice_pdf'
+      } else if (isPOFinancing) {
         const poAmt = parseFloat(poValue)
         const rate = parseFloat(offerRate)
         const financingAmtRequested = parseFloat((poAmt * (rate / 100)).toFixed(2))
@@ -834,12 +1073,54 @@ export default function NewTransactionPage() {
             loading={programsLoading}
             onSelect={(p) => {
               setSelectedProgram(p)
+              setSelectedTier(null)
               setStep(1)
             }}
           />
         )}
 
-        {step === 1 && (
+        {step === 1 && isDynamicDiscounting && (
+          <>
+            <StepDDInvoice
+              invoiceNumber={invoiceNumber}
+              invoiceDate={invoiceDate}
+              invoiceAmount={invoiceAmount}
+              description={description}
+              errors={errors}
+              onChange={handleFieldChange}
+              schedule={ddSchedule}
+              selectedTier={selectedTier}
+              onSelectTier={(tier) => {
+                setSelectedTier(tier)
+                setErrors(prev => { const n = { ...prev }; delete n.selectedTier; return n })
+              }}
+            />
+            <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+              <button className="btn btn-outline" type="button" onClick={() => setStep(0)}>Back</button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => {
+                  const e: Record<string, string> = {}
+                  if (!invoiceNumber.trim()) e.invoiceNumber = 'Invoice number is required'
+                  if (!invoiceDate) e.invoiceDate = 'Invoice date is required'
+                  const todayStr = new Date().toISOString().slice(0, 10)
+                  if (invoiceDate && invoiceDate > todayStr) e.invoiceDate = 'Invoice date cannot be in the future'
+                  const invoiceAmt = parseFloat(invoiceAmount) || 0
+                  if (!invoiceAmount || invoiceAmt <= 0) e.invoiceAmount = 'Invoice amount must be greater than 0'
+                  if (!description.trim()) e.description = 'Description is required'
+                  if (!selectedTier) e.selectedTier = 'Please select a payment tier'
+                  setErrors(e)
+                  if (Object.keys(e).length === 0) setStep(2)
+                }}
+              >
+                Continue to Review
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 1 && !isDynamicDiscounting && (
           <>
             {isPOFinancing ? (
               <StepPODetails
@@ -853,16 +1134,26 @@ export default function NewTransactionPage() {
                 onChange={handleFieldChange}
               />
             ) : (
-              <StepInvoice
-                invoiceNumber={invoiceNumber}
-                invoiceDate={invoiceDate}
-                invoiceDueDate={invoiceDueDate}
-                invoiceAmount={invoiceAmount}
-                offerRate={offerRate}
-                description={description}
-                errors={errors}
-                onChange={handleFieldChange}
-              />
+              <>
+                <LiquidityRouting
+                  program={selectedProgram}
+                  orgId={user?.org_id ?? ''}
+                  invoiceAmount={Number(invoiceAmount) || undefined}
+                  onSuggestion={(rate) => setOfferRate(String(rate))}
+                />
+                <div style={{ marginTop: 16 }}>
+                  <StepInvoice
+                    invoiceNumber={invoiceNumber}
+                    invoiceDate={invoiceDate}
+                    invoiceDueDate={invoiceDueDate}
+                    invoiceAmount={invoiceAmount}
+                    offerRate={offerRate}
+                    description={description}
+                    errors={errors}
+                    onChange={handleFieldChange}
+                  />
+                </div>
+              </>
             )}
 
             <div style={{ marginTop: 24, maxWidth: 640 }}>
@@ -937,6 +1228,7 @@ export default function NewTransactionPage() {
           </>
         )}
 
+
         {step === 2 && selectedProgram && (
           <>
             <StepReview
@@ -955,6 +1247,8 @@ export default function NewTransactionPage() {
               poValue={poValue}
               expectedDeliveryDate={expectedDeliveryDate}
               poInvoiceDueDate={poInvoiceDueDate}
+              isDynamicDiscounting={isDynamicDiscounting}
+              selectedTier={selectedTier}
             />
             <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
               <button
@@ -972,6 +1266,7 @@ export default function NewTransactionPage() {
                 disabled={submitting}
               >
                 {submitting ? 'Submitting…'
+                  : isDynamicDiscounting ? 'Request early payment'
                   : isPOFinancing ? 'Submit PO for financing'
                   : (selectedProgram.financing_types?.includes('invoice_factoring') ? 'Submit for bank review' : 'Submit to anchor for approval')}
               </button>

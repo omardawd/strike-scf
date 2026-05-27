@@ -318,7 +318,7 @@ export default function CollateralPage() {
                 </div>
 
                 {formError && (
-                  <div style={{ fontSize: 12, color: 'var(--color-red)' }}>{formError}</div>
+                  <div style={{ fontSize: 12, color: '#DC2626' }}>{formError}</div>
                 )}
 
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -360,11 +360,11 @@ export default function CollateralPage() {
         {/* Table */}
         <div className="card">
           {loading ? (
-            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
+            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
               Loading…
             </div>
           ) : filtered.length === 0 ? (
-            <div className="card-body" style={{ padding: 48, textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
+            <div className="card-body" style={{ padding: 48, textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
               No collateral requirements
             </div>
           ) : (
@@ -399,7 +399,7 @@ export default function CollateralPage() {
                         </span>
                       </td>
                       <td>{fmtAmt(item.required_value)}</td>
-                      <td style={{ color: isPastDue ? 'var(--color-red)' : undefined }}>
+                      <td style={{ color: isPastDue ? '#DC2626' : undefined }}>
                         {fmtDate(item.deadline)}
                       </td>
                       <td>

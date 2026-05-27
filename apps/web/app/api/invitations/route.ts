@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, inviteEmailHtml } from '@/lib/email'
+import { rateLimit } from '@/lib/rate-limit'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,6 +16,35 @@ const ALLOWED_INVITE_ROLES: Record<string, string[]> = {
   bank_admin:     ['bank_credit_officer'],
   anchor_admin:   ['anchor_member'],
   supplier_admin: ['supplier_member'],
+}
+
+export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData, error: userError } = await adminClient
+    .from('users')
+    .select('id, role, bank_id, org_id')
+    .eq('id', user.id)
+    .single()
+
+  if (userError || !userData) {
+    return NextResponse.json({ error: 'User not found' }, { status: 401 })
+  }
+
+  if (!ADMIN_ROLES.includes(userData.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const query = BANK_ROLES.includes(userData.role)
+    ? adminClient.from('invitations').select('id, email, role, status, expires_at, created_at').eq('bank_id', userData.bank_id).order('created_at', { ascending: false })
+    : adminClient.from('invitations').select('id, email, role, status, expires_at, created_at').eq('anchor_org_id', userData.org_id).order('created_at', { ascending: false })
+
+  const { data: invitations, error } = await query
+  if (error) return NextResponse.json({ error: 'Failed to fetch invitations' }, { status: 500 })
+
+  return NextResponse.json({ invitations })
 }
 
 export async function POST(request: Request) {
@@ -34,6 +64,11 @@ export async function POST(request: Request) {
 
   if (!ADMIN_ROLES.includes(userData.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { allowed } = rateLimit(`invitations:${userData.id}`, 5, 60000)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
   let body: Record<string, unknown>

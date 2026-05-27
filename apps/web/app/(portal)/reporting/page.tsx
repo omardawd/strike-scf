@@ -177,7 +177,7 @@ export default function ReportingPage() {
         <style>{PULSE_KF}</style>
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ height: 80, background: 'var(--color-bg-2)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+            <div style={{ height: 80, background: 'var(--offwhite)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
           </div>
         ) : data?.role === 'bank' ? (
           <>
@@ -238,7 +238,7 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Top suppliers</h3>
                 </div>
                 {data.top_suppliers.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No supplier data yet.
                   </div>
                 ) : (
@@ -254,7 +254,7 @@ export default function ReportingPage() {
                       {data.top_suppliers.map((s, i) => (
                         <tr key={s.id}>
                           <td style={{ fontSize: 13 }}>
-                            <span style={{ color: 'var(--color-ink-4)', marginRight: 8, fontSize: 11 }}>
+                            <span style={{ color: 'var(--gray)', marginRight: 8, fontSize: 11 }}>
                               #{i + 1}
                             </span>
                             {s.name}
@@ -276,7 +276,7 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Status breakdown</h3>
                 </div>
                 {data.status_breakdown.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No transactions yet.
                   </div>
                 ) : (
@@ -288,14 +288,14 @@ export default function ReportingPage() {
                       return (
                         <div key={row.status}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
+                            <span style={{ fontSize: 12, color: 'var(--ink)' }}>
                               {STATUS_LABELS[row.status] ?? row.status}
                             </span>
-                            <span style={{ fontSize: 12, color: 'var(--color-ink-3)', fontVariantNumeric: 'tabular-nums' }}>
+                            <span style={{ fontSize: 12, color: 'var(--gray)', fontVariantNumeric: 'tabular-nums' }}>
                               {row.count} ({pct}%)
                             </span>
                           </div>
-                          <div style={{ height: 6, borderRadius: 3, background: 'var(--color-border)', overflow: 'hidden' }}>
+                          <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
                             <div style={{
                               height: '100%',
                               width: `${pct}%`,
@@ -303,7 +303,7 @@ export default function ReportingPage() {
                               background: row.status === 'completed'
                                 ? 'var(--color-green)'
                                 : row.status === 'rejected'
-                                  ? 'var(--color-red)'
+                                  ? '#DC2626'
                                   : 'var(--color-accent)',
                               transition: 'width 0.4s ease',
                             }} />
@@ -415,15 +415,15 @@ export default function ReportingPage() {
                     if (!bucket) return null
                     return (
                       <div key={stage.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>{stage.label}</span>
-                        <span style={{ fontSize: 12, color: 'var(--color-ink-3)', fontVariantNumeric: 'tabular-nums' }}>
+                        <span style={{ fontSize: 12, color: 'var(--ink)' }}>{stage.label}</span>
+                        <span style={{ fontSize: 12, color: 'var(--gray)', fontVariantNumeric: 'tabular-nums' }}>
                           {bucket.count} · {fmtCurrency(bucket.total)}
                         </span>
                       </div>
                     )
                   })}
                   {Object.keys(data.payables_summary).length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>No payables yet.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>No payables yet.</div>
                   )}
                 </div>
               </div>
@@ -434,7 +434,7 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Top suppliers by invoice volume</h3>
                 </div>
                 {data.top_suppliers.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No supplier data yet.
                   </div>
                 ) : (
@@ -450,7 +450,7 @@ export default function ReportingPage() {
                       {data.top_suppliers.map((s, i) => (
                         <tr key={s.legal_name}>
                           <td style={{ fontSize: 13 }}>
-                            <span style={{ color: 'var(--color-ink-4)', marginRight: 8, fontSize: 11 }}>
+                            <span style={{ color: 'var(--gray)', marginRight: 8, fontSize: 11 }}>
                               #{i + 1}
                             </span>
                             {s.legal_name}
@@ -554,7 +554,7 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Recent transactions</h3>
                 </div>
                 {data.recent_transactions.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     <p style={{ marginBottom: 12 }}>No transactions yet.</p>
                     <button
                       className="btn btn-primary btn-sm"
@@ -601,7 +601,7 @@ export default function ReportingPage() {
                               {STATUS_LABELS[t.status] ?? t.status}
                             </span>
                           </td>
-                          <td style={{ fontSize: 12, color: 'var(--color-ink-3)', whiteSpace: 'nowrap' }}>
+                          <td style={{ fontSize: 12, color: 'var(--gray)', whiteSpace: 'nowrap' }}>
                             {fmtDate(t.created_at)}
                           </td>
                         </tr>

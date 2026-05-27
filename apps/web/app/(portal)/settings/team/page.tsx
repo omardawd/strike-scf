@@ -216,11 +216,11 @@ export default function TeamPage() {
             <h3 className="t-card-head">Members</h3>
           </div>
           {loading ? (
-            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-4)', opacity: 0.6 }}>
+            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>
               Loading…
             </div>
           ) : members.length === 0 ? (
-            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--color-ink-3)' }}>
+            <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>
               No team members yet.
             </div>
           ) : (
@@ -257,7 +257,7 @@ export default function TeamPage() {
                             <div style={{ fontWeight: 500, fontSize: 13 }}>
                               {m.full_name ?? '—'}
                             </div>
-                            <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                            <div style={{ fontSize: 12, color: 'var(--gray)' }}>
                               {m.email}
                             </div>
                           </div>
@@ -273,7 +273,7 @@ export default function TeamPage() {
                           ? <span className="badge badge-active">Active</span>
                           : <span className="badge badge-rejected">Inactive</span>}
                       </td>
-                      <td className="mono" style={{ color: 'var(--color-ink-3)', fontSize: 12 }}>
+                      <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>
                         {fmtDate(m.created_at)}
                       </td>
                       <td className="row-actions">
@@ -281,7 +281,7 @@ export default function TeamPage() {
                           <span className="badge badge-draft">You</span>
                         ) : isConfirming ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: 12, color: 'var(--color-ink-2)', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 12, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
                               Deactivate {m.full_name?.split(' ')[0] ?? 'user'}? They will lose access.
                             </span>
                             <button
@@ -335,7 +335,7 @@ export default function TeamPage() {
             <h3 className="t-card-head">Pending invitations</h3>
           </div>
           {invitations.length === 0 ? (
-            <div className="card-body" style={{ padding: 24, color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <div className="card-body" style={{ padding: 24, color: 'var(--gray)', fontSize: 13 }}>
               No pending invitations
             </div>
           ) : (
@@ -361,12 +361,12 @@ export default function TeamPage() {
                           {ROLE_LABELS[inv.role] ?? inv.role}
                         </span>
                       </td>
-                      <td className="mono" style={{ color: 'var(--color-ink-3)', fontSize: 12 }}>
+                      <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>
                         {fmtDate(inv.created_at)}
                       </td>
                       <td
                         className="mono"
-                        style={{ fontSize: 12, color: expiringSoon ? 'var(--color-red)' : 'var(--color-ink-3)' }}
+                        style={{ fontSize: 12, color: expiringSoon ? '#DC2626' : 'var(--gray)' }}
                       >
                         {fmtDate(inv.expires_at)}
                       </td>
@@ -401,7 +401,7 @@ export default function TeamPage() {
             <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--color-ink-4)' }}>(optional)</span></label>
+                  <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span></label>
                   <input
                     id="add-fullname"
                     className="input"
@@ -444,7 +444,7 @@ export default function TeamPage() {
                       style={{
                         position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                         background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--color-ink-3)', padding: 4,
+                        color: 'var(--gray)', padding: 4,
                         display: 'flex', alignItems: 'center',
                       }}
                     >
@@ -469,7 +469,7 @@ export default function TeamPage() {
                     required
                   />
                   {addConfirmPw.length > 0 && addPassword !== addConfirmPw && (
-                    <div style={{ fontSize: 12, color: 'var(--color-red)', marginTop: 4 }}>Passwords don&apos;t match</div>
+                    <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>Passwords don&apos;t match</div>
                   )}
                 </div>
               </div>

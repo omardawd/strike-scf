@@ -24,23 +24,35 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
     setLoading(true)
     setFetched(true)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 256,
-          system: `You are an AI analyst for Strike SCF, a supply chain finance platform. Provide brief, actionable insights. Be concise — max 3 sentences. Focus on risk, opportunity, or recommended action. Use financial terminology appropriately.`,
+          feature: 'insight',
+          system: `You are Strike AI, an analytical assistant for Strike SCF. You provide brief, data-driven insights.
+
+CRITICAL RULES:
+1. Base ALL analysis on the context data provided. Never invent numbers, names, or facts.
+2. Be concise — maximum 3 sentences.
+3. End with one specific recommended action.
+4. Use exact figures from the context data.
+5. If context data is empty or null, say "Insufficient data for analysis."
+
+Format: [Assessment]. [Supporting data point]. [Recommended action].`,
           messages: [{
             role: 'user',
             content: `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`,
           }],
+          max_tokens: 256,
         }),
       })
+      if (res.status === 429) {
+        setInsight('Daily AI limit reached. Resets at midnight UTC.')
+        setLoading(false)
+        return
+      }
       const data = await res.json()
       setInsight(data.content?.[0]?.text ?? '')
     } catch {

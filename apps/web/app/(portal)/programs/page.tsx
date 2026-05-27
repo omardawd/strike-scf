@@ -59,8 +59,8 @@ function ProgramCard({
   const [hovered, setHovered] = useState(false)
   const label = typeLabel(program)
   const statusStr = program.status.charAt(0).toUpperCase() + program.status.slice(1)
-  const borderColor = STATUS_BORDER[program.status] ?? 'var(--color-ink-4)'
-  const pillStyle = TYPE_PILL_COLOR[label.toLowerCase()] ?? { bg: 'var(--color-bg-2)', color: 'var(--color-ink-3)' }
+  const borderColor = STATUS_BORDER[program.status] ?? 'var(--gray)'
+  const pillStyle = TYPE_PILL_COLOR[label.toLowerCase()] ?? { bg: 'var(--offwhite)', color: 'var(--gray)' }
 
   const stats = portal === 'bank'
     ? [
@@ -118,16 +118,16 @@ function SkeletonCard() {
     <div className="program-card" style={{ opacity: 0.5, pointerEvents: 'none' }}>
       <div className="program-card-inner">
         <div className="program-top">
-          <span className="program-name" style={{ background: 'var(--color-border)', borderRadius: 4, color: 'transparent', minWidth: 140 }}>Loading</span>
-          <span className="badge badge-draft" style={{ background: 'var(--color-border)', color: 'transparent' }}>Draft</span>
+          <span className="program-name" style={{ background: 'var(--border)', borderRadius: 4, color: 'transparent', minWidth: 140 }}>Loading</span>
+          <span className="badge badge-draft" style={{ background: 'var(--border)', color: 'transparent' }}>Draft</span>
         </div>
-        <span className="program-type-pill" style={{ background: 'var(--color-border)', color: 'transparent' }}>Type</span>
+        <span className="program-type-pill" style={{ background: 'var(--border)', color: 'transparent' }}>Type</span>
         <div className="program-divider" />
         <div className="program-stats">
           {[0, 1].map(i => (
             <div key={i}>
-              <div className="program-stat-label" style={{ background: 'var(--color-border)', borderRadius: 3, color: 'transparent' }}>Label</div>
-              <div className="program-stat-value" style={{ background: 'var(--color-border)', borderRadius: 3, color: 'transparent', marginTop: 4 }}>—</div>
+              <div className="program-stat-label" style={{ background: 'var(--border)', borderRadius: 3, color: 'transparent' }}>Label</div>
+              <div className="program-stat-value" style={{ background: 'var(--border)', borderRadius: 3, color: 'transparent', marginTop: 4 }}>—</div>
             </div>
           ))}
         </div>
@@ -144,7 +144,8 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const visiblePrograms = programs
+  const activePrograms = programs.filter(p => p.status === 'active')
+  const inactivePrograms = programs.filter(p => p.status !== 'active')
 
   useEffect(() => {
     fetch('/api/programs')
@@ -192,11 +193,11 @@ export default function ProgramsPage() {
       <div className="page">
         <div className="page-header">
           <h1 className="t-page-title">My Programs</h1>
-          {!loading && !error && visiblePrograms.length > 0 && (
+          {!loading && !error && programs.length > 0 && (
             <div className="subtitle">
-              {visiblePrograms.length} program{visiblePrograms.length !== 1 ? 's' : ''}
+              {programs.length} program{programs.length !== 1 ? 's' : ''}
               {' · '}
-              {visiblePrograms.filter(p => p.status === 'active').length} active
+              {activePrograms.length} active
             </div>
           )}
         </div>
@@ -213,16 +214,16 @@ export default function ProgramsPage() {
             <SkeletonCard />
             <SkeletonCard />
           </div>
-        ) : visiblePrograms.length === 0 ? (
+        ) : programs.length === 0 ? (
           <div className="card">
             <div className="card-body" style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ color: 'var(--color-ink-4)', marginBottom: 12 }}>
+              <div style={{ color: 'var(--gray)', marginBottom: 12 }}>
                 <Icon name="programs" size={32} />
               </div>
-              <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-ink-1)', marginBottom: 6 }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>
                 No programs yet
               </div>
-              <div style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 20 }}>
+              <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>
                 {emptyMessage}
               </div>
               {portal === 'bank' && (
@@ -237,62 +238,135 @@ export default function ProgramsPage() {
             </div>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1px',
-            background: 'var(--border)',
-          }}>
-            {visiblePrograms.map(p => (
-              <div
-                key={p.id}
-                style={{
-                  background: 'var(--white)',
-                  padding: 28,
-                  cursor: 'pointer',
-                  transition: 'box-shadow 0.2s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
-                onClick={() => router.push('/programs/' + p.id)}
-              >
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 18,
-                  fontWeight: 600,
-                  letterSpacing: '-0.02em',
-                  color: 'var(--ink)',
-                  marginBottom: 4,
-                }}>{p.name}</div>
-
+          <>
+            {activePrograms.length > 0 && (
+              <>
                 <div style={{
                   fontFamily: 'var(--font-mono)',
                   fontSize: 10,
-                  letterSpacing: '0.12em',
+                  letterSpacing: '0.14em',
                   textTransform: 'uppercase',
                   color: 'var(--gray)',
-                  marginBottom: 20,
+                  marginBottom: 12,
+                  marginTop: 0,
+                }}>Active · {activePrograms.length}</div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                  gap: '1px',
+                  background: 'var(--border)',
+                  marginBottom: 32,
                 }}>
-                  {typeLabel(p)}
+                  {activePrograms.map(p => (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: 'var(--white)',
+                        padding: 28,
+                        cursor: 'pointer',
+                        transition: 'box-shadow 0.2s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+                      onClick={() => router.push('/programs/' + p.id)}
+                    >
+                      <div style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 18,
+                        fontWeight: 600,
+                        letterSpacing: '-0.02em',
+                        color: 'var(--ink)',
+                        marginBottom: 4,
+                      }}>{p.name}</div>
+                      <div style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        color: 'var(--gray)',
+                        marginBottom: 20,
+                      }}>{typeLabel(p)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 6, height: 6, background: 'var(--color-green)' }} />
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: 'var(--gray)',
+                        }}>{p.status}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              </>
+            )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{
-                    width: 6,
-                    height: 6,
-                    background: p.status === 'active' ? 'var(--color-green)' : 'var(--gray)',
-                  }} />
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    color: 'var(--gray)',
-                  }}>{p.status}</span>
+            {inactivePrograms.length > 0 && (
+              <>
+                <div style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--gray)',
+                  marginBottom: 12,
+                  opacity: 0.7,
+                }}>
+                  Inactive · {inactivePrograms.length}
                 </div>
-              </div>
-            ))}
-          </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                  gap: '1px',
+                  background: 'var(--border)',
+                  opacity: 0.65,
+                }}>
+                  {inactivePrograms.map(p => (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: 'var(--white)',
+                        padding: 28,
+                        cursor: 'pointer',
+                        transition: 'box-shadow 0.2s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+                      onClick={() => router.push('/programs/' + p.id)}
+                    >
+                      <div style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 18,
+                        fontWeight: 600,
+                        letterSpacing: '-0.02em',
+                        color: 'var(--ink)',
+                        marginBottom: 4,
+                      }}>{p.name}</div>
+                      <div style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        color: 'var(--gray)',
+                        marginBottom: 20,
+                      }}>{typeLabel(p)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 6, height: 6, background: 'var(--gray)' }} />
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: 'var(--gray)',
+                        }}>{p.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
       </div>
     </PortalShell>

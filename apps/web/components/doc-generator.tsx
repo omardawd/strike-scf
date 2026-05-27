@@ -107,20 +107,24 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
         ? `Generate the document using this data:\n\n${JSON.stringify(entityData, null, 2)}`
         : `Fill this template with the provided data:\n\n${JSON.stringify(entityData, null, 2)}`
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4096,
+          feature: 'document',
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage }],
+          max_tokens: 4096,
         }),
       })
+
+      if (res.status === 429) {
+        setError('Daily AI limit reached. Resets at midnight UTC.')
+        setGenerating(false)
+        return
+      }
 
       const data = await res.json()
       const text = data.content?.[0]?.text
@@ -355,7 +359,7 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
             marginTop: 12,
             fontFamily: 'var(--font-body)',
             fontSize: 13,
-            color: 'var(--color-red)',
+            color: '#DC2626',
           }}>{error}</div>
         )}
       </div>

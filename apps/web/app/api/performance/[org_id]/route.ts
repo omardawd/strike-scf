@@ -1,0 +1,155 @@
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdmin } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+
+const adminClient = createAdmin(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+async function getBankIdForSupplier(orgId: string, client: typeof adminClient) {
+  const { data } = await client
+    .from('program_enrollments')
+    .select('programs(bank_id)')
+    .eq('org_id', orgId)
+    .limit(1)
+    .maybeSingle()
+  return (data?.programs as { bank_id: string } | null)?.bank_id ?? null
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ org_id: string }> }
+) {
+  const { org_id } = await params
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userRow } = await adminClient
+    .from('users')
+    .select('id, role, bank_id, org_id')
+    .eq('id', user.id)
+    .single()
+
+  if (!userRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const isBank = userRow.role === 'bank_admin' || userRow.role === 'bank_credit_officer'
+  const isOwnSupplier =
+    (userRow.role === 'supplier_admin' || userRow.role === 'supplier_member') &&
+    userRow.org_id === org_id
+
+  if (!isBank && !isOwnSupplier) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { data: txns } = await adminClient
+    .from('transactions')
+    .select('id, status, created_at, updated_at, financing_amount_approved, financing_rate_apr, invoice_amount, invoice_due_date')
+    .eq('supplier_id', org_id)
+    .not('status', 'in', '("draft","cancelled")')
+
+  const total = txns?.length ?? 0
+
+  const completed = txns?.filter(t => t.status === 'completed') ?? []
+  const onTime = completed.filter(t => {
+    if (!t.invoice_due_date) return true
+    return new Date(t.updated_at) <= new Date(t.invoice_due_date)
+  })
+  const onTimeRate = completed.length > 0
+    ? Math.round((onTime.length / completed.length) * 100)
+    : null
+
+  const disputed = txns?.filter(t => t.status === 'in_dispute') ?? []
+  const disputeRate = total > 0
+    ? Math.round((disputed.length / total) * 100)
+    : null
+
+  const financed = txns?.filter(t =>
+    ['funded', 'completed', 'repayment_due'].includes(t.status)
+  ) ?? []
+  const utilizationRate = total > 0
+    ? Math.round((financed.length / total) * 100)
+    : null
+
+  const ratedTxns = txns?.filter(t => t.financing_rate_apr) ?? []
+  const avgRate = ratedTxns.length > 0
+    ? Math.round(
+        ratedTxns.reduce((s, t) => s + t.financing_rate_apr, 0) /
+        ratedTxns.length * 10
+      ) / 10
+    : null
+
+  const totalFinanced = financed.reduce(
+    (s, t) => s + (t.financing_amount_approved ?? 0), 0
+  )
+
+  let score = 0
+  let components = 0
+
+  if (onTimeRate !== null) {
+    score += onTimeRate * 0.4
+    components++
+  }
+  if (disputeRate !== null) {
+    score += (100 - disputeRate) * 0.3
+    components++
+  }
+  if (utilizationRate !== null) {
+    score += Math.min(utilizationRate, 100) * 0.3
+    components++
+  }
+
+  const performanceScore = components > 0 ? Math.round(score) : null
+
+  let tier = 'standard'
+  if (performanceScore !== null) {
+    if (performanceScore >= 80) tier = 'preferred'
+    else if (performanceScore < 40) tier = 'under_review'
+  }
+  if (total === 0) tier = 'standard'
+
+  const bankId =
+    userRow.bank_id ?? (await getBankIdForSupplier(params.org_id, adminClient))
+
+  await adminClient
+    .from('supplier_performance')
+    .upsert(
+      {
+        org_id: params.org_id,
+        bank_id: bankId,
+        on_time_payment_rate: onTimeRate,
+        dispute_rate: disputeRate,
+        financing_utilization_rate: utilizationRate,
+        avg_advance_rate: avgRate,
+        total_transactions: total,
+        total_financed: totalFinanced,
+        performance_tier: tier,
+        performance_score: performanceScore,
+        last_calculated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'org_id,bank_id' }
+    )
+
+  await adminClient
+    .from('organizations')
+    .update({ performance_tier: tier })
+    .eq('id', params.org_id)
+
+  return NextResponse.json({
+    org_id: params.org_id,
+    performance_score: performanceScore,
+    performance_tier: tier,
+    metrics: {
+      on_time_payment_rate: onTimeRate,
+      dispute_rate: disputeRate,
+      financing_utilization_rate: utilizationRate,
+      avg_advance_rate: avgRate,
+      total_transactions: total,
+      total_financed: totalFinanced,
+    },
+    last_calculated_at: new Date().toISOString(),
+  })
+}

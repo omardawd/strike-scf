@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { PortalProvider, type PortalType } from '@/lib/portal-context'
 import { UserProvider } from '@/lib/user-context'
-import { Sidebar } from '@/components/sidebar'
 import { PortalShell } from './portal-shell'
 
 const adminClient = createAdminClient(

@@ -20,7 +20,7 @@ export default function Error({
             <span>Something went wrong</span>
           </div>
           <div className="card-body">
-            <p style={{ fontSize: 13, color: 'var(--color-ink-3)', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>
               An error occurred loading this page. Please try again.
             </p>
             <button className="btn btn-primary btn-sm" onClick={reset}>

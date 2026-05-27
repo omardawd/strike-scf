@@ -205,7 +205,7 @@ function AddCollateralForm({
           <label className="form-label">Deadline</label>
           <input className="form-input" type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
-        {err && <div style={{ color: 'var(--color-red)', fontSize: 13 }}>{err}</div>}
+        {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
         <button className="btn btn-primary" type="button" disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Add requirement'}
         </button>
@@ -307,7 +307,7 @@ export default function IFSupplierDetailPage() {
         />
         <div className="page">
           <div className="page-header">
-            <div style={{ height: 28, width: 200, background: 'var(--color-border)', borderRadius: 6 }} />
+            <div style={{ height: 28, width: 200, background: 'var(--border)', borderRadius: 6 }} />
           </div>
         </div>
       </PortalShell>
@@ -372,18 +372,18 @@ export default function IFSupplierDetailPage() {
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
-                  <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
+                  <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
                     </div>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)', borderRight: '1px solid var(--color-border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
                     </div>
-                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--color-card)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-4)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
-                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
+                    <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                      <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
                   <style>{PULSE_KF}</style>
@@ -404,7 +404,7 @@ export default function IFSupplierDetailPage() {
                 </button>
               </div>
               {transactions.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No transactions yet.
                 </div>
               ) : (
@@ -427,8 +427,8 @@ export default function IFSupplierDetailPage() {
                             : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
                         </td>
                         <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
-                        <td style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtDate(t.created_at)}</td>
-                        <td style={{ color: 'var(--color-ink-4)', fontSize: 16, textAlign: 'right' }}>›</td>
+                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                        <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                       </tr>
                     ))}
                   </tbody>
@@ -441,7 +441,7 @@ export default function IFSupplierDetailPage() {
           <div>
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head"><h3 className="t-card-head">KYB &amp; Credit</h3></div>
-              <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 0, marginBottom: 0 }}>
+              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 0, marginBottom: 0 }}>
                 <div className="card-body">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -461,21 +461,21 @@ export default function IFSupplierDetailPage() {
                         </span>
                       )}
                       {org?.credit_reviewed_at && org?.kyb_status === 'approved' && (
-                        <span style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                        <span style={{ fontSize: 12, color: 'var(--gray)' }}>
                           Reviewed {fmtDate(org.credit_reviewed_at)}
                         </span>
                       )}
                     </div>
                     {(!org?.kyb_status || org?.kyb_status === 'not_started' || org?.kyb_status === 'draft') && (
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>KYB not submitted yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet.</div>
                     )}
                     {org?.kyb_status === 'rejected' && (
-                      <div style={{ fontSize: 13, color: 'var(--color-red)' }}>
+                      <div style={{ fontSize: 13, color: '#DC2626' }}>
                         KYB rejected. Supplier cannot participate in financing.
                       </div>
                     )}
                     {org?.kyb_status === 'more_info_requested' && (
-                      <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                         Additional information requested from supplier.
                       </div>
                     )}
@@ -494,7 +494,7 @@ export default function IFSupplierDetailPage() {
               {creditScore ? (
                 <div className="score-block">
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                    <span style={{ fontSize: 36, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--color-ink-1)', lineHeight: 1 }}>
+                    <span style={{ fontSize: 36, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--ink)', lineHeight: 1 }}>
                       {creditScore.total_score ?? '—'}
                     </span>
                     {creditScore.risk_tier && (
@@ -503,15 +503,15 @@ export default function IFSupplierDetailPage() {
                       </span>
                     )}
                   </div>
-                  <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>
+                  <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>
                     Credit score
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>
                     Scored {fmtDate(creditScore.created_at)}
                   </div>
                 </div>
               ) : (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   Credit review pending.
                 </div>
               )}
@@ -538,7 +538,7 @@ export default function IFSupplierDetailPage() {
                 </div>
               )}
               {collateral.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No collateral requirements.
                 </div>
               ) : (
@@ -551,14 +551,14 @@ export default function IFSupplierDetailPage() {
                           background: c.status === 'accepted'
                             ? 'var(--color-green)'
                             : c.status === 'rejected'
-                              ? 'var(--color-red)'
+                              ? '#DC2626'
                               : 'var(--color-amber)',
                         }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{collTypeLabel(c.collateral_type)}</div>
-                        <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.description}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray)' }}>{c.description}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
                           Due {fmtDate(c.deadline)}
                           {c.required_value != null && ` · ${fmtCurrency(c.required_value)}`}
                         </div>
@@ -575,7 +575,7 @@ export default function IFSupplierDetailPage() {
             <div className="card">
               <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
               {docs.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   No documents uploaded.
                 </div>
               ) : (
@@ -584,7 +584,7 @@ export default function IFSupplierDetailPage() {
                     <div key={doc.id} className="doc-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{doc.file_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{fmtDate(doc.created_at)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(doc.created_at)}</div>
                       </div>
                       {doc.signed_url && (
                         <a

@@ -89,13 +89,13 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                 fontFamily: 'var(--font-display)',
                 fontSize: 28, fontWeight: 600,
                 letterSpacing: '-0.02em',
-                color: 'var(--color-ink-1)',
+                color: 'var(--ink)',
                 marginBottom: 8,
               }}>
                 {result.sent} invitations sent
               </div>
               {result.failed > 0 && (
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--color-ink-3)' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--gray)' }}>
                   {result.failed} failed — check server logs
                 </div>
               )}
@@ -111,7 +111,7 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
               {/* Upload zone */}
               <div
                 style={{
-                  border: '2px dashed var(--color-border)',
+                  border: '2px dashed var(--border)',
                   padding: '32px 24px',
                   textAlign: 'center',
                   cursor: 'pointer',
@@ -134,24 +134,24 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                   fontSize: 11,
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
-                  color: file ? 'var(--color-blue)' : 'var(--color-ink-3)',
+                  color: file ? 'var(--blue)' : 'var(--gray)',
                   marginBottom: 8,
                 }}>
                   {file ? file.name : 'Click to upload CSV'}
                 </div>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
                   CSV with columns: name (optional), email
                 </div>
               </div>
 
               {/* Format example */}
               <div style={{
-                background: 'var(--color-card)',
-                border: '1px solid var(--color-border)',
+                background: 'var(--offwhite)',
+                border: '1px solid var(--border)',
                 padding: '10px 14px',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 11,
-                color: 'var(--color-ink-3)',
+                color: 'var(--gray)',
                 marginTop: 10,
               }}>
                 name,email<br />
@@ -161,44 +161,44 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
 
               {/* Parse error */}
               {parseError && (
-                <div style={{ color: 'var(--color-red)', fontSize: 13, marginTop: 10 }}>{parseError}</div>
+                <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{parseError}</div>
               )}
 
               {/* Preview table */}
               {preview.length > 0 && (
                 <>
-                  <div style={{ marginTop: 16, border: '1px solid var(--color-border)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--color-border)' }}>
+                  <div style={{ marginTop: 16, border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--border)' }}>
                       {['Name', 'Email'].map(h => (
                         <div key={h} style={{
-                          background: 'var(--color-card)',
+                          background: 'var(--offwhite)',
                           padding: '8px 12px',
                           fontFamily: 'var(--font-mono)',
                           fontSize: 10,
                           letterSpacing: '0.1em',
                           textTransform: 'uppercase',
-                          color: 'var(--color-ink-3)',
+                          color: 'var(--gray)',
                         }}>{h}</div>
                       ))}
                     </div>
                     {preview.slice(0, 5).map((r, i) => (
-                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--color-border)' }}>
-                        <div style={{ background: 'var(--color-bg)', padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-1)' }}>
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--border)' }}>
+                        <div style={{ background: 'var(--offwhite)', padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink)' }}>
                           {r.name || '—'}
                         </div>
-                        <div style={{ background: 'var(--color-bg)', padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-1)' }}>
+                        <div style={{ background: 'var(--offwhite)', padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink)' }}>
                           {r.email}
                         </div>
                       </div>
                     ))}
                     {preview.length > 5 && (
-                      <div style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-ink-3)', letterSpacing: '0.1em' }}>
+                      <div style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.1em' }}>
                         + {preview.length - 5} more
                       </div>
                     )}
                   </div>
 
-                  <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-blue)', letterSpacing: '0.1em' }}>
+                  <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--blue)', letterSpacing: '0.1em' }}>
                     {preview.length} suppliers will be invited
                   </div>
                 </>

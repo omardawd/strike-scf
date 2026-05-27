@@ -50,7 +50,7 @@ function catmullRom(pts: [number, number][]): string {
 
 export function PeriodToggle({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
   return (
-    <div style={{ display: 'flex', gap: 2, background: 'var(--color-bg-2)', borderRadius: 6, padding: 2 }}>
+    <div style={{ display: 'flex', gap: 2, background: 'var(--offwhite)', borderRadius: 6, padding: 2 }}>
       {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
         <button
           key={p}
@@ -59,8 +59,8 @@ export function PeriodToggle({ value, onChange }: { value: Period; onChange: (v:
           style={{
             padding: '3px 10px', borderRadius: 4, border: 'none', fontSize: 10.5,
             fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-            background: value === p ? 'var(--color-card)' : 'transparent',
-            color: value === p ? 'var(--color-ink-1)' : 'var(--color-ink-4)',
+            background: value === p ? 'var(--offwhite)' : 'transparent',
+            color: value === p ? 'var(--ink)' : 'var(--gray)',
             boxShadow: value === p ? '0 1px 2px var(--color-shadow)' : 'none',
             transition: 'all 0.12s',
           }}
@@ -117,7 +117,7 @@ export const LineChart = React.memo(function LineChart({
     return (
       <div
         ref={wrapRef}
-        style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}
+        style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: 12 }}
       >
         {width > 0 ? 'No data yet' : null}
       </div>
@@ -183,7 +183,7 @@ export const LineChart = React.memo(function LineChart({
             <g key={i}>
               <line
                 x1={ML} y1={y} x2={ML + cW} y2={y}
-                stroke="var(--color-border, #E2DFD8)"
+                stroke="var(--border)"
                 strokeWidth={i === 0 ? 1 : 0.6}
                 opacity={i === 0 ? 1 : 0.85}
               />
@@ -193,7 +193,7 @@ export const LineChart = React.memo(function LineChart({
                   textAnchor="end"
                   fontSize={9.5}
                   fontFamily="inherit"
-                  fill="var(--color-ink-4, #9C9890)"
+                  fill="var(--gray)"
                 >
                   {fmtVal(tick)}
                 </text>
@@ -238,7 +238,7 @@ export const LineChart = React.memo(function LineChart({
             key={i}
             cx={pt[0]} cy={pt[1]}
             r={hoveredIdx === i ? 0 : 2.5}
-            fill="var(--color-card, #fff)"
+            fill="var(--offwhite)"
             stroke={color}
             strokeWidth={1.8}
             opacity={hoveredIdx === null ? 0.85 : 0.3}
@@ -252,7 +252,7 @@ export const LineChart = React.memo(function LineChart({
             cx={pts[hoveredIdx]![0]} cy={pts[hoveredIdx]![1]}
             r={5.5}
             fill={color}
-            stroke="var(--color-card, #fff)"
+            stroke="var(--offwhite)"
             strokeWidth={2.5}
           />
         )}
@@ -286,7 +286,7 @@ export const LineChart = React.memo(function LineChart({
               textAnchor={isFirst ? 'start' : isLast ? 'end' : 'middle'}
               fontSize={9.5}
               fontFamily="inherit"
-              fill={hoveredIdx === i ? color : 'var(--color-ink-4, #9C9890)'}
+              fill={hoveredIdx === i ? color : 'var(--gray)'}
               fontWeight={hoveredIdx === i ? 600 : 400}
               style={{ transition: 'fill 0.15s ease' }}
             >
@@ -359,7 +359,7 @@ function CustomLegend({ payload }: { payload?: any[] }) {
       {payload.map((entry, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 8, height: 8, borderRadius: 2, background: entry.color, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: 'var(--color-ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
+          <span style={{ fontSize: 11, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
             {entry.value}
           </span>
         </div>
@@ -372,7 +372,7 @@ export function ProgramPieChart({ segments }: { segments: PieSegment[] }) {
   const total = segments.reduce((s, seg) => s + seg.volume, 0)
   if (total === 0 || segments.length === 0) {
     return (
-      <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
+      <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: 12 }}>
         No data yet
       </div>
     )
