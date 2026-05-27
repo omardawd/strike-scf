@@ -553,11 +553,9 @@ export default function SupplierDetailPage() {
 
             {/* ── RIGHT: KYB status (read-only) + documents ── */}
             <div>
-              {portal === 'supplier' && (
-                <div style={{ marginBottom: 16 }}>
-                  <PerformanceScorecard orgId={user?.org_id ?? ''} showRefresh={false} />
-                </div>
-              )}
+              <div style={{ marginBottom: 16 }}>
+                <PerformanceScorecard orgId={supplierId} showRefresh={false} />
+              </div>
 
               <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-head"><h3 className="t-card-head">KYB Status</h3></div>
@@ -855,16 +853,9 @@ export default function SupplierDetailPage() {
               </div>
             </div>
 
-            {portal === 'bank' && (
-              <div style={{ marginBottom: 16 }}>
-                <PerformanceScorecard orgId={supplierId} showRefresh={true} />
-              </div>
-            )}
-            {portal === 'supplier' && (
-              <div style={{ marginBottom: 16 }}>
-                <PerformanceScorecard orgId={user?.org_id ?? ''} showRefresh={false} />
-              </div>
-            )}
+            <div style={{ marginBottom: 16 }}>
+              <PerformanceScorecard orgId={supplierId} showRefresh={false} />
+            </div>
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head"><h3 className="t-card-head">KYB &amp; Credit</h3></div>

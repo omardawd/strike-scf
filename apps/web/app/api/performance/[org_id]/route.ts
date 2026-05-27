@@ -14,7 +14,7 @@ async function getBankIdForSupplier(orgId: string, client: typeof adminClient) {
     .eq('org_id', orgId)
     .limit(1)
     .maybeSingle()
-  return (data?.programs as { bank_id: string } | null)?.bank_id ?? null
+  return (data?.programs as unknown as { bank_id: string } | null)?.bank_id ?? null
 }
 
 export async function GET(
@@ -111,13 +111,13 @@ export async function GET(
   if (total === 0) tier = 'standard'
 
   const bankId =
-    userRow.bank_id ?? (await getBankIdForSupplier(params.org_id, adminClient))
+    userRow.bank_id ?? (await getBankIdForSupplier(org_id, adminClient))
 
   await adminClient
     .from('supplier_performance')
     .upsert(
       {
-        org_id: params.org_id,
+        org_id: org_id,
         bank_id: bankId,
         on_time_payment_rate: onTimeRate,
         dispute_rate: disputeRate,
@@ -136,10 +136,10 @@ export async function GET(
   await adminClient
     .from('organizations')
     .update({ performance_tier: tier })
-    .eq('id', params.org_id)
+    .eq('id', org_id)
 
   return NextResponse.json({
-    org_id: params.org_id,
+    org_id: org_id,
     performance_score: performanceScore,
     performance_tier: tier,
     metrics: {

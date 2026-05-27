@@ -187,14 +187,16 @@ export async function POST(request: Request) {
   }
 
   if (isAnchor && program) {
-    await adminClient.from('program_enrollments').insert({
-      program_id:          program.id,
-      org_id:              userData.org_id,
-      anchor_org_id:       userData.org_id,
-      enrolled_by_user_id: user.id,
-      status:              'active',
-      enrolled_at:         new Date().toISOString(),
-    }).catch(() => {})
+    try {
+      await adminClient.from('program_enrollments').insert({
+        program_id:          program.id,
+        org_id:              userData.org_id,
+        anchor_org_id:       userData.org_id,
+        enrolled_by_user_id: user.id,
+        status:              'active',
+        enrolled_at:         new Date().toISOString(),
+      })
+    } catch {}
   }
 
   return NextResponse.json({ program_id: program.id, program }, { status: 201 })

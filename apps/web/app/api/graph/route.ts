@@ -182,8 +182,7 @@ export async function GET() {
     adminClient
       .from('supply_graph_edges')
       .upsert(upsertPayload, { onConflict: 'from_org_id,to_org_id,program_id' })
-      .then(() => {})
-      .catch(() => {})
+      .then(() => {}, () => {})
   }
 
   const atRiskCount = nodes.filter(n => n.type === 'supplier' && n.risk_tier === 'red').length

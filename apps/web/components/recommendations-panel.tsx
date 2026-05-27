@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-const PRIORITY_STYLES: Record<string, { border: string; bg: string; dot: string; label: string }> = {
+type PriorityStyle = { border: string; bg: string; dot: string; label: string }
+
+const PRIORITY_STYLES: Record<string, PriorityStyle> = {
   high: {
     border: 'rgba(220,38,38,0.3)',
     bg: 'rgba(220,38,38,0.03)',
@@ -20,6 +22,10 @@ const PRIORITY_STYLES: Record<string, { border: string; bg: string; dot: string;
     dot: 'var(--gray)',
     label: 'LOW',
   },
+}
+
+const DEFAULT_PRIORITY_STYLE: PriorityStyle = {
+  border: 'var(--border)', bg: 'var(--white)', dot: 'var(--gray)', label: 'LOW',
 }
 
 export function RecommendationsPanel({ bankId: _bankId, maxItems }: { bankId: string; maxItems?: number }) {
@@ -125,7 +131,7 @@ export function RecommendationsPanel({ bankId: _bankId, maxItems }: { bankId: st
         </div>
       ) : (
         (maxItems ? recs.slice(0, maxItems) : recs).map(rec => {
-          const style = PRIORITY_STYLES[rec.priority] ?? PRIORITY_STYLES.low
+          const style = PRIORITY_STYLES[rec.priority] ?? DEFAULT_PRIORITY_STYLE
           return (
             <div key={rec.id} style={{
               padding: '14px 20px',

@@ -24,10 +24,12 @@ const adminClient = createAdmin(
 async function createNotification({ userId, event, title, body: notifBody, deepLink }: {
   userId: string; event: string; title: string; body: string; deepLink: string
 }) {
-  await adminClient.from('notifications').insert({
-    user_id: userId, event, title, body: notifBody,
-    deep_link: deepLink, read: false,
-  }).catch(() => {})
+  try {
+    await adminClient.from('notifications').insert({
+      user_id: userId, event, title, body: notifBody,
+      deep_link: deepLink, read: false,
+    })
+  } catch {}
 }
 
 const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
