@@ -87,7 +87,23 @@ export async function POST(
         .limit(1)
         .maybeSingle()
       creditScoreId = existing?.id ?? null
+
+      // For rejection with no score, create a minimal placeholder so credit_score_id NOT NULL is satisfied
+      if (creditScoreId === null && decision === 'rejected') {
+        const { data: minScore, error: minScoreErr } = await adminClient
+          .from('credit_scores')
+          .insert({ org_id, total_score: 0, risk_tier: body.risk_tier ?? 'C' })
+          .select('id')
+          .single()
+        if (minScoreErr) {
+          console.error('[KYB reject] minimal credit_score insert error:', minScoreErr)
+        } else {
+          creditScoreId = minScore?.id ?? null
+        }
+      }
     }
+
+    console.log('[KYB decision] decision:', decision, 'org:', org_id, 'creditScoreId:', creditScoreId)
 
     // Insert decision record
     const decisionInsert: Record<string, unknown> = {
@@ -107,7 +123,7 @@ export async function POST(
       .insert(decisionInsert)
 
     if (decisionErr) {
-      console.error('KYB decision error — credit_decision_records insert:', decisionErr)
+      console.error('[KYB reject] credit_decision_records insert error:', decisionErr)
       return NextResponse.json({ error: decisionErr.message ?? 'Failed to record decision' }, { status: 500 })
     }
 
@@ -145,7 +161,7 @@ export async function POST(
       .single()
 
     if (updateErr) {
-      console.error('KYB decision error — organizations update:', updateErr)
+      console.error('[KYB reject] organizations update error:', updateErr)
       return NextResponse.json({ error: updateErr.message ?? 'Failed to update organization' }, { status: 500 })
     }
 
@@ -255,18 +271,6 @@ export async function POST(
               html:    kybRejectionEmailHtml({ recipientName: u.full_name ?? u.email, orgName, reason: rejection_reason }),
             })
           }
-
-          await adminClient.from('credit_decision_records').delete().eq('org_id', org_id)
-          await adminClient.from('credit_scores').delete().eq('org_id', org_id)
-          await adminClient.from('documents').delete().eq('org_id', org_id)
-          await adminClient.from('program_enrollments').delete().eq('org_id', org_id)
-          await adminClient.from('users').delete().eq('org_id', org_id)
-
-          for (const u of orgUsers) {
-            await adminClient.auth.admin.deleteUser(u.id)
-          }
-
-          await adminClient.from('organizations').delete().eq('id', org_id)
         }
       })().catch(err => console.error('KYB post-decision side-effects error:', err))
     }

@@ -54,11 +54,12 @@ function fmtCurrency(n: number): string {
   return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
-function fmtMoney(n: number) {
-  if (!n) return '$0'
-  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K'
-  return '$' + n.toFixed(0)
+function fmtMoney(n: number | null | undefined): string {
+  if (!n || isNaN(Number(n))) return '$0'
+  const num = Number(n)
+  if (num >= 1_000_000) return '$' + (num / 1_000_000).toFixed(1) + 'M'
+  if (num >= 1_000) return '$' + (num / 1_000).toFixed(0) + 'K'
+  return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
 // ============== Icon ==============
@@ -914,13 +915,6 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, vol
             { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--gray)', sparkData: [] as number[] },
             { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
             { label: 'Acceptance rate',      value: acceptanceRate != null ? `${acceptanceRate}%` : '—',                   delta: acceptanceRate != null ? 'Of submitted txns' : 'No data yet',            color: 'var(--color-green)', sparkData: [] as number[] },
-            {
-              label: 'Trust tier',
-              value: (data?.performance_tier ?? 'standard').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-              delta: data?.performance_score != null ? `Score ${data.performance_score}/100` : 'Build your record',
-              color: data?.performance_tier === 'preferred' ? '#059669' : data?.performance_tier === 'under_review' ? '#DC2626' : 'var(--ink)',
-              sparkData: [] as number[],
-            },
           ].map((k, i) => (
             <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
               <div className="kpi-label">{k.label}</div>
@@ -929,6 +923,25 @@ function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, vol
               <Sparkline data={k.sparkData} color={k.color} fill />
             </div>
           ))}
+        </div>
+
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Trust Tier</div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 20,
+                fontWeight: 600,
+                color: data?.performance_tier === 'preferred' ? '#059669' : data?.performance_tier === 'under_review' ? '#DC2626' : 'var(--ink)',
+              }}>
+                {(data?.performance_tier ?? 'standard').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              </div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', textAlign: 'right' }}>
+              {data?.performance_score != null ? `Score ${data.performance_score}/100` : 'Build your record'}
+            </div>
+          </div>
         </div>
 
         <div className="grid-2-1" style={{ marginTop: 24 }}>

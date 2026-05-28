@@ -39,9 +39,23 @@ export async function GET(
   const isOwnSupplier =
     (userRow.role === 'supplier_admin' || userRow.role === 'supplier_member') &&
     userRow.org_id === org_id
+  const isAnchor = userRow.role === 'anchor_admin' || userRow.role === 'anchor_member'
 
-  if (!isBank && !isOwnSupplier) {
+  if (!isBank && !isOwnSupplier && !isAnchor) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Anchor must have this supplier enrolled in one of their programs
+  if (isAnchor) {
+    const { data: enrollment } = await adminClient
+      .from('program_enrollments')
+      .select('id')
+      .eq('anchor_org_id', userRow.org_id)
+      .eq('org_id', org_id)
+      .maybeSingle()
+    if (!enrollment) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   const { data: txns } = await adminClient
@@ -49,6 +63,8 @@ export async function GET(
     .select('id, status, created_at, updated_at, financing_amount_approved, financing_rate_apr, invoice_amount, invoice_due_date')
     .eq('supplier_id', org_id)
     .not('status', 'in', '("draft","cancelled")')
+
+  console.log('[performance] txns found:', txns?.length, 'for org:', org_id)
 
   const total = txns?.length ?? 0
 
@@ -113,25 +129,27 @@ export async function GET(
   const bankId =
     userRow.bank_id ?? (await getBankIdForSupplier(org_id, adminClient))
 
-  await adminClient
-    .from('supplier_performance')
-    .upsert(
-      {
-        org_id: org_id,
-        bank_id: bankId,
-        on_time_payment_rate: onTimeRate,
-        dispute_rate: disputeRate,
-        financing_utilization_rate: utilizationRate,
-        avg_advance_rate: avgRate,
-        total_transactions: total,
-        total_financed: totalFinanced,
-        performance_tier: tier,
-        performance_score: performanceScore,
-        last_calculated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'org_id,bank_id' }
-    )
+  if (bankId) {
+    await adminClient
+      .from('supplier_performance')
+      .upsert(
+        {
+          org_id: org_id,
+          bank_id: bankId,
+          on_time_payment_rate: onTimeRate,
+          dispute_rate: disputeRate,
+          financing_utilization_rate: utilizationRate,
+          avg_advance_rate: avgRate,
+          total_transactions: total,
+          total_financed: totalFinanced,
+          performance_tier: tier,
+          performance_score: performanceScore,
+          last_calculated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'org_id,bank_id' }
+      )
+  }
 
   await adminClient
     .from('organizations')

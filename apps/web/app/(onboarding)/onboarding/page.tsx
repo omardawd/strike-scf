@@ -863,15 +863,26 @@ function ScreenOBSuccess({ role, fromInvite, knownParty }: { role: Role; fromInv
           <div>③ Once approved, you&apos;ll receive platform access</div>
           <div>④ Set up programs and invite users inside the platform</div>
         </div>
-        <a
-          href="/pending-approval"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            marginTop: 24, height: 42, padding: '0 24px', borderRadius: 8,
-            background: 'var(--color-ink-1)', color: 'white',
-            textDecoration: 'none', fontSize: 14, fontWeight: 600,
-          }}
-        >View application status <OBIcon name="arrow" size={14} /></a>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 24 }}>
+          <a
+            href="/pending-approval"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              height: 42, padding: '0 24px', borderRadius: 8,
+              background: 'var(--color-ink-1)', color: 'white',
+              textDecoration: 'none', fontSize: 14, fontWeight: 600,
+            }}
+          >View application status <OBIcon name="arrow" size={14} /></a>
+          <a
+            href="/dashboard"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              height: 42, padding: '0 24px', borderRadius: 8,
+              background: 'var(--blue, #0052FF)', color: 'white',
+              textDecoration: 'none', fontSize: 14, fontWeight: 600,
+            }}
+          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
+        </div>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 
-const TIER = {
+const SELF_TIER = {
   preferred: {
     label: 'Preferred Supplier',
     color: '#059669',
@@ -25,12 +25,38 @@ const TIER = {
   },
 }
 
+const BANK_TIER = {
+  preferred: {
+    label: 'Preferred Supplier',
+    color: '#059669',
+    bg: 'rgba(5,150,105,0.06)',
+    border: 'rgba(5,150,105,0.25)',
+    desc: 'Preferred supplier — eligible for priority processing and higher advance rates.',
+  },
+  standard: {
+    label: 'Standard',
+    color: 'var(--gray)',
+    bg: 'var(--offwhite)',
+    border: 'var(--border)',
+    desc: 'Standard supplier — normal processing and terms apply.',
+  },
+  under_review: {
+    label: 'Under Review',
+    color: '#DC2626',
+    bg: 'rgba(220,38,38,0.04)',
+    border: 'rgba(220,38,38,0.2)',
+    desc: 'Under review — performance issues flagged. Review recommended.',
+  },
+}
+
 interface PerformanceScorecardProps {
   orgId: string
   showRefresh?: boolean
+  viewerRole?: 'bank' | 'self'
 }
 
-export function PerformanceScorecard({ orgId, showRefresh }: PerformanceScorecardProps) {
+export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }: PerformanceScorecardProps) {
+  const TIER = viewerRole === 'bank' ? BANK_TIER : SELF_TIER
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)

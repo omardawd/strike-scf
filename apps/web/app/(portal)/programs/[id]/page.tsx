@@ -78,7 +78,7 @@ interface PendingSupplierInv {
   id: string
   email: string
   anchor_org_id: string | null
-  status: 'invited'
+  status: 'invited' | 'pending_bank_review'
   invited_at: string
   type: 'invitation'
 }
@@ -88,6 +88,14 @@ interface KybPendingEntry {
   legal_name: string
   kyb_status: string
   anchor_org_id?: string | null
+}
+
+interface PendingAnchorRequest {
+  id: string
+  email: string
+  anchor_org_id: string | null
+  status: 'pending_bank_review'
+  invited_at: string
 }
 
 interface AnalyticsData {
@@ -257,6 +265,7 @@ export default function ProgramDetailPage() {
   const [kybSuppliers, setKybSuppliers] = useState<KybPendingEntry[]>([])
   const [signedUpAnchors, setSignedUpAnchors] = useState<Array<{ email: string }>>([])
   const [signedUpSuppliers, setSignedUpSuppliers] = useState<Array<{ email: string }>>([])
+  const [pendingAnchorRequests, setPendingAnchorRequests] = useState<PendingAnchorRequest[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [isIFOnly, setIsIFOnly]       = useState(false)
@@ -322,7 +331,7 @@ export default function ProgramDetailPage() {
         setKybSuppliers(netData.kyb_suppliers ?? [])
         setSignedUpAnchors(netData.signed_up_anchors ?? [])
         setSignedUpSuppliers(netData.signed_up_suppliers ?? [])
-
+        setPendingAnchorRequests(netData.pending_anchor_requests ?? [])
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -474,6 +483,31 @@ export default function ProgramDetailPage() {
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : 'Failed to cancel invitation')
     }
+  }
+
+  async function handleApproveAnchorInvite(invId: string, mode: 'standard' | 'custom_kyb') {
+    try {
+      const res = await fetch(`/api/programs/${id}/invite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitation_id: invId, action: 'approve', invitation_mode: mode }),
+      })
+      if (!res.ok) return
+      setPendingAnchorRequests(prev => prev.filter(p => p.id !== invId))
+      setNetworkVersion(v => v + 1)
+    } catch {}
+  }
+
+  async function handleDeclineAnchorInvite(invId: string) {
+    try {
+      const res = await fetch(`/api/programs/${id}/invite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitation_id: invId, action: 'decline' }),
+      })
+      if (!res.ok) return
+      setPendingAnchorRequests(prev => prev.filter(p => p.id !== invId))
+    } catch {}
   }
 
   const typeLabel = program?.financing_types?.length
@@ -773,6 +807,7 @@ export default function ProgramDetailPage() {
 
             {/* ── BANK: Anchor & Supplier Network ── */}
             {portal === 'bank' && !isIFOnly && (
+              <>
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>Anchor &amp; Supplier Network</div>
                 {anchors.length === 0 && pendingAnchors.length === 0 && kybAnchors.length === 0 && signedUpAnchors.length === 0 ? (
@@ -929,6 +964,68 @@ export default function ProgramDetailPage() {
                   </>
                 )}
               </div>
+
+              {pendingAnchorRequests.length > 0 && (
+                <div className="card" style={{ marginTop: 16 }}>
+                  <div className="card-head">
+                    <span>Pending Supplier Invite Requests</span>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9, color: 'var(--amber)',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                    }}>
+                      {pendingAnchorRequests.length} from anchor
+                    </span>
+                  </div>
+                  {pendingAnchorRequests.map((inv: PendingAnchorRequest) => (
+                    <div key={inv.id} style={{
+                      padding: '12px 20px',
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <div style={{
+                          fontFamily: 'var(--font-body)',
+                          fontSize: 13, color: 'var(--ink)',
+                        }}>{inv.email}</div>
+                        <div style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10, color: 'var(--gray)',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                        }}>
+                          Requested by anchor
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          type="button"
+                          onClick={() => handleApproveAnchorInvite(inv.id, 'standard')}>
+                          Approve (Standard)
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          onClick={() => handleApproveAnchorInvite(inv.id, 'custom_kyb')}>
+                          Custom KYB
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          style={{ color: 'var(--color-red, #DC2626)' }}
+                          onClick={() => handleDeclineAnchorInvite(inv.id)}>
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              </>
             )}
 
             {/* ── ANCHOR: My Suppliers ── */}
@@ -992,20 +1089,28 @@ export default function ProgramDetailPage() {
                                 {inv.email}
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span className="badge badge-pending">Invited</span>
+                                {inv.status === 'pending_bank_review' ? (
+                                  <span className="badge badge-draft">Awaiting bank review</span>
+                                ) : (
+                                  <span className="badge badge-pending">Invited</span>
+                                )}
                                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>
-                                  Invitation sent {fmtDate(inv.invited_at)}
+                                  {inv.status === 'pending_bank_review'
+                                    ? `Submitted ${fmtDate(inv.invited_at)}`
+                                    : `Invitation sent ${fmtDate(inv.invited_at)}`}
                                 </span>
                               </div>
                             </div>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              type="button"
-                              style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
-                              onClick={() => cancelInvite(inv.id, 'supplier')}
-                            >
-                              Cancel
-                            </button>
+                            {inv.status !== 'pending_bank_review' && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                type="button"
+                                style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
+                                onClick={() => cancelInvite(inv.id, 'supplier')}
+                              >
+                                Cancel
+                              </button>
+                            )}
                           </div>
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
                             {['Transactions', 'Latest status'].map(label => (
@@ -1174,7 +1279,7 @@ export default function ProgramDetailPage() {
               <h3 className="t-card-head">Invite {inviteRole === 'anchor' ? 'Anchor' : 'Supplier'}</h3>
               <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowInviteModal(false)}>✕</button>
             </div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minHeight: 200 }}>
               {inviteSent ? (
                 <div style={{ fontSize: 14, color: 'var(--color-green)', textAlign: 'center', padding: '12px 0' }}>
                   Invitation sent!

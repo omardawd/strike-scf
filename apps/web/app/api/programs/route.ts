@@ -42,15 +42,26 @@ export async function GET() {
 
   const isAnchor = ANCHOR_ROLES.includes(userData.role)
 
-  // Anchors: query by anchor_org_id — catches both self-enrollment rows and supplier rows under this anchor
+  // Anchors: check both anchor_org_id and org_id to catch all enrollment patterns
   if (isAnchor) {
-    const { data: enrollments } = await adminClient
-      .from('program_enrollments')
-      .select('program_id')
-      .eq('anchor_org_id', userData.org_id)
-      .in('status', ['active', 'invited', 'onboarding'])
+    const [byAnchorId, byOrgId] = await Promise.all([
+      adminClient
+        .from('program_enrollments')
+        .select('program_id')
+        .eq('anchor_org_id', userData.org_id)
+        .in('status', ['active', 'invited', 'onboarding']),
+      adminClient
+        .from('program_enrollments')
+        .select('program_id')
+        .eq('org_id', userData.org_id)
+        .in('status', ['active', 'invited', 'onboarding']),
+    ])
 
-    const programIds = [...new Set((enrollments ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean))]
+    const allIds = [
+      ...(byAnchorId.data ?? []),
+      ...(byOrgId.data ?? []),
+    ].map((e: any) => e.program_id).filter(Boolean)
+    const programIds = [...new Set(allIds)]
 
     if (programIds.length === 0) return NextResponse.json({ programs: [] })
 
@@ -134,6 +145,16 @@ export async function POST(request: Request) {
   }
   if (!financing_types || !Array.isArray(financing_types) || financing_types.length === 0) {
     return NextResponse.json({ error: 'financing_types must be a non-empty array' }, { status: 400 })
+  }
+
+  if (isBank) {
+    const types = financing_types as string[]
+    if (types.includes('dynamic_discounting')) {
+      return NextResponse.json(
+        { error: 'Banks cannot create dynamic discounting programs. This program type is anchor-initiated.' },
+        { status: 403 }
+      )
+    }
   }
 
   if (isAnchor) {

@@ -854,7 +854,7 @@ export default function SupplierDetailPage() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <PerformanceScorecard orgId={supplierId} showRefresh={false} />
+              <PerformanceScorecard orgId={supplierId} showRefresh={true} viewerRole="bank" />
             </div>
 
             <div className="card" style={{ marginBottom: 16 }}>

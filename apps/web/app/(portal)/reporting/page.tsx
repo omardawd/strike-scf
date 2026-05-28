@@ -118,7 +118,7 @@ export default function ReportingPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/reporting')
+      const res = await fetch(`/api/reporting?period=${volPeriod}`)
       if (!res.ok) {
         const d = await res.json() as { error?: string }
         setError(d.error ?? 'Failed to load reporting data')
@@ -132,12 +132,12 @@ export default function ReportingPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [volPeriod])
 
   useEffect(() => {
     if (!user) return
     load()
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, load])
 
   if (!user) return null
 
@@ -226,7 +226,7 @@ export default function ReportingPage() {
               <div className="card-body">
                 <LineChart
                   data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))}
-                  height={80}
+                  height={160}
                 />
               </div>
             </div>
@@ -397,7 +397,7 @@ export default function ReportingPage() {
               <div className="card-body">
                 <LineChart
                   data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_invoice_amount, count: m.count }))}
-                  height={80}
+                  height={160}
                   color="var(--color-anchor)"
                 />
               </div>
@@ -514,7 +514,7 @@ export default function ReportingPage() {
               <div className="card-body">
                 <LineChart
                   data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))}
-                  height={80}
+                  height={160}
                   color="var(--color-green)"
                 />
               </div>

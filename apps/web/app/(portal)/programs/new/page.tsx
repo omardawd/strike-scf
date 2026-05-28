@@ -24,7 +24,7 @@ export default function NewProgramPage() {
   const portal = user?.role?.startsWith('anchor') ? 'anchor' : 'bank'
   const visibleFinTypes = portal === 'anchor'
     ? FIN_TYPES.filter(t => t.id === 'dynamic_discounting')
-    : FIN_TYPES
+    : FIN_TYPES.filter(t => t.id !== 'dynamic_discounting')
 
   const [name, setName]           = useState('')
   const [finType, setFinType]     = useState('reverse_factoring')

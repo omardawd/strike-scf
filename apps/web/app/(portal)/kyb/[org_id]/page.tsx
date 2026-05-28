@@ -182,6 +182,9 @@ export default function KYBDetailPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [approvalBanner, setApprovalBanner] = useState(false)
   const [referrer, setReferrer] = useState('/kyb')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [internalDocs, setInternalDocs] = useState<any[]>([])
+  const [uploadingDoc, setUploadingDoc] = useState(false)
 
   const isAuthorized = user?.role === 'bank_admin' || user?.role === 'bank_credit_officer'
 
@@ -238,6 +241,38 @@ export default function KYBDetailPage() {
     }).then(res => { if (res.ok) res.json().then(setRiskData) }).catch(() => {})
   }, [isAuthorized, orgId])
 
+  useEffect(() => {
+    if (!isAuthorized || !orgId) return
+    fetch(`/api/kyb/${orgId}/documents`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setInternalDocs(d.documents ?? []) })
+      .catch(() => {})
+  }, [isAuthorized, orgId])
+
+  async function handleInternalDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingDoc(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('entity_type', 'organization')
+      fd.append('entity_id', orgId)
+      fd.append('document_kind', 'internal_bank')
+      const res = await fetch(`/api/kyb/${orgId}/documents`, { method: 'POST', body: fd })
+      if (res.ok) {
+        const docsRes = await fetch(`/api/kyb/${orgId}/documents`)
+        if (docsRes.ok) {
+          const d = await docsRes.json()
+          setInternalDocs(d.documents ?? [])
+        }
+      }
+    } finally {
+      setUploadingDoc(false)
+      e.target.value = ''
+    }
+  }
+
   async function submitDecision(decision: CreditDecision) {
     setSubmitting(true)
     setSubmitError(null)
@@ -270,6 +305,10 @@ export default function KYBDetailPage() {
       setOverrideReason('')
       setInfoMessage('')
       setRejectionReason('')
+      if (decision === 'rejected') {
+        router.push(referrer)
+        return
+      }
       if (decision === 'approved' || decision === 'override_approved') {
         setApprovalBanner(true)
       }
@@ -282,6 +321,10 @@ export default function KYBDetailPage() {
   }
 
   if (!isAuthorized) return null
+
+  const submittedDate = org?.kyb_submitted_at
+    ? new Date(org.kyb_submitted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—'
 
   return (
     <>
@@ -323,7 +366,7 @@ export default function KYBDetailPage() {
           <div className="subtitle" style={{ marginTop: 6 }}>
             {org.ein && <span>EIN {org.ein}</span>}
             {org.city && org.state && <span> · {org.city}, {org.state}</span>}
-            {org.kyb_submitted_at && <span> · Submitted {formatDate(org.kyb_submitted_at)}</span>}
+            {org.kyb_submitted_at && <span> · Submitted {submittedDate}</span>}
           </div>
         )}
       </div>
@@ -360,7 +403,7 @@ export default function KYBDetailPage() {
                   <div className="kv-row"><span className="k">Location</span><span className="v">{[org.city, org.state].filter(Boolean).join(', ')}</span></div>
                 )}
                 <div className="kv-row"><span className="k">KYB status</span><span className="v"><span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status)}</span></span></div>
-                <div className="kv-row"><span className="k">Application submitted</span><span className="v plain">{formatDate(org.kyb_submitted_at)}</span></div>
+                <div className="kv-row"><span className="k">Application submitted</span><span className="v plain">{submittedDate}</span></div>
                 {org.credit_reviewed_at && (
                   <div className="kv-row"><span className="k">Last reviewed</span><span className="v plain">{formatDate(org.credit_reviewed_at)}</span></div>
                 )}
@@ -450,6 +493,55 @@ export default function KYBDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Internal Documents — bank only */}
+            <div className="card">
+              <div className="card-head">
+                <span>Internal Documents</span>
+                <label
+                  className="btn btn-ghost btn-sm"
+                  style={{ cursor: uploadingDoc ? 'not-allowed' : 'pointer' }}>
+                  {uploadingDoc ? 'Uploading…' : '+ Upload'}
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xlsx,.png,.jpg"
+                    style={{ display: 'none' }}
+                    disabled={uploadingDoc}
+                    onChange={handleInternalDocUpload}
+                  />
+                </label>
+              </div>
+              {internalDocs.length === 0 ? (
+                <div style={{
+                  padding: '16px 20px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  color: 'var(--gray)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}>
+                  No internal documents
+                </div>
+              ) : (
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                internalDocs.map((doc: any) => (
+                  <div key={doc.id} className="doc-row">
+                    <svg width={14} height={14} className="doc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
+                    <span className="doc-name">{doc.name ?? 'Document'}</span>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      color: 'var(--gray)',
+                    }}>
+                      {new Date(doc.created_at).toLocaleDateString()}
+                    </span>
+                    {doc.signed_url && (
+                      <a href={doc.signed_url} download className="doc-link">Download</a>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* RIGHT — Sticky decision panel or read-only status */}

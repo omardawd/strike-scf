@@ -98,7 +98,7 @@ export async function GET(
     }
 
     // Fetch enrollments AND pending/accepted invitations in parallel
-    const [enrollResult, inviteResult, acceptedInviteResult] = await Promise.all([
+    const [enrollResult, inviteResult, acceptedInviteResult, pendingBankReviewResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('org_id, anchor_org_id, status, created_at')
@@ -114,6 +114,12 @@ export async function GET(
         .select('id, email, role, anchor_org_id')
         .eq('program_id', programId)
         .eq('status', 'accepted'),
+      adminClient
+        .from('invitations')
+        .select('id, email, anchor_org_id, created_at')
+        .eq('program_id', programId)
+        .eq('status', 'pending_bank_review')
+        .eq('role', 'supplier'),
     ])
 
     const enrollments = enrollResult.data ?? []
@@ -230,8 +236,16 @@ export async function GET(
       }
     }
 
+    const pending_anchor_requests_early = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string }) => ({
+      id:            i.id,
+      email:         i.email,
+      anchor_org_id: i.anchor_org_id,
+      status:        'pending_bank_review' as const,
+      invited_at:    i.created_at,
+    }))
+
     if (anchorIds.length === 0) {
-      return NextResponse.json({ anchors: [], pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers })
+      return NextResponse.json({ anchors: [], pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers, pending_anchor_requests: pending_anchor_requests_early })
     }
 
     const [{ data: anchorOrgs }, txnsResult, supplierOrgsResult] = await Promise.all([
@@ -295,7 +309,15 @@ export async function GET(
       }
     })
 
-    return NextResponse.json({ anchors, pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers })
+    const pending_anchor_requests = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string }) => ({
+      id:            i.id,
+      email:         i.email,
+      anchor_org_id: i.anchor_org_id,
+      status:        'pending_bank_review' as const,
+      invited_at:    i.created_at,
+    }))
+
+    return NextResponse.json({ anchors, pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers, pending_anchor_requests })
   }
 
   // ── ANCHOR ────────────────────────────────────────────────────────────────
@@ -342,10 +364,10 @@ export async function GET(
         .in('status', ['active', 'invited']),
       adminClient
         .from('invitations')
-        .select('id, email, created_at, anchor_org_id')
+        .select('id, email, created_at, anchor_org_id, status')
         .eq('program_id', programId)
         .eq('anchor_org_id', userData.org_id)
-        .eq('status', 'pending'),
+        .in('status', ['pending', 'pending_bank_review']),
       adminClient
         .from('invitations')
         .select('id, email')
@@ -358,7 +380,7 @@ export async function GET(
       id:            i.id,
       email:         i.email,
       anchor_org_id: i.anchor_org_id,
-      status:        'invited' as const,
+      status:        (i.status === 'pending_bank_review' ? 'pending_bank_review' : 'invited') as 'invited' | 'pending_bank_review',
       invited_at:    i.created_at,
       type:          'invitation' as const,
     }))

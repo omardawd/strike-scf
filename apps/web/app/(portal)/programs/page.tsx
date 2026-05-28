@@ -167,7 +167,7 @@ export default function ProgramsPage() {
     portal === 'bank'
       ? 'Create your first SCF program to get started.'
       : portal === 'anchor'
-        ? 'You are not enrolled in any programs yet. Contact your bank to get enrolled.'
+        ? 'Create a dynamic discounting program to offer early payment to your suppliers, or contact your bank to get enrolled in an SCF program.'
         : 'You are not enrolled in any programs yet.'
 
   return (
@@ -176,7 +176,7 @@ export default function ProgramsPage() {
         crumbs={[{ label: 'My Programs' }]}
         actions={
           <>
-            {portal === 'bank' && (
+            {(portal === 'bank' || portal === 'anchor') && (
               <button
                 className="btn btn-primary"
                 type="button"
@@ -226,7 +226,7 @@ export default function ProgramsPage() {
               <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>
                 {emptyMessage}
               </div>
-              {portal === 'bank' && (
+              {(portal === 'bank' || portal === 'anchor') && (
                 <button
                   className="btn btn-primary"
                   type="button"
@@ -253,8 +253,7 @@ export default function ProgramsPage() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                  gap: '1px',
-                  background: 'var(--border)',
+                  gap: 16,
                   marginBottom: 32,
                 }}>
                   {activePrograms.map(p => (
@@ -262,17 +261,19 @@ export default function ProgramsPage() {
                       key={p.id}
                       style={{
                         background: 'var(--white)',
-                        padding: 28,
+                        border: '1px solid var(--border)',
+                        borderTop: `3px solid ${STATUS_BORDER[p.status] ?? 'var(--gray)'}`,
+                        padding: '20px 24px',
                         cursor: 'pointer',
-                        transition: 'box-shadow 0.2s',
+                        transition: 'box-shadow 0.15s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)' }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
                       onClick={() => router.push('/programs/' + p.id)}
                     >
                       <div style={{
                         fontFamily: 'var(--font-display)',
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: 600,
                         letterSpacing: '-0.02em',
                         color: 'var(--ink)',
@@ -284,7 +285,7 @@ export default function ProgramsPage() {
                         letterSpacing: '0.12em',
                         textTransform: 'uppercase',
                         color: 'var(--gray)',
-                        marginBottom: 20,
+                        marginBottom: 16,
                       }}>{typeLabel(p)}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 6, height: 6, background: 'var(--color-green)' }} />
@@ -318,8 +319,7 @@ export default function ProgramsPage() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                  gap: '1px',
-                  background: 'var(--border)',
+                  gap: 16,
                   opacity: 0.65,
                 }}>
                   {inactivePrograms.map(p => (
@@ -327,17 +327,19 @@ export default function ProgramsPage() {
                       key={p.id}
                       style={{
                         background: 'var(--white)',
-                        padding: 28,
+                        border: '1px solid var(--border)',
+                        borderTop: `3px solid ${STATUS_BORDER[p.status] ?? 'var(--gray)'}`,
+                        padding: '20px 24px',
                         cursor: 'pointer',
-                        transition: 'box-shadow 0.2s',
+                        transition: 'box-shadow 0.15s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)' }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
                       onClick={() => router.push('/programs/' + p.id)}
                     >
                       <div style={{
                         fontFamily: 'var(--font-display)',
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: 600,
                         letterSpacing: '-0.02em',
                         color: 'var(--ink)',
@@ -349,7 +351,7 @@ export default function ProgramsPage() {
                         letterSpacing: '0.12em',
                         textTransform: 'uppercase',
                         color: 'var(--gray)',
-                        marginBottom: 20,
+                        marginBottom: 16,
                       }}>{typeLabel(p)}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 6, height: 6, background: 'var(--gray)' }} />

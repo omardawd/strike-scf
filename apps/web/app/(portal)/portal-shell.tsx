@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { AIPanel, AIContext } from '@/components/ai-panel'
@@ -33,107 +33,126 @@ export function PortalShell({
   const pathname = usePathname()
   const page = derivePageName(pathname)
 
+  // Draggable position — stored as bottom/right offset from viewport
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 28, y: 28 })
+  const dragging = useRef(false)
+  const dragStart = useRef({ mx: 0, my: 0, bx: 0, by: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start drag on the button body, not propagated events
+    dragging.current = true
+    dragStart.current = { mx: e.clientX, my: e.clientY, bx: pos.x, by: pos.y }
+    e.preventDefault()
+  }, [pos])
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragging.current) return
+      const dx = e.clientX - dragStart.current.mx
+      const dy = e.clientY - dragStart.current.my
+      const newX = Math.max(8, dragStart.current.bx + dx)
+      const newY = Math.max(8, Math.min(window.innerHeight - 60, dragStart.current.by + dy))
+      setPos({ x: newX, y: newY })
+    }
+    function onUp() { dragging.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
   return (
-    <AIContext.Provider value={{ aiOpen, onAIToggle: () => setAiOpen(v => !v) }}>
-      <div className="app-shell">
-        <Sidebar />
-        <main
-          className="main"
-          style={{
-            marginRight: aiOpen ? 380 : 0,
-            transition: 'margin-right 0.25s ease',
-          }}
-        >
-          {children}
-        </main>
-        <AIPanel
-          isOpen={aiOpen}
-          onClose={() => setAiOpen(false)}
-          context={{
-            portal,
-            page,
-            userName,
-          }}
-        />
-
-        {/* Strike AI floating button */}
-        <button
-          onClick={() => setAiOpen(v => !v)}
-          style={{
-            position: 'fixed',
-            bottom: 28,
-            right: aiOpen ? 408 : 28,
-            zIndex: 200,
-            width: 52,
-            height: 52,
-            background: aiOpen ? 'var(--blue)' : 'var(--ink)',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: 3,
-            transition: 'right 0.25s ease, background 0.15s ease, transform 0.15s ease',
-            boxShadow: aiOpen
-              ? '0 4px 20px rgba(0,82,255,0.4)'
-              : '0 4px 16px rgba(0,0,0,0.2)',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-2px)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'translateY(0)'
-          }}
-          title="Strike AI"
-        >
-          {aiOpen ? (
-            <span style={{
-              color: 'white',
-              fontSize: 18,
-              fontFamily: 'var(--font-mono)',
-              lineHeight: 1,
-            }}>×</span>
-          ) : (
-            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-              {[0, 1, 2].map(i => (
-                <div key={i} style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: 'white',
-                  animation: `dot-float 1.8s ${i * 0.2}s ease-in-out infinite`,
-                }} />
-              ))}
-            </div>
-          )}
-        </button>
-
-        {/* Tooltip label */}
-        {!aiOpen && (
-          <div
-            id="strike-ai-tooltip"
+    <>
+      <style>{`
+        @keyframes dot-float {
+          0%, 100% { transform: translateY(0); opacity: 1; }
+          50% { transform: translateY(-4px); opacity: 0.6; }
+        }
+        @keyframes strike-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(0.92); }
+        }
+        @keyframes orbit {
+          from { transform: rotate(0deg) translateX(20px) rotate(0deg); }
+          to   { transform: rotate(360deg) translateX(20px) rotate(-360deg); }
+        }
+        @keyframes ring-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+      `}</style>
+      <AIContext.Provider value={{ aiOpen, onAIToggle: () => setAiOpen(v => !v) }}>
+        <div className="app-shell">
+          <Sidebar />
+          <main
+            className="main"
             style={{
-              position: 'fixed',
-              bottom: 40,
-              right: 88,
-              zIndex: 199,
-              background: 'var(--ink)',
-              color: 'white',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              padding: '6px 12px',
-              pointerEvents: 'none',
-              opacity: 0,
-              transition: 'opacity 0.15s',
+              marginRight: aiOpen ? 420 : 0,
+              transition: 'margin-right 0.25s ease',
             }}
           >
-            Strike AI
-          </div>
-        )}
-      </div>
-    </AIContext.Provider>
+            {children}
+          </main>
+          <AIPanel
+            isOpen={aiOpen}
+            onClose={() => setAiOpen(false)}
+            context={{ portal, page, userName }}
+          />
+
+          {/* Strike AI draggable launcher */}
+          <button
+            ref={btnRef}
+            onMouseDown={onMouseDown}
+            onClick={() => { if (!dragging.current) setAiOpen(v => !v) }}
+            style={{
+              position: 'fixed',
+              left: pos.x,
+              top: pos.y,
+              zIndex: 200,
+              width: 52,
+              height: 52,
+              background: aiOpen
+                ? 'var(--blue)'
+                : 'var(--ink)',
+              border: 'none',
+              borderRadius: '50%',
+              cursor: dragging.current ? 'grabbing' : 'grab',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 0.15s ease, box-shadow 0.15s ease',
+              boxShadow: aiOpen
+                ? '0 0 0 3px rgba(0,82,255,0.3), 0 4px 20px rgba(0,82,255,0.5)'
+                : '0 4px 16px rgba(0,0,0,0.3)',
+              userSelect: 'none',
+            }}
+            title="Strike AI"
+          >
+            {aiOpen ? (
+              <span style={{ color: 'white', fontSize: 20, lineHeight: 1, fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>
+                ×
+              </span>
+            ) : (
+              <img
+                src="/logo.png"
+                alt="Strike AI"
+                draggable={false}
+                style={{
+                  width: 28,
+                  height: 28,
+                  objectFit: 'contain',
+                  animation: 'strike-pulse 2.4s ease-in-out infinite',
+                  filter: 'brightness(10)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+          </button>
+        </div>
+      </AIContext.Provider>
+    </>
   )
 }

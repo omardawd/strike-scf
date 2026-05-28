@@ -49,6 +49,38 @@ interface SupplierEntry {
   legal_name: string
   kyb_status: string
   status: string
+  country_of_origin?: string | null
+}
+
+function CountryCode({ code }: { code: string }) {
+  if (!code || code.length !== 2) return null
+  return (
+    <span
+      title={FLAG_NAMES[code.toUpperCase()] ?? code.toUpperCase()}
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 9,
+        letterSpacing: '0.08em',
+        color: 'var(--gray)',
+        border: '1px solid var(--border)',
+        borderRadius: 2,
+        padding: '1px 4px',
+        lineHeight: 1.5,
+        display: 'inline-block',
+        textTransform: 'uppercase',
+        cursor: 'default',
+      }}
+    >
+      {code.toUpperCase()}
+    </span>
+  )
+}
+
+const FLAG_NAMES: Record<string, string> = {
+  CN: 'China', VN: 'Vietnam', BD: 'Bangladesh',
+  IN: 'India', MX: 'Mexico', US: 'United States',
+  TR: 'Turkey', PK: 'Pakistan', KH: 'Cambodia',
+  ID: 'Indonesia', TH: 'Thailand', MY: 'Malaysia',
 }
 
 interface PendingSupplierInv {
@@ -64,6 +96,7 @@ interface KybSupplierEntry {
   id: string
   legal_name: string
   kyb_status: string
+  country_of_origin?: string | null
 }
 
 interface TxRow {
@@ -567,6 +600,9 @@ export default function AnchorDetailPage() {
                               <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
                             </div>
                           </div>
+                          {s.country_of_origin && (
+                            <CountryCode code={s.country_of_origin} />
+                          )}
                           <span style={{ color: 'var(--gray)', fontSize: 16 }}>›</span>
                         </div>
                       </div>
@@ -587,6 +623,9 @@ export default function AnchorDetailPage() {
                               <span style={{ fontSize: 11, color: 'var(--gray)' }}>Review KYB →</span>
                             </div>
                           </div>
+                          {s.country_of_origin && (
+                            <CountryCode code={s.country_of_origin} />
+                          )}
                           <span style={{ color: 'var(--gray)', fontSize: 16 }}>›</span>
                         </div>
                       </div>

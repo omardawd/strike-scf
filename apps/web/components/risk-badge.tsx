@@ -21,6 +21,12 @@ const TIER_COLORS = {
   red:   { bg: 'rgba(220,38,38,0.08)',  border: 'rgba(220,38,38,0.2)',  text: '#DC2626', dot: '#DC2626' },
 }
 
+const TIER_LABELS: Record<string, string> = {
+  green: 'Low Risk',
+  amber: 'Medium Risk',
+  red: 'High Risk',
+}
+
 export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }: RiskBadgeProps) {
   if (!tier) return null
 
@@ -33,23 +39,23 @@ export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: size === 'sm' ? '3px 8px' : '5px 10px',
+        padding: size === 'sm' ? '4px 10px' : '6px 12px',
         background: colors.bg,
         border: `1px solid ${colors.border}`,
         fontFamily: 'var(--font-mono)',
-        fontSize: size === 'sm' ? 10 : 11,
+        fontSize: size === 'sm' ? 11 : 13,
         letterSpacing: '0.1em',
         textTransform: 'uppercase',
         color: colors.text,
       }}>
         <div style={{
-          width: 5,
-          height: 5,
+          width: 7,
+          height: 7,
           borderRadius: '50%',
           background: colors.dot,
           flexShrink: 0,
         }} />
-        {tier.toUpperCase()}
+        {TIER_LABELS[tier] ?? tier.toUpperCase()}
         {showScore && score !== undefined && ` · ${score}`}
       </div>
 
@@ -57,18 +63,19 @@ export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }
         <div
           key={f.code}
           style={{
-            padding: '3px 8px',
+            padding: '4px 10px',
             background: f.severity === 'high' ? 'rgba(220,38,38,0.06)' : 'var(--offwhite)',
             border: `1px solid ${f.severity === 'high' ? 'rgba(220,38,38,0.2)' : 'var(--border)'}`,
+            borderLeft: '3px solid currentColor',
             fontFamily: 'var(--font-mono)',
-            fontSize: 9,
+            fontSize: 11,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             color: f.severity === 'high' ? '#DC2626' : 'var(--gray)',
           }}
           title={f.detail}
         >
-          ⚠ {f.label}
+          {f.label}
         </div>
       ))}
 

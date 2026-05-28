@@ -34,9 +34,10 @@ export async function GET() {
   const bankLabel = bank?.name ?? 'Bank'
   const bankNode = { id: bankId, type: 'bank' as const, label: bankLabel, risk_tier: null }
 
+  // Get all programs for this bank
   const { data: programs } = await adminClient
     .from('programs')
-    .select('id, name, anchor_org_id')
+    .select('id, name, financing_types, status')
     .eq('bank_id', bankId)
 
   const programIds = (programs ?? []).map((p: { id: string }) => p.id)
@@ -49,21 +50,39 @@ export async function GET() {
     })
   }
 
-  const programAnchorMap: Record<string, string> = {}
-  for (const program of (programs ?? [])) {
-    if (program.anchor_org_id) {
-      programAnchorMap[program.id] = program.anchor_org_id
+  // Build graph from live enrollment data, including onboarding suppliers
+  const { data: enrollmentsRaw } = await adminClient
+    .from('program_enrollments')
+    .select('program_id, org_id, anchor_org_id, status')
+    .in('program_id', programIds)
+    .in('status', ['active', 'onboarding'])
+
+  const enrollments = enrollmentsRaw ?? []
+
+  // Collect unique anchor and supplier org IDs from enrollment records
+  const anchorOrgIdSet = new Set<string>()
+  const supplierOrgIdSet = new Set<string>()
+
+  for (const e of enrollments) {
+    if (!e.anchor_org_id) continue
+    anchorOrgIdSet.add(e.anchor_org_id)
+    if (e.org_id !== e.anchor_org_id) {
+      supplierOrgIdSet.add(e.org_id)
     }
   }
 
-  const anchorOrgIds = new Set(Object.values(programAnchorMap))
+  const allOrgIds = [...new Set([...anchorOrgIdSet, ...supplierOrgIdSet])]
 
-  const [enrollmentsResult, existingEdgesResult, txnsResult] = await Promise.all([
-    adminClient
-      .from('program_enrollments')
-      .select('id, program_id, org_id, status, organizations(id, legal_name, risk_tier, risk_score, country_of_origin)')
-      .in('program_id', programIds)
-      .eq('status', 'active'),
+  type OrgRow = { id: string; legal_name: string; risk_tier: string | null; risk_score: number | null; country_of_origin: string | null }
+  type EdgeRow = { from_org_id: string; to_org_id: string; program_id: string; transaction_count: number | null; total_volume: number | null }
+
+  const [orgsResult, existingEdgesResult, txnsResult] = await Promise.all([
+    allOrgIds.length > 0
+      ? adminClient
+          .from('organizations')
+          .select('id, legal_name, risk_tier, risk_score, country_of_origin')
+          .in('id', allOrgIds)
+      : Promise.resolve({ data: [] as OrgRow[] }),
     adminClient
       .from('supply_graph_edges')
       .select('from_org_id, to_org_id, program_id, transaction_count, total_volume')
@@ -74,9 +93,11 @@ export async function GET() {
       .in('program_id', programIds),
   ])
 
-  const enrollments = enrollmentsResult.data ?? []
-  const existingEdges = existingEdgesResult.data ?? []
+  const orgs = (orgsResult.data ?? []) as OrgRow[]
+  const existingEdges = (existingEdgesResult.data ?? []) as EdgeRow[]
   const txns = txnsResult.data ?? []
+
+  const orgMap = new Map(orgs.map(o => [o.id, o]))
 
   const txnCountByOrg: Record<string, number> = {}
   for (const t of txns) {
@@ -84,82 +105,57 @@ export async function GET() {
     if (t.anchor_id) txnCountByOrg[t.anchor_id] = (txnCountByOrg[t.anchor_id] ?? 0) + 1
   }
 
-  const anchorOrgsData: Record<string, { id: string; legal_name: string; risk_tier: string | null; risk_score: number | null; country_of_origin: string | null }> = {}
-  if (anchorOrgIds.size > 0) {
-    const { data: anchorOrgs } = await adminClient
-      .from('organizations')
-      .select('id, legal_name, risk_tier, risk_score, country_of_origin')
-      .in('id', Array.from(anchorOrgIds))
-    for (const o of (anchorOrgs ?? [])) {
-      anchorOrgsData[o.id] = o
-    }
-  }
-
   const nodes: Array<Record<string, unknown>> = [bankNode]
   const nodeMap: Record<string, boolean> = { [bankId]: true }
   const edges: Array<Record<string, unknown>> = []
 
-  for (const anchorId of anchorOrgIds) {
-    const org = anchorOrgsData[anchorId]
-    if (!org || nodeMap[anchorId]) continue
+  // Anchor nodes + bank→anchor edges
+  for (const anchorId of anchorOrgIdSet) {
+    if (nodeMap[anchorId]) continue
+    const org = orgMap.get(anchorId)
     nodes.push({
       id: anchorId,
       type: 'anchor',
-      label: org.legal_name,
-      risk_tier: org.risk_tier,
-      risk_score: org.risk_score,
-      country: org.country_of_origin,
+      label: org?.legal_name ?? anchorId,
+      risk_tier: org?.risk_tier ?? null,
+      risk_score: org?.risk_score ?? null,
+      country: org?.country_of_origin ?? null,
       transaction_count: txnCountByOrg[anchorId] ?? 0,
     })
     nodeMap[anchorId] = true
-
-    for (const program of (programs ?? [])) {
-      if (program.anchor_org_id === anchorId) {
-        edges.push({ from: bankId, to: anchorId, type: 'funds', label: program.name })
-      }
-    }
+    edges.push({ from: bankId, to: anchorId, type: 'funds' })
   }
 
-  const supplierOrgIds = new Set<string>()
+  // Supplier nodes + anchor→supplier edges, then cache to supply_graph_edges
   const edgeSet = new Set<string>()
   const upsertPayload: Array<Record<string, unknown>> = []
 
-  for (const enrollment of enrollments) {
-    const raw = enrollment.organizations
-    const orgData = (Array.isArray(raw) ? raw[0] : raw) as {
-      id: string; legal_name: string; risk_tier: string | null; risk_score: number | null; country_of_origin: string | null
-    } | null
-    if (!orgData) continue
-
-    const orgId = enrollment.org_id
-    if (anchorOrgIds.has(orgId)) continue
-
-    supplierOrgIds.add(orgId)
+  for (const e of enrollments) {
+    if (!e.anchor_org_id || e.org_id === e.anchor_org_id) continue
+    const orgId = e.org_id
 
     if (!nodeMap[orgId]) {
+      const org = orgMap.get(orgId)
       nodes.push({
         id: orgId,
         type: 'supplier',
-        label: orgData.legal_name,
-        risk_tier: orgData.risk_tier,
-        risk_score: orgData.risk_score,
-        country: orgData.country_of_origin,
+        label: org?.legal_name ?? orgId,
+        risk_tier: org?.risk_tier ?? null,
+        risk_score: org?.risk_score ?? null,
+        country: org?.country_of_origin ?? null,
         transaction_count: txnCountByOrg[orgId] ?? 0,
       })
       nodeMap[orgId] = true
     }
 
-    const anchorId = programAnchorMap[enrollment.program_id]
-    if (!anchorId) continue
-
-    const edgeKey = `${anchorId}:${orgId}`
+    const edgeKey = `${e.anchor_org_id}:${orgId}`
     if (!edgeSet.has(edgeKey)) {
       edgeSet.add(edgeKey)
       const existingEdge = existingEdges.find(
-        e => e.from_org_id === anchorId && e.to_org_id === orgId
+        ex => ex.from_org_id === e.anchor_org_id && ex.to_org_id === orgId
       )
       edges.push({
-        from: anchorId,
+        from: e.anchor_org_id,
         to: orgId,
         type: 'buys_from',
         transaction_count: existingEdge?.transaction_count ?? txnCountByOrg[orgId] ?? 0,
@@ -168,13 +164,14 @@ export async function GET() {
     }
 
     upsertPayload.push({
-      from_org_id: anchorId,
+      from_org_id: e.anchor_org_id,
       to_org_id: orgId,
       edge_type: 'buys_from',
-      program_id: enrollment.program_id,
+      program_id: e.program_id,
       transaction_count: txnCountByOrg[orgId] ?? 0,
-      total_volume: existingEdges.find(e => e.from_org_id === anchorId && e.to_org_id === orgId && e.program_id === enrollment.program_id)?.total_volume ?? 0,
-      risk_weight: orgData.risk_score,
+      total_volume: existingEdges.find(
+        ex => ex.from_org_id === e.anchor_org_id && ex.to_org_id === orgId && ex.program_id === e.program_id
+      )?.total_volume ?? 0,
     })
   }
 
@@ -192,8 +189,8 @@ export async function GET() {
     nodes,
     edges,
     stats: {
-      total_anchors: anchorOrgIds.size,
-      total_suppliers: supplierOrgIds.size,
+      total_anchors: anchorOrgIdSet.size,
+      total_suppliers: supplierOrgIdSet.size,
       total_volume: totalVolume,
       at_risk_count: atRiskCount,
     },

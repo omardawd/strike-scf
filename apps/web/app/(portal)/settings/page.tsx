@@ -391,7 +391,7 @@ export default function SettingsPage() {
 
         {/* ── Tab: My Profile ── */}
         {tab === 'profile' && (
-          <div className="card" style={{ maxWidth: 520 }}>
+          <div className="card" style={{ maxWidth: 800 }}>
             <div className="card-head">
               <h3 className="t-card-head">Personal details</h3>
             </div>
@@ -460,7 +460,7 @@ export default function SettingsPage() {
 
         {/* ── Tab: Org / Institution ── */}
         {tab === 'org' && (
-          <div className="card" style={{ maxWidth: 520 }}>
+          <div className="card" style={{ maxWidth: 800 }}>
             <div className="card-head">
               <h3 className="t-card-head">
                 {isBankUser ? 'Institution details' : 'Organization details'}

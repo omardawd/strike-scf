@@ -57,6 +57,15 @@ export async function POST(request: Request) {
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
+  // Ensure bucket exists — ignore error if already exists
+  const { error: bucketErr } = await adminClient.storage.createBucket(
+    BUCKET,
+    { public: true, allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'], fileSizeLimit: 5242880 }
+  )
+  if (bucketErr && !bucketErr.message.toLowerCase().includes('already')) {
+    console.error('Bucket create error:', bucketErr)
+  }
+
   const { error: uploadError } = await adminClient.storage
     .from(BUCKET)
     .upload(path, buffer, { contentType: file.type, upsert: true })

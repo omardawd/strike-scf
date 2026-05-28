@@ -183,9 +183,10 @@ export function NotifBell() {
 }
 
 export function fmtMoney(n: number | null | undefined): string {
-  if (!n) return '—'
-  if (n >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B'
-  if (n >= 1e6) return '$' + (n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1) + 'M'
-  if (n >= 1e3) return '$' + Math.round(n / 1e3) + 'K'
-  return '$' + n.toLocaleString()
+  if (!n || isNaN(Number(n))) return '$0'
+  const num = Number(n)
+  if (num >= 1e9) return '$' + (num / 1e9).toFixed(1) + 'B'
+  if (num >= 1e6) return '$' + (num / 1e6).toFixed(num % 1e6 === 0 ? 0 : 1) + 'M'
+  if (num >= 1e3) return '$' + Math.round(num / 1e3) + 'K'
+  return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }

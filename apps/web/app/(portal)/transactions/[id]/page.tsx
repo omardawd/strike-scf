@@ -2473,27 +2473,18 @@ export default function TransactionDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="fs-grid">
-                      <div className="fs-cell">
-                        <span className="fs-label">Invoice amount</span>
-                        <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
-                      </div>
-                      <div className="fs-cell">
-                        <span className="fs-label">Advance rate</span>
-                        <span className="fs-value">
-                          {showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'}
-                        </span>
-                      </div>
-                      <div className="fs-cell">
-                        <span className="fs-label">Amount disbursed</span>
-                        <span className={`fs-value ${amountDisbursed != null && amountDisbursed > 0 ? 'green' : ''}`}>
-                          {amountDisbursed != null ? fmtAmt(parseFloat(amountDisbursed.toFixed(2))) : '—'}
-                        </span>
-                      </div>
-                      <div className="fs-cell">
-                        <span className="fs-label">Discount fee</span>
-                        <span className="fs-value">{showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'}</span>
-                      </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: 'var(--border)', border: '1px solid var(--border)' }}>
+                      {([
+                        ['Invoice Amount', fmtAmt(txn.invoice_amount)],
+                        ['Advance Rate', showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'],
+                        ['Amount Disbursed', showApprovedFinancials ? fmtAmt(txn.financing_amount_approved) : '—'],
+                        ['Discount Fee', showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'],
+                      ] as [string, string][]).map(([label, value]) => (
+                        <div key={label} style={{ background: 'var(--white)', padding: '16px 20px' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 6 }}>{label}</div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{value}</div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

@@ -61,7 +61,7 @@ export async function POST(
 
   const { data: program } = await adminClient
     .from('programs')
-    .select('id, bank_id')
+    .select('id, bank_id, financing_types')
     .eq('id', programId)
     .single()
   if (!program) return NextResponse.json({ error: 'Program not found' }, { status: 404 })
@@ -70,12 +70,13 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Check for existing active or pending-review invitation
   const { data: existingInv } = await adminClient
     .from('invitations')
     .select('id')
     .eq('email', email)
     .eq('program_id', programId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'pending_bank_review'])
     .maybeSingle()
   if (existingInv) {
     return NextResponse.json(
@@ -88,6 +89,11 @@ export async function POST(
   const actorType  = userData.role.startsWith('bank') ? 'bank' : 'anchor'
   const expiresAt  = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
+  // Anchor inviting supplier on non-DD program requires bank approval first
+  const isDDProgram = ((program.financing_types ?? []) as string[]).includes('dynamic_discounting')
+  const isAnchorInvitingSupplier = userData.role === 'anchor_admin' && role === 'supplier'
+  const needsBankReview = isAnchorInvitingSupplier && !isDDProgram
+
   const record: Record<string, unknown> = {
     email,
     role:                   inviteRole,
@@ -95,7 +101,7 @@ export async function POST(
     invited_by_actor_type:  actorType,
     bank_id:                program.bank_id,
     program_id:             programId,
-    status:                 'pending',
+    status:                 needsBankReview ? 'pending_bank_review' : 'pending',
     expires_at:             expiresAt,
   }
   if (anchor_org_id) record.anchor_org_id = anchor_org_id
@@ -115,43 +121,44 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 })
   }
 
-  console.log('[invite] Sending email to:', invitation.email)
-  console.log('[invite] Invite URL:', `${process.env.NEXT_PUBLIC_APP_URL}/invite?token=${invitation.token}`)
+  // Only send email immediately if not waiting for bank review
+  if (!needsBankReview) {
+    console.log('[invite] Sending email to:', invitation.email)
+    ;(async () => {
+      const { data: bankData } = await adminClient
+        .from('banks')
+        .select('display_name, legal_name')
+        .eq('id', program.bank_id)
+        .single()
+      const orgName = (bankData?.display_name ?? bankData?.legal_name) ?? 'Strike SCF'
+      const subject = invitation_mode === 'known_counterparty'
+        ? `Your account is ready on Strike SCF`
+        : invitation_mode === 'custom_kyb'
+          ? `Complete your Strike SCF onboarding`
+          : name
+            ? `Hi ${name}, you've been invited to join ${orgName} on Strike SCF`
+            : `You've been invited to join ${orgName} on Strike SCF`
 
-  ;(async () => {
-    const { data: bankData } = await adminClient
-      .from('banks')
-      .select('display_name, legal_name')
-      .eq('id', program.bank_id)
-      .single()
-    const orgName = (bankData?.display_name ?? bankData?.legal_name) ?? 'Strike SCF'
-    const subject = invitation_mode === 'known_counterparty'
-      ? `Your account is ready on Strike SCF`
-      : invitation_mode === 'custom_kyb'
-        ? `Complete your Strike SCF onboarding`
-        : name
-          ? `Hi ${name}, you've been invited to join ${orgName} on Strike SCF`
-          : `You've been invited to join ${orgName} on Strike SCF`
+      const baseHtml = inviteEmailHtml({
+        inviterName: userData.full_name ?? 'A colleague',
+        orgName,
+        role:        inviteRole,
+        token:       invitation.token,
+      })
 
-    const baseHtml = inviteEmailHtml({
-      inviterName: userData.full_name ?? 'A colleague',
-      orgName,
-      role:        inviteRole,
-      token:       invitation.token,
-    })
+      const noteHtml = invitation_mode === 'known_counterparty'
+        ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has already set up your organization details. You just need to create your credentials to get started.</p>`
+        : invitation_mode === 'custom_kyb'
+          ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has specified the documents required for your onboarding.</p>`
+          : ''
 
-    const noteHtml = invitation_mode === 'known_counterparty'
-      ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has already set up your organization details. You just need to create your credentials to get started.</p>`
-      : invitation_mode === 'custom_kyb'
-        ? `<p style="font-family:sans-serif;font-size:14px;color:#555;margin:16px 24px">${orgName} has specified the documents required for your onboarding.</p>`
-        : ''
-
-    await sendEmail({
-      to:      invitation.email,
-      subject,
-      html:    baseHtml + noteHtml,
-    })
-  })().catch(() => {})
+      await sendEmail({
+        to:      invitation.email,
+        subject,
+        html:    baseHtml + noteHtml,
+      })
+    })().catch(() => {})
+  }
 
   return NextResponse.json({ invitation_id: invitation.id, token: invitation.token }, { status: 201 })
 }
@@ -168,7 +175,7 @@ export async function PATCH(
 
   const { data: userData } = await adminClient
     .from('users')
-    .select('id, role, bank_id, org_id')
+    .select('id, role, bank_id, org_id, full_name')
     .eq('id', user.id)
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
@@ -186,29 +193,107 @@ export async function PATCH(
 
   const { invitation_id, action } = body
 
-  if (action !== 'cancel') {
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
-  }
   if (typeof invitation_id !== 'string') {
     return NextResponse.json({ error: 'invitation_id is required' }, { status: 400 })
   }
 
-  const { data: updated, error: updateError } = await adminClient
-    .from('invitations')
-    .update({ status: 'revoked' })
-    .eq('id', invitation_id)
-    .eq('program_id', programId)
-    .eq('status', 'pending')
-    .select('id')
+  if (action === 'approve') {
+    if (userData.role !== 'bank_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const invitation_mode = typeof body.invitation_mode === 'string' ? body.invitation_mode : 'standard'
 
-  if (updateError) {
-    console.error('Cancel invitation error:', updateError)
-    return NextResponse.json({ error: 'Failed to cancel invitation' }, { status: 500 })
+    const { data: updated, error: updateError } = await adminClient
+      .from('invitations')
+      .update({ status: 'pending', invitation_mode })
+      .eq('id', invitation_id)
+      .eq('program_id', programId)
+      .eq('status', 'pending_bank_review')
+      .select('id, email, token, invitee_name')
+      .single()
+
+    if (updateError || !updated) {
+      return NextResponse.json({ error: 'Invitation not found or already processed' }, { status: 404 })
+    }
+
+    // Send email to supplier now that bank approved
+    ;(async () => {
+      const { data: program } = await adminClient
+        .from('programs')
+        .select('bank_id')
+        .eq('id', programId)
+        .single()
+      if (!program) return
+
+      const { data: bankData } = await adminClient
+        .from('banks')
+        .select('display_name, legal_name')
+        .eq('id', program.bank_id)
+        .single()
+      const orgName = (bankData?.display_name ?? bankData?.legal_name) ?? 'Strike SCF'
+      const inviteeName = (updated as { invitee_name?: string }).invitee_name ?? ''
+      const subject = inviteeName
+        ? `Hi ${inviteeName}, you've been invited to join ${orgName} on Strike SCF`
+        : `You've been invited to join ${orgName} on Strike SCF`
+
+      const html = inviteEmailHtml({
+        inviterName: userData.full_name ?? 'Your bank',
+        orgName,
+        role:        'supplier',
+        token:       (updated as { token: string }).token,
+      })
+
+      await sendEmail({ to: updated.email, subject, html })
+    })().catch(() => {})
+
+    return NextResponse.json({ success: true })
   }
 
-  if (!updated || updated.length === 0) {
-    return NextResponse.json({ error: 'Invitation not found or already cancelled' }, { status: 404 })
+  if (action === 'decline') {
+    if (userData.role !== 'bank_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { data: updated, error: updateError } = await adminClient
+      .from('invitations')
+      .update({ status: 'declined' })
+      .eq('id', invitation_id)
+      .eq('program_id', programId)
+      .eq('status', 'pending_bank_review')
+      .select('id')
+
+    if (updateError) {
+      console.error('Decline invitation error:', updateError)
+      return NextResponse.json({ error: 'Failed to decline invitation' }, { status: 500 })
+    }
+
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: 'Invitation not found or already processed' }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
   }
 
-  return NextResponse.json({ success: true })
+  if (action === 'cancel') {
+    const { data: updated, error: updateError } = await adminClient
+      .from('invitations')
+      .update({ status: 'revoked' })
+      .eq('id', invitation_id)
+      .eq('program_id', programId)
+      .eq('status', 'pending')
+      .select('id')
+
+    if (updateError) {
+      console.error('Cancel invitation error:', updateError)
+      return NextResponse.json({ error: 'Failed to cancel invitation' }, { status: 500 })
+    }
+
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: 'Invitation not found or already cancelled' }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  }
+
+  return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 }
