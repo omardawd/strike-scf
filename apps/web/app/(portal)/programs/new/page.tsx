@@ -113,7 +113,7 @@ export default function NewProgramPage() {
         body.max_deal_size        = maxDeal
       }
       if (isDD) {
-        body.discount_schedule = JSON.stringify(schedule)
+        body.discount_schedule = schedule
       }
 
       const res = await fetch('/api/programs', {

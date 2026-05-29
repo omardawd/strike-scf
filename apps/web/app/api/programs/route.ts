@@ -196,7 +196,6 @@ export async function POST(request: Request) {
     .from('programs')
     .insert({
       bank_id:              effectiveBankId,
-      anchor_org_id:        isAnchor ? userData.org_id : null,
       created_by_user_id:   userData.id,
       name:                 (name as string).trim(),
       financing_types,

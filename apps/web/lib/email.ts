@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 
 const FROM = 'Strike SCF <no-reply@strikescf.com>'
 const APP_URL = (() => {
-  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://strike-scf.vercel.app').trim()
+  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.strikescf.com').trim()
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
   return raw.includes('localhost') ? `http://${raw}` : `https://${raw}`
 })()
