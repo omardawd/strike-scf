@@ -472,6 +472,9 @@ a { color: inherit; }
   line-height: 1;
 }
 
+/* AI launcher — must override the global border-radius: 0 !important reset */
+.ai-launcher { border-radius: 50% !important; }
+
 /* Page */
 .page { padding: 24px 28px 64px; max-width: 1280px; }
 .page-header { margin-bottom: 32px; }

@@ -212,7 +212,7 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
-          background: 'var(--ink)',
+          background: '#111318',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div>

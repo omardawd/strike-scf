@@ -99,6 +99,7 @@ export function PortalShell({
           {/* Strike AI draggable launcher */}
           <button
             ref={btnRef}
+            className="ai-launcher"
             onMouseDown={onMouseDown}
             onClick={() => { if (!dragging.current) setAiOpen(v => !v) }}
             style={{

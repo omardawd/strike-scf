@@ -293,8 +293,19 @@ function GraphCanvas({ graphData, expanded }: { graphData: GraphData; expanded: 
               scale: Math.min(3, Math.max(0.3, prev.scale * delta)),
             }))
           }}
+          onClick={e => {
+            const target = e.target as SVGElement
+            const tag = target.tagName.toLowerCase()
+            if (tag === 'svg' || tag === 'line' || (tag === 'rect' && !target.closest('g'))) {
+              setSelectedNode(null)
+            }
+          }}
           onPointerDown={e => {
-            if ((e.target as Element) === svgRef.current || (e.target as Element).tagName === 'rect') {
+            const target = e.target as Element
+            const isBackground = target === svgRef.current ||
+              (target.tagName === 'rect' && !target.closest('g')) ||
+              target.tagName === 'line'
+            if (isBackground) {
               setDragging(true)
               setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y })
               svgRef.current?.setPointerCapture(e.pointerId)
@@ -358,7 +369,6 @@ function GraphCanvas({ graphData, expanded }: { graphData: GraphData; expanded: 
             ))}
           </g>
 
-          <rect width="600" height="400" fill="transparent" onClick={() => setSelectedNode(null)} style={{ pointerEvents: selectedNode ? 'auto' : 'none' }} />
         </svg>
 
         {/* Zoom controls */}
@@ -379,8 +389,9 @@ function GraphCanvas({ graphData, expanded }: { graphData: GraphData; expanded: 
               }}
               style={{
                 width: 28, height: 28,
-                background: 'var(--white)',
-                border: '1px solid var(--border)',
+                background: C.bgNode,
+                border: `1px solid ${C.borderHi}`,
+                color: C.text,
                 cursor: 'pointer',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 14,

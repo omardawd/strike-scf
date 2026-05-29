@@ -110,7 +110,7 @@ export default function SettingsPage() {
     : 'Supplier Portal'
 
   // ── Profile tab ─────────────────────────────────────────────────────────────
-  const [profile, setProfile] = useState({ full_name: '', job_title: '', email: '', role: '' })
+  const [profile, setProfile] = useState({ full_name: '', email: '', role: '' })
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileAlert, setProfileAlert]   = useState<Alert | null>(null)
 
@@ -120,7 +120,6 @@ export default function SettingsPage() {
       .then(d => {
         if (d.user) setProfile({
           full_name: d.user.full_name ?? '',
-          job_title: d.user.job_title ?? '',
           email:     d.user.email     ?? '',
           role:      d.user.role      ?? '',
         })
@@ -135,7 +134,7 @@ export default function SettingsPage() {
       const res  = await fetch('/api/settings/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: profile.full_name, job_title: profile.job_title }),
+        body: JSON.stringify({ full_name: profile.full_name }),
       })
       const data = await res.json()
       if (!res.ok) { setProfileAlert({ kind: 'error', msg: data.error ?? 'Failed to save' }); return }
@@ -414,12 +413,6 @@ export default function SettingsPage() {
                   label="Full name"
                   value={profile.full_name}
                   onChange={v => setProfile(p => ({ ...p, full_name: v }))}
-                />
-                <EditableInput
-                  label="Job title"
-                  value={profile.job_title}
-                  onChange={v => setProfile(p => ({ ...p, job_title: v }))}
-                  placeholder="e.g. Finance Manager"
                 />
                 <div className="form-field">
                   <label className="form-label">Email</label>
@@ -725,7 +718,7 @@ export default function SettingsPage() {
               </div>
               <div className="card-body">
                 {addSuccess && (
-                  <div className="alert alert-success" style={{ marginBottom: 16 }}>
+                  <div className="alert alert-info" style={{ marginBottom: 16 }}>
                     <div className="alert-body">{addSuccess}</div>
                   </div>
                 )}

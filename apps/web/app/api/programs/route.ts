@@ -42,9 +42,9 @@ export async function GET() {
 
   const isAnchor = ANCHOR_ROLES.includes(userData.role)
 
-  // Anchors: check both anchor_org_id and org_id to catch all enrollment patterns
+  // Anchors: check enrollments and invitations to catch all access patterns
   if (isAnchor) {
-    const [byAnchorId, byOrgId] = await Promise.all([
+    const [byAnchorId, byOrgId, byInvite] = await Promise.all([
       adminClient
         .from('program_enrollments')
         .select('program_id')
@@ -55,11 +55,21 @@ export async function GET() {
         .select('program_id')
         .eq('org_id', userData.org_id)
         .in('status', ['active', 'invited', 'onboarding']),
+      userData.email
+        ? adminClient
+            .from('invitations')
+            .select('program_id')
+            .eq('email', userData.email as string)
+            .eq('role', 'anchor')
+            .in('status', ['pending', 'accepted'])
+            .not('program_id', 'is', null)
+        : Promise.resolve({ data: [] as Array<{ program_id: string | null }>, error: null }),
     ])
 
     const allIds = [
       ...(byAnchorId.data ?? []),
       ...(byOrgId.data ?? []),
+      ...((byInvite as { data: Array<{ program_id: string | null }> | null }).data ?? []),
     ].map((e: any) => e.program_id).filter(Boolean)
     const programIds = [...new Set(allIds)]
 
@@ -69,7 +79,7 @@ export async function GET() {
       .from('programs')
       .select('*')
       .in('id', programIds)
-      .eq('status', 'active')
+      .order('created_at', { ascending: false })
 
     if (progError) return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
     return NextResponse.json({ programs: programs ?? [] })
