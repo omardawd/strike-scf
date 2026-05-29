@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 
 interface AppNotification {
   id: string
@@ -37,8 +38,30 @@ export function Topbar({
   onBack?: () => void
   actions?: React.ReactNode
 }) {
+  const pathname = usePathname()
+  const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    setLoading(true)
+    setProgress(0)
+    const t1 = setTimeout(() => setProgress(70), 100)
+    const t2 = setTimeout(() => {
+      setProgress(100)
+      setTimeout(() => { setLoading(false); setProgress(0) }, 200)
+    }, 400)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [pathname])
+
   return (
-    <header className="topbar">
+    <header className="topbar" style={{ position: 'relative' }}>
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, height: 2,
+        width: loading ? `${progress}%` : '0%',
+        background: 'var(--blue)',
+        transition: loading ? 'width 0.3s ease' : 'none',
+        opacity: loading ? 1 : 0,
+      }} />
       {onBack && (
         <button className="back-btn" type="button" onClick={onBack}>
           <Icon name="back" size={12} /> Back

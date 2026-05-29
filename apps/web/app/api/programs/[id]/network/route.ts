@@ -116,7 +116,7 @@ export async function GET(
         .eq('status', 'accepted'),
       adminClient
         .from('invitations')
-        .select('id, email, anchor_org_id, created_at')
+        .select('id, email, anchor_org_id, created_at, prefilled_kyb, invitee_name')
         .eq('program_id', programId)
         .eq('status', 'pending_bank_review')
         .eq('role', 'supplier'),
@@ -236,12 +236,14 @@ export async function GET(
       }
     }
 
-    const pending_anchor_requests_early = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string }) => ({
+    const pending_anchor_requests_early = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string; prefilled_kyb?: Record<string, unknown> | null; invitee_name?: string | null }) => ({
       id:            i.id,
       email:         i.email,
       anchor_org_id: i.anchor_org_id,
       status:        'pending_bank_review' as const,
       invited_at:    i.created_at,
+      prefilled_kyb: i.prefilled_kyb ?? null,
+      invitee_name:  i.invitee_name ?? null,
     }))
 
     if (anchorIds.length === 0) {
@@ -309,12 +311,14 @@ export async function GET(
       }
     })
 
-    const pending_anchor_requests = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string }) => ({
+    const pending_anchor_requests = (pendingBankReviewResult.data ?? []).map((i: { id: string; email: string; anchor_org_id: string | null; created_at: string; prefilled_kyb?: Record<string, unknown> | null; invitee_name?: string | null }) => ({
       id:            i.id,
       email:         i.email,
       anchor_org_id: i.anchor_org_id,
       status:        'pending_bank_review' as const,
       invited_at:    i.created_at,
+      prefilled_kyb: i.prefilled_kyb ?? null,
+      invitee_name:  i.invitee_name ?? null,
     }))
 
     return NextResponse.json({ anchors, pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers, pending_anchor_requests })

@@ -35,7 +35,7 @@ export type CreditDecision =
   | 'approved' | 'override_approved' | 'more_info_requested'
   | 'rejected' | 'pending_countersign'
 
-export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked' | 'pending_bank_review' | 'declined'
 export type InvitationRole = 'anchor' | 'supplier'
 export type ProgramStatus = 'draft' | 'active' | 'paused' | 'closed'
 export type EnrollmentStatus = 'invited' | 'onboarding' | 'active' | 'suspended'

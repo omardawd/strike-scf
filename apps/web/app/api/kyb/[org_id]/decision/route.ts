@@ -30,7 +30,7 @@ export async function POST(
 
   const { data: me } = await adminClient
     .from('users')
-    .select('role, bank_id')
+    .select('id, role, bank_id, full_name')
     .eq('id', user.id)
     .single()
 
@@ -59,59 +59,66 @@ export async function POST(
   if (!decision) return NextResponse.json({ error: 'decision is required' }, { status: 400 })
 
   try {
-    // Optionally insert a new credit score record
+    console.error('[KYB decision] body:', { decision, org_id, risk_tier, credit_score })
+
+    // Resolve or create a credit_score row so credit_score_id is never null
     let creditScoreId: string | null = null
+    let scoreValue = credit_score ?? org.credit_score ?? 0
+    let tierValue: string = risk_tier ?? org.risk_tier ?? 'C'
+
     if (credit_score !== undefined) {
       const { data: newScore, error: scoreErr } = await adminClient
         .from('credit_scores')
-        .insert({
-          org_id,
-          total_score: credit_score,
-          risk_tier: risk_tier ?? null,
-        })
-        .select('id')
+        .insert({ org_id, total_score: credit_score, risk_tier: risk_tier ?? null })
+        .select('id, total_score, risk_tier')
         .single()
-
       if (scoreErr || !newScore) {
-        console.error('KYB decision error — credit_scores insert:', scoreErr)
+        console.error('[KYB decision] credit_scores insert error:', scoreErr)
         return NextResponse.json({ error: scoreErr?.message ?? 'Failed to save credit score' }, { status: 500 })
       }
       creditScoreId = newScore.id
+      scoreValue = newScore.total_score
+      tierValue = newScore.risk_tier ?? tierValue
     } else {
-      // Use latest existing score
       const { data: existing } = await adminClient
         .from('credit_scores')
-        .select('id, total_score')
+        .select('id, total_score, risk_tier')
         .eq('org_id', org_id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      creditScoreId = existing?.id ?? null
 
-      // For rejection with no score, create a minimal placeholder so credit_score_id NOT NULL is satisfied
-      if (creditScoreId === null && decision === 'rejected') {
+      if (existing) {
+        creditScoreId = existing.id
+        scoreValue = existing.total_score
+        tierValue = existing.risk_tier ?? tierValue
+      } else {
+        // No score exists — create minimal placeholder for any decision type
         const { data: minScore, error: minScoreErr } = await adminClient
           .from('credit_scores')
-          .insert({ org_id, total_score: 0, risk_tier: body.risk_tier ?? 'C' })
-          .select('id')
+          .insert({ org_id, total_score: 0, risk_tier: risk_tier ?? 'C' })
+          .select('id, total_score, risk_tier')
           .single()
         if (minScoreErr) {
-          console.error('[KYB reject] minimal credit_score insert error:', minScoreErr)
-        } else {
-          creditScoreId = minScore?.id ?? null
+          console.error('[KYB decision] minimal credit_score insert error:', minScoreErr)
+        } else if (minScore) {
+          creditScoreId = minScore.id
+          scoreValue = minScore.total_score
+          tierValue = minScore.risk_tier ?? tierValue
         }
       }
     }
 
-    console.log('[KYB decision] decision:', decision, 'org:', org_id, 'creditScoreId:', creditScoreId)
+    console.error('[KYB decision] resolved creditScoreId:', creditScoreId, 'decision:', decision)
 
     // Insert decision record
     const decisionInsert: Record<string, unknown> = {
       org_id,
       decision,
       decided_by_user_id: user.id,
-      score_at_decision: credit_score ?? org.credit_score ?? 0,
-      risk_tier_at_decision: risk_tier ?? org.risk_tier ?? 'C',
+      decided_by_user_name: me.full_name ?? null,
+      score_at_decision: scoreValue,
+      risk_tier_at_decision: tierValue,
       override_reason: override_reason ?? null,
       rejection_reason: rejection_reason ?? null,
       info_request_message: info_request_message ?? null,
@@ -276,9 +283,9 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true, organization: updatedOrg })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unexpected error'
-    console.error('KYB decision error:', err)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Decision failed'
+    console.error('[KYB decision] caught:', err)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

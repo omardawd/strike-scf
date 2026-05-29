@@ -28,11 +28,12 @@ const DEFAULT_PRIORITY_STYLE: PriorityStyle = {
   border: 'var(--border)', bg: 'var(--white)', dot: 'var(--gray)', label: 'LOW',
 }
 
-export function RecommendationsPanel({ bankId: _bankId, maxItems }: { bankId: string; maxItems?: number }) {
+export function RecommendationsPanel({ bankId: _bankId, maxItems = 2 }: { bankId: string; maxItems?: number }) {
   const [recs, setRecs] = useState<any[]>([])
   const [counts, setCounts] = useState<any>({})
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     fetch('/api/recommendations')
@@ -130,7 +131,8 @@ export function RecommendationsPanel({ bankId: _bankId, maxItems }: { bankId: st
           </div>
         </div>
       ) : (
-        (maxItems ? recs.slice(0, maxItems) : recs).map(rec => {
+        <>
+        {(showAll ? recs : recs.slice(0, maxItems)).map(rec => {
           const style = PRIORITY_STYLES[rec.priority] ?? DEFAULT_PRIORITY_STYLE
           return (
             <div key={rec.id} style={{
@@ -227,7 +229,27 @@ export function RecommendationsPanel({ bankId: _bankId, maxItems }: { bankId: st
               )}
             </div>
           )
-        })
+        })}
+        {recs.length > maxItems && (
+          <div style={{
+            padding: '10px 20px',
+            borderTop: '1px solid var(--border)',
+            textAlign: 'center',
+          }}>
+            <button
+              onClick={() => setShowAll(v => !v)}
+              style={{
+                background: 'none', border: 'none',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10, letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--blue)', cursor: 'pointer',
+              }}>
+              {showAll ? '▲ Show less' : `▼ Show all ${recs.length} actions`}
+            </button>
+          </div>
+        )}
+        </>
       )}
     </div>
   )

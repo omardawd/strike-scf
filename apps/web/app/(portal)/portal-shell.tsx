@@ -87,13 +87,7 @@ export function PortalShell({
       <AIContext.Provider value={{ aiOpen, onAIToggle: () => setAiOpen(v => !v) }}>
         <div className="app-shell">
           <Sidebar />
-          <main
-            className="main"
-            style={{
-              marginRight: aiOpen ? 420 : 0,
-              transition: 'margin-right 0.25s ease',
-            }}
-          >
+          <main className="main">
             {children}
           </main>
           <AIPanel
@@ -114,19 +108,15 @@ export function PortalShell({
               zIndex: 200,
               width: 52,
               height: 52,
-              background: aiOpen
-                ? 'var(--blue)'
-                : 'var(--ink)',
-              border: 'none',
+              background: aiOpen ? 'var(--blue)' : 'var(--white)',
+              border: `1px solid ${aiOpen ? 'var(--blue)' : 'var(--border)'}`,
               borderRadius: '50%',
               cursor: dragging.current ? 'grabbing' : 'grab',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'background 0.15s ease, box-shadow 0.15s ease',
-              boxShadow: aiOpen
-                ? '0 0 0 3px rgba(0,82,255,0.3), 0 4px 20px rgba(0,82,255,0.5)'
-                : '0 4px 16px rgba(0,0,0,0.3)',
+              boxShadow: '0 2px 12px rgba(0,82,255,0.15)',
               userSelect: 'none',
             }}
             title="Strike AI"
@@ -137,17 +127,10 @@ export function PortalShell({
               </span>
             ) : (
               <img
-                src="/logo.png"
+                src="/favicon.png"
                 alt="Strike AI"
                 draggable={false}
-                style={{
-                  width: 28,
-                  height: 28,
-                  objectFit: 'contain',
-                  animation: 'strike-pulse 2.4s ease-in-out infinite',
-                  filter: 'brightness(10)',
-                  pointerEvents: 'none',
-                }}
+                style={{ width: 28, height: 28, objectFit: 'contain', pointerEvents: 'none' }}
               />
             )}
           </button>

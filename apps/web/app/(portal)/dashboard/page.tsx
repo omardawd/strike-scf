@@ -295,9 +295,6 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
   const user = useUser()
   const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
-  const [recsExpanded, setRecsExpanded] = useState(false)
-  const [graphExpanded, setGraphExpanded] = useState(false)
-
   const queue = data?.funding_queue ?? []
 
   const bankSnap    = reportingSnap?.role === 'bank' ? reportingSnap : null
@@ -409,29 +406,14 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
         </div>
 
         <div style={{ marginTop: 24 }}>
+          <SupplyGraph bankId={''} />
+        </div>
+
+        <div style={{ marginTop: 24 }}>
           <RecommendationsPanel
             bankId={data?.bank_name ?? ''}
-            maxItems={recsExpanded ? undefined : 2}
+            maxItems={2}
           />
-          <button
-            onClick={() => setRecsExpanded(v => !v)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--gray)',
-              padding: '8px 0',
-              marginTop: 4,
-            }}>
-            {recsExpanded ? '▲ Show less' : '▼ Show all'}
-          </button>
         </div>
 
         <div style={{
@@ -581,58 +563,6 @@ function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeri
             </div>
           ))}
         </div>
-
-        {!graphExpanded ? (
-          <div style={{
-            border: '1px solid var(--border)',
-            background: 'var(--white)',
-            marginTop: 24,
-          }}>
-            <div style={{
-              padding: '14px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-            }}
-            onClick={() => setGraphExpanded(true)}>
-              <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'var(--gray)',
-              }}>Supply Graph</span>
-              <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                color: 'var(--gray)',
-              }}>▼ Expand</span>
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 24 }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              marginBottom: 4,
-            }}>
-              <button
-                onClick={() => setGraphExpanded(false)}
-                style={{
-                  background: 'none', border: 'none',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10, color: 'var(--gray)',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                }}>
-                ▲ Collapse
-              </button>
-            </div>
-            <SupplyGraph bankId={''} />
-          </div>
-        )}
 
         <div className="grid-2-1" style={{ marginTop: 24 }}>
           <div className="card">

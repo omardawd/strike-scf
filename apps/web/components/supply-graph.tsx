@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface GraphNode {
   id: string
@@ -8,7 +8,10 @@ interface GraphNode {
   risk_tier?: string | null
   risk_score?: number | null
   country?: string | null
+  country_of_origin?: string | null
   transaction_count?: number
+  kyb_status?: string | null
+  performance_tier?: string | null
 }
 
 interface PositionedNode extends GraphNode {
@@ -33,12 +36,6 @@ interface GraphData {
     total_volume: number
     at_risk_count: number
   }
-}
-
-interface Transform {
-  tx: number
-  ty: number
-  scale: number
 }
 
 // Bloomberg terminal palette
@@ -256,211 +253,241 @@ function NodeShape({
 function GraphCanvas({ graphData, expanded }: { graphData: GraphData; expanded: boolean }) {
   const [selectedNode, setSelectedNode] = useState<PositionedNode | null>(null)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
-  const [transform, setTransform] = useState<Transform>({ tx: 0, ty: 0, scale: 1 })
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
+  const [dragging, setDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const svgRef = useRef<SVGSVGElement>(null)
-  const dragRef = useRef({ active: false, lastX: 0, lastY: 0 })
 
   useEffect(() => {
-    if (!expanded) setTransform({ tx: 0, ty: 0, scale: 1 })
+    if (!expanded) setTransform({ x: 0, y: 0, scale: 1 })
   }, [expanded])
 
   const posNodes = layoutNodes(graphData.nodes, graphData.edges)
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!expanded) return
-    dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY }
-    e.preventDefault()
-  }, [expanded])
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!expanded || !dragRef.current.active) return
-    const dx = e.clientX - dragRef.current.lastX
-    const dy = e.clientY - dragRef.current.lastY
-    dragRef.current.lastX = e.clientX
-    dragRef.current.lastY = e.clientY
-    const svgEl = svgRef.current
-    if (!svgEl) return
-    const rect = svgEl.getBoundingClientRect()
-    setTransform(prev => ({
-      ...prev,
-      tx: prev.tx + dx * (600 / rect.width),
-      ty: prev.ty + dy * (400 / rect.height),
-    }))
-  }, [expanded])
-
-  const handleMouseUp = useCallback(() => { dragRef.current.active = false }, [])
-
-  const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
-    if (!expanded) return
-    e.preventDefault()
-    const svgEl = svgRef.current
-    if (!svgEl) return
-    const rect = svgEl.getBoundingClientRect()
-    const mx = (e.clientX - rect.left) * (600 / rect.width)
-    const my = (e.clientY - rect.top) * (400 / rect.height)
-    const factor = e.deltaY < 0 ? 1.12 : 0.9
-    setTransform(prev => {
-      const newScale = Math.min(Math.max(prev.scale * factor, 0.25), 8)
-      const ratio = newScale / prev.scale
-      return { scale: newScale, tx: mx - (mx - prev.tx) * ratio, ty: my - (my - prev.ty) * ratio }
-    })
-  }, [expanded])
-
-  // Find edge data for a selected node
   const nodeEdges = selectedNode
     ? graphData.edges.filter(e => e.from === selectedNode.id || e.to === selectedNode.id)
     : []
   const nodeVolume = nodeEdges.reduce((sum, e) => sum + (e.total_volume ?? 0), 0)
   const nodeTxCount = selectedNode?.transaction_count ?? nodeEdges.reduce((sum, e) => sum + (e.transaction_count ?? 0), 0)
 
-  const svgTransform = `translate(${transform.tx},${transform.ty}) scale(${transform.scale})`
+  const svgTransform = `translate(${transform.x},${transform.y}) scale(${transform.scale})`
 
   return (
     <>
-      <svg
-        ref={svgRef}
-        viewBox="0 0 600 400"
-        style={{
-          width: '100%',
-          height: expanded ? '100%' : 340,
-          cursor: expanded ? (dragRef.current.active ? 'grabbing' : 'grab') : 'default',
-          display: 'block',
-          background: C.bg,
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-      >
-        <defs>
-          <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
-            <path d="M 30 0 L 0 0 0 30" fill="none" stroke={C.bg} strokeWidth="0.5" opacity="0.5" />
-          </pattern>
-          <filter id="glow-blue">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-
-        {/* Background grid */}
-        <rect width="600" height="400" fill={C.bg} />
-        <rect width="600" height="400" fill="url(#grid)" opacity="0.4" />
-
-        <g transform={svgTransform}>
-          {/* Edges */}
-          {graphData.edges.map((edge, i) => {
-            const from = posNodes.find(n => n.id === edge.from)
-            const to   = posNodes.find(n => n.id === edge.to)
-            if (!from || !to) return null
-
-            if (edge.type === 'funds') {
-              return (
-                <g key={i}>
-                  <line
-                    x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                    stroke={C.blue} strokeWidth={1} opacity={0.15}
-                  />
-                  <line
-                    x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                    stroke={C.blue} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.55}
-                  >
-                    <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="1.2s" repeatCount="indefinite" />
-                  </line>
-                </g>
-              )
+      <div style={{ position: 'relative' }}>
+        <svg
+          ref={svgRef}
+          viewBox="0 0 600 400"
+          style={{
+            width: '100%',
+            height: expanded ? '100%' : 340,
+            cursor: dragging ? 'grabbing' : 'grab',
+            display: 'block',
+            background: C.bg,
+          }}
+          onWheel={e => {
+            e.preventDefault()
+            const delta = e.deltaY > 0 ? 0.9 : 1.1
+            setTransform(prev => ({
+              ...prev,
+              scale: Math.min(3, Math.max(0.3, prev.scale * delta)),
+            }))
+          }}
+          onPointerDown={e => {
+            if ((e.target as Element) === svgRef.current || (e.target as Element).tagName === 'rect') {
+              setDragging(true)
+              setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y })
+              svgRef.current?.setPointerCapture(e.pointerId)
             }
-            return (
-              <line
-                key={i}
-                x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                stroke={C.borderHi} strokeWidth={1} opacity={0.6}
-              />
-            )
-          })}
+          }}
+          onPointerMove={e => {
+            if (!dragging) return
+            setTransform(prev => ({
+              ...prev,
+              x: e.clientX - dragStart.x,
+              y: e.clientY - dragStart.y,
+            }))
+          }}
+          onPointerUp={() => setDragging(false)}
+        >
+          <defs>
+            <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+              <path d="M 30 0 L 0 0 0 30" fill="none" stroke={C.bg} strokeWidth="0.5" opacity="0.5" />
+            </pattern>
+            <filter id="glow-blue">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
 
-          {/* Nodes */}
-          {posNodes.map(node => (
-            <g
-              key={node.id}
-              style={{ cursor: 'pointer' }}
-              onClick={e => {
-                e.stopPropagation()
-                setSelectedNode(selectedNode?.id === node.id ? null : node)
+          <rect width="600" height="400" fill={C.bg} />
+          <rect width="600" height="400" fill="url(#grid)" opacity="0.4" />
+
+          <g transform={svgTransform}>
+            {graphData.edges.map((edge, i) => {
+              const from = posNodes.find(n => n.id === edge.from)
+              const to   = posNodes.find(n => n.id === edge.to)
+              if (!from || !to) return null
+
+              if (edge.type === 'funds') {
+                return (
+                  <g key={i}>
+                    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={C.blue} strokeWidth={1} opacity={0.15} />
+                    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={C.blue} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.55}>
+                      <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="1.2s" repeatCount="indefinite" />
+                    </line>
+                  </g>
+                )
+              }
+              return <line key={i} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={C.borderHi} strokeWidth={1} opacity={0.6} />
+            })}
+
+            {posNodes.map(node => (
+              <g
+                key={node.id}
+                style={{ cursor: 'pointer' }}
+                onClick={e => {
+                  e.stopPropagation()
+                  setSelectedNode(selectedNode?.id === node.id ? null : node)
+                }}
+                onMouseEnter={() => setHoveredNode(node.id)}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <NodeShape node={node} isSelected={selectedNode?.id === node.id} isHovered={hoveredNode === node.id} />
+              </g>
+            ))}
+          </g>
+
+          <rect width="600" height="400" fill="transparent" onClick={() => setSelectedNode(null)} style={{ pointerEvents: selectedNode ? 'auto' : 'none' }} />
+        </svg>
+
+        {/* Zoom controls */}
+        <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {(['+', '−', '⊙'] as const).map((btn, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                if (btn === '⊙') {
+                  setTransform({ x: 0, y: 0, scale: 1 })
+                } else {
+                  setTransform(prev => ({
+                    ...prev,
+                    scale: Math.min(3, Math.max(0.3, prev.scale * (btn === '+' ? 1.2 : 0.8))),
+                  }))
+                }
               }}
-              onMouseEnter={() => setHoveredNode(node.id)}
-              onMouseLeave={() => setHoveredNode(null)}
+              style={{
+                width: 28, height: 28,
+                background: 'var(--white)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 14,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
             >
-              <NodeShape
-                node={node}
-                isSelected={selectedNode?.id === node.id}
-                isHovered={hoveredNode === node.id}
-              />
-            </g>
+              {btn}
+            </button>
           ))}
-        </g>
+        </div>
+      </div>
 
-        {/* Deselect on canvas click */}
-        <rect
-          width="600" height="400" fill="transparent"
-          onClick={() => setSelectedNode(null)}
-          style={{ pointerEvents: selectedNode ? 'auto' : 'none' }}
-        />
-      </svg>
-
-      {/* Analytics panel */}
+      {/* Analytics panel — light theme */}
       {selectedNode && (
         <div style={{
-          borderTop: `1px solid ${C.border}`,
-          background: C.bgNode,
-          padding: '14px 20px',
+          borderTop: '1px solid var(--border)',
+          padding: '16px 20px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '1px',
+          background: 'var(--border)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.14em',
-                  color: selectedNode.type === 'bank' ? C.blue : C.textDim,
-                  border: `1px solid ${selectedNode.type === 'bank' ? C.blue : C.borderHi}`,
-                  padding: '1px 6px', borderRadius: 2,
-                }}>
-                  {selectedNode.type.toUpperCase()}
-                </span>
-                {selectedNode.risk_tier && (
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.14em',
-                    color: tierStroke(selectedNode.risk_tier),
-                    border: `1px solid ${tierStroke(selectedNode.risk_tier)}`,
-                    padding: '1px 6px', borderRadius: 2,
-                  }}>
-                    TIER {selectedNode.risk_tier}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: C.text, letterSpacing: '0.02em', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedNode.label}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px 16px' }}>
-                {[
-                  { label: 'RISK SCORE', value: selectedNode.risk_score != null ? `${selectedNode.risk_score}/100` : '—' },
-                  { label: 'COUNTRY',    value: selectedNode.country?.toUpperCase() ?? '—' },
-                  { label: 'TXN COUNT',  value: nodeTxCount > 0 ? String(nodeTxCount) : '—' },
-                  { label: 'VOLUME',     value: nodeVolume > 0 ? fmtVol(nodeVolume) : '—' },
-                ].map(stat => (
-                  <div key={stat.label}>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.12em', color: C.textDim, marginBottom: 3, textTransform: 'uppercase' }}>{stat.label}</div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: C.text, letterSpacing: '0.04em' }}>{stat.value}</div>
-                  </div>
-                ))}
-              </div>
+          {/* Left: org details */}
+          <div style={{ background: 'var(--white)', padding: '14px 16px' }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+              letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 8,
+            }}>
+              {selectedNode.type === 'bank' ? 'Bank' : selectedNode.type}
             </div>
-            {selectedNode.type !== 'bank' && (
-              <a
-                href="#"
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', color: C.blue, border: `1px solid ${C.blue}`, padding: '5px 12px', textDecoration: 'none', flexShrink: 0 }}
-              >
-                VIEW →
-              </a>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600,
+              color: 'var(--ink)', marginBottom: 4,
+            }}>{selectedNode.label}</div>
+            {selectedNode.country_of_origin && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                {selectedNode.country_of_origin}
+              </div>
+            )}
+            {selectedNode.kyb_status && (
+              <div style={{
+                marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '3px 10px', border: '1px solid var(--border)',
+                fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+                color: selectedNode.kyb_status === 'approved' ? 'var(--color-green)' : 'var(--gray)',
+              }}>
+                KYB: {selectedNode.kyb_status}
+              </div>
+            )}
+          </div>
+
+          {/* Right: metrics */}
+          <div style={{ background: 'var(--white)', padding: '14px 16px' }}>
+            {selectedNode.risk_score !== undefined && selectedNode.risk_score !== null && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4,
+                }}>Risk Score</div>
+                <div style={{
+                  fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700,
+                  color: selectedNode.risk_score >= 70
+                    ? 'var(--color-green)'
+                    : selectedNode.risk_score >= 45
+                    ? 'var(--color-amber)'
+                    : 'var(--color-red)',
+                }}>
+                  {selectedNode.risk_score}
+                  <span style={{ fontSize: 12, color: 'var(--gray)', fontWeight: 400 }}>/100</span>
+                </div>
+              </div>
+            )}
+            {nodeVolume > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4,
+                }}>Volume Utilized</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--blue)' }}>
+                  {fmtVol(nodeVolume)}
+                </div>
+              </div>
+            )}
+            {nodeTxCount > 0 && (
+              <div>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4,
+                }}>Transactions</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>
+                  {nodeTxCount}
+                </div>
+              </div>
+            )}
+            {selectedNode.performance_tier && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4,
+                }}>Performance</div>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 12, textTransform: 'uppercase',
+                  color: selectedNode.performance_tier === 'preferred' ? 'var(--color-green)' : 'var(--ink)',
+                }}>
+                  {selectedNode.performance_tier}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -494,16 +521,22 @@ export function SupplyGraph({ bankId: _bankId }: { bankId: string }) {
   const header = (
     <div style={{
       padding: '10px 20px',
-      borderBottom: `1px solid ${C.border}`,
-      background: C.bgNode,
+      borderBottom: '1px solid var(--border)',
+      background: 'var(--white)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: C.text }}>
-          SUPPLY NETWORK
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink)' }}>
+          Supply Network
         </span>
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: 'var(--blue)',
+          border: '1px solid var(--blue)', padding: '1px 6px',
+          opacity: 0.75,
+        }}>Beta</span>
         {stats && (
           <div style={{ display: 'flex', gap: 16 }}>
             {[
@@ -513,8 +546,8 @@ export function SupplyGraph({ bankId: _bankId }: { bankId: string }) {
               { label: 'AT RISK',   value: String(stats.at_risk_count), warn: stats.at_risk_count > 0 },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', color: C.textDim }}>{s.label}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: s.warn ? C.red : C.text, fontWeight: 600 }}>{s.value}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', color: 'var(--gray)' }}>{s.label}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: s.warn ? 'var(--color-red)' : 'var(--ink)', fontWeight: 600 }}>{s.value}</span>
               </div>
             ))}
           </div>
@@ -528,8 +561,8 @@ export function SupplyGraph({ bankId: _bankId }: { bankId: string }) {
             { dot: C.red,   label: 'D' },
           ].map(l => (
             <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: l.dot }} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', color: C.textDim }}>TIER {l.label}</span>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: l.dot }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', color: 'var(--ink)' }}>TIER {l.label}</span>
             </div>
           ))}
         </div>
@@ -538,13 +571,13 @@ export function SupplyGraph({ bankId: _bankId }: { bankId: string }) {
           onClick={() => setExpanded(v => !v)}
           style={{
             background: 'none',
-            border: `1px solid ${C.border}`,
+            border: '1px solid var(--border)',
             padding: '3px 8px',
             fontFamily: 'var(--font-mono)',
-            fontSize: 8,
+            fontSize: 9,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
-            color: C.textDim,
+            color: 'var(--gray)',
             cursor: 'pointer',
           }}
           title={expanded ? 'Collapse (Esc)' : 'Expand'}

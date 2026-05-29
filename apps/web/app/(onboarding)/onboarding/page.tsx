@@ -925,6 +925,21 @@ function OnboardingPageContent() {
       setInvitationMode(storedMode)
       setPrefilledKyb(storedPrefilled)
       setRequiredDocs(storedRequiredDocs)
+      if (Object.keys(storedPrefilled).length > 0) {
+        setCompanyData({
+          legalName:    storedPrefilled.legal_name ?? '',
+          ein:          storedPrefilled.ein ?? '',
+          entityType:   storedPrefilled.entity_type ?? '',
+          stateOfInc:   storedPrefilled.state_of_incorporation ?? '',
+          addressLine1: storedPrefilled.address_line_1 ?? '',
+          city:         storedPrefilled.city ?? '',
+          state:        storedPrefilled.state ?? '',
+          zip:          storedPrefilled.zip ?? '',
+          naics:        storedPrefilled.industry_naics ?? '',
+          annualRevenue: storedPrefilled.annual_revenue_range ?? '',
+          phone:        storedPrefilled.primary_contact_phone ?? '',
+        })
+      }
 
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()

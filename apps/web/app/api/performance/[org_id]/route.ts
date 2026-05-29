@@ -8,6 +8,13 @@ const adminClient = createAdmin(
 )
 
 async function getBankIdForSupplier(orgId: string, client: typeof adminClient) {
+  const { data: org } = await client
+    .from('organizations')
+    .select('bank_id')
+    .eq('id', orgId)
+    .maybeSingle()
+  if (org?.bank_id) return org.bank_id
+
   const { data } = await client
     .from('program_enrollments')
     .select('programs(bank_id)')
@@ -34,6 +41,8 @@ export async function GET(
     .single()
 
   if (!userRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  console.log('[performance] fetching for org:', org_id, 'user role:', userRow.role)
 
   const isBank = userRow.role === 'bank_admin' || userRow.role === 'bank_credit_officer'
   const isOwnSupplier =

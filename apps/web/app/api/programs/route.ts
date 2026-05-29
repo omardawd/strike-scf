@@ -190,20 +190,20 @@ export async function POST(request: Request) {
       created_by_user_id:   userData.id,
       name:                 (name as string).trim(),
       financing_types,
-      standard_tenor_days:  (standard_tenor_days as number) ?? 0,
+      standard_tenor_days:  isDDOnly ? ((standard_tenor_days as number | undefined) ?? 60) : (standard_tenor_days as number),
       program_limit:        body.program_limit ?? null,
       per_supplier_sublimit: body.per_supplier_sublimit ?? null,
       min_deal_size:        body.min_deal_size ?? null,
       max_deal_size:        body.max_deal_size ?? null,
       currency:             (body.currency as string) ?? 'USD',
-      status:               'draft',
+      status:               isDDOnly ? 'active' : 'draft',
       discount_schedule:    body.discount_schedule ?? null,
     })
     .select()
     .single()
 
   if (error) {
-    console.error('Insert program error:', error)
+    console.error('[program create] error:', error)
     return NextResponse.json({ error: 'Failed to create program' }, { status: 500 })
   }
 

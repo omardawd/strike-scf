@@ -205,6 +205,19 @@ export function Topbar({
   const pathname    = usePathname()
   const portal      = usePortal()
   const portalLabel = PORTAL_LABELS[portal] ?? 'Portal'
+  const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    setLoading(true)
+    setProgress(0)
+    const t1 = setTimeout(() => setProgress(70), 100)
+    const t2 = setTimeout(() => {
+      setProgress(100)
+      setTimeout(() => { setLoading(false); setProgress(0) }, 200)
+    }, 400)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [pathname])
 
   const derivedTitle = title ?? (() => {
     for (const [path, label] of Object.entries(PATH_TITLES)) {
@@ -214,7 +227,14 @@ export function Topbar({
   })()
 
   return (
-    <header className="topbar">
+    <header className="topbar" style={{ position: 'relative' }}>
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, height: 2,
+        width: loading ? `${progress}%` : '0%',
+        background: 'var(--blue)',
+        transition: loading ? 'width 0.3s ease' : 'none',
+        opacity: loading ? 1 : 0,
+      }} />
       <div className="breadcrumb" style={{
         fontFamily: 'var(--font-mono)',
         fontSize: 11,

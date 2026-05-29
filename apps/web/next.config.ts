@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: '/((?!_next/static|_next/image|favicon.ico).*)',
         headers: [
           { key: 'X-Frame-Options',           value: 'DENY' },
           { key: 'X-Content-Type-Options',     value: 'nosniff' },

@@ -27,11 +27,11 @@ export async function GET() {
 
   const { data: bank } = await adminClient
     .from('banks')
-    .select('id, name')
+    .select('id, display_name')
     .eq('id', bankId)
     .single()
 
-  const bankLabel = bank?.name ?? 'Bank'
+  const bankLabel = bank?.display_name ?? 'Bank'
   const bankNode = { id: bankId, type: 'bank' as const, label: bankLabel, risk_tier: null }
 
   // Get all programs for this bank
@@ -73,14 +73,14 @@ export async function GET() {
 
   const allOrgIds = [...new Set([...anchorOrgIdSet, ...supplierOrgIdSet])]
 
-  type OrgRow = { id: string; legal_name: string; risk_tier: string | null; risk_score: number | null; country_of_origin: string | null }
+  type OrgRow = { id: string; legal_name: string; risk_tier: string | null; risk_score: number | null; country_of_origin: string | null; kyb_status: string | null; performance_tier: string | null }
   type EdgeRow = { from_org_id: string; to_org_id: string; program_id: string; transaction_count: number | null; total_volume: number | null }
 
   const [orgsResult, existingEdgesResult, txnsResult] = await Promise.all([
     allOrgIds.length > 0
       ? adminClient
           .from('organizations')
-          .select('id, legal_name, risk_tier, risk_score, country_of_origin')
+          .select('id, legal_name, risk_tier, risk_score, country_of_origin, kyb_status, performance_tier')
           .in('id', allOrgIds)
       : Promise.resolve({ data: [] as OrgRow[] }),
     adminClient
@@ -120,6 +120,9 @@ export async function GET() {
       risk_tier: org?.risk_tier ?? null,
       risk_score: org?.risk_score ?? null,
       country: org?.country_of_origin ?? null,
+      country_of_origin: org?.country_of_origin ?? null,
+      kyb_status: org?.kyb_status ?? null,
+      performance_tier: org?.performance_tier ?? null,
       transaction_count: txnCountByOrg[anchorId] ?? 0,
     })
     nodeMap[anchorId] = true
@@ -143,6 +146,9 @@ export async function GET() {
         risk_tier: org?.risk_tier ?? null,
         risk_score: org?.risk_score ?? null,
         country: org?.country_of_origin ?? null,
+        country_of_origin: org?.country_of_origin ?? null,
+        kyb_status: org?.kyb_status ?? null,
+        performance_tier: org?.performance_tier ?? null,
         transaction_count: txnCountByOrg[orgId] ?? 0,
       })
       nodeMap[orgId] = true

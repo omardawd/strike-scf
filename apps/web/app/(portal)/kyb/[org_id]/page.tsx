@@ -536,7 +536,25 @@ export default function KYBDetailPage() {
                       {new Date(doc.created_at).toLocaleDateString()}
                     </span>
                     {doc.signed_url && (
-                      <a href={doc.signed_url} download className="doc-link">Download</a>
+                      <button
+                        type="button"
+                        className="doc-link"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(doc.signed_url!)
+                            const blob = await res.blob()
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = doc.name || 'document'
+                            document.body.appendChild(a)
+                            a.click()
+                            document.body.removeChild(a)
+                            URL.revokeObjectURL(url)
+                          } catch {}
+                        }}
+                      >Download</button>
                     )}
                   </div>
                 ))

@@ -169,21 +169,13 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
   return (
     <>
       <style>{`
-        @keyframes ai-ring-spin {
+        @keyframes ai-logo-spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
-        }
-        @keyframes ai-logo-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.65; transform: scale(0.88); }
         }
         @keyframes ai-msg-in {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes ai-prompt-hover {
-          from { border-color: var(--border); }
-          to   { border-color: var(--ink); }
         }
         .ai-quick-prompt:hover {
           border-color: var(--ink) !important;
@@ -223,21 +215,6 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
           background: 'var(--ink)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ position: 'relative', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <div style={{
-                position: 'absolute', inset: 0,
-                border: '1px solid rgba(0,82,255,0.5)',
-                borderRadius: '50%',
-                borderTopColor: 'var(--blue)',
-                animation: 'ai-ring-spin 3s linear infinite',
-              }} />
-              <img
-                src="/logo.png"
-                alt=""
-                draggable={false}
-                style={{ width: 16, height: 16, objectFit: 'contain', filter: 'brightness(10)', animation: 'ai-logo-pulse 2.4s ease-in-out infinite' }}
-              />
-            </div>
             <div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'white', lineHeight: 1.2 }}>Strike AI</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.38)', marginTop: 1 }}>{context.page.toUpperCase()}</div>
@@ -268,12 +245,8 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
           {/* Empty state */}
           {messages.length === 0 && !loading && (
             <div style={{ textAlign: 'center', padding: '36px 12px 24px', animation: 'ai-msg-in 0.3s ease' }}>
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
-                <div style={{ position: 'absolute', width: 68, height: 68, border: '1px solid rgba(0,82,255,0.15)', borderRadius: '50%', borderTopColor: 'rgba(0,82,255,0.5)', animation: 'ai-ring-spin 4s linear infinite' }} />
-                <div style={{ position: 'absolute', width: 52, height: 52, border: '1px solid rgba(0,82,255,0.08)', borderRadius: '50%', borderBottomColor: 'rgba(0,82,255,0.3)', animation: 'ai-ring-spin 6s linear infinite reverse' }} />
-                <div style={{ width: 44, height: 44, background: 'var(--ink)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <img src="/logo.png" alt="" draggable={false} style={{ width: 24, height: 24, objectFit: 'contain', filter: 'brightness(10)', animation: 'ai-logo-pulse 2.4s ease-in-out infinite' }} />
-                </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+                <img src="/favicon.png" alt="" draggable={false} style={{ width: 56, height: 56, objectFit: 'contain', animation: 'ai-logo-spin 4s linear infinite' }} />
               </div>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>Strike AI</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 28 }}>Supply chain intelligence co-pilot</div>
@@ -313,9 +286,7 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
             >
               {m.role === 'assistant' ? (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, maxWidth: '92%' }}>
-                  <div style={{ width: 22, height: 22, background: 'var(--ink)', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-                    <img src="/logo.png" alt="" draggable={false} style={{ width: 11, height: 11, objectFit: 'contain', filter: 'brightness(10)' }} />
-                  </div>
+                  <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0, marginTop: 2 }} />
                   <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', fontFamily: 'var(--font-body)', fontSize: 13, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {m.content}
                   </div>
@@ -352,14 +323,8 @@ export function AIPanel({ isOpen, onClose, context }: AIPanelProps) {
           {/* Loading */}
           {loading && (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, animation: 'ai-msg-in 0.2s ease' }}>
-              <div style={{ width: 22, height: 22, background: 'var(--ink)', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-                <img src="/logo.png" alt="" draggable={false} style={{ width: 11, height: 11, objectFit: 'contain', filter: 'brightness(10)', animation: 'ai-logo-pulse 0.9s ease-in-out infinite' }} />
-              </div>
+              <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0, marginTop: 2, animation: 'ai-logo-spin 0.9s linear infinite' }} />
               <div style={{ padding: '11px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ position: 'relative', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ position: 'absolute', inset: 0, border: '1.5px solid var(--border)', borderRadius: '50%', borderTopColor: 'var(--blue)', animation: 'ai-ring-spin 0.8s linear infinite' }} />
-                  <div style={{ width: 6, height: 6, background: 'var(--blue)', borderRadius: '50%', opacity: 0.7 }} />
-                </div>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--gray)', textTransform: 'uppercase' }}>Thinking</span>
               </div>
             </div>

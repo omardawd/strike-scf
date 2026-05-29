@@ -405,27 +405,76 @@ export default function ReportingPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
               {/* ── Payables pipeline ── */}
-              <div className="card">
-                <div className="card-head">
-                  <h3 className="t-card-head">Payables pipeline</h3>
+              <div style={{
+                border: '1px solid var(--border)',
+                background: 'var(--white)',
+              }}>
+                <div style={{
+                  padding: '12px 20px',
+                  borderBottom: '1px solid var(--border)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'var(--gray)',
+                }}>Payables Pipeline</div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 80px 120px',
+                  gap: '1px', background: 'var(--border)',
+                }}>
+                  {['Stage', 'Count', 'Total Value'].map(h => (
+                    <div key={h} style={{
+                      background: 'var(--offwhite)',
+                      padding: '8px 16px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9, letterSpacing: '0.12em',
+                      textTransform: 'uppercase', color: 'var(--gray)',
+                    }}>{h}</div>
+                  ))}
                 </div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {PAYABLE_STAGES.map(stage => {
-                    const bucket = data.payables_summary[stage.key]
-                    if (!bucket) return null
-                    return (
-                      <div key={stage.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'var(--ink)' }}>{stage.label}</span>
-                        <span style={{ fontSize: 12, color: 'var(--gray)', fontVariantNumeric: 'tabular-nums' }}>
-                          {bucket.count} · {fmtCurrency(bucket.total)}
-                        </span>
-                      </div>
-                    )
-                  })}
-                  {Object.keys(data.payables_summary).length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>No payables yet.</div>
-                  )}
-                </div>
+
+                {Object.entries(data.payables_summary)
+                  .filter(([, v]) => v?.count > 0)
+                  .map(([status, v], i) => (
+                  <div key={status} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 80px 120px',
+                    gap: '1px', background: 'var(--border)',
+                  }}>
+                    <div style={{
+                      background: i % 2 === 0 ? 'var(--white)' : 'var(--offwhite)',
+                      padding: '10px 16px',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 13, color: 'var(--ink)',
+                    }}>
+                      {status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    </div>
+                    <div style={{
+                      background: i % 2 === 0 ? 'var(--white)' : 'var(--offwhite)',
+                      padding: '10px 16px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 13, color: 'var(--ink)',
+                    }}>{v.count}</div>
+                    <div style={{
+                      background: i % 2 === 0 ? 'var(--white)' : 'var(--offwhite)',
+                      padding: '10px 16px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 13, color: 'var(--ink)',
+                    }}>
+                      {fmtCurrencyFull(v.total)}
+                    </div>
+                  </div>
+                ))}
+
+                {(!data.payables_summary ||
+                  Object.values(data.payables_summary).every(v => !v?.count)) && (
+                  <div style={{
+                    padding: '20px 16px', textAlign: 'center',
+                    fontFamily: 'var(--font-mono)', fontSize: 10,
+                    textTransform: 'uppercase', color: 'var(--gray)',
+                    letterSpacing: '0.1em',
+                  }}>No payables activity</div>
+                )}
               </div>
 
               {/* ── Top suppliers ── */}

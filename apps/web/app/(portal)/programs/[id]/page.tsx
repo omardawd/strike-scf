@@ -96,6 +96,8 @@ interface PendingAnchorRequest {
   anchor_org_id: string | null
   status: 'pending_bank_review'
   invited_at: string
+  prefilled_kyb?: Record<string, unknown> | null
+  invitee_name?: string | null
 }
 
 interface AnalyticsData {
@@ -986,11 +988,11 @@ export default function ProgramDetailPage() {
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{
                           fontFamily: 'var(--font-body)',
                           fontSize: 13, color: 'var(--ink)',
-                        }}>{inv.email}</div>
+                        }}>{inv.invitee_name ? `${inv.invitee_name} (${inv.email})` : inv.email}</div>
                         <div style={{
                           fontFamily: 'var(--font-mono)',
                           fontSize: 10, color: 'var(--gray)',
@@ -999,6 +1001,36 @@ export default function ProgramDetailPage() {
                         }}>
                           Requested by anchor
                         </div>
+                        {inv.prefilled_kyb && Object.values(inv.prefilled_kyb).some(Boolean) && (
+                          <div style={{
+                            marginTop: 8,
+                            padding: '8px 12px',
+                            background: 'var(--offwhite)',
+                            border: '1px solid var(--border)',
+                          }}>
+                            <div style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 9, letterSpacing: '0.1em',
+                              textTransform: 'uppercase',
+                              color: 'var(--blue)', marginBottom: 6,
+                            }}>Pre-filled details from anchor</div>
+                            {Object.entries(inv.prefilled_kyb)
+                              .filter(([, v]) => v)
+                              .slice(0, 4)
+                              .map(([k, v]) => (
+                              <div key={k} style={{ display: 'flex', gap: 8, fontSize: 12, marginBottom: 2 }}>
+                                <span style={{
+                                  color: 'var(--gray)',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: 10,
+                                  textTransform: 'uppercase',
+                                  minWidth: 100,
+                                }}>{k.replace(/_/g, ' ')}</span>
+                                <span style={{ color: 'var(--ink)', fontFamily: 'var(--font-body)' }}>{String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button

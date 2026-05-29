@@ -2849,16 +2849,26 @@ export default function TransactionDetailPage() {
                               })}
                             </span>
                             {doc.signed_url && (
-                              <a
-                                href={doc.signed_url}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
                                 className="btn btn-ghost btn-sm"
-                                style={{ textDecoration: 'none' }}
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(doc.signed_url!)
+                                    const blob = await res.blob()
+                                    const url = URL.createObjectURL(blob)
+                                    const a = document.createElement('a')
+                                    a.href = url
+                                    a.download = doc.name || 'document'
+                                    document.body.appendChild(a)
+                                    a.click()
+                                    document.body.removeChild(a)
+                                    URL.revokeObjectURL(url)
+                                  } catch {}
+                                }}
                               >
                                 Download
-                              </a>
+                              </button>
                             )}
                           </div>
                         ))}
