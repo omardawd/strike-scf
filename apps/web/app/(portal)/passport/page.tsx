@@ -121,8 +121,6 @@ export default function MyPassportPage() {
   const [data, setData] = useState<PassportResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [visible, setVisible] = useState(false)
-  const [savingVisibility, setSavingVisibility] = useState(false)
 
   const load = useCallback(async () => {
     if (!orgId) {
@@ -140,7 +138,6 @@ export default function MyPassportPage() {
       }
       const json = (await res.json()) as PassportResponse
       setData(json)
-      setVisible(!!json.organization.network_visible)
     } catch {
       setError('Failed to load passport')
     } finally {
@@ -149,25 +146,6 @@ export default function MyPassportPage() {
   }, [orgId])
 
   useEffect(() => { load() }, [load])
-
-  async function toggleVisibility() {
-    if (!orgId || savingVisibility) return
-    const next = !visible
-    setVisible(next) // optimistic
-    setSavingVisibility(true)
-    try {
-      const res = await fetch(`/api/passport/${orgId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ network_visible: next }),
-      })
-      if (!res.ok) setVisible(!next) // revert on failure
-    } catch {
-      setVisible(!next)
-    } finally {
-      setSavingVisibility(false)
-    }
-  }
 
   const org = data?.organization ?? null
   const dba =
@@ -212,32 +190,6 @@ export default function MyPassportPage() {
                       <TypeBadge type={org.type} />
                     </div>
                     {dba && <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>doing business as {dba}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                      Visible on Strike Place
-                    </span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={visible}
-                      aria-label="Toggle Strike Place visibility"
-                      onClick={toggleVisibility}
-                      disabled={savingVisibility}
-                      style={{
-                        width: 44,
-                        height: 24,
-                        padding: 2,
-                        border: '1px solid var(--border-strong)',
-                        background: visible ? 'var(--blue)' : 'var(--offwhite)',
-                        cursor: savingVisibility ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        justifyContent: visible ? 'flex-end' : 'flex-start',
-                        transition: 'background .15s',
-                      }}
-                    >
-                      <span style={{ width: 18, height: 18, background: visible ? '#fff' : 'var(--gray)' }} />
-                    </button>
                   </div>
                 </div>
               </div>

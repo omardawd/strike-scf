@@ -24,10 +24,14 @@ export function PassportScoreRing({
   score,
   size = 'md',
   showLabel = false,
+  pendingLabel = 'Pending Verification',
 }: {
   score: number | null | undefined
   size?: RingSize
   showLabel?: boolean
+  // Label shown beneath the ring when the score is null/not-yet-calculated
+  // (ghost / pre-verification). Falls back to "Pending Verification".
+  pendingLabel?: string
 }) {
   const dim    = DIM[size]
   const stroke = STROKE[size]
@@ -106,10 +110,10 @@ export function PassportScoreRing({
             fontSize: LABEL[size],
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: 'var(--gray)',
+            color: hasScore ? 'var(--gray)' : 'var(--color-amber)',
           }}
         >
-          PassportScore™
+          {hasScore ? 'PassportScore™' : pendingLabel}
         </span>
       )}
     </div>
