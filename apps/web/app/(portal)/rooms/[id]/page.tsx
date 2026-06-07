@@ -236,23 +236,28 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
   )
 }
 
-function StandardMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
+// Bubble-style standard message (TG.2): own → right + blue, others → left +
+// offwhite with an avatar circle. Grouped consecutive messages from the same
+// sender hide the avatar/sender label and tighten the bubble corner.
+function BubbleMsg({ msg, isOwn, hideAvatar }: { msg: Message; isOwn: boolean; hideAvatar: boolean }) {
   return (
-    <div className="room-msg">
-      <div className="room-msg-avatar" style={{ visibility: hideAvatar ? 'hidden' : 'visible' }}>
-        {initials(msg.sender_name)}
-      </div>
-      <div className="room-msg-body">
-        {!hideAvatar && (
-          <div className="room-msg-meta">
-            <span className="room-msg-sender">{msg.sender_name ?? 'Unknown'}</span>
-            {msg.sender_org_name && (
-              <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{msg.sender_org_name}</span>
-            )}
-            <span className="room-msg-time">{formatTime(msg.created_at)}</span>
-          </div>
+    <div className={`room-msg-row${isOwn ? ' room-msg-row-own' : ''}${hideAvatar ? ' room-msg-row-grouped' : ''}`}>
+      {!isOwn && (
+        hideAvatar
+          ? <div className="room-msg-bubble-avatar-spacer" />
+          : <div className="room-msg-bubble-avatar" title={[msg.sender_name, msg.sender_org_name].filter(Boolean).join(' · ')}>
+              {initials(msg.sender_name)}
+            </div>
+      )}
+      <div className="room-msg-bubble-col">
+        {!isOwn && !hideAvatar && (
+          <span className="room-msg-bubble-sender">
+            {msg.sender_name ?? 'Unknown'}
+            {msg.sender_org_name ? ` · ${msg.sender_org_name}` : ''}
+          </span>
         )}
-        <div className="room-msg-content">{msg.content}</div>
+        <div className="room-msg-bubble">{msg.content}</div>
+        <span className="room-msg-bubble-time">{formatTime(msg.created_at)}</span>
       </div>
     </div>
   )
@@ -277,10 +282,27 @@ export default function RoomPage() {
   const [sendError, setSendError] = useState<string | null>(null)
 
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [showMembers, setShowMembers] = useState(false)
 
   const threadRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const channelRef = useRef<any>(null)
+  const lastMarkedRef = useRef<string | null>(null)
+
+  // Mark the room read (sets room_participants.last_read_at = now) once the
+  // user is scrolled to the bottom. Debounced by the latest message id so we
+  // only POST when a genuinely-new message has been seen at the bottom.
+  const markRead = useCallback(() => {
+    if (!id) return
+    const last = messages[messages.length - 1]
+    const marker = last?.id ?? 'empty'
+    if (lastMarkedRef.current === marker) return
+    lastMarkedRef.current = marker
+    fetch(`/api/rooms/${id}/read`, { method: 'POST' }).catch(() => {
+      // Allow a retry on the next scroll-to-bottom if the request failed.
+      lastMarkedRef.current = null
+    })
+  }, [id, messages])
 
   // Load room data
   useEffect(() => {
@@ -298,12 +320,22 @@ export default function RoomPage() {
       .catch(() => { setError('Failed to load room'); setLoading(false) })
   }, [id])
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages, and mark the room read once the
+  // freshly-loaded/arrived messages are pinned to the bottom.
   useEffect(() => {
     const el = threadRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [messages])
+    if (!loading && messages.length > 0) markRead()
+  }, [messages, loading, markRead])
+
+  // Also mark read when the user manually scrolls to the bottom.
+  const handleThreadScroll = useCallback(() => {
+    const el = threadRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    if (atBottom) markRead()
+  }, [markRead])
 
   // Supabase Realtime subscription (gracefully degrades if WebSocket is blocked)
   useEffect(() => {
@@ -490,98 +522,75 @@ export default function RoomPage() {
     )
   }
 
+  const memberCount = participants.length
+  const onlineCount = participants.filter(p => onlineUsers.has(p.user_id)).length
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <Topbar crumbs={crumbs} actions={topbarActions} />
 
-      {/* Deal banner for private rooms */}
-      {deal && (
+      {/* Clean room header (TG.2): name bold · member count · View Members */}
+      <div className="room-header">
+        <span className="room-header-name">{room.name}</span>
+        <span className="room-header-members">
+          {memberCount} member{memberCount !== 1 ? 's' : ''}
+          {onlineCount > 0 && <span style={{ color: 'var(--color-green)' }}> · {onlineCount} online</span>}
+        </span>
+        {deal && (
+          <>
+            <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
+            <span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>{deal.counterparty_name}</span>
+            {deal.total_value != null && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--gray-soft)' }}>
+                {fmtAmount(deal.total_value, deal.agreed_currency)}
+              </span>
+            )}
+          </>
+        )}
+        <button className="room-header-viewbtn" onClick={() => setShowMembers(v => !v)}>
+          {showMembers ? 'Hide Members' : 'View Members'}
+        </button>
+      </div>
+
+      {/* Members panel (toggled by "View Members") */}
+      {showMembers && (
         <div style={{
-          background: 'var(--white)',
-          borderBottom: '1px solid var(--border)',
-          padding: '10px 28px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flexShrink: 0,
+          background: 'var(--white)', borderBottom: '1px solid var(--border)',
+          padding: '10px 28px', display: 'flex', flexWrap: 'wrap', gap: 10, flexShrink: 0,
         }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-            Private Room
-          </span>
-          <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{deal.counterparty_name}</span>
-          <span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span>
-          {deal.total_value != null && (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--gray)' }}>
-              {fmtAmount(deal.total_value, deal.agreed_currency)}
-            </span>
-          )}
-          {deal.goods_description && (
-            <span style={{ fontSize: 12, color: 'var(--gray-soft)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {deal.goods_description}
-            </span>
-          )}
+          {participants.length === 0 ? (
+            <span style={{ fontSize: 12, color: 'var(--gray-soft)' }}>No members yet.</span>
+          ) : participants.map(p => {
+            const isOnline = onlineUsers.has(p.user_id)
+            return (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }} title={p.org_name ?? undefined}>
+                <div style={{ position: 'relative' }}>
+                  <div className="room-msg-bubble-avatar" style={{ width: 26, height: 26, fontSize: 9 }}>
+                    {initials(p.user_name)}
+                  </div>
+                  {isOnline && (
+                    <div style={{
+                      position: 'absolute', bottom: -1, right: -1, width: 8, height: 8,
+                      background: 'var(--color-green)', border: '1.5px solid var(--white)', borderRadius: '50%',
+                    }} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{p.user_name ?? 'Unknown'}</span>
+                  {p.org_name && <span style={{ fontSize: 10.5, color: 'var(--gray-soft)' }}>{p.org_name}</span>}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
-
-      {/* Participants bar */}
-      <div style={{
-        background: 'var(--white)',
-        borderBottom: '1px solid var(--border)',
-        padding: '8px 28px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flexShrink: 0,
-      }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginRight: 4 }}>
-          Participants
-        </span>
-        {shownParticipants.map(p => {
-          const isOnline = onlineUsers.has(p.user_id)
-          const label = initials(p.user_name)
-          const tooltip = [p.user_name, p.org_name].filter(Boolean).join(' · ')
-          return (
-            <div key={p.id} title={tooltip} style={{ position: 'relative', cursor: 'default' }}>
-              <div style={{
-                width: 28, height: 28,
-                background: 'var(--color-accent-light)',
-                color: 'var(--blue)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10, fontWeight: 500,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {label}
-              </div>
-              {isOnline && (
-                <div style={{
-                  position: 'absolute', bottom: 0, right: 0,
-                  width: 8, height: 8,
-                  background: 'var(--color-green)',
-                  border: '1.5px solid var(--white)',
-                  borderRadius: '50%',
-                }} />
-              )}
-            </div>
-          )
-        })}
-        {overflowCount > 0 && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray-soft)' }}>
-            +{overflowCount} more
-          </span>
-        )}
-      </div>
 
       {/* Message thread */}
       <div
         ref={threadRef}
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '0 28px',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
+        className="room-thread"
+        onScroll={handleThreadScroll}
       >
         {messages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -599,6 +608,7 @@ export default function RoomPage() {
               msg.message_type !== 'system' &&
               !showDateDivider
             const hideAvatar = sameSenderAsPrev
+            const isOwn = !!user && msg.user_id === user.id
 
             return (
               <React.Fragment key={msg.id}>
@@ -612,7 +622,7 @@ export default function RoomPage() {
                   <OfferMsg msg={msg} hideAvatar={hideAvatar} />
                 )}
                 {msg.message_type === 'message' && (
-                  <StandardMsg msg={msg} hideAvatar={hideAvatar} />
+                  <BubbleMsg msg={msg} isOwn={isOwn} hideAvatar={hideAvatar} />
                 )}
               </React.Fragment>
             )
@@ -620,13 +630,8 @@ export default function RoomPage() {
         )}
       </div>
 
-      {/* Message input */}
-      <div style={{
-        background: 'var(--white)',
-        borderTop: '1px solid var(--border)',
-        padding: '12px 28px',
-        flexShrink: 0,
-      }}>
+      {/* Composer (TG.2): full-width rounded bar with arrow-icon send */}
+      <div className="room-composer">
         {sendError && (
           <p style={{ fontSize: 11.5, color: 'var(--color-red)', marginBottom: 6 }}>{sendError}</p>
         )}
@@ -635,35 +640,32 @@ export default function RoomPage() {
             Moderation in progress…
           </p>
         )}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <textarea
-              ref={textareaRef}
-              className="input"
-              rows={2}
-              style={{ height: 'auto', minHeight: 40, maxHeight: 120, resize: 'none', paddingRight: 48 }}
-              placeholder={room.status !== 'active' ? 'This room is archived' : 'Send a message…'}
-              disabled={room.status !== 'active' || !!lastPendingReview}
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              maxLength={2000}
-            />
-            <span style={{
-              position: 'absolute', bottom: 8, right: 10,
-              fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray-soft)',
-            }}>
-              {inputValue.length}/2000
-            </span>
-          </div>
+        <div className="room-composer-bar">
+          <textarea
+            ref={textareaRef}
+            className="room-composer-input"
+            rows={1}
+            placeholder={room.status !== 'active' ? 'This room is archived' : 'Send a message…'}
+            disabled={room.status !== 'active' || !!lastPendingReview}
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            maxLength={2000}
+          />
           <button
-            className="btn btn-blue btn-sm"
-            style={{ height: 40, minWidth: 72 }}
+            className="room-composer-send"
             disabled={sendDisabled}
-            title={lastPendingReview ? 'Moderation in progress' : undefined}
+            title={lastPendingReview ? 'Moderation in progress' : 'Send'}
+            aria-label="Send message"
             onClick={handleSend}
           >
-            {sending ? '…' : 'Send'}
+            {sending ? (
+              <span style={{ fontSize: 14, lineHeight: 1 }}>…</span>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
