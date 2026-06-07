@@ -1,8 +1,10 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { Topbar, NotifBell } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
+import { PassportScoreRing } from '@/components/passport-score-ring'
 import {
   PassportSections,
   type PassportOrg,
@@ -42,7 +44,7 @@ function OrgAvatar({ name }: { name: string | null }) {
         height: 52,
         flexShrink: 0,
         background: 'var(--gold-dim)',
-        color: '#C9A84C',
+        color: 'var(--gold)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -114,8 +116,87 @@ function NarrativePanel({ narrative }: { narrative: string | null }) {
   )
 }
 
+// Ghost mode (kyb_status = 'not_started'): the Passport page is the onboarding
+// entry point, so it shows an activation prompt — never a locked card.
+function ActivationPrompt({ onActivate }: { onActivate: () => void }) {
+  return (
+    <div className="card">
+      <div
+        className="card-body"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+          gap: 16,
+          padding: '48px 24px',
+        }}
+      >
+        <PassportScoreRing score={null} size="lg" showLabel pendingLabel="Passport Inactive" />
+        <h2
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 22,
+            fontWeight: 600,
+            letterSpacing: '-0.02em',
+            color: 'var(--ink)',
+            margin: 0,
+          }}
+        >
+          Activate your Strike Passport
+        </h2>
+        <p style={{ fontSize: 14, color: 'var(--gray)', lineHeight: 1.6, maxWidth: 460, margin: 0 }}>
+          Your Passport is your AI-verified business identity on Strike. Complete verification to
+          get your PassportScore, become visible to counterparties, and start transacting.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 420, marginTop: 4 }}>
+          {[
+            'Get a verified PassportScore',
+            'Become discoverable on Strike Place',
+            'Submit financing requests and manage deals',
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-start' }}>
+              <div style={{ width: 5, height: 5, background: 'var(--blue)', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>{item}</span>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn btn-primary" onClick={onActivate} style={{ marginTop: 8 }}>
+          Activate Passport →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Submitted / pending: passport data is shown read-only beneath this banner.
+function UnderReviewBanner() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '14px 18px',
+        background: 'var(--color-amber-bg)',
+        borderLeft: '3px solid var(--color-amber)',
+      }}
+    >
+      <div style={{ width: 6, height: 6, background: 'var(--color-amber)', flexShrink: 0, animation: 'badge-pulse 2.4s infinite' }} />
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-amber)' }}>Under Review</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.5 }}>
+          Your Passport has been submitted and is being verified — usually within 1–2 business days.
+          The details below are read-only until verification completes.
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function MyPassportPage() {
   const user = useUser()
+  const router = useRouter()
   const orgId = user?.org_id ?? null
 
   const [data, setData] = useState<PassportResponse | null>(null)
@@ -153,6 +234,19 @@ export default function MyPassportPage() {
       ? org.doing_business_as
       : null
 
+  // Passport page states (TE.2):
+  //  - ghost  (kyb_status = 'not_started') → activation prompt, never a locked card
+  //  - review (submitted / under_review / more_info_requested / in_progress) →
+  //            read-only passport beneath an "Under Review" banner
+  //  - active (approved / anything else)   → full passport
+  const kyb = org?.kyb_status ?? null
+  const isGhost = kyb === 'not_started'
+  const isUnderReview =
+    kyb === 'submitted' ||
+    kyb === 'under_review' ||
+    kyb === 'more_info_requested' ||
+    kyb === 'in_progress'
+
   return (
     <>
       <Topbar crumbs={[{ label: 'Strike' }, { label: 'My Passport' }]} actions={<NotifBell />} />
@@ -174,10 +268,13 @@ export default function MyPassportPage() {
           </div>
         ) : error ? (
           <div className="card" style={{ padding: 20, color: 'var(--color-red)' }}>{error}</div>
+        ) : (data && org && isGhost) ? (
+          <ActivationPrompt onActivate={() => router.push('/onboarding')} />
         ) : (data && org) ? (
           <div className="split-60">
             {/* LEFT — passport content */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {isUnderReview && <UnderReviewBanner />}
               {/* (a) Header */}
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
