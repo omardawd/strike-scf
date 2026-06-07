@@ -33,9 +33,13 @@
   4. Test: unauthenticated request to a portal route should redirect to `/login`
   5. Test: request to cron route without secret should return 401
 
-### T1.2 — Generate baseline schema migration from live Supabase
-- **Problem:** Only 2 trivial migrations exist. Full ~26-table schema lives only in Supabase Studio. Repo is not reproducible.
-- **Action:**
+### T1.2 — Generate baseline schema migration from live Supabase  ✅ DONE
+- **Resolved:** Dumped the live DB (project `dthkgrnhlxkzvkegvure`) via the Supabase MCP — `npx supabase db dump` was never usable (no DB password / Docker), so the schema was reconstructed from the system catalogs (`pg_get_constraintdef`, `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, etc.). Two baseline migrations now exist:
+  - `supabase/migrations/00000000000000_baseline_schema.sql` — 29 enums, 32 tables, 136 constraints (93 FKs), 44 indexes, 10 functions, 17 triggers, 1 `ensure_rls` event trigger.
+  - `supabase/migrations/00000000000001_baseline_rls.sql` — RLS enabled on all 32 tables + 19 policies across 12 tables.
+  - The two pre-baseline files (`add_deal_source.sql`, `20260527000001_add_invitation_status_values.sql`) were removed: superseded by the baseline, and the latter referenced an `invitation_status` enum that no longer exists (would break a fresh `db push`).
+  - **Note:** 20 tables have RLS enabled with no policy (deny-all to anon/auth); the live `rooms_private` policy has a self-referential predicate (`room_participants.room_id = room_participants.id`) — both captured faithfully, neither fixed here.
+- **Original action:**
   1. Run `npx supabase db dump --schema public > supabase/migrations/$(date +%Y%m%d)_baseline_schema.sql`
   2. Verify migration covers all tables including v2: `marketplace_listings`, `marketplace_offers`, `financing_requests`, `financing_request_offers`, `deals`, `rooms`, `room_messages`, `passport_peer_reviews`
   3. Confirm columns `organizations.network_visible`, `organizations.passport_score`, `deals.deal_source` are captured

@@ -1,29 +1,24 @@
 # BLOCKED
 
-## T1.2 — Generate baseline schema + RLS migration from live Supabase
+_No active blockers._
 
-**Status:** Blocked — missing DB credentials / no dump target.
+## RESOLVED
 
-**What the task needs:** `npx supabase db dump --schema public` plus an RLS policy
-dump from the live Supabase project, committed as baseline migrations.
+### T1.2 — Generate baseline schema + RLS migration from live Supabase
 
-**Why it's blocked:**
-- `supabase db dump` requires a Postgres connection (either a linked project via
-  `supabase link` + DB password, or `--db-url postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres`).
-- `apps/web/.env.local` only contains REST-layer secrets: `NEXT_PUBLIC_SUPABASE_URL`,
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. The service-role key is
-  a PostgREST JWT, **not** a Postgres password — it cannot authenticate `pg_dump`.
-- No `supabase/config.toml` and no linked project ref (`supabase/.temp/project-ref` absent).
-- Docker daemon is not running, so a local `supabase start` instance can't be used as a dump source.
-- RLS policies are not exposed over the PostgREST API, so the RLS dump (T1.2 step 4) is
-  impossible without direct DB access regardless.
+**Resolved 2026-06-07.** The original blocker stood: `supabase db dump` was never
+usable here — `apps/web/.env.local` only holds REST-layer secrets (the service-role key
+is a PostgREST JWT, not a Postgres password), there is no `config.toml` / linked project,
+and Docker was not running for a local `supabase start`.
 
-**To unblock (any one of these):**
-1. Provide the DB connection string / password so `supabase db dump --db-url ...` can run, **or**
-2. Run `npx supabase login` + `npx supabase link --project-ref <ref>` interactively
-   (the project ref is the subdomain of `NEXT_PUBLIC_SUPABASE_URL`), then re-run T1.2, **or**
-3. Start Docker + `npx supabase start` if a local schema source is acceptable.
+**How it was unblocked:** the user authenticated the **Supabase MCP server** (`/mcp`),
+which provides authenticated `execute_sql` access to the project. The baseline was
+reconstructed directly from the system catalogs (`pg_get_constraintdef`,
+`pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `pg_attribute`, …) rather than
+`pg_dump`, and written to:
 
-**Impact:** Track 1 is not "fully committed" until T1.2 lands. Track 2 (which depends on
-this dump for `supabase gen types`) cannot start. T1.1, T1.3, T1.4, T1.5 are unaffected
-and have been completed.
+- `supabase/migrations/00000000000000_baseline_schema.sql`
+- `supabase/migrations/00000000000001_baseline_rls.sql`
+
+To regenerate after schema changes, re-run the catalog dump through the Supabase MCP
+(see TASKS.md T1.2). Track 2 (`supabase gen types`) is now unblocked.
