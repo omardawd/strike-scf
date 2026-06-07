@@ -1172,6 +1172,488 @@
 }
 
 /* ─────────────────────────────────────────────────────
+   ROOMS EXPERIENCE SHELL  (TG.1)
+   Persistent left conversation panel + main thread area.
+   Hosted by app/(portal)/rooms/layout.tsx.
+   ───────────────────────────────────────────────────── */
+
+.rooms-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.rooms-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Left conversation list panel */
+.rooms-nav {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-right: 1px solid var(--border);
+  transition: width 200ms ease;
+}
+
+.rooms-nav-collapsed {
+  width: 52px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.rooms-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.rooms-nav-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray);
+  font-weight: 500;
+}
+
+.rooms-nav-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rooms-nav-newbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--blue);
+  background: var(--blue-light);
+  border: none;
+  padding: 5px 10px;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rooms-nav-newbtn:hover { background: var(--color-accent-light); filter: brightness(0.97); }
+
+.rooms-nav-collapse-btn,
+.rooms-nav-collapse-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--gray);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+
+.rooms-nav-collapse-btn:hover,
+.rooms-nav-collapse-new:hover { background: var(--offwhite); color: var(--ink); }
+
+.rooms-nav-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 16px;
+}
+
+.rooms-nav-section { margin-bottom: 8px; }
+
+.rooms-nav-section-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray-soft);
+  padding: 10px 8px 4px;
+}
+
+.rooms-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.rooms-nav-item:hover { background: var(--offwhite); }
+
+.rooms-nav-item-active,
+.rooms-nav-item-active:hover { background: var(--blue-light); }
+
+.rooms-nav-item-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rooms-nav-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.rooms-nav-item-active .rooms-nav-item-name { color: var(--blue); }
+
+.rooms-nav-item-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-soft);
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+
+.rooms-nav-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.rooms-nav-item-preview {
+  font-size: 12px;
+  color: var(--gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.rooms-nav-unread {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-badge);
+}
+
+.rooms-nav-loading { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+
+.rooms-nav-skeleton {
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--offwhite);
+  animation: rooms-nav-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes rooms-nav-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+.rooms-nav-empty { padding: 32px 16px; text-align: center; }
+
+.rooms-nav-empty-text { font-size: 12.5px; color: var(--gray); margin: 0 0 12px; }
+
+.rooms-nav-empty-btn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--blue);
+  background: var(--blue-light);
+  border: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+
+/* New room modal (panel header → "New Room") */
+.rooms-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(13, 13, 13, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.rooms-modal {
+  width: 100%;
+  max-width: 480px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-elevated);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  overflow: hidden;
+}
+
+.rooms-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rooms-modal-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.rooms-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--gray);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+
+.rooms-modal-close:hover { background: var(--offwhite); color: var(--ink); }
+
+.rooms-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.rooms-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─────────────────────────────────────────────────────
+   ROOMS CHAT REDESIGN  (TG.2)
+   iMessage/Slack-style bubbles; own messages right + blue.
+   ───────────────────────────────────────────────────── */
+
+.room-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A single message row (own variant flips alignment to the right) */
+.room-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.room-msg-row-own { flex-direction: row-reverse; }
+
+.room-msg-bubble {
+  max-width: min(560px, 72%);
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--offwhite);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.room-msg-row-own .room-msg-bubble {
+  background: var(--blue);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+
+.room-msg-row:not(.room-msg-row-own) .room-msg-bubble {
+  border-bottom-left-radius: 5px;
+}
+
+/* Grouped consecutive bubbles tighten their inner corner */
+.room-msg-row-grouped.room-msg-row-own .room-msg-bubble { border-top-right-radius: 5px; }
+.room-msg-row-grouped:not(.room-msg-row-own) .room-msg-bubble { border-top-left-radius: 5px; }
+
+.room-msg-bubble-avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-accent-light);
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-msg-bubble-avatar-spacer { width: 30px; flex-shrink: 0; }
+
+.room-msg-bubble-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.room-msg-row-own .room-msg-bubble-col { align-items: flex-end; }
+
+.room-msg-bubble-sender {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gray);
+  margin: 0 4px 3px;
+}
+
+.room-msg-bubble-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-soft);
+  margin: 3px 6px 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+  letter-spacing: 0.04em;
+}
+
+.room-msg-row:hover .room-msg-bubble-time { opacity: 1; }
+
+/* Clean room header (TG.2) */
+.room-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.room-header-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.room-header-members {
+  font-size: 12.5px;
+  color: var(--gray);
+}
+
+.room-header-viewbtn {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--blue);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.room-header-viewbtn:hover { background: var(--blue-light); }
+
+/* Composer (TG.2) — full-width rounded input + arrow send */
+.room-composer {
+  flex-shrink: 0;
+  padding: 12px 28px 18px;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+}
+
+.room-composer-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--offwhite);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 4px 4px 4px 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.room-composer-bar:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(20, 40, 204, 0.12);
+}
+
+.room-composer-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  padding: 8px 0;
+  max-height: 120px;
+  outline: none;
+}
+
+.room-composer-input::placeholder { color: var(--gray-soft); }
+
+.room-composer-send {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.room-composer-send:hover:not(:disabled) { background: var(--blue-hover); }
+
+.room-composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────────────
    NEW LISTING FORM
    Preview card + AI tip on the right column
    ───────────────────────────────────────────────────── */

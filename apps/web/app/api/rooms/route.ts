@@ -79,13 +79,16 @@ export async function GET() {
 
   const { data: participations } = await adminClient
     .from('room_participants')
-    .select('room_id')
+    .select('room_id, last_read_at')
     .eq('user_id', user.id)
 
   const roomIds = (participations ?? []).map((p: any) => p.room_id)
   if (roomIds.length === 0) {
     return NextResponse.json({ private: [], public: [] })
   }
+
+  const lastReadByRoom: Record<string, string | null> = {}
+  ;(participations ?? []).forEach((p: any) => { lastReadByRoom[p.room_id] = p.last_read_at })
 
   const { data: rooms, error } = await adminClient
     .from('rooms')
@@ -96,8 +99,50 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
 
-  const privateRooms = (rooms ?? []).filter((r: any) => r.room_type === 'private')
-  const publicRooms  = (rooms ?? []).filter((r: any) => r.room_type === 'public')
+  // Per-room last-message preview + unread count for the conversation panel.
+  // One scoped query over visible messages in the user's rooms, reduced client-side.
+  const { data: previewMsgs } = await adminClient
+    .from('room_messages')
+    .select('room_id, content, message_type, created_at')
+    .in('room_id', roomIds)
+    .eq('status', 'visible')
+    .order('created_at', { ascending: false })
+
+  const previewByRoom: Record<string, { content: string | null; message_type: string; created_at: string }> = {}
+  const unreadByRoom: Record<string, number> = {}
+  ;(previewMsgs ?? []).forEach((m: any) => {
+    if (!previewByRoom[m.room_id]) {
+      previewByRoom[m.room_id] = {
+        content: m.content ?? null,
+        message_type: m.message_type,
+        created_at: m.created_at,
+      }
+    }
+    const lastRead = lastReadByRoom[m.room_id]
+    if (!lastRead || new Date(m.created_at).getTime() > new Date(lastRead).getTime()) {
+      unreadByRoom[m.room_id] = (unreadByRoom[m.room_id] ?? 0) + 1
+    }
+  })
+
+  const withPreview = (r: any) => {
+    const p = previewByRoom[r.id]
+    let preview: string | null = null
+    if (p) {
+      if (p.message_type === 'system') preview = p.content
+      else if (p.message_type === 'document_share') preview = '📎 Shared a document'
+      else if (p.message_type === 'offer_update' || p.message_type === 'contract_draft') preview = 'Offer update'
+      else if (p.message_type === 'ai_suggestion') preview = `Strike AI: ${p.content ?? ''}`.trim()
+      else preview = p.content
+    }
+    return {
+      ...r,
+      last_message_preview: preview,
+      unread_count: unreadByRoom[r.id] ?? 0,
+    }
+  }
+
+  const privateRooms = (rooms ?? []).filter((r: any) => r.room_type === 'private').map(withPreview)
+  const publicRooms  = (rooms ?? []).filter((r: any) => r.room_type === 'public').map(withPreview)
 
   // Enrich private rooms with deal summary
   const dealIds = privateRooms.filter((r: any) => r.deal_id).map((r: any) => r.deal_id)
