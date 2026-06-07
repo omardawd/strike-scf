@@ -16,19 +16,15 @@ const ROLE_LABELS: Record<string, string> = {
   strike_admin:        'Strike Admin',
 }
 
-// ── Portal labels shown under the logo ──
-const PORTAL_LABELS: Record<PortalType, string> = {
-  anchor:   'BUYER PORTAL',
-  supplier: 'SUPPLIER PORTAL',
-  bank:     'BANK PORTAL',
-  admin:    'ADMIN PORTAL',
-}
+// ── localStorage keys ──
+const COLLAPSE_KEY = 'strike_sidebar_collapsed'
 
 // ── Unified navigation model ──
+// `icon` is a key into NAV_ICONS (20×20 stroke-based inline SVGs, currentColor).
 interface NavItem {
   label: string
   href: string
-  icon: string
+  icon: NavIconName
   badge?: string
 }
 interface NavSection {
@@ -37,41 +33,35 @@ interface NavSection {
 }
 
 // Anchor (buyer) + Supplier share the same unified nav.
+// TA.4: "Settings" and "AI Agent" removed (pages stay; reachable via user button).
 const ORG_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',    href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike AI',    href: '/ai',                    icon: 'message' },
-      { label: 'Strike Place', href: '/marketplace',           icon: 'box' },
-      { label: 'My Deals',     href: '/deals',                 icon: 'invoice' },
-      { label: 'Financing',    href: '/marketplace/financing', icon: 'refresh' },
+      { label: 'Strike AI',    href: '/ai',                    icon: 'ai' },
+      { label: 'Strike Place', href: '/marketplace',           icon: 'marketplace' },
+      { label: 'My Deals',     href: '/deals',                 icon: 'deals' },
+      { label: 'Financing',    href: '/marketplace/financing', icon: 'financing' },
     ],
   },
   {
     label: 'Programs',
     items: [
       { label: 'My Programs',  href: '/programs',     icon: 'programs' },
-      { label: 'Transactions', href: '/transactions', icon: 'reports' },
+      { label: 'Transactions', href: '/transactions', icon: 'analytics' },
     ],
   },
   {
     label: 'Network',
     items: [
-      { label: 'Strike Rooms', href: '/rooms',    icon: 'message' },
-      { label: 'My Passport',  href: '/passport', icon: 'doc' },
+      { label: 'Strike Rooms',    href: '/rooms',    icon: 'rooms' },
+      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
     ],
   },
   {
     label: 'Reporting',
     items: [
-      { label: 'Analytics', href: '/reporting', icon: 'reports' },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [
-      { label: 'Settings', href: '/settings',       icon: 'settings' },
-      { label: 'AI Agent', href: '/settings/agent', icon: 'bell' },
+      { label: 'Analytics', href: '/reporting', icon: 'analytics' },
     ],
   },
 ]
@@ -79,33 +69,33 @@ const ORG_NAV: NavSection[] = [
 const ANCHOR_NAV: NavSection[]   = ORG_NAV
 const SUPPLIER_NAV: NavSection[] = ORG_NAV
 
+// TA.5: Transactions, KYB Review, Settings removed from bank nav (pages stay).
+// TA.6: Supply Graph kept but routed to /supply-graph (full-page "Coming Soon").
 const BANK_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',          href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike AI',          href: '/ai',                    icon: 'message' },
-      { label: 'Financing Requests', href: '/marketplace/financing', icon: 'invoice' },
+      { label: 'Strike AI',          href: '/ai',                    icon: 'ai' },
+      { label: 'Financing Requests', href: '/marketplace/financing', icon: 'deals' },
     ],
   },
   {
     label: 'SCF Engine',
     items: [
-      { label: 'Programs',     href: '/programs',     icon: 'programs' },
-      { label: 'Transactions', href: '/transactions', icon: 'reports' },
-      { label: 'KYB Review',   href: '/kyb',          icon: 'doc' },
+      { label: 'Programs', href: '/programs', icon: 'programs' },
+    ],
+  },
+  {
+    label: 'Network',
+    items: [
+      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
     ],
   },
   {
     label: 'Intelligence',
     items: [
-      { label: 'Reporting',    href: '/reporting',               icon: 'reports' },
-      { label: 'Supply Graph', href: '/reporting#supply-graph',  icon: 'box' },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [
-      { label: 'Settings', href: '/settings', icon: 'settings' },
+      { label: 'Reporting',    href: '/reporting',     icon: 'analytics' },
+      { label: 'Supply Graph', href: '/supply-graph',  icon: 'supply-graph' },
     ],
   },
 ]
@@ -114,21 +104,15 @@ const ADMIN_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
-      { label: 'Strike AI', href: '/ai',        icon: 'message' },
+      { label: 'Strike AI', href: '/ai',        icon: 'ai' },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { label: 'KYB Queue',      href: '/admin', icon: 'doc' },
-      { label: 'Platform Stats', href: '/admin', icon: 'reports' },
-      { label: 'Room Reports',   href: '/admin', icon: 'message' },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [
-      { label: 'Settings', href: '/settings', icon: 'settings' },
+      { label: 'KYB Queue',      href: '/admin', icon: 'passport' },
+      { label: 'Platform Stats', href: '/admin', icon: 'analytics' },
+      { label: 'Room Reports',   href: '/admin', icon: 'rooms' },
     ],
   },
 ]
@@ -150,10 +134,152 @@ function matchLen(pathname: string, href: string): number {
   return -1
 }
 
-function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {
+// ── Sidebar nav icons (TA.3) ──────────────────────────────────────────────
+// All 20×20 viewBox, stroke-based (fill:none), inherit `currentColor` so the
+// active/inactive color is driven by the parent `.nav-item` text color
+// (active → var(--blue), inactive → var(--gray); see globals.css Track A region).
+type NavIconName =
+  | 'dashboard' | 'marketplace' | 'deals' | 'rooms' | 'passport'
+  | 'programs'  | 'analytics'   | 'supply-graph' | 'ai' | 'financing'
+  | 'notifications' | 'settings'
+
+const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
+  // Dashboard — 4-square grid
+  dashboard: (
+    <>
+      <rect x="3"  y="3"  width="6.5" height="6.5" rx="1.5" />
+      <rect x="10.5" y="3"  width="6.5" height="6.5" rx="1.5" />
+      <rect x="3"  y="10.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="10.5" y="10.5" width="6.5" height="6.5" rx="1.5" />
+    </>
+  ),
+  // Strike Place / Marketplace — institutional building with columns
+  marketplace: (
+    <>
+      <path d="M3 8l7-4 7 4" />
+      <path d="M4 8v8M8 8v8M12 8v8M16 8v8" />
+      <path d="M2.5 16.5h15" />
+    </>
+  ),
+  // My Deals — handshake (two hands meeting)
+  deals: (
+    <>
+      <path d="M9.5 7.5l-2-1.5a2 2 0 0 0-2.4.2L2.5 8.5" />
+      <path d="M10.5 7.5l2-1.5a2 2 0 0 1 2.4.2l2.6 2.3" />
+      <path d="M2.5 8.5v4l2.5 2 2 1.6a1.3 1.3 0 0 0 2-.3" />
+      <path d="M17.5 8.5v4l-2.8 2.2-2.2-1.8-2-1.6" />
+      <path d="M10 8.2l1.8 1.5a1.2 1.2 0 0 1-1.6 1.8L8.5 10" />
+    </>
+  ),
+  // Strike Rooms — two overlapping speech bubbles
+  rooms: (
+    <>
+      <path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 12 6.5V10a1.5 1.5 0 0 1-1.5 1.5H7L4.5 13.5V11A1.5 1.5 0 0 1 3 9.5z" />
+      <path d="M9 8.5h5A1.5 1.5 0 0 1 15.5 10v2A1.5 1.5 0 0 1 14 13.5h-.5l2 2.5v-2.5" />
+    </>
+  ),
+  // Strike Passport — shield with checkmark
+  passport: (
+    <>
+      <path d="M10 2.5l6 2.2v4.6c0 3.6-2.5 6.4-6 8.2-3.5-1.8-6-4.6-6-8.2V4.7z" />
+      <path d="M7.3 9.8l2 2 3.4-3.6" />
+    </>
+  ),
+  // Programs — 3 stacked horizontal bars
+  programs: (
+    <>
+      <rect x="3" y="4"  width="14" height="3.2" rx="1.2" />
+      <rect x="3" y="8.4" width="14" height="3.2" rx="1.2" />
+      <rect x="3" y="12.8" width="14" height="3.2" rx="1.2" />
+    </>
+  ),
+  // Analytics / Reporting — 3 bars with upward trend
+  analytics: (
+    <>
+      <path d="M3 17V3" />
+      <path d="M3 17h14" />
+      <rect x="6"  y="11" width="2.6" height="4.5" rx="0.6" />
+      <rect x="10" y="8"  width="2.6" height="7.5" rx="0.6" />
+      <rect x="14" y="5"  width="2.6" height="10.5" rx="0.6" />
+      <path d="M6 9l4-3 4-2" />
+    </>
+  ),
+  // Supply Graph — 3 nodes connected by lines
+  'supply-graph': (
+    <>
+      <circle cx="5"  cy="6"  r="2" />
+      <circle cx="15" cy="6"  r="2" />
+      <circle cx="10" cy="15" r="2" />
+      <path d="M6.7 7.2L9 13.4M13.3 7.2L11 13.4M7 6h6" />
+    </>
+  ),
+  // Strike AI — lightning bolt
+  ai: (
+    <path d="M11 2.5L4.5 11h4.2l-1 6.5L15 8.5h-4.2z" />
+  ),
+  // Financing — circular flow / refresh
+  financing: (
+    <>
+      <path d="M16.5 5.5V9h-3.5" />
+      <path d="M3.5 14.5V11h3.5" />
+      <path d="M4.2 9a6 6 0 0 1 10.5-2.7L16.5 8" />
+      <path d="M15.8 11a6 6 0 0 1-10.5 2.7L3.5 12" />
+    </>
+  ),
+  // Notifications — bell
+  notifications: (
+    <>
+      <path d="M5 8a5 5 0 0 1 10 0v3.5l1.5 2.5h-13L5 11.5z" />
+      <path d="M8 16.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  // Settings — gear (used in user menu)
+  settings: (
+    <>
+      <circle cx="10" cy="10" r="2.6" />
+      <path d="M10 2.2v2.2M10 15.6v2.2M2.2 10h2.2M15.6 10h2.2M4.5 4.5l1.6 1.6M13.9 13.9l1.6 1.6M15.5 4.5l-1.6 1.6M6.1 13.9L4.5 15.5" />
+    </>
+  ),
+}
+
+function NavIcon({ name, size = 20 }: { name: NavIconName; size?: number }) {
   return (
-    <svg width={size} height={size} className={className} aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="nav-icon"
+      aria-hidden="true"
+    >
+      {NAV_ICONS[name]}
+    </svg>
+  )
+}
+
+// Sprite-based small icon for the user menu chrome (settings/sun/moon/logout
+// live in the shared #i-* sprite defined in app/layout.tsx).
+function SpriteIcon({ name, size = 16 }: { name: string; size?: number }) {
+  return (
+    <svg width={size} height={size} aria-hidden="true">
       <use href={`#i-${name}`} />
+    </svg>
+  )
+}
+
+// Collapse toggle chevrons (chevron-left expanded / chevron-right collapsed).
+function CollapseChevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg width={18} height={18} viewBox="0 0 20 20" fill="none"
+      stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      {collapsed
+        ? <path d="M8 5l5 5-5 5" />
+        : <path d="M12 5l-5 5 5 5" />}
     </svg>
   )
 }
@@ -181,6 +307,12 @@ export function Sidebar() {
     return localStorage.getItem('strike-theme') === 'dark' ? 'dark' : 'light'
   })
 
+  // TA.2 — collapse state, persisted to localStorage (key: strike_sidebar_collapsed).
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(COLLAPSE_KEY) === 'true'
+  })
+
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
@@ -189,6 +321,15 @@ export function Sidebar() {
     document.body.setAttribute('data-portal', portal)
     try { localStorage.setItem('strike-theme', theme) } catch {}
   }, [theme, portal])
+
+  useEffect(() => {
+    try { localStorage.setItem(COLLAPSE_KEY, String(collapsed)) } catch {}
+  }, [collapsed])
+
+  // Collapsing closes the user menu so the popover never floats over icons-only chrome.
+  useEffect(() => {
+    if (collapsed) setUserMenuOpen(false)
+  }, [collapsed])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -219,46 +360,42 @@ export function Sidebar() {
     .reduce((max, item) => Math.max(max, matchLen(pathname, item.href)), -1)
 
   return (
-    <aside className="sidebar">
-      {/* Logo + portal label */}
-      <div style={{
-        padding: '20px 24px 16px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 8,
-      }}>
-        <Image
-          src={theme === 'dark' ? '/strike_white_nobg.png' : '/logo.png'}
-          alt="Strike SCF"
-          width={148}
-          height={48}
-          style={{
-            objectFit: 'contain',
-            objectPosition: 'center center',
-            maxWidth: '100%',
-            height: 'auto',
-          }}
-          priority
-        />
-        <span style={{
-          fontFamily:    'var(--font-body)',
-          fontSize:      10,
-          fontWeight:    600,
-          letterSpacing: '0.09em',
-          textTransform: 'uppercase',
-          color:         'var(--gray-soft)',
-        }}>
-          {PORTAL_LABELS[portal]}
-        </span>
+    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      {/* Logo + collapse toggle (TA.1 removed the portal label; TA.2 added the toggle) */}
+      <div className="sidebar-head">
+        {!collapsed && (
+          <Image
+            src={theme === 'dark' ? '/strike_white_nobg.png' : '/logo.png'}
+            alt="Strike SCF"
+            width={132}
+            height={42}
+            style={{
+              objectFit: 'contain',
+              objectPosition: 'left center',
+              maxWidth: '100%',
+              height: 'auto',
+            }}
+            priority
+          />
+        )}
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={() => setCollapsed(c => !c)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-pressed={collapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <CollapseChevron collapsed={collapsed} />
+        </button>
       </div>
 
       {/* Unified navigation */}
       <nav className="nav-section" style={{ marginTop: 4 }}>
         {sections.map((section, si) => (
           <React.Fragment key={section.label ?? `top-${si}`}>
-            {section.label && <div style={sectionLabelStyle}>{section.label}</div>}
+            {section.label && !collapsed && <div style={sectionLabelStyle}>{section.label}</div>}
+            {section.label && collapsed && si > 0 && <div className="nav-section-divider" />}
             {section.items.map(item => {
               const active = bestLen >= 0 && matchLen(pathname, item.href) === bestLen
               return (
@@ -267,10 +404,13 @@ export function Sidebar() {
                   href={item.href}
                   className={`nav-item ${active ? 'active' : ''}`}
                   style={{ textDecoration: 'none' }}
+                  // TA.2 — native tooltip surfaces the label when collapsed (icons-only).
+                  title={collapsed ? item.label : undefined}
+                  aria-label={item.label}
                 >
-                  <Icon name={item.icon} className="nav-icon" />
-                  <span>{item.label}</span>
-                  {item.badge && <span className="nav-badge">{item.badge}</span>}
+                  <NavIcon name={item.icon} />
+                  {!collapsed && <span>{item.label}</span>}
+                  {item.badge && !collapsed && <span className="nav-badge">{item.badge}</span>}
                 </Link>
               )
             })}
@@ -289,9 +429,11 @@ export function Sidebar() {
             marginBottom: 4,
             background:   'var(--white)',
             border:       '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
             padding:      '4px 0',
-            boxShadow:    '0 4px 16px rgba(0,0,0,0.12)',
+            boxShadow:    'var(--shadow-elevated)',
             zIndex:       50,
+            minWidth:     200,
           }}>
             <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{userName}</div>
@@ -307,7 +449,7 @@ export function Sidebar() {
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              <Icon name="settings" size={14} />
+              <SpriteIcon name="settings" size={14} />
               Settings
             </button>
             <button
@@ -320,7 +462,7 @@ export function Sidebar() {
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+              <SpriteIcon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
               {theme === 'dark' ? 'Light mode' : 'Dark mode'}
             </button>
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
@@ -330,11 +472,11 @@ export function Sidebar() {
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: '#DC2626',
+                fontSize: 13, color: 'var(--color-red)',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              <Icon name="logout" size={14} />
+              <SpriteIcon name="logout" size={14} />
               Sign out
             </button>
           </div>
@@ -343,16 +485,21 @@ export function Sidebar() {
           type="button"
           className="sidebar-footer"
           onClick={() => setUserMenuOpen(o => !o)}
+          title={collapsed ? `${userName} — open menu` : undefined}
+          aria-label="Open user menu"
           style={{
             width: '100%', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left',
-            borderTop: '1px solid var(--border)', padding: 16,
+            borderTop: '1px solid var(--border)', padding: collapsed ? '14px 0' : 16,
+            justifyContent: collapsed ? 'center' : 'flex-start',
           }}
         >
           <div className="avatar">{userInitials}</div>
-          <div className="user-meta">
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)' }}>{userName}</span>
-            <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{userRole}</span>
-          </div>
+          {!collapsed && (
+            <div className="user-meta">
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)' }}>{userName}</span>
+              <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{userRole}</span>
+            </div>
+          )}
         </button>
       </div>
     </aside>
