@@ -36,11 +36,11 @@ interface NavSection {
 // TA.4: "Settings" and "AI Agent" removed (pages stay; reachable via user button).
 // TB.1/TB.2: "My Programs" + "Transactions" removed and the now-empty "Programs"
 //            group dropped (pages stay; surfaced via /deals — TB.3).
+// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const ORG_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',    href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike AI',    href: '/ai',                    icon: 'ai' },
       { label: 'Strike Place', href: '/marketplace',           icon: 'marketplace' },
       { label: 'My Deals',     href: '/deals',                 icon: 'deals' },
       { label: 'Financing',    href: '/marketplace/financing', icon: 'financing' },
@@ -66,11 +66,11 @@ const SUPPLIER_NAV: NavSection[] = ORG_NAV
 
 // TA.5: Transactions, KYB Review, Settings removed from bank nav (pages stay).
 // TA.6: Supply Graph kept but routed to /supply-graph (full-page "Coming Soon").
+// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const BANK_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',          href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike AI',          href: '/ai',                    icon: 'ai' },
       { label: 'Financing Requests', href: '/marketplace/financing', icon: 'deals' },
     ],
   },
@@ -92,11 +92,11 @@ const BANK_NAV: NavSection[] = [
   },
 ]
 
+// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const ADMIN_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
-      { label: 'Strike AI', href: '/ai',        icon: 'ai' },
     ],
   },
   {
