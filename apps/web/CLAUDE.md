@@ -47,6 +47,7 @@ apps/web/
 │   │   ├── layout.tsx    ← Auth check + PortalProvider + UserProvider + PortalShell
 │   │   ├── portal-shell.tsx ← Sidebar + main + AIOverlay (Strike AI)
 │   │   ├── dashboard/    ← Role-aware dashboard (bank/buyer/supplier/admin views)
+│   │   ├── ai/           ← STRIKE AI — dedicated agent page (chat + history + doc gen)
 │   │   │
 │   │   ├── marketplace/  ← STRIKE PLACE — listings + offers hub
 │   │   │   ├── financing/[id]/   ← Financing requests (bank "Financing Requests")
@@ -79,7 +80,7 @@ apps/web/
 └── reference/            ← Original design mockups (JSX/HTML) — design reference
 ```
 
-> Sidebar nav is **role-aware & grouped** (`components/sidebar.tsx`). Org (buyer+supplier): Dashboard · Strike Place · My Deals · Financing | Programs: My Programs, Transactions | Network: Strike Rooms, My Passport | Reporting: Analytics | Account: Settings, AI Agent. Bank: Dashboard · Financing Requests | SCF Engine: Programs, Transactions, KYB Review | Intelligence: Reporting, Supply Graph | Settings. Admin: Dashboard, KYB Queue, Platform Stats, Room Reports.
+> Sidebar nav is **role-aware & grouped** (`components/sidebar.tsx`). Org (buyer+supplier): Dashboard · Strike AI · Strike Place · My Deals · Financing | Programs: My Programs, Transactions | Network: Strike Rooms, My Passport | Reporting: Analytics | Account: Settings, AI Agent. Bank: Dashboard · Strike AI · Financing Requests | SCF Engine: Programs, Transactions, KYB Review | Intelligence: Reporting, Supply Graph | Settings. Admin: Dashboard, Strike AI, KYB Queue, Platform Stats, Room Reports.
 
 ---
 
@@ -381,12 +382,37 @@ Conventions: cards = `--radius-card` + `--shadow-card`; buttons & badges = full 
 
 ## AI features
 
-- `components/ai-panel.tsx` — sliding chat panel → `/api/ai/chat`
-- `components/ai-insight.tsx` — inline insight widget
+Surfaces:
+- `app/(portal)/ai/page.tsx` (+ `ai/layout.tsx`) — the dedicated **Strike AI** page: localStorage
+  conversation history, per-portal quick prompts, agentic "wants to execute an action"
+  confirmation card. Sends `model: 'sonnet'` to `/api/ai/chat`. Linked from the sidebar (`/ai`).
+- `components/ai-overlay.tsx` — global overlay mounted in `portal-shell.tsx` on every page **except**
+  `/ai`: a hover-pill at the bottom edge + a draggable floating cluster after the first message.
+  Reads page context from the `data-page-name` / `data-ai-context` DOM attributes; listens for the
+  `strike-ai-prompt` CustomEvent (dispatched by insight cards).
+- `components/ai-insight-card.tsx` — contextual insight banner/compact/floating cards → `/api/ai/insight`
+  (session-cached, 5-min TTL). Wired into dashboard (bank), programs, transactions.
+- `components/ai-insight.tsx` — inline collapsible insight widget → `/api/ai/chat`.
+- `components/doc-generator.tsx` — document export. Template picker (regulatory: BCBS 239 / MAS 610 /
+  EBA FinRep / KYB summary / invoice confirmation / anchor payment notice; plus generic:
+  transaction summary / KYB report / financing request / PassportScore / audit log) + custom
+  template upload → `/api/ai/documents`, with a markdown preview modal and Download PDF / .md.
+- `components/ai-panel.tsx` — **deprecated/orphaned** (old sliding panel, replaced by `ai-overlay.tsx`).
+
+Routes:
+- `/api/ai/chat` — chat. Model routing: `model: 'sonnet'` → `claude-sonnet-4-6`, otherwise
+  `claude-haiku-4-5-20251001`. Passes through optional `tools` / `tool_choice`.
+- `/api/ai/insight` — insight-card JSON (haiku, 256 tokens; fail-soft).
+- `/api/ai/documents` — document generation (sonnet, 4096 tokens). `custom` accepts
+  `context.templateText` (fill an uploaded template) or `context.instructions`.
+- `/api/ai/usage` — usage/limits for the current scope.
+
+Limits & logging:
 - Daily limits come from `ai_limits` table (scope: user|org|bank|global), fallback hardcoded in route
 - Limits: chat=50, insight=200, document=20, scoring=500
-- Usage logged to `ai_usage` table
-- Model: `claude-haiku-4-5-20251001` — always this model for in-app AI (cost-sensitive)
+- Usage logged to `ai_usage` table (fail-soft if the table is absent)
+- Default model `claude-haiku-4-5-20251001` (cost-sensitive); the dedicated AI page and document
+  generation route to `claude-sonnet-4-6`.
 
 ---
 
