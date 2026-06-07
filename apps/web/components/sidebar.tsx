@@ -34,6 +34,8 @@ interface NavSection {
 
 // Anchor (buyer) + Supplier share the same unified nav.
 // TA.4: "Settings" and "AI Agent" removed (pages stay; reachable via user button).
+// TB.1/TB.2: "My Programs" + "Transactions" removed and the now-empty "Programs"
+//            group dropped (pages stay; surfaced via /deals — TB.3).
 const ORG_NAV: NavSection[] = [
   {
     items: [
@@ -42,13 +44,6 @@ const ORG_NAV: NavSection[] = [
       { label: 'Strike Place', href: '/marketplace',           icon: 'marketplace' },
       { label: 'My Deals',     href: '/deals',                 icon: 'deals' },
       { label: 'Financing',    href: '/marketplace/financing', icon: 'financing' },
-    ],
-  },
-  {
-    label: 'Programs',
-    items: [
-      { label: 'My Programs',  href: '/programs',     icon: 'programs' },
-      { label: 'Transactions', href: '/transactions', icon: 'analytics' },
     ],
   },
   {
