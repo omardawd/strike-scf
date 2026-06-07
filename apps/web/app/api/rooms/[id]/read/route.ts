@@ -21,11 +21,21 @@ export async function POST(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // User row via admin client (confirms the caller exists; follows CLAUDE.md pattern).
+  const { data: userData } = await adminClient
+    .from('users')
+    .select('id, role, org_id, bank_id')
+    .eq('id', user.id)
+    .single()
+  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  // Scope filter (mandatory with the admin client): only ever touch the caller's
+  // own participant row, and only for this room. A non-participant simply no-ops.
   const { error } = await adminClient
     .from('room_participants')
     .update({ last_read_at: new Date().toISOString() })
     .eq('room_id', id)
-    .eq('user_id', user.id)
+    .eq('user_id', userData.id)
 
   if (error) return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
   return NextResponse.json({ ok: true })
