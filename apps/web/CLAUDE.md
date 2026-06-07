@@ -111,12 +111,14 @@ organizations
   risk_score, risk_flags (jsonb array), tariff_exposure (jsonb),
   performance_score, performance_tier (preferred|standard|under_review),
   sourcing_countries (jsonb array), country_of_origin,
+  network_visible (boolean),     -- v2: org opted into network/marketplace discovery
+  passport_score (integer),      -- v2: cached PassportScore (0-100)
   invitation_id, created_at, updated_at
 
 users
   id (= auth.users.id), email, full_name,
-  role (bank_admin|bank_credit_officer|anchor_admin|anchor_member|
-        supplier_admin|supplier_member),
+  role (bank_admin|bank_credit_officer|org_admin|org_member|strike_admin),
+        -- v2: anchor_*/supplier_* roles are GONE; org.type decides buyer vs supplier
   bank_id, org_id, is_active, created_at, updated_at
 
 programs
@@ -246,6 +248,44 @@ notifications
   read, read_at, email_sent, email_sent_at, created_at
 ```
 
+### v2 tables (Strike Place / Deals / Rooms / Passport / Agent)
+
+These exist in the live schema (confirmed 2026-06-06). Column lists are
+abbreviated — query the table or the generated `packages/types/database.types.ts`
+(Track 2) for the full set.
+
+```
+deals
+  id, deal_source (enum: marketplace|imported|direct), status, ...
+  -- AI doc generation fires on status -> 'agreed'
+
+marketplace_listings        -- Strike Place product/PO listings
+marketplace_offers          -- offers on listings (realtime-subscribed)
+financing_requests          -- marketplace financing requests (preset|custom|open)
+financing_request_offers    -- bank offers on financing requests (realtime-subscribed)
+
+rooms                       -- Strike Rooms (private deal rooms + public)
+room_participants           -- room_id, org_id, bank_id, user_id, role, joined_at, last_read_at
+room_messages               -- realtime-subscribed; AI moderation on send
+room_reports                -- room_id, message_id, reported_by_user_id, reason, resolved, resolution
+
+passport_peer_reviews       -- peer reviews (NOT 'passport_reviews')
+passport_views              -- viewer_org_id, viewer_bank_id, viewed_org_id, context
+
+agent_actions               -- THE AI action/audit log (use this; do NOT create ai_actions_log).
+                            -- action_type, entity_type, entity_id, reasoning, input_summary,
+                            -- output_summary, outcome, requires_approval, human_approved,
+                            -- approved_by_user_id, approved_at, model, tokens_used
+agent_preferences           -- org-level AI hard limits/rules: org_id, preference_type,
+                            -- value(jsonb), label, is_active, set_by_user_id
+ai_negotiation_state        -- per-deal: deal_id(unique), current_round, last_offer_snapshot,
+                            -- negotiation_history, agent_recommendation, agent_confidence,
+                            -- market_context, suggested_counter
+```
+
+> NOT yet in the live schema (created by Track 2 migrations): `erp_connections`,
+> `erp_sync_data`, `ai_signals`, `ai_signal_resolutions`.
+
 ---
 
 ## Role system
@@ -313,7 +353,9 @@ export async function GET() {
 }
 ```
 
-Reusable helpers in `lib/api-auth.ts`: `requireAuth()`, `requireRole()`, `requireBankAccess()`, `requireOrgAccess()`.
+Inline the pattern above in each route (auth → user row → role gate → scoped query).
+There is no shared auth helper module — `lib/api-auth.ts` was deleted (T1.5): it used
+the deprecated `getSession()` and had zero importers. Do **not** reintroduce it.
 
 **RLS is enabled.** Admin client bypasses it — always add a manual `.eq()` scope. See `skills/supabase-patterns.md`.
 
@@ -459,12 +501,18 @@ NEXT_PUBLIC_DEV_BANK_ID=ff1a209f-aa2a-471c-95c8-9d01018cdecd
 
 ## Dev seed accounts
 
+Created by `supabase/seed.sql` (T1.3). All passwords: `DevPass123!`.
+
 ```
-sarah@atlasbank.dev  / DevPass123! → bank_admin
-james@pacdyn.dev     / DevPass123! → anchor_admin
-rachel@westcoast.dev / DevPass123! → supplier_admin
-mike@deltacomp.dev   / DevPass123! → supplier_admin
+sarah@atlasbank.dev     / DevPass123! → bank_admin           (Atlas Bank)
+james@atlasbank.dev     / DevPass123! → bank_credit_officer  (Atlas Bank)
+buyer@pacific.dev       / DevPass123! → org_admin            (Pacific Dynamics — anchor/buyer)
+supplier@westcoast.dev  / DevPass123! → org_admin            (Westcoast Fabricators — supplier)
+supplier@coastal.dev    / DevPass123! → org_admin            (Coastal Suppliers — supplier)
+admin@strikescf.com     / DevPass123! → strike_admin         (Strike platform)
 ```
+
+Atlas Bank's id is `NEXT_PUBLIC_DEV_BANK_ID` (ff1a209f-aa2a-471c-95c8-9d01018cdecd).
 
 ---
 
@@ -479,6 +527,7 @@ mike@deltacomp.dev   / DevPass123! → supplier_admin
 - **Never** use `transactions.financing_amount` — use `financing_amount_requested` or `financing_amount_approved`
 - **Never** install an ORM (Prisma, Drizzle) — Supabase JS client only
 - **Never** use `getSession()` in API routes — use `getUser()` (more secure)
+- **Never** create a `proxy.ts` — it was renamed to `middleware.ts` (T1.1); Next.js only auto-runs `middleware.ts`. Edit the existing `apps/web/middleware.ts`.
 - **Never** add new env vars without updating `.env.production.example`
 - **Don't** create Supabase clients inline in page files — import from `lib/supabase/`
 - **Don't** add Redux or Zustand — use React context (already set up)
