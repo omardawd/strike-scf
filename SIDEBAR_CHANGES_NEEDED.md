@@ -34,7 +34,7 @@ _(none — append new requests here)_
   `count > 99 ? '99+' : String(count)` when `count > 0`, otherwise no badge. Collapsed
   (icon-only) mode shows a small `--blue` dot overlay on the rooms icon (`.nav-badge` is
   hidden when collapsed). No badge added to `BANK_NAV`/`ADMIN_NAV`.
-  **APPLIED (commit `<TRACK_G_SHA>`).** ✅
+  **APPLIED (commit `3e2cb13`).** ✅
 
 ### Wave 1
 - **Track E → Track A (TE.2):** Add "Strike Passport" nav item (`/passport`,
