@@ -65,6 +65,8 @@ Format: [Assessment]. [Supporting data point]. [Recommended action].`,
     <div style={{
       border: '1px solid rgba(20,40,204,0.22)',
       background: 'rgba(20,40,204,0.02)',
+      borderRadius: 'var(--radius-card)',
+      overflow: 'hidden',
       marginBottom: 12,
     }}>
       <button
