@@ -6,6 +6,16 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 
 type DealTab = 'all' | 'active' | 'negotiating' | 'completed'
 
+interface FinancingRequestSummary {
+  id: string
+  status: string
+  structure_type: string
+  financing_type: string
+  amount_requested: number | null
+  offer_count: number | null
+  accepted_bank_id: string | null
+}
+
 interface DealRow {
   id: string
   status: string
@@ -15,6 +25,8 @@ interface DealRow {
   agreed_price: number | null
   agreed_delivery_date: string | null
   created_at: string
+  financing_requested: boolean
+  financing_request_id: string | null
   user_role: 'buyer' | 'supplier'
   counterparty: {
     id: string
@@ -22,6 +34,7 @@ interface DealRow {
     passport_score: number | null
     risk_tier: string | null
   } | null
+  financing_request: FinancingRequestSummary | null
 }
 
 const TAB_STATUS_MAP: Record<DealTab, string | null> = {
@@ -53,6 +66,44 @@ function statusBadgeClass(s: string): string {
   }
 }
 
+// Financing-request status → badge class (financing_request_status enum).
+function financingBadgeClass(s: string): string {
+  switch (s) {
+    case 'open':            return 'badge badge-active'
+    case 'offers_received': return 'badge badge-offer'
+    case 'accepted':        return 'badge badge-signing'
+    case 'funded':          return 'badge badge-funded'
+    case 'expired':         return 'badge badge-draft'
+    case 'cancelled':       return 'badge badge-rejected'
+    default:                return 'badge badge-draft'
+  }
+}
+
+// deal_source enum → human label.
+const SOURCE_LABEL: Record<string, string> = {
+  marketplace: 'Marketplace',
+  imported:    'Imported',
+  direct:      'Direct',
+}
+
+// financing_type enum → compact label for the financing cell.
+const FIN_TYPE_LABEL: Record<string, string> = {
+  reverse_factoring:   'Reverse Factoring',
+  invoice_factoring:   'Invoice Factoring',
+  po_financing:        'PO Financing',
+  dynamic_discounting: 'Dynamic Discounting',
+}
+
+// A deal is financing-eligible when it has been agreed/is live but no financing
+// has been requested yet. These are the "Finance This Deal" rows — the primary
+// action path that replaces the old transactions flow (TB.3). Statuses match the
+// detail page's actual financing gate (deals/[id]/page.tsx) so the CTA never
+// dead-ends on a deal whose form won't open.
+const FINANCEABLE_STATUSES = ['agreed', 'active']
+function isFinanceable(d: DealRow): boolean {
+  return !d.financing_requested && !d.financing_request_id && FINANCEABLE_STATUSES.includes(d.status)
+}
+
 function fmt(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
@@ -68,12 +119,13 @@ function shortId(id: string): string {
 }
 
 const DEAL_COLUMNS = [
-  { key: 'id',           label: 'Deal ID',       width: 140 },
+  { key: 'id',           label: 'Deal ID',       width: 150 },
   { key: 'counterparty', label: 'Counterparty',  width: undefined },
-  { key: 'value',        label: 'Trade Value',   width: 150, align: 'right' as const },
-  { key: 'status',       label: 'Status',        width: 160 },
-  { key: 'delivery',     label: 'Delivery Date', width: 130 },
-  { key: 'actions',      label: '',              width: 80 },
+  { key: 'value',        label: 'Trade Value',   width: 130, align: 'right' as const },
+  { key: 'status',       label: 'Status',        width: 140 },
+  { key: 'financing',    label: 'Financing',     width: 180 },
+  { key: 'delivery',     label: 'Delivery',      width: 110 },
+  { key: 'actions',      label: '',              width: 150 },
 ]
 
 export default function DealsPage() {
@@ -214,10 +266,15 @@ export default function DealsPage() {
                 filtered.map(deal => {
                   const value = deal.total_value ?? deal.agreed_price
                   const cpName = deal.counterparty?.legal_name ?? 'Unknown'
+                  const fin = deal.financing_request
+                  const financeable = isFinanceable(deal)
                   return (
                     <tr key={deal.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
                       <td>
                         <span className="mono" style={{ color: 'var(--gray)' }}>{shortId(deal.id)}</span>
+                        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 2 }}>
+                          {SOURCE_LABEL[deal.deal_source] ?? deal.deal_source}
+                        </div>
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -243,17 +300,43 @@ export default function DealsPage() {
                         </span>
                       </td>
                       <td>
+                        {fin ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                            <span className={financingBadgeClass(fin.status)}>
+                              {fin.status.replace(/_/g, ' ')}
+                            </span>
+                            <span style={{ fontSize: 10.5, color: 'var(--gray)' }}>
+                              {FIN_TYPE_LABEL[fin.financing_type] ?? fin.financing_type}
+                              {fin.offer_count ? ` · ${fin.offer_count} offer${fin.offer_count !== 1 ? 's' : ''}` : ''}
+                            </span>
+                          </div>
+                        ) : financeable ? (
+                          <span style={{ fontSize: 11.5, color: 'var(--color-green)', fontWeight: 500 }}>Eligible</span>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: 'var(--gray-soft)' }}>Not financed</span>
+                        )}
+                      </td>
+                      <td>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
                           {fmtDate(deal.agreed_delivery_date)}
                         </span>
                       </td>
                       <td>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}`) }}
-                        >
-                          View
-                        </button>
+                        {financeable ? (
+                          <button
+                            className="btn btn-blue btn-sm"
+                            onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}?action=finance`) }}
+                          >
+                            Finance This Deal
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}`) }}
+                          >
+                            View
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

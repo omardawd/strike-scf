@@ -50,12 +50,36 @@ export async function GET(request: Request) {
     for (const o of orgs ?? []) orgsMap[o.id] = o
   }
 
+  // Gather linked financing requests so the deals list can surface financing
+  // status + structure (the closest "program context" we have pre-program-linkage).
+  const finReqIds = (deals ?? [])
+    .map(d => d.financing_request_id)
+    .filter((id): id is string => !!id)
+
+  let finMap: Record<string, {
+    id: string
+    status: string
+    structure_type: string
+    financing_type: string
+    amount_requested: number | null
+    offer_count: number | null
+    accepted_bank_id: string | null
+  }> = {}
+  if (finReqIds.length > 0) {
+    const { data: finReqs } = await adminClient
+      .from('financing_requests')
+      .select('id, status, structure_type, financing_type, amount_requested, offer_count, accepted_bank_id')
+      .in('id', finReqIds)
+    for (const f of finReqs ?? []) finMap[f.id] = f
+  }
+
   const enriched = (deals ?? []).map(d => {
     const counterpartyId = d.buyer_org_id === userData.org_id ? d.supplier_org_id : d.buyer_org_id
     return {
       ...d,
       counterparty: orgsMap[counterpartyId] ?? null,
       user_role: d.buyer_org_id === userData.org_id ? 'buyer' : 'supplier',
+      financing_request: d.financing_request_id ? (finMap[d.financing_request_id] ?? null) : null,
     }
   })
 

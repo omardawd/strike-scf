@@ -293,6 +293,24 @@ export default function DealDetailPage() {
 
   useEffect(() => { load() }, [load])
 
+  // TB.3: the "Finance This Deal" CTA on the deals list routes here with
+  // ?action=finance. When the deal is loaded and still financing-eligible,
+  // auto-open the financing form (same behavior as the "Request Financing"
+  // button) so the CTA lands on the action, not just the detail page.
+  const financeActionTriggered = useRef(false)
+  useEffect(() => {
+    if (!data || financeActionTriggered.current) return
+    if (typeof window === 'undefined') return
+    const wantsFinance = new URLSearchParams(window.location.search).get('action') === 'finance'
+    if (!wantsFinance) return
+    const d = data.deal
+    if (['agreed', 'active'].includes(d.status) && !d.financing_requested) {
+      financeActionTriggered.current = true
+      setFinAmount(String(d.total_value ?? d.agreed_price ?? ''))
+      setShowFinancingForm(true)
+    }
+  }, [data])
+
   useEffect(() => {
     if (!data || data.deal.status !== 'completed') return
     fetch(`/api/passport/reviews/check?deal_id=${id}`)
