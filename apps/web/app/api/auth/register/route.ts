@@ -18,6 +18,8 @@ interface RegisterBody {
   email?: string
   password?: string
   org_type?: SignupOrgType
+  company_name?: string
+  country?: string
 }
 
 export async function POST(request: Request) {
@@ -32,6 +34,8 @@ export async function POST(request: Request) {
   const email = body.email?.trim().toLowerCase()
   const password = body.password
   const orgType = body.org_type
+  const companyName = body.company_name?.trim()
+  const country = body.country?.trim() || null
 
   if (!fullName || !email || !password || !orgType) {
     return NextResponse.json({ error: 'All fields are required.' }, { status: 400 })
@@ -82,13 +86,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, account_type: 'bank' }, { status: 201 })
   }
 
-  // 3. Anchor / supplier — create the org FIRST so org_id is available when we
-  //    upsert the users row. The users_context_check constraint requires org_admin
-  //    rows to have org_id set; inserting the user with null org_id fails.
+  // 3. Anchor / supplier — create the GHOST org FIRST so org_id is available when
+  //    we upsert the users row. The users_context_check constraint requires
+  //    org_admin rows to have org_id set; inserting the user with null org_id fails.
+  //
+  //    Tier 0 (ghost) invariants — set EXPLICITLY (do not rely on column defaults):
+  //      kyb_status     = 'not_started'  → KYB wizard not yet submitted
+  //      network_visible = false         → invisible to every counterparty query
+  //      passport_score = null           → no score until Passport activation
+  //    These three flip together on Passport submission (TD.3/TD.4), never here.
   const orgRow = {
     type: orgType satisfies OrgType,
     status: 'pending_kyb' satisfies OrgStatus,
     kyb_status: 'not_started' satisfies KybStatus,
+    network_visible: false,
+    passport_score: null,
+    legal_name: companyName ?? null,
+    country,
+    country_of_incorporation: country,
     primary_contact_name: fullName,
     primary_contact_email: email,
   }

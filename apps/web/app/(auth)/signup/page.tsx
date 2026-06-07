@@ -5,7 +5,32 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-type OrgTypeChoice = 'anchor' | 'supplier' | 'bank'
+type RoleChoice = 'anchor' | 'supplier' | 'both' | 'bank'
+
+// Top countries (codes match the onboarding wizard list). Country is the 5th
+// signup field; the activation wizard later collects full incorporation detail.
+const COUNTRIES: { code: string; name: string }[] = [
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'CN', name: 'China' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'KR', name: 'South Korea' },
+  { code: 'IN', name: 'India' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'AE', name: 'United Arab Emirates' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'BR', name: 'Brazil' },
+]
 
 // ─── icons ───────────────────────────────────────────────────────────────────
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
@@ -41,22 +66,35 @@ const labelStyle: React.CSSProperties = {
   color: 'var(--gray)', marginBottom: 6, display: 'block',
 }
 
-const ORG_TYPES: { id: OrgTypeChoice; icon: string; title: string; desc: string }[] = [
-  { id: 'anchor',   icon: 'building', title: 'I am a Buyer/Anchor',         desc: 'Offer early payment to your suppliers.' },
-  { id: 'supplier', icon: 'doc',      title: 'I am a Supplier',             desc: 'Get paid early on your invoices.' },
-  { id: 'bank',     icon: 'bank',     title: 'I represent a Bank or Lender', desc: 'Underwrite and fund financing.' },
+const ROLE_CHOICES: { id: RoleChoice; icon: string; title: string; desc: string }[] = [
+  { id: 'anchor',   icon: 'building', title: 'Anchor / Buyer',              desc: 'Offer early payment to your suppliers.' },
+  { id: 'supplier', icon: 'doc',      title: 'Supplier',                    desc: 'Get paid early on your invoices.' },
+  { id: 'both',     icon: 'building', title: 'Both',                        desc: 'Buy from suppliers and sell to buyers.' },
+  { id: 'bank',     icon: 'bank',     title: 'Bank or Lender',              desc: 'Underwrite and fund financing.' },
 ]
+
+// org.type is a binary enum (anchor | supplier). "Both" registers as an anchor
+// org (buyer-side) — it can still transact as a supplier on the network.
+function roleToOrgType(role: RoleChoice): 'anchor' | 'supplier' | 'bank' {
+  if (role === 'bank') return 'bank'
+  if (role === 'supplier') return 'supplier'
+  return 'anchor' // 'anchor' or 'both'
+}
 
 export default function SignupPage() {
   const router = useRouter()
-  const [orgType, setOrgType] = useState<OrgTypeChoice>('anchor')
+  const [role, setRole] = useState<RoleChoice>('anchor')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [country, setCountry] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [bankDone, setBankDone] = useState(false)
+
+  const isBank = role === 'bank'
 
   const pwdRules = [
     { label: '8+ characters',    ok: password.length >= 8 },
@@ -64,13 +102,18 @@ export default function SignupPage() {
     { label: 'Number',           ok: /[0-9]/.test(password) },
   ]
   const pwdOk = pwdRules.every(r => r.ok)
-  const canSubmit = fullName.trim() && email.trim() && pwdOk && !loading
+  // Bank leads don't create an org, so company/country are optional for them.
+  const orgFieldsOk = isBank || (companyName.trim() && country)
+  const canSubmit = Boolean(fullName.trim() && email.trim() && pwdOk && orgFieldsOk) && !loading
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit() {
     setError('')
     if (!fullName.trim() || !email.trim()) {
       setError('Please fill in all fields.')
+      return
+    }
+    if (!isBank && (!companyName.trim() || !country)) {
+      setError('Company name and country are required.')
       return
     }
     if (!pwdOk) {
@@ -86,7 +129,9 @@ export default function SignupPage() {
           full_name: fullName.trim(),
           email: email.trim(),
           password,
-          org_type: orgType,
+          org_type: roleToOrgType(role),
+          company_name: companyName.trim(),
+          country,
         }),
       })
       const data = await res.json() as { ok?: boolean; account_type?: string; error?: string }
@@ -103,7 +148,9 @@ export default function SignupPage() {
         return
       }
 
-      // Org user — sign in and head to onboarding (KYB).
+      // Org user — sign in and drop them straight into the dashboard in GHOST
+      // mode (Tier 0). Passport activation (KYB) is now a separate post-signup
+      // flow reached from the in-app locked states — NOT a hard gate here.
       const supabase = createClient()
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -113,7 +160,7 @@ export default function SignupPage() {
         router.push('/login')
         return
       }
-      router.push('/onboarding')
+      router.push('/dashboard')
     } catch {
       setError('Something went wrong. Please try again.')
       setLoading(false)
@@ -184,21 +231,21 @@ export default function SignupPage() {
               Create your account
             </h1>
             <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 24px' }}>
-              Register your organization on Strike SCF.
+              Get instant access — activate your Passport later to start transacting.
             </p>
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Org type */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Role */}
               <div>
                 <label style={labelStyle}>I am a…</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {ORG_TYPES.map(t => {
-                    const selected = orgType === t.id
+                  {ROLE_CHOICES.map(t => {
+                    const selected = role === t.id
                     return (
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => setOrgType(t.id)}
+                        onClick={() => setRole(t.id)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 12,
                           padding: '12px 14px', textAlign: 'left', width: '100%',
@@ -255,6 +302,36 @@ export default function SignupPage() {
                 />
               </div>
 
+              {/* Company + country (org accounts only — banks are provisioned by Strike) */}
+              {!isBank && (
+                <>
+                  <div>
+                    <label style={labelStyle}>Company name</label>
+                    <input
+                      style={inputStyle}
+                      type="text"
+                      placeholder="Acme Corp"
+                      value={companyName}
+                      onChange={e => setCompanyName(e.target.value)}
+                      autoComplete="organization"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Country</label>
+                    <select
+                      style={{ ...inputStyle, appearance: 'auto' }}
+                      value={country}
+                      onChange={e => setCountry(e.target.value)}
+                    >
+                      <option value="">Select country…</option>
+                      {COUNTRIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
               {/* Password */}
               <div>
                 <label style={labelStyle}>Password</label>
@@ -298,14 +375,15 @@ export default function SignupPage() {
               )}
 
               <button
-                type="submit"
+                type="button"
+                onClick={handleSubmit}
                 disabled={!canSubmit}
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', opacity: canSubmit ? 1 : 0.6, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
               >
                 {loading ? 'Creating account…' : 'Create account'}
               </button>
-            </form>
+            </div>
 
             <p style={{ marginTop: 20, fontSize: 12.5, color: 'var(--color-ink-4)', textAlign: 'center' }}>
               Already have an account?{' '}
