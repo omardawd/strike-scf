@@ -20,7 +20,8 @@ interface Conversation {
 }
 
 const CONVERSATIONS_KEY = 'strike-ai-conversations'
-const COLLAPSED_KEY = 'strike-ai-sidebar-collapsed'
+// TF.1 — exact key required by the spec; persists the conversation-log collapse state.
+const COLLAPSED_KEY = 'strike_ai_log_collapsed'
 const MAX_CONVERSATIONS = 50
 
 // ============== Helpers ==============
@@ -148,6 +149,17 @@ function describeAction(text: string): string | null {
 function needsConfirmation(text: string): boolean {
   const t = text.toLowerCase()
   return ACTION_KEYWORDS.some(k => t.includes(k))
+}
+
+// TF.1 — subtle single-chevron glyph (‹ / ›) for the conversation-log collapse toggle.
+function Chevron({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 20 20" fill="none"
+      stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      {dir === 'left' ? <path d="M12 5l-5 5 5 5" /> : <path d="M8 5l5 5-5 5" />}
+    </svg>
+  )
 }
 
 // ============== Page ==============
@@ -316,13 +328,16 @@ export default function AIWorkspacePage() {
         .strike-ai-newchat:hover { background: var(--blue-hover) !important; }
         .strike-ai-quick:hover { border-color: var(--blue) !important; }
         .strike-ai-convo:hover { background: var(--offwhite); }
+        /* TF.1 — subtle icon-only collapse chevron */
+        .strike-ai-log-toggle { color: var(--gray-soft); transition: color 0.15s, background 0.15s; }
+        .strike-ai-log-toggle:hover { color: var(--ink); background: var(--offwhite); }
       `}</style>
 
       <div style={{ display: 'flex', flex: 1, height: '100vh', overflow: 'hidden', position: 'relative' }}>
 
-        {/* ── LEFT: Conversation history ── */}
+        {/* ── LEFT: Conversation history (claude.ai pattern — TF.1) ── */}
         <div style={{
-          width: collapsed ? 0 : 260,
+          width: collapsed ? 0 : 280,
           flexShrink: 0,
           height: '100%',
           background: 'var(--white)',
@@ -333,11 +348,12 @@ export default function AIWorkspacePage() {
           flexDirection: 'column',
         }}>
           <div style={{
-            padding: '18px 16px 12px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '16px 12px 12px 16px',
+            display: 'flex', alignItems: 'center', gap: 8,
             borderBottom: '1px solid var(--border)',
+            minWidth: 280, /* keep header from reflowing while the panel collapses */
           }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>Strike AI</span>
+            <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>Strike AI</span>
             <button
               type="button"
               className="strike-ai-newchat"
@@ -345,10 +361,25 @@ export default function AIWorkspacePage() {
               style={{
                 padding: '6px 12px', borderRadius: 999, background: 'var(--blue)',
                 color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                transition: 'background 0.15s',
+                transition: 'background 0.15s', flexShrink: 0,
               }}
             >
               New Chat
+            </button>
+            {/* Collapse chevron — icon only, top-right of the panel */}
+            <button
+              type="button"
+              className="strike-ai-log-toggle"
+              onClick={toggleCollapsed}
+              aria-label="Collapse conversation history"
+              title="Collapse"
+              style={{
+                width: 28, height: 28, flexShrink: 0, borderRadius: 8,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Chevron dir="left" />
             </button>
           </div>
 
@@ -392,33 +423,34 @@ export default function AIWorkspacePage() {
           </div>
         </div>
 
-        {/* Collapse toggle — sits at the boundary between panels */}
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          style={{
-            position: 'absolute',
-            left: collapsed ? 8 : 248,
-            top: 18,
-            width: 28, height: 28, borderRadius: '50%',
-            background: 'var(--white)', border: '1px solid var(--border)',
-            cursor: 'pointer', zIndex: 10,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--gray)', fontSize: 13, lineHeight: 1,
-            transition: 'left 0.2s ease',
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
-          {collapsed ? '→' : '←'}
-        </button>
+        {/* Expand chevron — only visible when collapsed; sits at the top-left of the chat pane */}
+        {collapsed && (
+          <button
+            type="button"
+            className="strike-ai-log-toggle"
+            onClick={toggleCollapsed}
+            aria-label="Expand conversation history"
+            title="Expand"
+            style={{
+              position: 'absolute', left: 10, top: 14,
+              width: 28, height: 28, borderRadius: 8, zIndex: 10,
+              background: 'var(--white)', border: '1px solid var(--border)',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Chevron dir="right" />
+          </button>
+        )}
 
         {/* ── RIGHT: Chat ── */}
         <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Header */}
+          {/* Header (left padding grows when collapsed to clear the expand chevron) */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
-            padding: '14px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+            padding: '14px 18px', paddingLeft: collapsed ? 48 : 18,
+            borderBottom: '1px solid var(--border)', flexShrink: 0,
+            transition: 'padding-left 0.2s ease',
           }}>
             <div style={{
               width: 28, height: 28, borderRadius: '50%', background: 'var(--blue)', color: '#fff',
