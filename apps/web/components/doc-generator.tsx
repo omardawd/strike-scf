@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 
 interface DocGeneratorProps {
   entityType: 'transaction' | 'kyb' | 'program'
@@ -7,12 +7,50 @@ interface DocGeneratorProps {
   portal: 'bank' | 'anchor' | 'supplier'
 }
 
+interface GeneratedDoc {
+  content: string
+  filename: string
+  generatedAt: string
+}
+
+// Merged template set: regulatory/formal templates + the generic Strike AI document
+// types. `id` must match a VALID_TYPE in /api/ai/documents.
 const TEMPLATES = [
   {
     id: 'transaction_summary',
     label: 'Transaction Summary',
     desc: 'Full transaction audit summary',
     availableFor: ['bank', 'anchor', 'supplier'],
+  },
+  {
+    id: 'audit_log',
+    label: 'Transaction Audit Log',
+    desc: 'Chronological status-transition log',
+    availableFor: ['bank', 'anchor', 'supplier'],
+  },
+  {
+    id: 'passport_report',
+    label: 'PassportScore Report',
+    desc: 'Score breakdown and risk flags',
+    availableFor: ['bank', 'anchor', 'supplier'],
+  },
+  {
+    id: 'financing_request',
+    label: 'Financing Request',
+    desc: 'Formal financing request document',
+    availableFor: ['bank', 'supplier'],
+  },
+  {
+    id: 'kyb_report',
+    label: 'KYB Due Diligence Report',
+    desc: 'Counterparty due diligence report',
+    availableFor: ['bank'],
+  },
+  {
+    id: 'kyb_summary',
+    label: 'KYB Due Diligence Summary',
+    desc: 'Condensed counterparty due diligence',
+    availableFor: ['bank'],
   },
   {
     id: 'bcbs_239',
@@ -33,12 +71,6 @@ const TEMPLATES = [
     availableFor: ['bank'],
   },
   {
-    id: 'kyb_summary',
-    label: 'KYB Due Diligence Summary',
-    desc: 'Counterparty due diligence report',
-    availableFor: ['bank'],
-  },
-  {
     id: 'invoice_confirmation',
     label: 'Invoice Confirmation Letter',
     desc: 'Formal invoice financing confirmation',
@@ -52,33 +84,92 @@ const TEMPLATES = [
   },
 ]
 
-function getTemplatePrompt(templateId: string, data: Record<string, any>): string {
-  const base = `You are a financial document specialist. Generate a professional, formal document based on the data provided. Use proper financial terminology. Format with clear sections and headers. Use markdown formatting.`
+// ── Minimal regex-based Markdown → HTML (no external library) ──
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
-  const prompts: Record<string, string> = {
-    transaction_summary: `${base}
-Generate a complete transaction audit summary document including: parties involved, transaction terms, status timeline, financial summary, and compliance notes.`,
+function inline(s: string): string {
+  return escapeHtml(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+?)`/g, '<code style="font-family:var(--font-mono);background:var(--offwhite);padding:1px 5px;border-radius:4px;font-size:0.9em;">$1</code>')
+}
 
-    bcbs_239: `${base}
-Generate a BCBS 239 compliant risk data aggregation report. Include: risk data identification, aggregation capabilities assessment, risk reporting frequency, data accuracy attestation, and recommended actions. Format as a formal regulatory report.`,
+function rowCells(line: string): string[] {
+  const cells = line.split('|').map(c => c.trim())
+  if (cells.length && cells[0] === '') cells.shift()
+  if (cells.length && cells[cells.length - 1] === '') cells.pop()
+  return cells
+}
 
-    mas_610: `${base}
-Generate a MAS Notice 610 credit facilities report. Include: credit facility details, obligor information, exposure classification, collateral details, and risk grading. Follow MAS reporting standards.`,
+function renderMarkdown(md: string): string {
+  const lines = md.split('\n')
+  const out: string[] = []
+  let i = 0
 
-    eba_finrep: `${base}
-Generate an EBA FinRep financial report entry. Include: counterparty details, exposure amount, impairment assessment, collateral coverage, and IFRS 9 stage classification.`,
+  while (i < lines.length) {
+    const line = lines[i] ?? ''
 
-    kyb_summary: `${base}
-Generate a comprehensive KYB due diligence summary report. Include: entity verification, beneficial ownership analysis, risk assessment, document verification status, and compliance recommendation.`,
+    if (/^\s*---\s*$/.test(line)) {
+      out.push('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0;" />')
+      i++
+      continue
+    }
 
-    invoice_confirmation: `${base}
-Generate a formal invoice financing confirmation letter. Include: parties, invoice details, financing terms, disbursement confirmation, and repayment schedule.`,
+    const h = /^(#{1,4})\s+(.*)$/.exec(line)
+    if (h) {
+      const level = h[1]!.length
+      const size = level === 1 ? 22 : level === 2 ? 18 : level === 3 ? 15 : 13
+      out.push(`<h${level} style="font-family:var(--font-display);font-size:${size}px;font-weight:700;margin:18px 0 8px;color:var(--ink);">${inline(h[2]!)}</h${level}>`)
+      i++
+      continue
+    }
 
-    anchor_payment_notice: `${base}
-Generate a formal payment notice to the anchor/buyer. Include: payment obligation, amount due, due date, payment instructions, and consequences of late payment.`,
+    if (line.includes('|') && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1] ?? '')) {
+      const header = rowCells(line)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && (lines[i] ?? '').includes('|')) {
+        rows.push(rowCells(lines[i] ?? ''))
+        i++
+      }
+      let table = '<table style="border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;">'
+      table += '<thead><tr>' + header.map(c =>
+        `<th style="border:1px solid var(--border);padding:8px 10px;text-align:left;background:var(--offwhite);font-weight:600;">${inline(c)}</th>`
+      ).join('') + '</tr></thead><tbody>'
+      for (const r of rows) {
+        table += '<tr>' + r.map(c =>
+          `<td style="border:1px solid var(--border);padding:8px 10px;">${inline(c)}</td>`
+        ).join('') + '</tr>'
+      }
+      table += '</tbody></table>'
+      out.push(table)
+      continue
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i] ?? '')) {
+        items.push(`<li style="margin:3px 0;">${inline((lines[i] ?? '').replace(/^\s*[-*]\s+/, ''))}</li>`)
+        i++
+      }
+      out.push(`<ul style="margin:8px 0;padding-left:20px;">${items.join('')}</ul>`)
+      continue
+    }
+
+    if (line.trim() === '') {
+      i++
+      continue
+    }
+
+    out.push(`<p style="margin:8px 0;line-height:1.6;font-size:14px;color:var(--ink);">${inline(line)}</p>`)
+    i++
   }
 
-  return prompts[templateId] ?? base
+  return out.join('\n')
 }
 
 export function DocGenerator({ entityType, entityData, portal }: DocGeneratorProps) {
@@ -87,54 +178,87 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
   const [customFile, setCustomFile] = useState<File | null>(null)
   const [customTemplateText, setCustomTemplateText] = useState<string>('')
   const [generating, setGenerating] = useState(false)
-  const [output, setOutput] = useState<string>('')
+  const [doc, setDoc] = useState<GeneratedDoc | null>(null)
   const [error, setError] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const availableTemplates = TEMPLATES.filter(t => t.availableFor.includes(portal))
 
+  // Close preview modal on Escape
+  useEffect(() => {
+    if (!doc) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDoc(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [doc])
+
   async function handleGenerate() {
     setGenerating(true)
-    setOutput('')
+    setDoc(null)
     setError('')
 
     try {
-      const systemPrompt = mode === 'templates'
-        ? getTemplatePrompt(selectedTemplate, entityData)
-        : `You are a document completion specialist. The user has provided a document template. Fill in the template with the provided data. Maintain the exact structure and format of the template. Replace any placeholder fields with real data from the context. If data is not available, write [NOT PROVIDED]. Template to fill:\n\n${customTemplateText}`
+      const payload = mode === 'templates'
+        ? { type: selectedTemplate, context: { entityType, ...entityData } }
+        : { type: 'custom', context: { entityType, templateText: customTemplateText, ...entityData } }
 
-      const userMessage = mode === 'templates'
-        ? `Generate the document using this data:\n\n${JSON.stringify(entityData, null, 2)}`
-        : `Fill this template with the provided data:\n\n${JSON.stringify(entityData, null, 2)}`
-
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch('/api/ai/documents', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          feature: 'document',
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userMessage }],
-          max_tokens: 4096,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
 
       if (res.status === 429) {
-        setError('Daily AI limit reached. Resets at midnight UTC.')
-        setGenerating(false)
+        setError('Daily document limit reached. Resets at midnight UTC.')
+        return
+      }
+      if (!res.ok) {
+        setError('Failed to generate document. Please try again.')
         return
       }
 
-      const data = await res.json()
-      const text = data.content?.[0]?.text
-
-      if (!text) throw new Error('No response')
-      setOutput(text)
+      const data = (await res.json()) as GeneratedDoc
+      if (!data.content) {
+        setError('Failed to generate document. Please try again.')
+        return
+      }
+      setDoc(data)
     } catch {
       setError('Failed to generate document. Please try again.')
+    } finally {
+      setGenerating(false)
     }
-    setGenerating(false)
+  }
+
+  function downloadMd() {
+    if (!doc) return
+    const blob = new Blob([doc.content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = doc.filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function downloadPdf() {
+    const style = document.createElement('style')
+    style.media = 'print'
+    style.textContent = `
+      body * { visibility: hidden !important; }
+      #strike-doc-print, #strike-doc-print * { visibility: visible !important; }
+      #strike-doc-print {
+        position: absolute !important; left: 0; top: 0; width: 100%;
+        padding: 32px !important; background: #fff !important;
+      }
+    `
+    document.head.appendChild(style)
+    window.print()
+    setTimeout(() => {
+      if (style.parentNode) style.parentNode.removeChild(style)
+    }, 2000)
   }
 
   return (
@@ -179,7 +303,7 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
             <button key={m}
               onClick={() => {
                 setMode(m)
-                setOutput('')
+                setDoc(null)
                 setSelectedTemplate('')
                 setCustomFile(null)
               }}
@@ -209,7 +333,7 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
                   padding: '12px 14px',
                   border: '1px solid',
                   borderColor: selectedTemplate === t.id ? 'var(--blue)' : 'var(--border)',
-                  background: selectedTemplate === t.id ? 'rgba(0,82,255,0.03)' : 'var(--white)',
+                  background: selectedTemplate === t.id ? 'rgba(20,40,204,0.03)' : 'var(--white)',
                   cursor: 'pointer',
                   marginBottom: 6,
                   transition: 'all 0.1s',
@@ -305,54 +429,8 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
           }
           onClick={handleGenerate}
         >
-          {generating ? 'Generating...' : 'Generate document →'}
+          {generating ? 'Generating with Strike AI...' : 'Generate document →'}
         </button>
-
-        {/* Output */}
-        {output && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 8,
-            }}>
-              <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'var(--gray)',
-              }}>Generated document</span>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  const blob = new Blob([output], { type: 'text/plain' })
-                  const url = URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `${selectedTemplate || 'document'}_${Date.now()}.md`
-                  a.click()
-                }}>
-                ↓ Download
-              </button>
-            </div>
-            <div style={{
-              background: 'var(--offwhite)',
-              border: '1px solid var(--border)',
-              padding: '16px',
-              fontFamily: 'var(--font-body)',
-              fontSize: 13,
-              lineHeight: 1.7,
-              color: 'var(--ink)',
-              maxHeight: 400,
-              overflowY: 'auto',
-              whiteSpace: 'pre-wrap',
-            }}>
-              {output}
-            </div>
-          </div>
-        )}
 
         {error && (
           <div style={{
@@ -363,6 +441,56 @@ export function DocGenerator({ entityType, entityData, portal }: DocGeneratorPro
           }}>{error}</div>
         )}
       </div>
+
+      {/* Preview modal with PDF / .md export */}
+      {doc && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setDoc(null) }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div style={{
+            background: 'var(--white)', maxWidth: 800, width: '100%', maxHeight: '80vh',
+            borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+            }}>
+              <span style={{
+                flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {doc.filename}
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={downloadPdf}>
+                Download PDF
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={downloadMd}>
+                Download .md
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoc(null)}
+                aria-label="Close"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 22, lineHeight: 1, color: 'var(--gray)', padding: '0 4px',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div
+              id="strike-doc-print"
+              style={{ overflowY: 'auto', padding: 32 }}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(doc.content) }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

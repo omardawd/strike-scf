@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon, NotifBell } from '@/components/portal-shell'
+import { AIInsightCard } from '@/components/ai-insight-card'
 
 interface Transaction {
   id: string
@@ -148,6 +149,21 @@ export default function TransactionsPage() {
             </div>
           )}
         </div>
+
+        {!loading && !error && txns.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <AIInsightCard
+              variant="banner"
+              portal={portal}
+              page="transactions"
+              context={{
+                transactionCount: txns.length,
+                pendingCount: txns.filter(t => t.status.includes('pending')).length,
+                totalValue: txns.reduce((s, t) => s + (t.invoice_amount ?? 0), 0),
+              }}
+            />
+          </div>
+        )}
 
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>

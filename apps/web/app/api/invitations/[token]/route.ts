@@ -92,8 +92,8 @@ export async function POST(
 
   // Map invitation role → DB user role (trigger reads user_metadata.role)
   const roleMap: Record<string, string> = {
-    anchor:   'anchor_admin',
-    supplier: 'supplier_admin',
+    anchor:   'org_admin',
+    supplier: 'org_admin',
   }
   const dbRole = roleMap[invitation.role] ?? invitation.role
 

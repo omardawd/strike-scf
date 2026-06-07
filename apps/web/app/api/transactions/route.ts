@@ -7,9 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
 
 export async function GET() {
   const supabase = await createClient()
@@ -29,12 +28,15 @@ export async function GET() {
     .select('*')
     .order('created_at', { ascending: false })
 
-  if (SUPPLIER_ROLES.includes(userData.role)) {
+  if (ORG_ROLES.includes(userData.role)) {
     if (!userData.org_id) return NextResponse.json({ transactions: [] })
-    query = query.eq('supplier_id', userData.org_id)
-  } else if (ANCHOR_ROLES.includes(userData.role)) {
-    if (!userData.org_id) return NextResponse.json({ transactions: [] })
-    query = query.eq('anchor_id', userData.org_id)
+    // Look up org type to scope transactions correctly
+    const { data: txnOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    if (txnOrgRow?.type === 'anchor') {
+      query = query.eq('anchor_id', userData.org_id)
+    } else {
+      query = query.eq('supplier_id', userData.org_id)
+    }
   } else if (BANK_ROLES.includes(userData.role)) {
     if (!userData.bank_id) return NextResponse.json({ transactions: [] })
     query = query.eq('bank_id', userData.bank_id)
@@ -61,7 +63,7 @@ export async function POST(request: Request) {
 
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
-  if (!SUPPLIER_ROLES.includes(userData.role)) {
+  if (!ORG_ROLES.includes(userData.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

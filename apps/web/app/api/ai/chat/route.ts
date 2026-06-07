@@ -54,6 +54,23 @@ export async function POST(req: NextRequest) {
     }, { status: 429 })
   }
 
+  // Model routing — 'sonnet' signals the upgraded model (dedicated /ai workspace).
+  // Everything else (overlay, insight, inline widgets) stays on cost-sensitive Haiku.
+  const model = body.model === 'sonnet'
+    ? 'claude-sonnet-4-6'
+    : 'claude-haiku-4-5-20251001'
+
+  const anthropicBody: Record<string, unknown> = {
+    model,
+    max_tokens: body.max_tokens ?? 1024,
+    system: body.system,
+    messages: body.messages,
+  }
+  if (body.tools && Array.isArray(body.tools)) {
+    anthropicBody.tools = body.tools
+    if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
+  }
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -61,12 +78,7 @@ export async function POST(req: NextRequest) {
       'anthropic-version': '2023-06-01',
       'x-api-key': process.env.ANTHROPIC_API_KEY!,
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: body.max_tokens ?? 1024,
-      system: body.system,
-      messages: body.messages,
-    }),
+    body: JSON.stringify(anthropicBody),
   })
 
   if (!response.ok) {
@@ -89,7 +101,7 @@ export async function POST(req: NextRequest) {
         tokens_input: usage.input_tokens ?? 0,
         tokens_output: usage.output_tokens ?? 0,
         tokens_total: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
-        model: 'claude-haiku-4-5-20251001',
+        model,
       })
     if (usageErr) console.error('[AI] Usage log error:', usageErr)
   } catch {

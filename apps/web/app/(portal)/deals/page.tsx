@@ -1,0 +1,268 @@
+'use client'
+import React, { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Topbar } from '@/components/portal-shell'
+import { PassportScoreRing } from '@/components/passport-score-ring'
+
+type DealTab = 'all' | 'active' | 'negotiating' | 'completed'
+
+interface DealRow {
+  id: string
+  status: string
+  deal_source: string
+  agreed_currency: string
+  total_value: number | null
+  agreed_price: number | null
+  agreed_delivery_date: string | null
+  created_at: string
+  user_role: 'buyer' | 'supplier'
+  counterparty: {
+    id: string
+    legal_name: string | null
+    passport_score: number | null
+    risk_tier: string | null
+  } | null
+}
+
+const TAB_STATUS_MAP: Record<DealTab, string | null> = {
+  all:         null,
+  active:      'active',
+  negotiating: 'negotiating',
+  completed:   'completed',
+}
+
+const EMPTY_MESSAGES: Record<DealTab, { title: string; sub: string }> = {
+  all:          { title: 'No deals yet',          sub: 'When you accept or send an offer on Strike Place, your deals will appear here.' },
+  active:       { title: 'No active deals',        sub: 'Deals in progress — funded and on track — will show here.' },
+  negotiating:  { title: 'No deals negotiating',   sub: 'Deals where you are exchanging offers or counteroffers will appear here.' },
+  completed:    { title: 'No completed deals',     sub: 'Deals that have reached delivery and payment will show here.' },
+}
+
+function statusBadgeClass(s: string): string {
+  switch (s) {
+    case 'negotiating':         return 'badge badge-draft'
+    case 'agreed':              return 'badge badge-signing'
+    case 'documents_pending':   return 'badge badge-pending'
+    case 'active':              return 'badge badge-active'
+    case 'financing_requested': return 'badge badge-offer'
+    case 'financing_active':    return 'badge badge-funded'
+    case 'completed':           return 'badge badge-completed'
+    case 'disputed':            return 'badge badge-overdue'
+    case 'cancelled':           return 'badge badge-rejected'
+    default:                    return 'badge badge-draft'
+  }
+}
+
+function fmt(n: number | null | undefined, currency = 'USD'): string {
+  if (n == null) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function shortId(id: string): string {
+  return id.slice(0, 8).toUpperCase()
+}
+
+const DEAL_COLUMNS = [
+  { key: 'id',           label: 'Deal ID',       width: 140 },
+  { key: 'counterparty', label: 'Counterparty',  width: undefined },
+  { key: 'value',        label: 'Trade Value',   width: 150, align: 'right' as const },
+  { key: 'status',       label: 'Status',        width: 160 },
+  { key: 'delivery',     label: 'Delivery Date', width: 130 },
+  { key: 'actions',      label: '',              width: 80 },
+]
+
+export default function DealsPage() {
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<DealTab>('all')
+  const [deals, setDeals] = useState<DealRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [counts, setCounts] = useState<Record<DealTab, number>>({ all: 0, active: 0, negotiating: 0, completed: 0 })
+
+  useEffect(() => {
+    setLoading(true)
+    fetch('/api/deals')
+      .then(r => r.json())
+      .then(data => {
+        const all: DealRow[] = data.deals ?? []
+        setDeals(all)
+        setCounts({
+          all:         all.length,
+          active:      all.filter(d => d.status === 'active' || d.status === 'financing_requested' || d.status === 'financing_active').length,
+          negotiating: all.filter(d => d.status === 'negotiating' || d.status === 'agreed').length,
+          completed:   all.filter(d => d.status === 'completed').length,
+        })
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = deals.filter(d => {
+    if (activeTab === 'all') return true
+    if (activeTab === 'active') return ['active', 'financing_requested', 'financing_active'].includes(d.status)
+    if (activeTab === 'negotiating') return ['negotiating', 'agreed'].includes(d.status)
+    if (activeTab === 'completed') return d.status === 'completed'
+    return true
+  })
+
+  const empty = EMPTY_MESSAGES[activeTab]
+
+  return (
+    <>
+      <Topbar
+        crumbs={[{ label: 'My Deals' }]}
+        actions={
+          <div className="topbar-right">
+            <button
+              className="btn btn-blue btn-sm"
+              onClick={() => router.push('/deals/import')}
+            >
+              Finance an Existing Trade
+            </button>
+          </div>
+        }
+      />
+
+      <div className="page" style={{ maxWidth: 1280 }}>
+        <div className="page-header">
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
+            My Deals
+          </h1>
+          <p className="subtitle">Track and manage your active trades from offer to delivery.</p>
+        </div>
+
+        {/* Tab row */}
+        <div className="deals-tab-row">
+          {(['all', 'active', 'negotiating', 'completed'] as DealTab[]).map(tab => (
+            <button
+              key={tab}
+              className={`deals-tab${activeTab === tab ? ' deals-tab-active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab === 'all' && 'All'}
+              {tab === 'active' && 'Active'}
+              {tab === 'negotiating' && 'Negotiating'}
+              {tab === 'completed' && 'Completed'}
+              <span className="deals-tab-count">{counts[tab]}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Table */}
+        <div className="card">
+          <table className="table" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              {DEAL_COLUMNS.map(col => (
+                <col key={col.key} style={{ width: col.width ?? 'auto' }} />
+              ))}
+            </colgroup>
+            <thead>
+              <tr>
+                {DEAL_COLUMNS.map(col => (
+                  <th key={col.key} style={col.align === 'right' ? { textAlign: 'right' } : undefined}>
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i}>
+                    {DEAL_COLUMNS.map(col => (
+                      <td key={col.key}>
+                        <div style={{ height: 14, background: 'var(--border)', animation: 'skeleton-pulse 1.8s ease infinite', width: col.key === 'counterparty' ? '70%' : '80%' }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={DEAL_COLUMNS.length} style={{ padding: 0, border: 'none' }}>
+                    <div className="deals-empty">
+                      <div className="deals-empty-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
+                        </svg>
+                      </div>
+                      <p className="deals-empty-title">{empty.title}</p>
+                      <p className="deals-empty-sub">{empty.sub}</p>
+                      {activeTab === 'all' && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => router.push('/marketplace')}
+                          >
+                            Browse Marketplace
+                          </button>
+                          <button
+                            className="btn btn-blue btn-sm"
+                            onClick={() => router.push('/deals/import')}
+                          >
+                            Finance an Existing Trade
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(deal => {
+                  const value = deal.total_value ?? deal.agreed_price
+                  const cpName = deal.counterparty?.legal_name ?? 'Unknown'
+                  return (
+                    <tr key={deal.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
+                      <td>
+                        <span className="mono" style={{ color: 'var(--gray)' }}>{shortId(deal.id)}</span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {deal.counterparty && (
+                            <PassportScoreRing score={deal.counterparty.passport_score} size="sm" />
+                          )}
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{cpName}</div>
+                            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 1 }}>
+                              {deal.user_role === 'buyer' ? 'You are buyer' : 'You are supplier'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                          {fmt(value, deal.agreed_currency)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={statusBadgeClass(deal.status)}>
+                          {deal.status.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                          {fmtDate(deal.agreed_delivery_date)}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}`) }}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}

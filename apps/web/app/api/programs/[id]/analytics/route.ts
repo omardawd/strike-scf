@@ -7,9 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 type Period = 'daily' | 'weekly' | 'monthly'
 type Bucket = { label: string; start: Date; end: Date }
@@ -76,26 +75,33 @@ export async function GET(
     if (program.bank_id !== userData.bank_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-  } else if (ANCHOR_ROLES.includes(userData.role)) {
-    const { data: enrollment } = await adminClient
-      .from('program_enrollments')
-      .select('id')
-      .eq('program_id', programId)
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active')
-      .maybeSingle()
-    if (!enrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  } else if (SUPPLIER_ROLES.includes(userData.role)) {
-    const { data: enrollment } = await adminClient
-      .from('program_enrollments')
-      .select('anchor_org_id')
-      .eq('program_id', programId)
-      .eq('org_id', userData.org_id)
-      .eq('status', 'active')
-      .maybeSingle()
-    if (!enrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    supplierId = userData.org_id
-    if (!anchorId && enrollment.anchor_org_id) anchorId = enrollment.anchor_org_id
+  } else if (ORG_ROLES.includes(userData.role)) {
+    const { data: analyticsOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    const analyticsOrgType = analyticsOrgRow?.type  // 'anchor' | 'supplier'
+
+    if (analyticsOrgType === 'anchor') {
+      const { data: enrollment } = await adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('program_id', programId)
+        .eq('org_id', userData.org_id)
+        .eq('status', 'active')
+        .maybeSingle()
+      if (!enrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    } else if (analyticsOrgType === 'supplier') {
+      const { data: enrollment } = await adminClient
+        .from('program_enrollments')
+        .select('anchor_org_id')
+        .eq('program_id', programId)
+        .eq('org_id', userData.org_id)
+        .eq('status', 'active')
+        .maybeSingle()
+      if (!enrollment) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      supplierId = userData.org_id
+      if (!anchorId && enrollment.anchor_org_id) anchorId = enrollment.anchor_org_id
+    } else {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   } else {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

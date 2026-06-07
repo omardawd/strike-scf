@@ -45,24 +45,41 @@ apps/web/
 │   ├── (onboarding)/     ← Supplier/anchor onboarding wizard
 │   ├── (portal)/         ← ALL authenticated portal pages
 │   │   ├── layout.tsx    ← Auth check + PortalProvider + UserProvider + PortalShell
-│   │   ├── portal-shell.tsx ← Sidebar, topbar, notification bell
-│   │   ├── dashboard/    ← Role-aware dashboard (bank/anchor/supplier views)
+│   │   ├── portal-shell.tsx ← Sidebar + main + AIOverlay (Strike AI)
+│   │   ├── dashboard/    ← Role-aware dashboard (bank/buyer/supplier/admin views)
+│   │   │
+│   │   ├── marketplace/  ← STRIKE PLACE — listings + offers hub
+│   │   │   ├── financing/[id]/   ← Financing requests (bank "Financing Requests")
+│   │   │   └── listings/{new,[id]} ← Create / view a listing
+│   │   ├── deals/        ← MY DEALS — deal lifecycle (deal_source: marketplace|imported|direct)
+│   │   │   ├── [id]/             ← Deal detail (AI doc gen on status → 'agreed')
+│   │   │   └── import/           ← Import a pre-existing deal
+│   │   ├── rooms/        ← STRIKE ROOMS — realtime negotiation rooms
+│   │   │   └── [id]/             ← Room thread (messages + AI moderation)
+│   │   ├── passport/     ← MY PASSPORT / PassportScore (network trust score)
+│   │   │   ├── [org_id]/         ← Public passport profile
+│   │   │   └── review/[org_id]/  ← Submit a peer review
+│   │   ├── admin/        ← STRIKE ADMIN (strike_admin role only)
+│   │   │
 │   │   ├── programs/     ← Program list, detail, new program wizard
-│   │   │   └── [id]/
-│   │   │       ├── anchor/[anchor_id]/          ← Bank → Anchor drilldown
-│   │   │       └── anchor/[anchor_id]/supplier/ ← Bank → Anchor → Supplier
-│   │   ├── transactions/ ← Transaction list, detail, new transaction wizard
-│   │   ├── kyb/          ← KYB review (bank sees all, orgs see own)
-│   │   │   └── [org_id]/
+│   │   │   └── [id]/anchor/[anchor_id]/supplier/[supplier_id]  ← Bank drilldown
+│   │   │       (also [id]/supplier/[supplier_id])
+│   │   ├── transactions/ ← Transaction list, detail ([id]), new wizard
+│   │   ├── kyb/          ← KYB review (bank all / orgs own) — kyb/[org_id]
 │   │   ├── collateral/   ← Collateral requirements management
-│   │   ├── reporting/    ← Analytics & reporting
-│   │   └── settings/     ← Profile, bank settings, team management
-│   │       └── team/
-│   └── api/              ← Next.js API routes (see patterns below)
-├── components/           ← Shared UI components
+│   │   ├── reporting/    ← Analytics & reporting (+ #supply-graph)
+│   │   └── settings/     ← Profile, bank settings, team/, agent/ (AI Agent prefs)
+│   └── api/              ← Route groups: admin, ai, auth, collateral, dashboard,
+│   │                       deals, documents, email, graph, invitations, kyb,
+│   │                       marketplace, notifications, onboarding, organizations,
+│   │                       passport, performance, programs, recommendations,
+│   │                       reporting, risk, rooms, send, settings, transactions
+├── components/           ← Shared UI components (sidebar role-aware + grouped)
 ├── lib/                  ← Utilities, Supabase clients, contexts
-└── reference/            ← Original design mockups (JSX/HTML) — use for design reference
+└── reference/            ← Original design mockups (JSX/HTML) — design reference
 ```
+
+> Sidebar nav is **role-aware & grouped** (`components/sidebar.tsx`). Org (buyer+supplier): Dashboard · Strike Place · My Deals · Financing | Programs: My Programs, Transactions | Network: Strike Rooms, My Passport | Reporting: Analytics | Account: Settings, AI Agent. Bank: Dashboard · Financing Requests | SCF Engine: Programs, Transactions, KYB Review | Intelligence: Reporting, Supply Graph | Settings. Admin: Dashboard, KYB Queue, Platform Stats, Room Reports.
 
 ---
 
@@ -237,18 +254,18 @@ notifications
 type UserRole =
   | 'bank_admin'
   | 'bank_credit_officer'
-  | 'anchor_admin'
-  | 'anchor_member'
-  | 'supplier_admin'
-  | 'supplier_member'
+  | 'org_admin'        // org-level admin (anchor OR supplier — org.type decides)
+  | 'org_member'
+  | 'strike_admin'     // Strike platform admin
 
-// Convenience groups used in every API route:
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 ```
 
-Portal derivation: `bank_*` → `'bank'`, `anchor_*` → `'anchor'`, `supplier_*` → `'supplier'`
+> NOTE (v2): the old `anchor_*` / `supplier_*` roles are GONE. Orgs use `org_admin` / `org_member`; whether an org is a buyer (anchor) or supplier comes from `organizations.type`, not the role.
+
+Portal derivation (`lib/portal-context.tsx`, `PortalType = 'bank'|'anchor'|'supplier'|'admin'`):
+`bank_admin`/`bank_credit_officer` → `'bank'`; `org_admin`/`org_member` → `org.type` (`'anchor'` = BUYER, or `'supplier'`); `strike_admin` → `'admin'`.
 
 ---
 
@@ -338,24 +355,27 @@ export default function MyPage() {
 
 ---
 
-## Design system
+## Design system (2026 "soft / curved / premium" redesign)
 
-Tokens in `app/globals.css`. Never hardcode colors.
+Tokens in `app/globals.css` (+ `app/marketplace.css` for Strike Place/Rooms/Passport classes). Never hardcode colors — use tokens. Corners are now ROUNDED everywhere (the old global `border-radius: 0 !important` rule was removed).
 
 ```css
---white, --offwhite, --ink, --ink-soft, --gray, --gray-soft
---border, --border-strong
---blue: #0052FF  --blue-hover  --blue-dim
---font-display: "Space Grotesk"   /* headings, numbers */
---font-body: "DM Sans"            /* body text */
---font-mono: "IBM Plex Mono"      /* amounts, IDs, code */
+--white:#FFFFFF  --offwhite:#F5F4F0  --ink:#0D0D0D  --ink-soft  --gray:#6B7280  --gray-soft:#9CA3AF
+--border:rgba(0,0,0,.06)  --border-strong:rgba(0,0,0,.12)
+--blue:#1428CC  --blue-hover:#0F1FA3  --blue-light:#EEF0FF      /* Strike brand blue */
+--font-display / --font-body:  "Plus Jakarta Sans"             /* ALL UI text */
+--font-mono: "IBM Plex Mono"   /* ONLY transaction IDs / code values — not UI chrome */
 
-/* Semantic */
---color-green: #059669  --color-amber: #D97706
---color-red: #DC2626    --color-purple: #7C3AED
+/* Semantic (pastel bg + saturated text) */
+--color-green:#10B981 (bg #EDFAF4)  --color-amber:#F59E0B (bg #FEF3C7)
+--color-red:#EF4444 (bg #FEE2E2)    --color-purple:#7C3AED
+
+/* Radius + shadow tokens */
+--radius-card:20px  --radius-input:12px  --radius-button/-badge:999px  --radius-nav:12px  --radius-sm:8px
+--shadow-card  --shadow-elevated  --shadow-button
 ```
 
-No Shadcn, no Tailwind, no MUI. All UI is hand-built CSS classes in `globals.css`. Check existing classes before writing new ones.
+Conventions: cards = `--radius-card` + `--shadow-card`; buttons & badges = full pill (999px); inputs = 12px; sidebar active nav = `--blue-light` pill (no left-border accent). No `transform: translateY` hover lifts. No Shadcn, no Tailwind, no MUI — all hand-built CSS; check existing classes first.
 
 ---
 
@@ -445,3 +465,53 @@ mike@deltacomp.dev   / DevPass123! → supplier_admin
 # Always run from apps/web — not from the monorepo root
 cd apps/web && npx tsc --noEmit
 ```
+
+---
+
+## Strike Place, Rooms & Passport (v2 additions)
+
+### New route groups
+- app/(portal)/marketplace/ — Strike Place hub, listings, financing
+- app/(portal)/deals/ — Deal lifecycle (marketplace + imported)
+- app/(portal)/rooms/ — Strike Rooms (private deal rooms + public)
+- app/(portal)/passport/ — Strike Passport + peer reviews
+- app/(portal)/admin/ — Strike admin (strike_admin role only)
+- app/(portal)/settings/agent/ — AI Agent preferences
+
+### New API routes
+All new API routes follow existing patterns (service role for writes,
+anon client for reads with RLS). Key routes:
+- /api/marketplace/listings — CRUD for marketplace listings
+- /api/marketplace/offers — Submit/counter/accept/reject offers
+- /api/marketplace/financing — Financing requests (org + bank sides)
+- /api/marketplace/financing/[id]/offers — Bank offer submission
+- /api/marketplace/financing/[id]/accept — Accept financing offer
+- /api/deals — Deal CRUD + status transitions
+- /api/deals/import — Create imported (pre-existing) deals
+- /api/deals/extract — AI document extraction (Haiku)
+- /api/deals/[id]/generate-documents — AI doc generation (Haiku)
+- /api/rooms — Room list + create public room
+- /api/rooms/[id]/messages — Send message + AI moderation
+- /api/passport/[org_id] — Full passport profile
+- /api/passport/recalculate — PassportScore recomputation
+- /api/passport/reviews — Peer review submission
+- /api/passport/reviews/check — GET ?deal_id={id} → { already_reviewed: boolean }
+- /api/settings/agent — Agent preferences CRUD
+- /api/notifications — Notification center
+- /api/admin/* — Strike admin actions
+- /api/organizations/search — Network-visible org search
+
+### Key design decisions
+- deal_source: 'marketplace' | 'imported' | 'direct' on deals table
+- Supabase Realtime on: room_messages, notifications,
+  marketplace_offers, financing_request_offers, deals
+- All AI calls use claude-haiku-4-5-20251001 (cost-sensitive)
+- PassportScore recalculates on: deal completion, peer review received
+- Private rooms auto-create on first counter-offer
+- AI document generation fires on deal status → 'agreed'
+- Financing acceptance creates a transaction row in the SCF engine
+  (source='marketplace') — bridges marketplace to existing SCF flow
+
+### Supabase Storage buckets required
+- kyb-documents (private) — KYB uploads
+- deal-documents (private) — Deal import uploads

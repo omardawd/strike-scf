@@ -88,7 +88,7 @@ export async function POST(
     .from('users')
     .select('id, email, full_name')
     .eq('org_id', transaction.supplier_id)
-    .eq('role', 'supplier_admin')
+    .eq('role', 'org_admin')
     .limit(1)
     .maybeSingle()
 

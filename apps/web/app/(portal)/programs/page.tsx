@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
+import { AIInsightCard } from '@/components/ai-insight-card'
 
 interface Program {
   id: string
@@ -201,6 +202,20 @@ export default function ProgramsPage() {
             </div>
           )}
         </div>
+
+        {!loading && !error && programs.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <AIInsightCard
+              variant="banner"
+              portal={portal}
+              page="programs"
+              context={{
+                programCount: programs.length,
+                activePrograms: activePrograms.length,
+              }}
+            />
+          </div>
+        )}
 
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 24 }}>

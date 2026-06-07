@@ -8,9 +8,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 async function verifyAccess(
   item: Record<string, unknown>,
@@ -35,27 +34,34 @@ async function verifyAccess(
     }
   }
 
-  if (SUPPLIER_ROLES.includes(userData.role)) {
-    if (item.org_id === userData.org_id) return true
-    if (item.transaction_id) {
+  if (ORG_ROLES.includes(userData.role)) {
+    const { data: orgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    const orgType = orgRow?.type  // 'anchor' | 'supplier'
+
+    if (orgType === 'supplier') {
+      if (item.org_id === userData.org_id) return true
+      if (item.transaction_id) {
+        const { data: txn } = await adminClient
+          .from('transactions')
+          .select('supplier_id')
+          .eq('id', item.transaction_id as string)
+          .single()
+        return txn?.supplier_id === userData.org_id
+      }
+      return false
+    }
+
+    if (orgType === 'anchor') {
+      if (!item.transaction_id) return false
       const { data: txn } = await adminClient
         .from('transactions')
-        .select('supplier_id')
+        .select('anchor_id')
         .eq('id', item.transaction_id as string)
         .single()
-      return txn?.supplier_id === userData.org_id
+      return txn?.anchor_id === userData.org_id
     }
-    return false
-  }
 
-  if (ANCHOR_ROLES.includes(userData.role)) {
-    if (!item.transaction_id) return false
-    const { data: txn } = await adminClient
-      .from('transactions')
-      .select('anchor_id')
-      .eq('id', item.transaction_id as string)
-      .single()
-    return txn?.anchor_id === userData.org_id
+    return false
   }
 
   return false
@@ -154,7 +160,7 @@ export async function PATCH(
 
   // ── submit (supplier) ──────────────────────────────────────────────────────
   if (action === 'submit') {
-    if (!SUPPLIER_ROLES.includes(userData.role)) {
+    if (!ORG_ROLES.includes(userData.role)) {
       return NextResponse.json({ error: 'Only suppliers can submit collateral' }, { status: 403 })
     }
     if (item.status !== 'pending') {
@@ -182,8 +188,6 @@ export async function PATCH(
           name:                uploadedFile.name,
           storage_path:        storagePath,
           mime_type:           uploadedFile.type,
-          size_bytes:          uploadedFile.size,
-          uploaded_by_user_id: user.id,
           entity_type:         'transaction',
           entity_id:           item.transaction_id as string,
           document_kind:       'supporting_document',
@@ -301,7 +305,7 @@ export async function PATCH(
         .from('users')
         .select('email, full_name')
         .eq('org_id', targetOrgId)
-        .eq('role', 'supplier_admin')
+        .eq('role', 'org_admin')
         .limit(1)
         .maybeSingle()
 

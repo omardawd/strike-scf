@@ -45,38 +45,37 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     const supabase = createClient()
-    const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) {
       setLoading(false)
       setError(authError.message)
       return
     }
 
-    // Only anchor/supplier roles need the KYB gate — bank roles go straight to dashboard
-    const role = signInData.user?.user_metadata?.role as string | undefined
-    const needsKybCheck = role === 'anchor_admin' || role === 'anchor_member' ||
-                          role === 'supplier_admin' || role === 'supplier_member'
-
-    if (needsKybCheck) {
-      try {
-        const res = await fetch('/api/onboarding/status')
-        if (res.ok) {
-          const { kyb_status, org_status } = await res.json()
-          const pendingStatuses = ['in_progress', 'submitted', 'under_review', 'more_info_requested']
-          if (org_status === 'rejected' || kyb_status === 'rejected') {
+    // Route by org status. Users with no org (bank / strike_admin) always go to
+    // the dashboard; org users go to onboarding until their org is active.
+    try {
+      const res = await fetch('/api/onboarding/status')
+      if (res.ok) {
+        const { org_id, org_status } = await res.json() as {
+          org_id: string | null
+          org_status: string | null
+        }
+        if (org_id) {
+          if (org_status === 'rejected' || org_status === 'suspended') {
             await supabase.auth.signOut()
             setLoading(false)
-            setError('Your application was not approved. Please contact your administrator.')
+            setError('Your account is not active. Please contact support.')
             return
           }
-          if (kyb_status && pendingStatuses.includes(kyb_status)) {
-            router.push('/pending-approval')
+          if (org_status !== 'active') {
+            router.push('/onboarding')
             return
           }
         }
-      } catch {
-        // Non-fatal — fall through to dashboard
       }
+    } catch {
+      // Non-fatal — fall through to dashboard
     }
 
     router.push('/dashboard')

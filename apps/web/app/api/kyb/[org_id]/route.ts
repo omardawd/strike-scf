@@ -26,7 +26,7 @@ export async function GET(
   if (!me) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
-  const ORG_ROLES  = ['anchor_admin', 'anchor_member', 'supplier_admin', 'supplier_member']
+  const ORG_ROLES  = ['org_admin', 'org_member']
 
   const { data: org } = await adminClient
     .from('organizations')
@@ -40,8 +40,12 @@ export async function GET(
     if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   } else if (ORG_ROLES.includes(me.role)) {
     if (me.org_id !== org_id) {
-      // Anchors may view KYB for suppliers linked to them
-      if (me.role === 'anchor_admin' || me.role === 'anchor_member') {
+      // Look up caller org type to determine anchor vs supplier path
+      const { data: callerOrgRow } = await adminClient.from('organizations').select('type').eq('id', me.org_id).single()
+      const callerOrgType = callerOrgRow?.type  // 'anchor' | 'supplier'
+
+      if (callerOrgType === 'anchor') {
+        // Anchors may view KYB for suppliers linked to them
         const { data: enrollment } = await adminClient
           .from('program_enrollments')
           .select('id')
@@ -72,7 +76,7 @@ export async function GET(
           }
           if (!linked) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
-      } else if (me.role === 'supplier_admin' || me.role === 'supplier_member') {
+      } else if (callerOrgType === 'supplier') {
         if (org.type !== 'anchor') {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
@@ -118,8 +122,8 @@ export async function GET(
     isBankCaller
       ? adminClient
           .from('documents')
-          .select('id, name, document_kind, storage_path, mime_type, size_bytes, created_at, uploaded_by_user_id')
-          .eq('entity_type', 'kyb')
+          .select('id, name, document_kind, storage_path, mime_type, created_at')
+          .eq('entity_type', 'organization')
           .eq('entity_id', org_id)
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [] }),

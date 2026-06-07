@@ -1334,7 +1334,7 @@ export default function ProgramDetailPage() {
                         key={m.id}
                         onClick={() => setInviteMode(m.id)}
                         style={{
-                          background: inviteMode === m.id ? 'rgba(0,82,255,0.05)' : 'var(--white)',
+                          background: inviteMode === m.id ? 'rgba(20,40,204,0.05)' : 'var(--white)',
                           border: 'none',
                           padding: '14px 12px',
                           textAlign: 'left',

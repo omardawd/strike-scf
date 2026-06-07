@@ -7,13 +7,13 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
 
 const MEMBER_ROLE_FOR: Record<string, string> = {
-  bank_admin:     'bank_credit_officer',
-  anchor_admin:   'anchor_member',
-  supplier_admin: 'supplier_member',
+  bank_admin:          'bank_credit_officer',
+  bank_credit_officer: 'bank_credit_officer',
+  org_admin:           'org_member',
 }
 
 export async function POST(request: Request) {

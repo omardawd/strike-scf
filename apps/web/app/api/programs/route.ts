@@ -7,8 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
-const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 export async function GET() {
   const supabase = await createClient()
@@ -40,7 +40,9 @@ export async function GET() {
     return NextResponse.json({ programs: [] })
   }
 
-  const isAnchor = ANCHOR_ROLES.includes(userData.role)
+  // Determine org type to differentiate anchor vs supplier paths
+  const { data: orgTypeRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+  const isAnchor = orgTypeRow?.type === 'anchor'
 
   // Anchors: check enrollments and invitations to catch all access patterns
   if (isAnchor) {
@@ -134,12 +136,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'User not found' }, { status: 401 })
   }
 
-  const isBank   = userData.role === 'bank_admin'
-  const isAnchor = userData.role === 'anchor_admin'
+  const isBank = userData.role === 'bank_admin'
+  // For org users, look up org type to determine anchor vs other
+  let isAnchorAdmin = false
+  if (userData.role === 'org_admin' && userData.org_id) {
+    const { data: orgTypeRowPost } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    isAnchorAdmin = orgTypeRowPost?.type === 'anchor'
+  }
 
-  if (!isBank && !isAnchor) {
+  if (!isBank && !isAnchorAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const isAnchor = isAnchorAdmin
 
   let body: Record<string, unknown>
   try {

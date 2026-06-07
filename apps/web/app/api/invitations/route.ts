@@ -9,13 +9,13 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
 
 const ALLOWED_INVITE_ROLES: Record<string, string[]> = {
-  bank_admin:     ['bank_credit_officer'],
-  anchor_admin:   ['anchor_member'],
-  supplier_admin: ['supplier_member'],
+  bank_admin:          ['bank_credit_officer'],
+  bank_credit_officer: ['bank_credit_officer'],
+  org_admin:           ['org_member'],
 }
 
 export async function GET() {
@@ -90,8 +90,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid role for your portal' }, { status: 400 })
   }
 
-  const actorType = userData.role.startsWith('bank') ? 'bank'
-    : userData.role.startsWith('anchor') ? 'anchor' : 'supplier'
+  const actorType = userData.role.startsWith('bank') ? 'bank' : 'anchor'
 
   // Check for existing user in same org/bank
   const userCheckQuery = BANK_ROLES.includes(userData.role)

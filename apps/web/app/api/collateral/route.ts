@@ -8,9 +8,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -60,36 +59,43 @@ export async function GET(request: Request) {
       .select('*')
       .or(orParts.join(','))
 
-  } else if (SUPPLIER_ROLES.includes(userData.role)) {
-    // Supplier sees collateral for their org or their transactions
-    const { data: txns } = await adminClient
-      .from('transactions')
-      .select('id')
-      .eq('supplier_id', userData.org_id)
+  } else if (ORG_ROLES.includes(userData.role)) {
+    // Look up org type to determine anchor vs supplier path
+    const { data: orgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    const orgType = orgRow?.type  // 'anchor' | 'supplier'
 
-    const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
+    if (orgType === 'supplier') {
+      // Supplier sees collateral for their org or their transactions
+      const { data: txns } = await adminClient
+        .from('transactions')
+        .select('id')
+        .eq('supplier_id', userData.org_id)
 
-    query = adminClient.from('collateral_requirements').select('*')
-    if (txnIds.length > 0) {
-      query = query.or(`org_id.eq.${userData.org_id},transaction_id.in.(${txnIds.join(',')})`)
+      const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
+
+      query = adminClient.from('collateral_requirements').select('*')
+      if (txnIds.length > 0) {
+        query = query.or(`org_id.eq.${userData.org_id},transaction_id.in.(${txnIds.join(',')})`)
+      } else {
+        query = query.eq('org_id', userData.org_id)
+      }
+    } else if (orgType === 'anchor') {
+      // Anchor sees collateral for transactions they're on
+      const { data: txns } = await adminClient
+        .from('transactions')
+        .select('id')
+        .eq('anchor_id', userData.org_id)
+
+      const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
+      if (txnIds.length === 0) return NextResponse.json({ collateral: [] })
+
+      query = adminClient
+        .from('collateral_requirements')
+        .select('*')
+        .in('transaction_id', txnIds)
     } else {
-      query = query.eq('org_id', userData.org_id)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-
-  } else if (ANCHOR_ROLES.includes(userData.role)) {
-    // Anchor sees collateral for transactions they're on
-    const { data: txns } = await adminClient
-      .from('transactions')
-      .select('id')
-      .eq('anchor_id', userData.org_id)
-
-    const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
-    if (txnIds.length === 0) return NextResponse.json({ collateral: [] })
-
-    query = adminClient
-      .from('collateral_requirements')
-      .select('*')
-      .in('transaction_id', txnIds)
 
   } else {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -231,7 +237,7 @@ export async function POST(request: Request) {
       .from('users')
       .select('email, full_name')
       .eq('org_id', targetOrgId)
-      .eq('role', 'supplier_admin')
+      .eq('role', 'org_admin')
       .limit(1)
       .maybeSingle()
 

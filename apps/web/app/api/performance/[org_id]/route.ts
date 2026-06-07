@@ -45,12 +45,17 @@ export async function GET(
   console.log('[performance] fetching for org:', org_id, 'user role:', userRow.role)
 
   const isBank = userRow.role === 'bank_admin' || userRow.role === 'bank_credit_officer'
-  const isOwnSupplier =
-    (userRow.role === 'supplier_admin' || userRow.role === 'supplier_member') &&
-    userRow.org_id === org_id
-  const isAnchor = userRow.role === 'anchor_admin' || userRow.role === 'anchor_member'
+  const isOrgUser = userRow.role === 'org_admin' || userRow.role === 'org_member'
+  const isOwnOrg = isOrgUser && userRow.org_id === org_id
 
-  if (!isBank && !isOwnSupplier && !isAnchor) {
+  let isAnchor = false
+  if (isOrgUser && !isOwnOrg) {
+    // Determine if the caller is an anchor org
+    const { data: callerOrgRow } = await adminClient.from('organizations').select('type').eq('id', userRow.org_id).single()
+    isAnchor = callerOrgRow?.type === 'anchor'
+  }
+
+  if (!isBank && !isOwnOrg && !isAnchor) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

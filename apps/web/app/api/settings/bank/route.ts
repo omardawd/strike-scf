@@ -8,7 +8,7 @@ const adminClient = createAdmin(
 )
 
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 
 const BANK_FIELDS = ['legal_name', 'display_name', 'website', 'primary_contact_name', 'primary_contact_email']
 const ORG_FIELDS  = ['legal_name', 'doing_business_as', 'address_line1', 'city', 'state', 'zip', 'primary_contact_phone']

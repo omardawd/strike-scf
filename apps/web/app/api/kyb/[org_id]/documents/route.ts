@@ -122,8 +122,6 @@ export async function POST(
       entity_id:           org_id,
       storage_path:        storagePath,
       mime_type:           file.type || 'application/octet-stream',
-      size_bytes:          file.size,
-      uploaded_by_user_id: user.id,
     })
     .select('id, name, created_at')
     .single()

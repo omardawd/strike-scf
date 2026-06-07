@@ -65,8 +65,23 @@ export async function GET(request: Request) {
 
   if (!profile) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
+  // Normalize org_admin / org_member → anchor_admin / supplier_admin based on org type
+  let effectiveRole = profile.role
+  if (profile.role === 'org_admin' || profile.role === 'org_member') {
+    if (profile.org_id) {
+      const { data: orgData } = await adminClient
+        .from('organizations')
+        .select('type')
+        .eq('id', profile.org_id)
+        .single()
+      effectiveRole = orgData?.type === 'anchor' ? 'anchor_admin' : 'supplier_admin'
+    } else {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+    }
+  }
+
   // ── BANK ──────────────────────────────────────────────────────────────────
-  if (profile.role.startsWith('bank')) {
+  if (effectiveRole.startsWith('bank')) {
     const bankId = profile.bank_id
 
     const { data: bankPrograms } = await adminClient
@@ -191,7 +206,7 @@ export async function GET(request: Request) {
   }
 
   // ── ANCHOR ────────────────────────────────────────────────────────────────
-  if (profile.role.startsWith('anchor')) {
+  if (effectiveRole.startsWith('anchor')) {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
@@ -285,7 +300,7 @@ export async function GET(request: Request) {
   }
 
   // ── SUPPLIER ──────────────────────────────────────────────────────────────
-  if (profile.role.startsWith('supplier')) {
+  if (effectiveRole.startsWith('supplier')) {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 

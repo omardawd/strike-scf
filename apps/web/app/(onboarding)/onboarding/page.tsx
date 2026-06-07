@@ -1,1283 +1,1186 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import type { User } from '@supabase/supabase-js'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import type { Organization } from '@strike-scf/types'
+import { useWizard, TOTAL_STEPS } from '../wizard-context'
 
 // ─────────────────────────────────────────────────────────────
-// Document kind mapping (reference id → API document_kind)
+// Reference data (hardcoded — there is no lib/naics or lib/countries)
 // ─────────────────────────────────────────────────────────────
-const DOC_KIND_MAP: Record<string, string> = {
-  inc:        'certificate_of_incorporation',
-  ein_letter: 'ein_letter',
-  ownership:  'ownership_structure',
-  fin_2y:     'audited_financials',
-  bank_stmt:  'bank_statements',
-  insurance:  'insurance_certificate',
-  license:    'banking_license',
-  aml:        'aml_kyc_policy',
-  bsa:        'bsa_officer_letter',
-  fdic_exam:  'fdic_exam_report',
-  fin_stmts:  'audited_financials',
+const NAICS_OPTIONS: { code: string; label: string }[] = [
+  { code: '11', label: 'Agriculture, Forestry, Fishing & Hunting' },
+  { code: '21', label: 'Mining, Quarrying, Oil & Gas Extraction' },
+  { code: '22', label: 'Utilities' },
+  { code: '23', label: 'Construction' },
+  { code: '31', label: 'Manufacturing — Food, Textiles & Apparel' },
+  { code: '33', label: 'Manufacturing — Machinery, Electronics & Equipment' },
+  { code: '42', label: 'Wholesale Trade' },
+  { code: '44', label: 'Retail Trade' },
+  { code: '48', label: 'Transportation & Warehousing' },
+  { code: '51', label: 'Information & Media' },
+  { code: '52', label: 'Finance & Insurance' },
+  { code: '53', label: 'Real Estate & Rental' },
+  { code: '54', label: 'Professional, Scientific & Technical Services' },
+  { code: '56', label: 'Administrative & Support Services' },
+  { code: '61', label: 'Educational Services' },
+  { code: '62', label: 'Health Care & Social Assistance' },
+  { code: '71', label: 'Arts, Entertainment & Recreation' },
+  { code: '72', label: 'Accommodation & Food Services' },
+  { code: '81', label: 'Other Services' },
+  { code: '92', label: 'Public Administration' },
+]
+
+const COUNTRIES: { code: string; name: string }[] = [
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'CN', name: 'China' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'KR', name: 'South Korea' },
+  { code: 'IN', name: 'India' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'AE', name: 'United Arab Emirates' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'BR', name: 'Brazil' },
+]
+
+// Top 15 sourcing countries (subset of COUNTRIES).
+const SOURCING_COUNTRIES = COUNTRIES.slice(0, 15)
+
+const BUSINESS_TYPES = [
+  { value: 'corporation', label: 'Corporation' },
+  { value: 'llc', label: 'LLC' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'sole_proprietor', label: 'Sole Proprietor' },
+  { value: 'other', label: 'Other' },
+]
+
+const REVENUE_RANGES = ['<$1M', '$1M–$10M', '$10M–$50M', '$50M–$250M', '$250M+']
+const EMPLOYEE_RANGES = ['1–10', '11–50', '51–200', '201–500', '500+']
+const PAYMENT_TERMS = ['NET30', 'NET60', 'NET90', 'Letter of Credit', 'Other']
+
+const PRODUCT_CATEGORIES = [
+  'Electronics',
+  'Industrial Equipment',
+  'Raw Materials',
+  'Textiles & Apparel',
+  'Food & Beverage',
+  'Automotive Parts',
+  'Chemicals',
+  'Packaging',
+  'Construction Materials',
+  'Medical Supplies',
+  'Consumer Goods',
+  'Logistics Services',
+]
+
+// Document requirements per org type.
+interface DocSpec {
+  kind: string
+  label: string
+  required: boolean
+}
+const SUPPLIER_DOCS: DocSpec[] = [
+  { kind: 'certificate_of_incorporation', label: 'Certificate of incorporation', required: true },
+  { kind: 'ein_letter', label: 'EIN letter', required: true },
+  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: true },
+  { kind: 'bank_statements', label: 'Bank statements — last 6 months', required: true },
+  { kind: 'trade_reference', label: 'Trade reference letter — improves your PassportScore', required: false },
+]
+const ANCHOR_DOCS: DocSpec[] = [
+  { kind: 'certificate_of_incorporation', label: 'Certificate of incorporation', required: true },
+  { kind: 'ein_letter', label: 'EIN letter', required: true },
+  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: true },
+  { kind: 'bank_statements', label: 'Bank statements — last 6 months', required: true },
+]
+
+// ─────────────────────────────────────────────────────────────
+// Form model
+// ─────────────────────────────────────────────────────────────
+interface Form {
+  legal_name: string
+  doing_business_as: string
+  business_type: string
+  country_of_incorporation: string
+  state_of_incorporation: string
+  years_in_operation: string
+  industry_naics: string
+  website: string
+  description: string
+  primary_contact_name: string
+  primary_contact_title: string
+  primary_contact_phone: string
+  address_line1: string
+  address_line2: string
+  city: string
+  state: string
+  zip: string
+  country: string
+  annual_revenue_range: string
+  employee_count_range: string
+  ein: string
+  country_of_origin: string
+  sourcing_countries: string[]
+  product_categories: string[]
+  payment_terms_preference: string
+  network_visible: boolean
 }
 
-type DocStatus = 'idle' | 'uploading' | 'uploaded' | 'error'
-type DocState = Record<string, { document_id?: string; status: DocStatus }>
-type Role = 'supplier' | 'anchor' | 'bank'
+const EMPTY_FORM: Form = {
+  legal_name: '',
+  doing_business_as: '',
+  business_type: '',
+  country_of_incorporation: '',
+  state_of_incorporation: '',
+  years_in_operation: '',
+  industry_naics: '',
+  website: '',
+  description: '',
+  primary_contact_name: '',
+  primary_contact_title: '',
+  primary_contact_phone: '',
+  address_line1: '',
+  address_line2: '',
+  city: '',
+  state: '',
+  zip: '',
+  country: '',
+  annual_revenue_range: '',
+  employee_count_range: '',
+  ein: '',
+  country_of_origin: '',
+  sourcing_countries: [],
+  product_categories: [],
+  payment_terms_preference: '',
+  network_visible: false,
+}
 
-// ─────────────────────────────────────────────────────────────
-// Shared helpers — verbatim from onboarding.jsx
-// ─────────────────────────────────────────────────────────────
-
-function OBIcon({ name, size = 16 }: { name: string; size?: number }) {
-  const paths: Record<string, React.ReactNode> = {
-    check:    <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>,
-    upload:   <><path d="M8 3 L8 11 M5 6 L8 3 L11 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d="M3 13 L13 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/></>,
-    doc:      <><rect x="4" y="2" width="8" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/><path d="M6 6 L10 6 M6 9 L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
-    building: <><rect x="3" y="5" width="10" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/><path d="M6 14 L6 10 L10 10 L10 14" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M3 5 L8 2 L13 5" stroke="currentColor" strokeWidth="1.4" fill="none"/></>,
-    user:     <><circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.5" fill="none"/><path d="M2 14 C2 11 4.5 9 8 9 C11.5 9 14 11 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/></>,
-    bank:     <><rect x="2" y="7" width="12" height="7" rx="1" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M2 7 L8 3 L14 7" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M5 10 L5 14 M8 10 L8 14 M11 10 L11 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>,
-    arrow:    <path d="M3 8 L13 8 M9 4 L13 8 L9 12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none"/>,
-    info:     <><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M8 7 L8 11 M8 5.5 L8 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>,
-    x:        <path d="M5 5 L11 11 M11 5 L5 11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>,
-    eye:      <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none"/></>,
-    eyeOff:   <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>,
+function mapOrgToForm(org: Organization): Form {
+  return {
+    legal_name: org.legal_name ?? '',
+    doing_business_as: org.doing_business_as ?? '',
+    business_type: org.business_type ?? '',
+    country_of_incorporation: org.country_of_incorporation ?? '',
+    state_of_incorporation: org.state_of_incorporation ?? '',
+    years_in_operation: org.years_in_operation != null ? String(org.years_in_operation) : '',
+    industry_naics: org.industry_naics ?? '',
+    website: org.website ?? '',
+    description: org.description ?? '',
+    primary_contact_name: org.primary_contact_name ?? '',
+    primary_contact_title: org.primary_contact_title ?? '',
+    primary_contact_phone: org.primary_contact_phone ?? '',
+    address_line1: org.address_line1 ?? '',
+    address_line2: org.address_line2 ?? '',
+    city: org.city ?? '',
+    state: org.state ?? '',
+    zip: org.zip ?? '',
+    country: org.country ?? '',
+    annual_revenue_range: org.annual_revenue_range ?? '',
+    employee_count_range: org.employee_count_range ?? '',
+    ein: org.ein ?? '',
+    country_of_origin: org.country_of_origin ?? '',
+    sourcing_countries: org.sourcing_countries ?? [],
+    product_categories: org.product_categories ?? [],
+    payment_terms_preference: '', // not persisted (no column) — see route note
+    network_visible: !!org.network_visible,
   }
+}
+
+// Build the PATCH payload. payment_terms_preference is intentionally omitted —
+// there is no such column on `organizations`.
+function mapFormToData(form: Form): Record<string, unknown> {
+  return {
+    legal_name: form.legal_name,
+    doing_business_as: form.doing_business_as,
+    business_type: form.business_type,
+    country_of_incorporation: form.country_of_incorporation,
+    state_of_incorporation: form.state_of_incorporation,
+    years_in_operation: form.years_in_operation,
+    industry_naics: form.industry_naics,
+    website: form.website,
+    description: form.description,
+    primary_contact_name: form.primary_contact_name,
+    primary_contact_title: form.primary_contact_title,
+    primary_contact_phone: form.primary_contact_phone,
+    address_line1: form.address_line1,
+    address_line2: form.address_line2,
+    city: form.city,
+    state: form.state,
+    zip: form.zip,
+    country: form.country,
+    annual_revenue_range: form.annual_revenue_range,
+    employee_count_range: form.employee_count_range,
+    ein: form.ein,
+    country_of_origin: form.country_of_origin,
+    sourcing_countries: form.sourcing_countries,
+    product_categories: form.product_categories,
+    network_visible: form.network_visible,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Small presentational helpers
+// ─────────────────────────────────────────────────────────────
+function StepHeader({ step, title, sub }: { step: number; title: string; sub: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-      {paths[name] ?? null}
-    </svg>
+    <div style={{ marginBottom: 28 }}>
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: 'var(--blue)',
+          marginBottom: 10,
+        }}
+      >
+        Step {step} of {TOTAL_STEPS}
+      </div>
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 26,
+          fontWeight: 600,
+          letterSpacing: '-0.025em',
+          color: 'var(--color-ink-1)',
+          margin: 0,
+        }}
+      >
+        {title}
+      </h1>
+      <p style={{ fontSize: 13.5, color: 'var(--color-ink-3)', marginTop: 8, lineHeight: 1.6 }}>{sub}</p>
+    </div>
   )
 }
 
-function OBStepper({ steps, current }: { steps: { label: string; sub?: string }[]; current: number }) {
+function Field({
+  label,
+  optional,
+  hint,
+  children,
+}: {
+  label: string
+  optional?: boolean
+  hint?: string
+  children: React.ReactNode
+}) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 0 8px' }}>
-      {steps.map((step, i) => {
-        const done = i < current
-        const active = i === current
+    <div className="form-field">
+      <div className="form-label-row">
+        <label className="form-label">{label}</label>
+        {optional && <span className="form-label-meta">Optional</span>}
+      </div>
+      {children}
+      {hint && <div className="form-helper">{hint}</div>}
+    </div>
+  )
+}
+
+function MultiSelect({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: { value: string; label: string }[]
+  selected: string[]
+  onToggle: (value: string) => void
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      {options.map((o) => {
+        const on = selected.includes(o.value)
         return (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 20px',
-            borderLeft: `2px solid ${active ? 'var(--color-blue, #2563eb)' : 'transparent'}`,
-            background: active ? 'rgba(37,99,235,0.05)' : 'transparent',
-            borderRadius: '0 6px 6px 0',
-            cursor: 'default',
-          }}>
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, fontWeight: 600,
-              background: done ? 'var(--color-green, #16a34a)' : active ? 'var(--color-blue, #2563eb)' : 'var(--color-bg-2, #f1f5f9)',
-              color: done || active ? 'white' : 'var(--color-ink-3, #94a3b8)',
-              border: done || active ? 'none' : '1.5px solid var(--color-border, #e2e8f0)',
-            }}>
-              {done ? <OBIcon name="check" size={12} /> : i + 1}
-            </div>
-            <div>
-              <div style={{
-                fontSize: 12.5, fontWeight: active ? 600 : 400,
-                color: active ? 'var(--color-ink-1, #0f172a)' : done ? 'var(--color-ink-2, #475569)' : 'var(--color-ink-3, #94a3b8)',
-              }}>{step.label}</div>
-              {step.sub && (
-                <div style={{ fontSize: 11, color: 'var(--color-ink-4, #cbd5e1)', marginTop: 1 }}>{step.sub}</div>
-              )}
-            </div>
-          </div>
+          <button
+            type="button"
+            key={o.value}
+            onClick={() => onToggle(o.value)}
+            className={`radio-card ${on ? 'selected' : ''}`.trim()}
+            style={{ gap: 10 }}
+          >
+            <span
+              style={{
+                width: 16,
+                height: 16,
+                flexShrink: 0,
+                border: `1.5px solid ${on ? 'var(--color-accent)' : 'var(--color-border-strong)'}`,
+                background: on ? 'var(--color-accent)' : 'transparent',
+                color: '#fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11,
+              }}
+            >
+              {on ? '✓' : ''}
+            </span>
+            {o.label}
+          </button>
         )
       })}
     </div>
   )
 }
 
-function OBShell({ steps, current, children, role }: {
-  steps: { label: string; sub?: string }[]
-  current: number
-  children: React.ReactNode
-  role: Role | null
+// ─────────────────────────────────────────────────────────────
+// Document drop zone
+// ─────────────────────────────────────────────────────────────
+type DocStatus = 'idle' | 'uploading' | 'done' | 'error'
+interface DocState {
+  status: DocStatus
+  name?: string
+  size?: number
+  document_id?: string
+}
+
+function formatBytes(bytes?: number): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function DropZone({
+  spec,
+  state,
+  onFile,
+}: {
+  spec: DocSpec
+  state: DocState
+  onFile: (file: File) => void
 }) {
-  const roleLabels: Record<string, string> = { supplier: 'Supplier', anchor: 'Anchor / Buyer', bank: 'Bank / Lender' }
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [drag, setDrag] = useState(false)
+  const done = state.status === 'done'
+  const uploading = state.status === 'uploading'
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      display: 'grid', gridTemplateColumns: '280px 1fr',
-      background: 'var(--color-bg, #f8fafc)',
-      fontFamily: 'var(--font-sans, system-ui, sans-serif)',
-    }}>
-      <div style={{
-        background: 'var(--color-card, white)',
-        borderRight: '1px solid var(--color-border, #e2e8f0)',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          padding: '22px 20px 18px',
-          borderBottom: '1px solid var(--color-border, #e2e8f0)',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: 'var(--color-ink-1, #0f172a)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '-0.02em',
-          }}>S</div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-ink-1)' }}>Strike SCF</div>
-            {role && (
-              <div style={{
-                fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
-                color: 'var(--color-ink-4)', fontWeight: 500,
-              }}>{roleLabels[role] ?? ''}</div>
-            )}
-          </div>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', paddingTop: 16 }}>
-          {steps && <OBStepper steps={steps} current={current} />}
-        </div>
-        <div style={{
-          padding: '14px 20px',
-          borderTop: '1px solid var(--color-border, #e2e8f0)',
-          fontSize: 11, color: 'var(--color-ink-4)',
-          display: 'flex', alignItems: 'flex-start', gap: 8,
-        }}>
-          <OBIcon name="info" size={13} />
-          <span>Your data is encrypted and never shared without consent.</span>
-        </div>
-      </div>
-      <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 40px' }}>
-        <div style={{ width: '100%', maxWidth: 600 }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function OBField({ label, hint, optional, error, children }: {
-  label: string; hint?: string; optional?: boolean; error?: string; children: React.ReactNode
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>{label}</label>
-        {optional && <span style={{ fontSize: 11, color: 'var(--color-ink-4)', fontWeight: 400 }}>Optional</span>}
-      </div>
-      {children}
-      {hint && !error && <div style={{ fontSize: 11.5, color: 'var(--color-ink-3)' }}>{hint}</div>}
-      {error && <div style={{ fontSize: 11.5, color: 'var(--color-red, #dc2626)' }}>{error}</div>}
-    </div>
-  )
-}
-
-const inputStyle: React.CSSProperties = {
-  height: 38, padding: '0 12px', borderRadius: 6,
-  border: '1.5px solid var(--color-border, #e2e8f0)',
-  background: 'var(--color-card, white)',
-  fontSize: 13.5, color: 'var(--color-ink-1)',
-  outline: 'none', width: '100%', boxSizing: 'border-box',
-  transition: 'border-color 0.15s',
-}
-
-const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' }
-
-function OBInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input style={inputStyle} {...props} />
-}
-function OBSelect({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select style={selectStyle} {...props}>{children}</select>
-}
-
-function DocTile({ name, required, status, onUpload }: {
-  name: string; required: boolean; status: DocStatus; onUpload: () => void
-}) {
-  const uploaded = status === 'uploaded'
-  const uploading = status === 'uploading'
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '12px 14px', borderRadius: 8,
-      border: `1.5px solid ${uploaded ? 'var(--color-green, #16a34a)' : 'var(--color-border)'}`,
-      background: uploaded ? 'rgba(22,163,74,0.04)' : 'var(--color-card)',
-    }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: 6, flexShrink: 0,
-        background: uploaded ? 'rgba(22,163,74,0.1)' : 'var(--color-bg-2)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: uploaded ? 'var(--color-green)' : 'var(--color-ink-3)',
-      }}>
-        <OBIcon name={uploaded ? 'check' : 'doc'} size={16} />
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>
-          {name}
-          {!required && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--color-ink-4)', fontWeight: 400 }}>Optional</span>}
-        </div>
-        <div style={{ fontSize: 11, color: uploaded ? 'var(--color-green)' : 'var(--color-ink-4)', marginTop: 2 }}>
-          {uploaded ? 'Uploaded ✓' : 'PDF · max 20MB'}
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onUpload}
-        disabled={uploading}
-        style={{
-          height: 30, padding: '0 12px', borderRadius: 5, fontSize: 12, fontWeight: 500,
-          border: `1px solid ${uploaded ? 'var(--color-border)' : 'var(--color-blue, #2563eb)'}`,
-          color: uploaded ? 'var(--color-ink-3)' : 'var(--color-blue)',
-          background: 'transparent', cursor: uploading ? 'default' : 'pointer',
-          opacity: uploading ? 0.6 : 1,
+    <div style={{ marginBottom: 10 }}>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDrag(true)
         }}
-      >{uploaded ? 'Replace' : uploading ? 'Uploading…' : status === 'error' ? 'Retry' : 'Upload'}</button>
-    </div>
-  )
-}
-
-function OBActions({ onBack, onNext, nextLabel = 'Continue', loading }: {
-  onBack?: () => void; onNext: () => void; nextLabel?: string; loading?: boolean
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 32 }}>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={loading}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDrag(false)
+          const file = e.dataTransfer.files?.[0]
+          if (file) onFile(file)
+        }}
+        className="upload-zone"
         style={{
-          height: 40, padding: '0 24px', borderRadius: 7, fontSize: 14, fontWeight: 600,
-          background: 'var(--color-ink-1, #0f172a)', color: 'white',
-          border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-          opacity: loading ? 0.7 : 1,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 14,
+          textAlign: 'left',
+          cursor: uploading ? 'default' : 'pointer',
+          padding: '14px 16px',
+          borderColor: done
+            ? 'var(--color-green)'
+            : drag
+              ? 'var(--color-accent)'
+              : 'var(--color-border-strong)',
+          background: done ? 'var(--color-green-bg)' : drag ? 'var(--color-accent-light)' : 'var(--color-bg-2)',
         }}
       >
-        {loading ? 'Saving…' : nextLabel}
-        {!loading && <OBIcon name="arrow" size={14} />}
-      </button>
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            height: 40, padding: '0 18px', borderRadius: 7, fontSize: 13.5,
-            background: 'transparent', color: 'var(--color-ink-3)',
-            border: '1.5px solid var(--color-border)', cursor: 'pointer',
-          }}
-        >← Back</button>
-      )}
-    </div>
-  )
-}
-
-function SectionHead({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--color-ink-1)', margin: 0 }}>{title}</h1>
-      {sub && <p style={{ fontSize: 13.5, color: 'var(--color-ink-3)', marginTop: 6, lineHeight: 1.6 }}>{sub}</p>}
-    </div>
-  )
-}
-
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{
-      background: 'var(--color-card, white)',
-      border: '1.5px solid var(--color-border, #e2e8f0)',
-      borderRadius: 10, padding: 24,
-      ...style,
-    }}>{children}</div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Step configs (Welcome removed — role comes from session)
-// ─────────────────────────────────────────────────────────────
-
-const SUPPLIER_STEPS = [
-  { label: 'Account',      sub: 'Confirm your details' },
-  { label: 'Company info', sub: 'Legal details & EIN' },
-  { label: 'Documents',    sub: 'Incorporation & financials' },
-  { label: 'Review',       sub: 'Submit KYB application' },
-]
-
-const ANCHOR_STEPS = [
-  { label: 'Account',      sub: 'Confirm your details' },
-  { label: 'Company info', sub: 'Legal details & EIN' },
-  { label: 'Documents',    sub: 'Incorporation & financials' },
-  { label: 'Review',       sub: 'Submit KYB application' },
-]
-
-const BANK_STEPS = [
-  { label: 'Account',          sub: 'Confirm your details' },
-  { label: 'Institution info', sub: 'Legal name & routing' },
-  { label: 'Review',           sub: 'Submit for activation' },
-]
-
-const KNOWN_PARTY_STEPS = [
-  { label: 'Account',      sub: 'Confirm your details' },
-  { label: 'Your details', sub: 'Pre-verified by your bank' },
-]
-
-// ─────────────────────────────────────────────────────────────
-// Step 0 — Account Confirmation (read-only, from session)
-// ─────────────────────────────────────────────────────────────
-function StepAccountConfirmation({ fullName, email, onNext }: {
-  fullName: string; email: string; onNext: () => void
-}) {
-  return (
-    <div>
-      <SectionHead
-        title="Confirm your account"
-        sub="Your name and email were set during signup. They'll appear on your KYB application."
-      />
-      <Card>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <OBField label="Full name">
-            <OBInput
-              value={fullName}
-              readOnly
-              onChange={() => undefined}
-              style={{ ...inputStyle, background: 'var(--color-bg-2)', color: 'var(--color-ink-2)', cursor: 'default' }}
-            />
-          </OBField>
-          <OBField label="Email">
-            <OBInput
-              type="email"
-              value={email}
-              readOnly
-              onChange={() => undefined}
-              style={{ ...inputStyle, background: 'var(--color-bg-2)', color: 'var(--color-ink-2)', cursor: 'default' }}
-            />
-          </OBField>
-        </div>
-      </Card>
-      <OBActions onNext={onNext} nextLabel="Continue" />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Step 1 — Company Info (Supplier / Anchor)
-// ─────────────────────────────────────────────────────────────
-function StepCompanyInfo({ data, setData, onBack, onNext, role, loading, error }: {
-  data: Record<string, string>; setData: (d: Record<string, string>) => void
-  onBack: () => void; onNext: () => void; role: Role; loading?: boolean; error?: string | null
-}) {
-  const isAnchor = role === 'anchor'
-  return (
-    <div>
-      <SectionHead
-        title={isAnchor ? 'About your company' : 'About your business'}
-        sub="Used to create your KYB application. We cross-check with public records."
-      />
-      <Card>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <OBField label="Legal business name" hint="As it appears on your incorporation documents.">
-            <OBInput placeholder="Acme Corp LLC" value={data.legalName ?? ''} onChange={e => setData({ ...data, legalName: e.target.value })} />
-          </OBField>
-
-          <OBField label="DBA / Trade name" optional>
-            <OBInput placeholder="Acme" value={data.dba ?? ''} onChange={e => setData({ ...data, dba: e.target.value })} />
-          </OBField>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <OBField label="Entity type">
-              <OBSelect value={data.entityType ?? ''} onChange={e => setData({ ...data, entityType: e.target.value })}>
-                <option value="">Select…</option>
-                <option value="llc">LLC</option>
-                <option value="corporation">Corporation</option>
-                <option value="partnership">Partnership</option>
-                <option value="sole_proprietor">Sole Proprietor</option>
-              </OBSelect>
-            </OBField>
-            <OBField label="State of incorporation">
-              <OBInput placeholder="DE" value={data.stateOfInc ?? ''} onChange={e => setData({ ...data, stateOfInc: e.target.value })} />
-            </OBField>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: done ? 'var(--color-green)' : 'var(--color-card)',
+              border: done ? 'none' : '1px solid var(--color-border)',
+              color: done ? '#fff' : 'var(--color-ink-3)',
+            }}
+          >
+            {done ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 3 L8 11 M5 6 L8 3 L11 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                <path d="M3 13 L13 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+              </svg>
+            )}
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <OBField label="EIN (Federal Tax ID)" hint="9-digit number (XX-XXXXXXX)">
-              <OBInput placeholder="12-3456789" value={data.ein ?? ''} onChange={e => setData({ ...data, ein: e.target.value })} />
-            </OBField>
-            <OBField label="DUNS number" optional>
-              <OBInput placeholder="XX-XXX-XXXX" value={data.duns ?? ''} onChange={e => setData({ ...data, duns: e.target.value })} />
-            </OBField>
-          </div>
-
-          <OBField label="Registered address">
-            <OBInput placeholder="123 Main St, Suite 400" value={data.addressLine1 ?? ''} onChange={e => setData({ ...data, addressLine1: e.target.value })} />
-          </OBField>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-            <OBField label="City">
-              <OBInput placeholder="Portland" value={data.city ?? ''} onChange={e => setData({ ...data, city: e.target.value })} />
-            </OBField>
-            <OBField label="State">
-              <OBInput placeholder="OR" value={data.state ?? ''} onChange={e => setData({ ...data, state: e.target.value })} />
-            </OBField>
-            <OBField label="ZIP">
-              <OBInput placeholder="97201" value={data.zip ?? ''} onChange={e => setData({ ...data, zip: e.target.value })} />
-            </OBField>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <OBField label="Industry (NAICS code)" optional>
-              <OBInput placeholder="332618" value={data.naics ?? ''} onChange={e => setData({ ...data, naics: e.target.value })} />
-            </OBField>
-            <OBField label="Approx. annual revenue (USD)" optional>
-              <OBInput placeholder="5,000,000" value={data.annualRevenue ?? ''} onChange={e => setData({ ...data, annualRevenue: e.target.value })} />
-            </OBField>
-          </div>
-
-          <OBField label="Primary contact phone" optional>
-            <OBInput type="tel" placeholder="+1 (503) 555-0100" value={data.phone ?? ''} onChange={e => setData({ ...data, phone: e.target.value })} />
-          </OBField>
-        </div>
-      </Card>
-      {error && <p style={{ fontSize: 12.5, color: 'var(--color-red, #dc2626)', marginTop: 14 }}>{error}</p>}
-      <OBActions onBack={onBack} onNext={onNext} loading={loading} />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Step 2 — Documents (Supplier / Anchor)
-// ─────────────────────────────────────────────────────────────
-function StepDocuments({ docs, onUpload, onBack, onNext, role, customDocs }: {
-  docs: DocState; onUpload: (id: string) => void
-  onBack: () => void; onNext: () => void; role: Role
-  customDocs?: Array<{ id: string; label: string }>
-}) {
-  const isAnchor = role === 'anchor'
-
-  const defaultDocs = isAnchor
-    ? [
-        { id: 'inc',       name: 'Certificate of Incorporation / Articles',    required: true },
-        { id: 'ein_letter',name: 'IRS EIN Confirmation Letter',                 required: true },
-        { id: 'ownership', name: 'Ownership structure / Cap table',             required: true },
-        { id: 'fin_2y',    name: 'Audited or reviewed financials (last 2 yrs)', required: true },
-        { id: 'bank_stmt', name: 'Bank statements (last 6 months)',             required: true },
-      ]
-    : [
-        { id: 'inc',       name: 'Certificate of Incorporation / Articles',    required: true },
-        { id: 'ein_letter',name: 'IRS EIN Confirmation Letter',                 required: true },
-        { id: 'ownership', name: 'Ownership structure (25%+ owners)',           required: true },
-        { id: 'fin_2y',    name: 'Audited or reviewed financials (last 2 yrs)', required: true },
-        { id: 'bank_stmt', name: 'Bank statements (last 6 months)',             required: true },
-        { id: 'insurance', name: 'Certificate of Insurance',                   required: false },
-      ]
-
-  const usingCustom = customDocs && customDocs.length > 0
-  const docsToShow = usingCustom
-    ? customDocs.map(d => ({ id: d.id, name: d.label, required: true }))
-    : defaultDocs
-
-  const uploadedRequired = docsToShow.filter(d => d.required && docs[d.id]?.status === 'uploaded').length
-  const totalRequired = docsToShow.filter(d => d.required).length
-
-  return (
-    <div>
-      <SectionHead
-        title="Upload your documents"
-        sub="You can come back to upload anything missing — we'll save your progress."
-      />
-
-      {usingCustom && (
-        <div style={{
-          background: 'rgba(0,82,255,0.05)',
-          border: '1px solid rgba(0,82,255,0.2)',
-          padding: '10px 14px',
-          marginBottom: 16,
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'var(--blue)',
-        }}>
-          Your bank has requested these specific documents
-        </div>
-      )}
-
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-        borderRadius: 8, marginBottom: 20,
-        background: 'rgba(37,99,235,0.05)',
-        border: '1.5px solid rgba(37,99,235,0.15)',
-        fontSize: 12.5, color: 'var(--color-ink-2)',
-      }}>
-        <OBIcon name="info" size={14} />
-        <span>{uploadedRequired} of {totalRequired} required documents uploaded</span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {docsToShow.map(d => (
-          <DocTile
-            key={d.id}
-            name={d.name}
-            required={d.required}
-            status={docs[d.id]?.status ?? 'idle'}
-            onUpload={() => onUpload(d.id)}
-          />
-        ))}
-      </div>
-
-      <OBActions onBack={onBack} onNext={onNext} />
-    </div>
-  )
-}
-
-
-// ─────────────────────────────────────────────────────────────
-// Step 1 — Institution Info (Bank)
-// ─────────────────────────────────────────────────────────────
-function StepInstitutionInfo({ data, setData, onBack, onNext, loading, error }: {
-  data: Record<string, string>; setData: (d: Record<string, string>) => void
-  onBack: () => void; onNext: () => void; loading?: boolean; error?: string | null
-}) {
-  return (
-    <div>
-      <SectionHead
-        title="Institution profile"
-        sub="We'll cross-check with FFIEC public data. Confirm or correct anything that's off."
-      />
-      <Card>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <OBField label="Legal institution name">
-              <OBInput placeholder="Atlas Bank, N.A." value={data.legalName ?? ''} onChange={e => setData({ ...data, legalName: e.target.value })} />
-            </OBField>
-            <OBField label="Display name">
-              <OBInput placeholder="Atlas Bank" value={data.displayName ?? ''} onChange={e => setData({ ...data, displayName: e.target.value })} />
-            </OBField>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <OBField label="Institution type">
-              <OBSelect value={data.institutionType ?? ''} onChange={e => setData({ ...data, institutionType: e.target.value })}>
-                <option value="">Select…</option>
-                <option value="commercial_bank">Commercial Bank</option>
-                <option value="fund">Fund</option>
-                <option value="fintech_lender">Fintech Lender</option>
-              </OBSelect>
-            </OBField>
-            <OBField label="Primary regulator">
-              <OBInput placeholder="OCC / Federal Reserve / FDIC" value={data.regulator ?? ''} onChange={e => setData({ ...data, regulator: e.target.value })} />
-            </OBField>
-          </div>
-
-          <OBField label="ABA Routing number" hint="Used to verify your institution identity.">
-            <OBInput placeholder="021000021" value={data.routingNumber ?? ''} onChange={e => setData({ ...data, routingNumber: e.target.value })} />
-          </OBField>
-
-          <OBField label="FDIC certificate number" optional>
-            <OBInput placeholder="33486" value={data.fdicCert ?? ''} onChange={e => setData({ ...data, fdicCert: e.target.value })} />
-          </OBField>
-
-          <OBField label="Primary contact name">
-            <OBInput placeholder="Sarah Chen" value={data.primaryContact ?? ''} onChange={e => setData({ ...data, primaryContact: e.target.value })} />
-          </OBField>
-
-          <OBField label="Website" optional>
-            <OBInput placeholder="https://atlasbank.com" value={data.website ?? ''} onChange={e => setData({ ...data, website: e.target.value })} />
-          </OBField>
-
-          <OBField label="Institution logo" optional>
-            <div style={{
-              border: '1.5px dashed var(--color-border)',
-              borderRadius: 8, padding: '20px 16px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-              background: 'var(--color-bg-2)', cursor: 'pointer',
-            }}>
-              <OBIcon name="upload" size={20} />
-              <div style={{ fontSize: 12.5, color: 'var(--color-ink-3)' }}>PNG or JPG · Max 2MB</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>
+              {spec.label}
+              {!spec.required && (
+                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: 'var(--color-ink-4)' }}>Optional</span>
+              )}
             </div>
-          </OBField>
-        </div>
-      </Card>
-      {error && <p style={{ fontSize: 12.5, color: 'var(--color-red, #dc2626)', marginTop: 14 }}>{error}</p>}
-      <OBActions onBack={onBack} onNext={onNext} loading={loading} />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Step 2 — Regulatory Docs (Bank)
-// ─────────────────────────────────────────────────────────────
-function StepRegulatoryDocs({ docs, onUpload, onBack, onNext }: {
-  docs: DocState; onUpload: (id: string) => void; onBack: () => void; onNext: () => void
-}) {
-  const bankDocs = [
-    { id: 'license',   name: 'Banking license / Charter',             required: true },
-    { id: 'aml',       name: 'AML / KYC policy',                      required: true },
-    { id: 'bsa',       name: 'BSA Officer designation letter',         required: true },
-    { id: 'fdic_exam', name: 'Most recent FDIC / regulator exam',      required: false },
-    { id: 'fin_stmts', name: 'Audited financial statements (last FY)', required: false },
-  ]
-
-  return (
-    <div>
-      <SectionHead
-        title="Regulatory documents"
-        sub="Upload your banking license and compliance policies. We'll verify with your regulator."
-      />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {bankDocs.map(d => (
-          <DocTile
-            key={d.id}
-            name={d.name}
-            required={d.required}
-            status={docs[d.id]?.status ?? 'idle'}
-            onUpload={() => onUpload(d.id)}
-          />
-        ))}
-      </div>
-      <OBActions onBack={onBack} onNext={onNext} />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Known counterparty — read-only pre-filled details review
-// ─────────────────────────────────────────────────────────────
-function StepKnownPartyReview({ prefilledKyb, onBack, onSubmit, loading, error }: {
-  prefilledKyb: Record<string, string>
-  onBack: () => void
-  onSubmit: () => void
-  loading?: boolean
-  error?: string | null
-}) {
-  return (
-    <div>
-      <SectionHead
-        title="Review your details"
-        sub="Your bank has pre-filled your organization information. Confirm to complete your account."
-      />
-      <Card>
-        <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', fontWeight: 600, marginBottom: 14 }}>
-          Your organization details
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {Object.entries(prefilledKyb)
-            .filter(([, v]) => v)
-            .map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: 'var(--color-ink-3)' }}>{k.replace(/_/g, ' ')}</span>
-                <span style={{ color: 'var(--color-ink-1)', fontWeight: 500 }}>{v}</span>
-              </div>
-            ))}
-        </div>
-      </Card>
-      <div style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 10,
-        letterSpacing: '0.1em',
-        color: 'var(--color-ink-4)',
-        marginTop: 12,
-      }}>
-        These details were provided by your bank. Contact them if any information is incorrect.
-      </div>
-      {error && <p style={{ fontSize: 12.5, color: 'var(--color-red, #dc2626)', marginTop: 14 }}>{error}</p>}
-      <OBActions onBack={onBack} onNext={onSubmit} nextLabel="Complete setup →" loading={loading} />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Final Review step
-// ─────────────────────────────────────────────────────────────
-function StepReview({ formData, docs, role, onBack, onSubmit, loading, error }: {
-  formData: { account: { firstName?: string; lastName?: string; email?: string }; company: Record<string, string> }
-  docs: DocState; role: Role; onBack: () => void; onSubmit: () => void; loading?: boolean; error?: string | null
-}) {
-  const roleLabel = { supplier: 'Supplier', anchor: 'Anchor / Buyer', bank: 'Bank / Lender' }[role]
-  const docCount = Object.values(docs).filter(v => v?.status === 'uploaded').length
-
-  return (
-    <div>
-      <SectionHead
-        title="Review your application"
-        sub="Check that everything looks right before submitting. You'll hear from us within 1–3 business days."
-      />
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Card>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', fontWeight: 600 }}>Account</div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: 'var(--color-ink-3)' }}>Name</span>
-              <span style={{ color: 'var(--color-ink-1)', fontWeight: 500 }}>{[formData.account.firstName, formData.account.lastName].filter(Boolean).join(' ') || '—'}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: 'var(--color-ink-3)' }}>Email</span>
-              <span style={{ color: 'var(--color-ink-1)' }}>{formData.account.email || '—'}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: 'var(--color-ink-3)' }}>Role</span>
-              <span style={{ color: 'var(--color-ink-1)' }}>{roleLabel}</span>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: done ? 'var(--color-green)' : 'var(--color-ink-4)',
+                marginTop: 2,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {uploading
+                ? 'Uploading…'
+                : done
+                  ? `${state.name} · ${formatBytes(state.size)}`
+                  : state.status === 'error'
+                    ? 'Upload failed — click to retry'
+                    : 'Drag & drop or click to upload · PDF, max 20MB'}
             </div>
           </div>
-        </Card>
-
-        <Card>
-          <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', fontWeight: 600, marginBottom: 14 }}>
-            {role === 'bank' ? 'Institution' : 'Company'}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {([
-              ['Legal name', formData.company.legalName],
-              ['EIN / Routing', formData.company.ein ?? formData.company.routingNumber],
-              ['Address', [formData.company.city, formData.company.state].filter(Boolean).join(', ')],
-            ] as [string, string | undefined][]).map(([k, v]) => v ? (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: 'var(--color-ink-3)' }}>{k}</span>
-                <span style={{ color: 'var(--color-ink-1)' }}>{v}</span>
-              </div>
-            ) : null)}
-          </div>
-        </Card>
-
-        <Card>
-          <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)', fontWeight: 600, marginBottom: 14 }}>Documents</div>
-          <div style={{ fontSize: 13, color: 'var(--color-ink-2)' }}>
-            {docCount} document{docCount !== 1 ? 's' : ''} uploaded
-            <span style={{ color: 'var(--color-ink-4)', marginLeft: 8, fontSize: 12 }}>You can upload more after submitting.</span>
-          </div>
-        </Card>
-
-        <div style={{
-          padding: '14px 16px', borderRadius: 8, fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.7,
-          background: 'var(--color-bg-2)', border: '1.5px solid var(--color-border)',
-        }}>
-          By submitting, you confirm that all information provided is accurate and authorize Strike SCF to verify your identity and company details with third-party data providers.
         </div>
+        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', whiteSpace: 'nowrap' }}>
+          {done ? 'Replace' : uploading ? '' : 'Upload'}
+        </span>
       </div>
-
-      {error && <p style={{ fontSize: 12.5, color: 'var(--color-red, #dc2626)', marginTop: 14 }}>{error}</p>}
-      <OBActions onBack={onBack} onNext={onSubmit} nextLabel="Submit application →" loading={loading} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onFile(file)
+          e.target.value = ''
+        }}
+      />
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// Success screen
+// Searchable NAICS select
 // ─────────────────────────────────────────────────────────────
-function ScreenOBSuccess({ role, fromInvite, knownParty }: { role: Role; fromInvite?: boolean; knownParty?: boolean }) {
-  const checkCircle = (
-    <div style={{
-      width: 64, height: 64, borderRadius: '50%',
-      background: 'rgba(22,163,74,0.1)', display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-      margin: '0 auto 20px',
-    }}>
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <path d="M7 14 L12 19 L21 10" stroke="var(--color-green, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </div>
+function NaicsSelect({ value, onChange }: { value: string; onChange: (code: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  const selectedLabel = NAICS_OPTIONS.find((n) => n.code === value)?.label ?? ''
+  const filtered = NAICS_OPTIONS.filter((n) =>
+    `${n.code} ${n.label}`.toLowerCase().includes(query.toLowerCase()),
   )
-
-  if (knownParty) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
-      }}>
-        <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
-          {checkCircle}
-          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
-            Welcome to Strike SCF!
-          </h1>
-          <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
-            Your account is active. Your organization details have been pre-verified.
-          </p>
-          <a
-            href="/dashboard"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              marginTop: 8, height: 42, padding: '0 24px', borderRadius: 8,
-              background: 'var(--color-ink-1)', color: 'white',
-              textDecoration: 'none', fontSize: 14, fontWeight: 600,
-            }}
-          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
-        </div>
-      </div>
-    )
-  }
-
-  if (role === 'bank') {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
-      }}>
-        <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
-          {checkCircle}
-          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
-            Welcome to Strike SCF!
-          </h1>
-          <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
-            Your bank account is active. You can now create programs and invite anchors and suppliers.
-          </p>
-          <a
-            href="/dashboard"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              marginTop: 8, height: 42, padding: '0 24px', borderRadius: 8,
-              background: 'var(--color-ink-1)', color: 'white',
-              textDecoration: 'none', fontSize: 14, fontWeight: 600,
-            }}
-          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      background: 'var(--color-card, white)', fontFamily: 'var(--font-sans)',
-    }}>
-      <div style={{ textAlign: 'center', maxWidth: 440, padding: '0 24px' }}>
-        {checkCircle}
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 10px', color: 'var(--color-ink-1)' }}>
-          Application submitted!
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', lineHeight: 1.7, margin: '0 0 24px' }}>
-          {fromInvite
-            ? <>We&apos;ve notified your administrator that you&apos;ve completed onboarding. Once approved, you&apos;ll have full access to the platform.</>
-            : <>Your KYB application has been submitted. Our team reviews applications within <strong>1–3 business days</strong>. We&apos;ll email you with next steps.</>
-          }
-        </p>
-        <div style={{
-          padding: '16px 20px', borderRadius: 10,
-          background: 'var(--color-bg-2, #f8fafc)',
-          border: '1.5px solid var(--color-border)',
-          fontSize: 13, color: 'var(--color-ink-2)', textAlign: 'left', lineHeight: 1.8,
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-ink-4)' }}>What happens next</div>
-          <div>① Strike reviews your KYB application</div>
-          <div>② We may reach out for any missing documents</div>
-          <div>③ Once approved, you&apos;ll receive platform access</div>
-          <div>④ Set up programs and invite users inside the platform</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginTop: 24 }}>
-          <a
-            href="/pending-approval"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              height: 42, padding: '0 24px', borderRadius: 8,
-              background: 'var(--color-ink-1)', color: 'white',
-              textDecoration: 'none', fontSize: 14, fontWeight: 600,
-            }}
-          >View application status <OBIcon name="arrow" size={14} /></a>
-          <a
-            href="/dashboard"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              height: 42, padding: '0 24px', borderRadius: 8,
-              background: 'var(--blue, #0052FF)', color: 'white',
-              textDecoration: 'none', fontSize: 14, fontWeight: 600,
-            }}
-          >Go to dashboard <OBIcon name="arrow" size={14} /></a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Main page
-// ─────────────────────────────────────────────────────────────
-function OnboardingPageContent() {
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const fromInvite   = searchParams.get('from') === 'invite'
-  const [initialized, setInitialized] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
-  const [step, setStep] = useState(0)
-  const [role, setRole] = useState<Role>('supplier')
-  const [orgId, setOrgId] = useState<string | null>(null)
-  const [bankId, setBankId] = useState<string | null>(null)
-  const [companyData, setCompanyData] = useState<Record<string, string>>({})
-  const [docs, setDocs] = useState<DocState>({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState(false)
-  const [invitationMode, setInvitationMode] = useState<string>('standard')
-  const [prefilledKyb, setPrefilledKyb] = useState<Record<string, string>>({})
-  const [requiredDocs, setRequiredDocs] = useState<Array<{ id: string; label: string }>>([])
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const pendingUpload = useRef<{ docId: string; docKind: string } | null>(null)
 
   useEffect(() => {
-    async function init() {
-      const storedMode = sessionStorage.getItem('invitation_mode') ?? 'standard'
-      const storedPrefilled = (() => {
-        try { return JSON.parse(sessionStorage.getItem('prefilled_kyb') ?? '{}') } catch { return {} }
-      })()
-      const storedRequiredDocs = (() => {
-        try { return JSON.parse(sessionStorage.getItem('required_documents') ?? '[]') } catch { return [] }
-      })()
-      setInvitationMode(storedMode)
-      setPrefilledKyb(storedPrefilled)
-      setRequiredDocs(storedRequiredDocs)
-      if (Object.keys(storedPrefilled).length > 0) {
-        setCompanyData({
-          legalName:    storedPrefilled.legal_name ?? '',
-          ein:          storedPrefilled.ein ?? '',
-          entityType:   storedPrefilled.entity_type ?? '',
-          stateOfInc:   storedPrefilled.state_of_incorporation ?? '',
-          addressLine1: storedPrefilled.address_line_1 ?? '',
-          city:         storedPrefilled.city ?? '',
-          state:        storedPrefilled.state ?? '',
-          zip:          storedPrefilled.zip ?? '',
-          naics:        storedPrefilled.industry_naics ?? '',
-          annualRevenue: storedPrefilled.annual_revenue_range ?? '',
-          phone:        storedPrefilled.primary_contact_phone ?? '',
-        })
-      }
-
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      setUser(user)
-
-      const metaRole = user.user_metadata?.role as string
-      const inviteRoleMap: Record<string, Role> = {
-        anchor:              'anchor',
-        supplier:            'supplier',
-        bank_credit_officer: 'bank',
-      }
-      const standardRoleMap: Record<string, Role> = {
-        supplier_admin: 'supplier',
-        anchor_admin:   'anchor',
-        bank_admin:     'bank',
-      }
-      const mappedRole: Role = fromInvite
-        ? (inviteRoleMap[metaRole] ?? 'supplier')
-        : (standardRoleMap[metaRole] ?? 'supplier')
-      setRole(mappedRole)
-
-      // bank_credit_officer has no KYB — skip status check
-      const isInvitedCO = fromInvite && metaRole === 'bank_credit_officer'
-      if (!isInvitedCO) {
-        try {
-          const res = await fetch('/api/onboarding/status')
-          if (res.ok) {
-            const status = await res.json()
-            if (status.kyb_status === 'submitted' || status.bank_status === 'active') {
-              setSubmitted(true)
-            } else if (status.org_id) {
-              setOrgId(status.org_id)
-              setStep(2)
-            } else if (status.bank_id) {
-              setBankId(status.bank_id)
-              setStep(2)
-            }
-          }
-        } catch { /* ignore — start fresh */ }
-      }
-
-      setInitialized(true)
+    function onClickOutside(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
     }
-    init()
-  }, [router, fromInvite])
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
 
-  async function handleCompanyInfoNext() {
-    if (role === 'bank') {
-      if (!companyData.legalName) {
-        setError('Legal institution name is required.')
-        return
-      }
-      setError(null)
-      setLoading(true)
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <input
+        className="form-input"
+        placeholder="Search industry…"
+        value={open ? query : selectedLabel}
+        onFocus={() => {
+          setOpen(true)
+          setQuery('')
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+        }}
+      />
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            maxHeight: 240,
+            overflowY: 'auto',
+            background: 'var(--color-card)',
+            border: '1px solid var(--color-border)',
+            boxShadow: '0 8px 24px var(--color-shadow)',
+            zIndex: 20,
+          }}
+        >
+          {filtered.length === 0 && (
+            <div style={{ padding: '10px 12px', fontSize: 12.5, color: 'var(--color-ink-4)' }}>No matches</div>
+          )}
+          {filtered.map((n) => (
+            <button
+              type="button"
+              key={n.code}
+              onClick={() => {
+                onChange(n.code)
+                setOpen(false)
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '9px 12px',
+                fontSize: 13,
+                background: n.code === value ? 'var(--color-accent-light)' : 'transparent',
+                color: 'var(--color-ink-1)',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink-4)', marginRight: 8 }}>
+                {n.code}
+              </span>
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Display helpers for the review step.
+function countryName(code: string): string {
+  return COUNTRIES.find((c) => c.code === code)?.name ?? code
+}
+function naicsLabel(code: string): string {
+  return NAICS_OPTIONS.find((n) => n.code === code)?.label ?? code
+}
+function businessTypeLabel(value: string): string {
+  return BUSINESS_TYPES.find((b) => b.value === value)?.label ?? value
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main wizard
+// ─────────────────────────────────────────────────────────────
+export default function OnboardingWizard() {
+  const router = useRouter()
+  const { step, setStep } = useWizard()
+
+  const [org, setOrg] = useState<Organization | null>(null)
+  const [form, setForm] = useState<Form>(EMPTY_FORM)
+  const [docs, setDocs] = useState<Record<string, DocState>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showEin, setShowEin] = useState(false)
+
+  const orgType: 'anchor' | 'supplier' = org?.type === 'anchor' ? 'anchor' : 'supplier'
+  const docSpecs = orgType === 'anchor' ? ANCHOR_DOCS : SUPPLIER_DOCS
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
       try {
-        const res = await fetch('/api/onboarding/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            legal_name: companyData.legalName,
-            display_business_as: companyData.displayName || undefined,
-            institution_type: companyData.institutionType || undefined,
-            routing_number: companyData.routingNumber || undefined,
-          }),
-        })
+        const res = await fetch('/api/onboarding/progress')
+        if (res.status === 401) {
+          router.push('/login')
+          return
+        }
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error)
-        setBankId(data.bank_id)
-        setStep(s => s + 1)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to save institution info.')
+        if (!cancelled && data.org) {
+          setOrg(data.org)
+          setForm(mapOrgToForm(data.org))
+        }
+      } catch {
+        /* fall through — wizard still renders */
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
-      return
     }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
-    if (!companyData.legalName || !companyData.ein) {
-      setError('Legal business name and EIN are required.')
+  function update(patch: Partial<Form>) {
+    setForm((f) => ({ ...f, ...patch }))
+  }
+
+  function toggleInArray(field: 'sourcing_countries' | 'product_categories', value: string) {
+    setForm((f) => {
+      const arr = f[field]
+      return { ...f, [field]: arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value] }
+    })
+  }
+
+  async function saveProgress(): Promise<boolean> {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/onboarding/progress', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step, data: mapFormToData(form) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save your progress.')
+      if (data.org) setOrg(data.org)
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save your progress.')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function validate(current: number): string | null {
+    if (current === 1) {
+      if (!form.legal_name.trim()) return 'Legal business name is required.'
+      if (!form.business_type) return 'Please select a business type.'
+      if (!form.country_of_incorporation) return 'Country of incorporation is required.'
+      if (!form.years_in_operation.trim()) return 'Years in operation is required.'
+      if (!form.industry_naics) return 'Please select your industry.'
+    }
+    if (current === 2) {
+      if (!form.primary_contact_name.trim()) return 'Primary contact name is required.'
+      if (!form.primary_contact_title.trim()) return 'Primary contact title is required.'
+      if (!form.primary_contact_phone.trim()) return 'Primary contact phone is required.'
+      if (!form.address_line1.trim()) return 'Address is required.'
+      if (!form.city.trim()) return 'City is required.'
+      if (!form.state.trim()) return 'State is required.'
+      if (!form.zip.trim()) return 'ZIP is required.'
+      if (!form.country) return 'Country is required.'
+    }
+    if (current === 3) {
+      if (!form.annual_revenue_range) return 'Annual revenue range is required.'
+      if (!form.employee_count_range) return 'Employee count range is required.'
+      if (!form.ein.trim()) return 'EIN is required.'
+      if (orgType === 'supplier') {
+        if (!form.country_of_origin) return 'Country of origin is required.'
+        if (form.sourcing_countries.length === 0) return 'Select at least one sourcing country.'
+      } else {
+        if (form.product_categories.length === 0) return 'Select at least one product category.'
+      }
+      if (!form.payment_terms_preference) return 'Payment terms preference is required.'
+    }
+    if (current === 4) {
+      const missing = docSpecs.filter((d) => d.required && docs[d.kind]?.status !== 'done')
+      if (missing.length > 0) return `Please upload: ${missing.map((d) => d.label).join(', ')}.`
+    }
+    return null
+  }
+
+  async function next() {
+    const v = validate(step)
+    if (v) {
+      setError(v)
       return
     }
     setError(null)
-    setLoading(true)
-    const inviteBankId = fromInvite
-      ? (user?.user_metadata?.bank_id as string | undefined)
-      : process.env.NEXT_PUBLIC_DEV_BANK_ID
-    try {
-      const res = await fetch('/api/onboarding/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bank_id: inviteBankId,
-          type: role,
-          legal_name: companyData.legalName,
-          ein: companyData.ein,
-          doing_business_as: companyData.dba || undefined,
-          business_type: (companyData.entityType as 'corporation' | 'llc' | 'partnership' | 'sole_proprietor') || undefined,
-          state_of_incorporation: companyData.stateOfInc || undefined,
-          address_line1: companyData.addressLine1 || undefined,
-          city: companyData.city || undefined,
-          state: companyData.state || undefined,
-          zip: companyData.zip || undefined,
-          ...(fromInvite && role === 'supplier' && user?.user_metadata?.anchor_org_id
-            ? { anchor_org_id: user.user_metadata.anchor_org_id as string }
-            : {}),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setOrgId(data.org_id)
-      setStep(s => s + 1)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save company info.')
-    } finally {
-      setLoading(false)
+    // Persist data-bearing steps; the documents step saves on upload.
+    if (step <= 3 || step === 5) {
+      const ok = await saveProgress()
+      if (!ok) return
     }
+    setStep(Math.min(step + 1, TOTAL_STEPS))
   }
 
-  function triggerUpload(docId: string) {
-    const docKind = DOC_KIND_MAP[docId]
-    if (!docKind) return
-    pendingUpload.current = { docId, docKind }
-    fileInputRef.current?.click()
+  function back() {
+    setError(null)
+    setStep(Math.max(step - 1, 1))
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !pendingUpload.current || !orgId) return
-    const { docId, docKind } = pendingUpload.current
-    setDocs(prev => ({ ...prev, [docId]: { status: 'uploading' } }))
+  function goTo(s: number) {
+    setError(null)
+    setStep(s)
+  }
+
+  async function uploadDoc(kind: string, file: File) {
+    if (!org) {
+      setError('We could not find your organization. Please refresh and try again.')
+      return
+    }
+    setDocs((p) => ({ ...p, [kind]: { status: 'uploading', name: file.name, size: file.size } }))
     try {
       const fd = new FormData()
       fd.append('file', file)
-      fd.append('org_id', orgId)
-      fd.append('document_kind', docKind)
+      fd.append('org_id', org.id)
+      fd.append('document_kind', kind)
       const res = await fetch('/api/onboarding/documents', { method: 'POST', body: fd })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setDocs(prev => ({ ...prev, [docId]: { document_id: data.document_id, status: 'uploaded' } }))
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      setDocs((p) => ({
+        ...p,
+        [kind]: { status: 'done', name: file.name, size: file.size, document_id: data.document_id },
+      }))
     } catch {
-      setDocs(prev => ({ ...prev, [docId]: { status: 'error' } }))
+      setDocs((p) => ({ ...p, [kind]: { status: 'error', name: file.name, size: file.size } }))
     }
-    e.target.value = ''
   }
 
-  async function handleSubmit() {
-    setError(null)
-    if (role === 'bank') {
-      if (!bankId) { setError('Institution not set. Please complete institution info first.'); return }
-      setLoading(true)
-      try {
-        const res = await fetch('/api/onboarding/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bank_id: bankId }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error)
-        setSubmitted(true)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Submission failed.')
-      } finally {
-        setLoading(false)
-      }
+  async function submit() {
+    const ok = await saveProgress()
+    if (!ok) return
+    if (!org) {
+      setError('We could not find your organization. Please refresh and try again.')
       return
     }
-    if (!orgId) { setError('Organization not found. Please complete company info first.'); return }
-    setLoading(true)
+    setSaving(true)
+    setError(null)
     try {
       const res = await fetch('/api/onboarding/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId }),
+        body: JSON.stringify({ org_id: org.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setSubmitted(true)
+      if (!res.ok) throw new Error(data.error || 'Submission failed.')
+      router.push('/dashboard')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Submission failed.')
-    } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
-  const isKnownParty = invitationMode === 'known_counterparty'
-  const isCustomKyb  = invitationMode === 'custom_kyb'
-
-  async function handleKnownPartySubmit() {
-    setError(null)
-    setLoading(true)
-    const inviteBankId = fromInvite
-      ? (user?.user_metadata?.bank_id as string | undefined)
-      : process.env.NEXT_PUBLIC_DEV_BANK_ID
-    try {
-      const res = await fetch('/api/onboarding/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bank_id: inviteBankId, type: role }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setOrgId(data.org_id)
-      setSubmitted(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to complete onboarding.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const isCreditOfficer = fromInvite && user?.user_metadata?.role === 'bank_credit_officer'
-  const BCO_STEPS = [{ label: 'Account', sub: 'Confirm your details' }]
-  const steps = isCreditOfficer ? BCO_STEPS
-    : isKnownParty         ? KNOWN_PARTY_STEPS
-    : role === 'supplier'  ? SUPPLIER_STEPS
-    : role === 'anchor'    ? ANCHOR_STEPS
-    : BANK_STEPS
-  const next = () => {
-    setError(null)
-    if (isCreditOfficer) { router.push('/dashboard'); return }
-    setStep(s => s + 1)
-  }
-  const back = () => { setError(null); setStep(s => s - 1) }
-
-  const fullName = (user?.user_metadata?.full_name as string) ?? ''
-  const nameParts = fullName.split(' ')
-  const accountInfo = {
-    firstName: nameParts[0] ?? '',
-    lastName: nameParts.slice(1).join(' '),
-    email: user?.email ?? '',
-  }
-
-  const content = (() => {
-    if (!initialized) {
-      return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
-          <div style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>Loading…</div>
-        </div>
-      )
-    }
-    if (submitted) return <ScreenOBSuccess role={role} fromInvite={fromInvite} knownParty={isKnownParty} />
-
-    if (step === 0) return (
-      <OBShell steps={steps} current={0} role={role}>
-        <StepAccountConfirmation fullName={fullName} email={user?.email ?? ''} onNext={next} />
-      </OBShell>
+  if (loading) {
+    return (
+      <div style={{ paddingTop: 80, textAlign: 'center', color: 'var(--color-ink-3)', fontSize: 13 }}>Loading…</div>
     )
-
-    // Known counterparty flow
-if (isKnownParty) {
-  if (step === 1) return (
-    <OBShell steps={steps} current={1} role={role}>
-      <StepKnownPartyReview prefilledKyb={prefilledKyb} onBack={back}
-        onSubmit={handleKnownPartySubmit} loading={loading} error={error} />
-    </OBShell>
-  )
-}
-
-    // Supplier flow
-    if (role === 'supplier') {
-      if (step === 1) return (
-        <OBShell steps={steps} current={1} role={role}>
-          <StepCompanyInfo data={companyData} setData={setCompanyData} onBack={back} onNext={handleCompanyInfoNext} role={role} loading={loading} error={error} />
-        </OBShell>
-      )
-      if (step === 2) return (
-        <OBShell steps={steps} current={2} role={role}>
-          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role}
-  customDocs={isCustomKyb && requiredDocs.length > 0 ? requiredDocs : undefined} />
-        </OBShell>
-      )
-      if (step === 3) return (
-        <OBShell steps={steps} current={3} role={role}>
-          <StepReview formData={{ account: accountInfo, company: companyData }} docs={docs} role={role} onBack={back} onSubmit={handleSubmit} loading={loading} error={error} />
-        </OBShell>
-      )
-    }
-
-    // Anchor flow
-    if (role === 'anchor') {
-      if (step === 1) return (
-        <OBShell steps={steps} current={1} role={role}>
-          <StepCompanyInfo data={companyData} setData={setCompanyData} onBack={back} onNext={handleCompanyInfoNext} role={role} loading={loading} error={error} />
-        </OBShell>
-      )
-      if (step === 2) return (
-        <OBShell steps={steps} current={2} role={role}>
-          <StepDocuments docs={docs} onUpload={triggerUpload} onBack={back} onNext={next} role={role}
-  customDocs={isCustomKyb && requiredDocs.length > 0 ? requiredDocs : undefined} />
-        </OBShell>
-      )
-      if (step === 3) return (
-        <OBShell steps={steps} current={3} role={role}>
-          <StepReview formData={{ account: accountInfo, company: companyData }} docs={docs} role={role} onBack={back} onSubmit={handleSubmit} loading={loading} error={error} />
-        </OBShell>
-      )
-    }
-
-    // Bank flow
-    if (role === 'bank') {
-      if (step === 1) return (
-        <OBShell steps={steps} current={1} role={role}>
-          <StepInstitutionInfo data={companyData} setData={setCompanyData} onBack={back} onNext={handleCompanyInfoNext} loading={loading} error={error} />
-        </OBShell>
-      )
-      if (step === 2) return (
-        <OBShell steps={steps} current={2} role={role}>
-          <StepReview formData={{ account: accountInfo, company: companyData }} docs={docs} role={role} onBack={back} onSubmit={handleSubmit} loading={loading} error={error} />
-        </OBShell>
-      )
-    }
-
-    return null
-  })()
+  }
 
   return (
-    <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,image/*"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-      {content}
-    </>
-  )
-}
+    <div className="page" style={{ padding: 0, maxWidth: 'none', animation: 'page-fade 0.3s ease' }}>
+      {/* ── Step 1 — Business basics ─────────────────────────── */}
+      {step === 1 && (
+        <>
+          <StepHeader step={1} title="Tell us about your business" sub="Start with your legal details. We cross-check these against public records." />
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Field label="Legal business name">
+                <input className="form-input" value={form.legal_name} onChange={(e) => update({ legal_name: e.target.value })} placeholder="Acme Corp LLC" />
+              </Field>
+              <Field label="Doing business as" optional>
+                <input className="form-input" value={form.doing_business_as} onChange={(e) => update({ doing_business_as: e.target.value })} placeholder="Acme" />
+              </Field>
+              <div className="form-row-2">
+                <Field label="Business type">
+                  <select className="form-input form-select" value={form.business_type} onChange={(e) => update({ business_type: e.target.value })}>
+                    <option value="">Select…</option>
+                    {BUSINESS_TYPES.map((b) => (
+                      <option key={b.value} value={b.value}>{b.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Country of incorporation">
+                  <select className="form-input form-select" value={form.country_of_incorporation} onChange={(e) => update({ country_of_incorporation: e.target.value })}>
+                    <option value="">Select…</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <div className="form-row-2">
+                <Field label="State / province of incorporation" optional>
+                  <input className="form-input" value={form.state_of_incorporation} onChange={(e) => update({ state_of_incorporation: e.target.value })} placeholder="DE" />
+                </Field>
+                <Field label="Years in operation">
+                  <input className="form-input" type="number" min={0} value={form.years_in_operation} onChange={(e) => update({ years_in_operation: e.target.value })} placeholder="5" />
+                </Field>
+              </div>
+              <Field label="Industry (NAICS)">
+                <NaicsSelect value={form.industry_naics} onChange={(code) => update({ industry_naics: code })} />
+              </Field>
+              <Field label="Website" optional>
+                <input className="form-input" value={form.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://acme.com" />
+              </Field>
+              <Field label="Description" optional>
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  maxLength={500}
+                  value={form.description}
+                  onChange={(e) => update({ description: e.target.value })}
+                  placeholder="What does your business do?"
+                />
+                <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--color-ink-4)', marginTop: 4 }}>
+                  {form.description.length}/500
+                </div>
+              </Field>
+            </div>
+          </div>
+        </>
+      )}
 
-export default function OnboardingPage() {
-  return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)' }}>
-        <div style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>Loading…</div>
+      {/* ── Step 2 — Contact & address ───────────────────────── */}
+      {step === 2 && (
+        <>
+          <StepHeader step={2} title="Contact & address" sub="Who should we reach out to, and where is your business registered?" />
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Field label="Primary contact name">
+                <input className="form-input" value={form.primary_contact_name} onChange={(e) => update({ primary_contact_name: e.target.value })} placeholder="Jane Doe" />
+              </Field>
+              <div className="form-row-2">
+                <Field label="Title">
+                  <input className="form-input" value={form.primary_contact_title} onChange={(e) => update({ primary_contact_title: e.target.value })} placeholder="CFO" />
+                </Field>
+                <Field label="Phone">
+                  <input className="form-input" type="tel" value={form.primary_contact_phone} onChange={(e) => update({ primary_contact_phone: e.target.value })} placeholder="+1 (555) 010-0100" />
+                </Field>
+              </div>
+              <Field label="Address line 1">
+                <input className="form-input" value={form.address_line1} onChange={(e) => update({ address_line1: e.target.value })} placeholder="123 Main St" />
+              </Field>
+              <Field label="Address line 2" optional>
+                <input className="form-input" value={form.address_line2} onChange={(e) => update({ address_line2: e.target.value })} placeholder="Suite 400" />
+              </Field>
+              <div className="form-row-3">
+                <Field label="City">
+                  <input className="form-input" value={form.city} onChange={(e) => update({ city: e.target.value })} placeholder="Portland" />
+                </Field>
+                <Field label="State">
+                  <input className="form-input" value={form.state} onChange={(e) => update({ state: e.target.value })} placeholder="OR" />
+                </Field>
+                <Field label="ZIP">
+                  <input className="form-input" value={form.zip} onChange={(e) => update({ zip: e.target.value })} placeholder="97201" />
+                </Field>
+              </div>
+              <Field label="Country">
+                <select className="form-input form-select" value={form.country} onChange={(e) => update({ country: e.target.value })}>
+                  <option value="">Select…</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 3 — Financial profile ───────────────────────── */}
+      {step === 3 && (
+        <>
+          <StepHeader step={3} title="Financial profile" sub="This helps us size financing and tailor your Strike Passport." />
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-row-2">
+                <Field label="Annual revenue range">
+                  <select className="form-input form-select" value={form.annual_revenue_range} onChange={(e) => update({ annual_revenue_range: e.target.value })}>
+                    <option value="">Select…</option>
+                    {REVENUE_RANGES.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Employee count">
+                  <select className="form-input form-select" value={form.employee_count_range} onChange={(e) => update({ employee_count_range: e.target.value })}>
+                    <option value="">Select…</option>
+                    {EMPLOYEE_RANGES.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field label="EIN (Federal Tax ID)" hint="Stored securely and only shared with verification partners.">
+                <div className="input-with-status">
+                  <input
+                    className="form-input mono"
+                    type={showEin ? 'text' : 'password'}
+                    value={form.ein}
+                    onChange={(e) => update({ ein: e.target.value })}
+                    placeholder="12-3456789"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEin((s) => !s)}
+                    className="input-status"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)' }}
+                  >
+                    {showEin ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </Field>
+
+              {orgType === 'supplier' ? (
+                <>
+                  <Field label="Country of origin">
+                    <select className="form-input form-select" value={form.country_of_origin} onChange={(e) => update({ country_of_origin: e.target.value })}>
+                      <option value="">Select…</option>
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Sourcing countries">
+                    <MultiSelect
+                      options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
+                      selected={form.sourcing_countries}
+                      onToggle={(v) => toggleInArray('sourcing_countries', v)}
+                    />
+                  </Field>
+                </>
+              ) : (
+                <Field label="Product categories">
+                  <MultiSelect
+                    options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                    selected={form.product_categories}
+                    onToggle={(v) => toggleInArray('product_categories', v)}
+                  />
+                </Field>
+              )}
+
+              <Field label="Payment terms preference">
+                <select className="form-input form-select" value={form.payment_terms_preference} onChange={(e) => update({ payment_terms_preference: e.target.value })}>
+                  <option value="">Select…</option>
+                  {PAYMENT_TERMS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 4 — Document upload ──────────────────────────── */}
+      {step === 4 && (
+        <>
+          <StepHeader step={4} title="Upload your documents" sub="We’ll save your progress — you can return to finish any time." />
+          <div className="info-box" style={{ margin: '0 0 16px' }}>
+            <span>
+              {docSpecs.filter((d) => d.required && docs[d.kind]?.status === 'done').length} of{' '}
+              {docSpecs.filter((d) => d.required).length} required documents uploaded
+            </span>
+          </div>
+          {docSpecs.map((spec) => (
+            <DropZone
+              key={spec.kind}
+              spec={spec}
+              state={docs[spec.kind] ?? { status: 'idle' }}
+              onFile={(file) => uploadDoc(spec.kind, file)}
+            />
+          ))}
+        </>
+      )}
+
+      {/* ── Step 5 — Review & submit ─────────────────────────── */}
+      {step === 5 && (
+        <>
+          <StepHeader step={5} title="Review & submit" sub="Check everything looks right, then submit for verification." />
+
+          {/* Passport preview */}
+          <div
+            className="card"
+            style={{ borderColor: 'var(--blue)', marginBottom: 16, background: 'var(--color-accent-light)' }}
+          >
+            <div className="card-body">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-ink-1)' }}>
+                    {form.legal_name || 'Your organization'}
+                  </div>
+                  <span
+                    className="badge"
+                    style={{
+                      marginTop: 6,
+                      color: orgType === 'anchor' ? 'var(--blue)' : 'var(--color-green)',
+                    }}
+                  >
+                    {orgType === 'anchor' ? 'Anchor / Buyer' : 'Supplier'}
+                  </span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--color-ink-1)' }}>55–75</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>Est. PassportScore</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 12, lineHeight: 1.6 }}>
+                Your PassportScore will be calculated upon verification. Based on your submission, estimated range: 55–75.
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, cursor: 'pointer' }}>
+                <span
+                  onClick={() => update({ network_visible: !form.network_visible })}
+                  style={{
+                    width: 38,
+                    height: 22,
+                    flexShrink: 0,
+                    background: form.network_visible ? 'var(--blue)' : 'var(--color-border-strong)',
+                    borderRadius: '999px',
+                    position: 'relative',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      left: form.network_visible ? 18 : 2,
+                      width: 18,
+                      height: 18,
+                      background: '#fff',
+                      borderRadius: '50%',
+                      transition: 'left 0.15s',
+                    }}
+                  />
+                </span>
+                <span style={{ fontSize: 13, color: 'var(--color-ink-1)' }}>
+                  Make my profile visible on the Strike Place marketplace
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Business */}
+          <ReviewSection label="Business" onEdit={() => goTo(1)}>
+            <ReviewRow k="Legal name" v={form.legal_name} />
+            <ReviewRow k="Doing business as" v={form.doing_business_as} />
+            <ReviewRow k="Business type" v={businessTypeLabel(form.business_type)} />
+            <ReviewRow k="Country of incorporation" v={countryName(form.country_of_incorporation)} />
+            <ReviewRow k="State of incorporation" v={form.state_of_incorporation} />
+            <ReviewRow k="Years in operation" v={form.years_in_operation} />
+            <ReviewRow k="Industry" v={naicsLabel(form.industry_naics)} />
+            <ReviewRow k="Website" v={form.website} />
+          </ReviewSection>
+
+          {/* Contact */}
+          <ReviewSection label="Contact & address" onEdit={() => goTo(2)}>
+            <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' · ')} />
+            <ReviewRow k="Phone" v={form.primary_contact_phone} />
+            <ReviewRow
+              k="Address"
+              v={[form.address_line1, form.address_line2, form.city, form.state, form.zip, countryName(form.country)]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          </ReviewSection>
+
+          {/* Financial */}
+          <ReviewSection label="Financial profile" onEdit={() => goTo(3)}>
+            <ReviewRow k="Annual revenue" v={form.annual_revenue_range} />
+            <ReviewRow k="Employees" v={form.employee_count_range} />
+            <ReviewRow k="EIN" v={form.ein ? '•••••' + form.ein.slice(-4) : ''} />
+            {orgType === 'supplier' ? (
+              <>
+                <ReviewRow k="Country of origin" v={countryName(form.country_of_origin)} />
+                <ReviewRow k="Sourcing countries" v={form.sourcing_countries.map(countryName).join(', ')} />
+              </>
+            ) : (
+              <ReviewRow k="Product categories" v={form.product_categories.join(', ')} />
+            )}
+            <ReviewRow k="Payment terms" v={form.payment_terms_preference} />
+          </ReviewSection>
+
+          {/* Documents */}
+          <ReviewSection label="Documents" onEdit={() => goTo(4)}>
+            <div className="doc-list-inset">
+              {docSpecs.map((spec) => {
+                const done = docs[spec.kind]?.status === 'done'
+                return (
+                  <div className="doc-row-check" key={spec.kind}>
+                    {done ? (
+                      <span className="check-circle">
+                        <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          flexShrink: 0,
+                          border: '1.5px solid var(--color-border-strong)',
+                        }}
+                      />
+                    )}
+                    <span className="doc-name">{spec.label}</span>
+                    <span className="doc-meta">{done ? 'Uploaded' : spec.required ? 'Missing' : 'Optional'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </ReviewSection>
+
+          <p className="submit-disclaimer">
+            By submitting, you confirm the information provided is accurate and authorize Strike SCF to verify your
+            identity and company details with third-party data providers.
+          </p>
+        </>
+      )}
+
+      {/* ── Error + footer ───────────────────────────────────── */}
+      {error && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          <span className="alert-body">{error}</span>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginTop: 28,
+        }}
+      >
+        <button type="button" className="btn btn-secondary" onClick={back} disabled={step === 1 || saving} style={{ visibility: step === 1 ? 'hidden' : 'visible' }}>
+          ← Back
+        </button>
+        {step < TOTAL_STEPS ? (
+          <button type="button" className="btn btn-blue" onClick={next} disabled={saving}>
+            {saving ? 'Saving…' : 'Continue'}
+          </button>
+        ) : (
+          <button type="button" className="btn btn-blue" onClick={submit} disabled={saving}>
+            {saving ? 'Submitting…' : 'Submit for verification'}
+          </button>
+        )}
       </div>
-    }>
-      <OnboardingPageContent />
-    </Suspense>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Review section helpers
+// ─────────────────────────────────────────────────────────────
+function ReviewSection({
+  label,
+  onEdit,
+  children,
+}: {
+  label: string
+  onEdit: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="review-section">
+      <div className="review-section-head">
+        <span className="review-section-label">{label}</span>
+        <span className="review-edit" onClick={onEdit}>
+          Edit
+        </span>
+      </div>
+      <div className="kv-list inset">{children}</div>
+    </div>
+  )
+}
+
+function ReviewRow({ k, v }: { k: string; v: string }) {
+  if (!v) return null
+  return (
+    <div className="kv-row">
+      <span className="k">{k}</span>
+      <span className="v plain">{v}</span>
+    </div>
   )
 }

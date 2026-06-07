@@ -6,7 +6,9 @@ import { KYB_REFERRER_KEY } from '@/lib/kyb-referrer'
 import { Topbar, NotifBell } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
 import { RiskBadge } from '@/components/risk-badge'
-import type { CreditDecision, RiskTier } from '@strike-scf/types'
+import type { RiskTier } from '@strike-scf/types'
+
+type CreditDecision = 'approved' | 'override_approved' | 'more_info_requested' | 'rejected' | 'pending_countersign'
 
 interface Document {
   id: string

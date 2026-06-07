@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 const STATUS_LABELS: Record<string, string> = {
   pending:   'Required by bank',
@@ -99,7 +99,7 @@ export default function CollateralPage() {
   const [formSaving, setFormSaving] = useState(false)
 
   useEffect(() => {
-    if (user && !BANK_ROLES.includes(user.role) && !SUPPLIER_ROLES.includes(user.role)) {
+    if (user && !BANK_ROLES.includes(user.role) && !ORG_ROLES.includes(user.role)) {
       router.replace('/dashboard')
     }
   }, [user, router])
@@ -119,7 +119,7 @@ export default function CollateralPage() {
     : collateral.filter(c => c.status === filter.toLowerCase())
 
   const isBank     = BANK_ROLES.includes(user?.role ?? '')
-  const isSupplier = SUPPLIER_ROLES.includes(user?.role ?? '')
+  const isSupplier = ORG_ROLES.includes(user?.role ?? '') && user?.org?.type === 'supplier'
 
   async function handleAction(id: string, action: string) {
     try {

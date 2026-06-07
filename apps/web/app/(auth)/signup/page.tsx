@@ -5,17 +5,17 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-// ─── icons (from reference/onboarding.jsx) ───────────────────────────────────
-function OBIcon({ name, size = 16 }: { name: string; size?: number }) {
+type OrgTypeChoice = 'anchor' | 'supplier' | 'bank'
+
+// ─── icons ───────────────────────────────────────────────────────────────────
+function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
-    check:   <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
-    doc:     <><rect x="4" y="2" width="8" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 6 L10 6 M6 9 L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></>,
-    building:<><rect x="3" y="5" width="10" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 14 L6 10 L10 10 L10 14" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 5 L8 2 L13 5" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
-    bank:    <><rect x="2" y="7" width="12" height="7" rx="1" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M2 7 L8 3 L14 7" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M5 10 L5 14 M8 10 L8 14 M11 10 L11 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
-    arrow:   <path d="M3 8 L13 8 M9 4 L13 8 L9 12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
-    info:    <><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M8 7 L8 11 M8 5.5 L8 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></>,
-    eye:     <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
-    eyeOff:  <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
+    check:    <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
+    doc:      <><rect x="4" y="2" width="8" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 6 L10 6 M6 9 L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></>,
+    building: <><rect x="3" y="5" width="10" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 14 L6 10 L10 10 L10 14" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 5 L8 2 L13 5" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
+    bank:     <><rect x="2" y="7" width="12" height="7" rx="1" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M2 7 L8 3 L14 7" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M5 10 L5 14 M8 10 L8 14 M11 10 L11 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
+    eye:      <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
+    eyeOff:   <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
   }
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -24,479 +24,298 @@ function OBIcon({ name, size = 16 }: { name: string; size?: number }) {
   )
 }
 
-// ─── stepper ─────────────────────────────────────────────────────────────────
-interface Step { label: string; sub?: string }
-
-function OBStepper({ steps, current }: { steps: Step[]; current: number }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 0 8px' }}>
-      {steps.map((step, i) => {
-        const done = i < current
-        const active = i === current
-        return (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 20px',
-            borderLeft: `2px solid ${active ? 'var(--blue)' : 'transparent'}`,
-            background: active ? 'rgba(0,82,255,0.05)' : 'transparent',
-          }}>
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, fontWeight: 600,
-              background: done ? 'var(--blue)' : active ? 'var(--ink)' : 'var(--white)',
-              color: done || active ? 'white' : 'var(--gray)',
-              border: done || active ? 'none' : '1px solid var(--border-strong)',
-            }}>
-              {done ? <OBIcon name="check" size={12} /> : i + 1}
-            </div>
-            <div>
-              <div style={{
-                fontSize: 12.5, fontWeight: active ? 600 : 400,
-                color: active ? 'var(--ink)' : done ? 'var(--color-ink-2)' : 'var(--gray)',
-              }}>{step.label}</div>
-              {step.sub && (
-                <div style={{ fontSize: 11, color: 'var(--gray-soft)', marginTop: 1 }}>{step.sub}</div>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── shell (left rail + content) ─────────────────────────────────────────────
-function OBShell({ steps, current, children }: {
-  steps: Step[]
-  current: number
-  children: React.ReactNode
-}) {
-  return (
-    <div data-theme="light" style={{
-      position: 'fixed', inset: 0,
-      display: 'grid', gridTemplateColumns: '280px 1fr',
-      background: 'var(--offwhite)',
-      fontFamily: 'var(--font-body)',
-    }}>
-      {/* Left rail */}
-      <div style={{
-        background: 'var(--white)',
-        borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        {/* Brand */}
-        <div style={{
-          padding: '16px 12px 12px',
-          borderBottom: '1px solid var(--border)',
-        }}>
-          <Image
-            src="/logo.png"
-            alt="Strike SCF"
-            width={130}
-            height={42}
-            style={{
-              objectFit: 'contain',
-              objectPosition: 'left center',
-              maxWidth: '100%',
-              height: 'auto',
-            }}
-            priority
-          />
-        </div>
-        {/* Steps */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingTop: 16 }}>
-          <OBStepper steps={steps} current={current} />
-        </div>
-        {/* Footer */}
-        <div style={{
-          padding: '14px 20px',
-          borderTop: '1px solid var(--border)',
-          fontSize: 11, color: 'var(--gray-soft)',
-          display: 'flex', alignItems: 'flex-start', gap: 8,
-        }}>
-          <OBIcon name="info" size={13} />
-          <span>Your data is encrypted and never shared without consent.</span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{
-        overflowY: 'auto', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', padding: '48px 40px',
-      }}>
-        <div style={{ width: '100%', maxWidth: 600 }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── shared input style ───────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
-  height: 38, padding: '0 12px',
+  height: 38, width: '100%', padding: '0 12px',
   border: '1px solid var(--border)',
   background: 'var(--white)',
   fontSize: 13.5, color: 'var(--ink)',
-  outline: 'none', width: '100%', boxSizing: 'border-box',
-  transition: 'border-color 0.15s, box-shadow 0.15s', fontFamily: 'inherit',
+  fontFamily: 'inherit', outline: 'none',
+  boxSizing: 'border-box',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
 }
 
-// ─── step 0: role picker (StepWelcome from reference) ────────────────────────
-function StepWelcome({ role, setRole, onNext }: {
-  role: string
-  setRole: (r: string) => void
-  onNext: () => void
-}) {
-  const roles = [
-    { id: 'supplier', icon: 'doc',      title: 'Supplier',       desc: 'Get paid early on your invoices.' },
-    { id: 'anchor',   icon: 'building', title: 'Anchor / Buyer', desc: 'Offer early payment to your suppliers.' },
-    { id: 'bank',     icon: 'bank',     title: 'Bank / Lender',  desc: 'Underwrite and fund SCF programs.' },
-  ]
-
-  return (
-    <div>
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ marginBottom: 16 }}>
-          <Image
-            src="/logo.png"
-            alt="Strike SCF"
-            width={120}
-            height={38}
-            style={{ objectFit: 'contain', objectPosition: 'left center' }}
-            priority
-          />
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--ink)', margin: 0, lineHeight: 1.15 }}>
-          Let&apos;s get you set up.
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', marginTop: 10, lineHeight: 1.6 }}>
-          Choose your role to create your account. Program setup and user invites happen inside the platform once you&apos;re approved.
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {roles.map(r => (
-          <button
-            key={r.id}
-            type="button"
-            onClick={() => setRole(r.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 16,
-              padding: '16px 20px', borderRadius: 10, textAlign: 'left',
-              border: `1px solid ${role === r.id ? 'var(--blue)' : 'var(--border)'}`,
-              background: role === r.id ? 'var(--blue)' : 'var(--white)',
-              cursor: 'pointer', transition: 'all 0.12s', width: '100%',
-            }}
-          >
-            <div style={{
-              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
-              background: role === r.id ? 'rgba(255,255,255,0.12)' : 'var(--offwhite)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: role === r.id ? 'white' : 'var(--color-ink-2)',
-            }}>
-              <OBIcon name={r.icon} size={18} />
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: role === r.id ? 'white' : 'var(--color-ink-1)' }}>
-                {r.title}
-              </div>
-              <div style={{ fontSize: 12.5, color: role === r.id ? 'rgba(255,255,255,0.65)' : 'var(--color-ink-3)', marginTop: 2 }}>
-                {r.desc}
-              </div>
-            </div>
-            {role === r.id && (
-              <div style={{ marginLeft: 'auto', color: 'white' }}>
-                <OBIcon name="check" size={16} />
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', marginTop: 32 }}>
-        <button
-          type="button"
-          onClick={onNext}
-          style={{
-            height: 40, padding: '0 24px', borderRadius: 7, fontSize: 14, fontWeight: 600,
-            background: 'var(--blue)', color: 'white',
-            border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-            fontFamily: 'inherit',
-          }}
-        >
-          Continue <OBIcon name="arrow" size={14} />
-        </button>
-      </div>
-
-      <p style={{ marginTop: 16, fontSize: 12, color: 'var(--color-ink-4)' }}>
-        Already have an account?{' '}
-        <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
-          Sign in
-        </a>
-      </p>
-    </div>
-  )
+const labelStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 11, fontWeight: 400,
+  letterSpacing: '0.1em', textTransform: 'uppercase',
+  color: 'var(--gray)', marginBottom: 6, display: 'block',
 }
 
-// ─── step 1: account form (StepAccount from reference, wired to Supabase) ────
-function StepAccount({ role, onBack }: { role: string; onBack: () => void }) {
+const ORG_TYPES: { id: OrgTypeChoice; icon: string; title: string; desc: string }[] = [
+  { id: 'anchor',   icon: 'building', title: 'I am a Buyer/Anchor',         desc: 'Offer early payment to your suppliers.' },
+  { id: 'supplier', icon: 'doc',      title: 'I am a Supplier',             desc: 'Get paid early on your invoices.' },
+  { id: 'bank',     icon: 'bank',     title: 'I represent a Bank or Lender', desc: 'Underwrite and fund financing.' },
+]
+
+export default function SignupPage() {
   const router = useRouter()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [orgType, setOrgType] = useState<OrgTypeChoice>('anchor')
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [bankDone, setBankDone] = useState(false)
 
   const pwdRules = [
-    { label: '8+ characters',     ok: password.length >= 8 },
-    { label: 'Uppercase letter',  ok: /[A-Z]/.test(password) },
-    { label: 'Number',            ok: /[0-9]/.test(password) },
-    { label: 'Special character', ok: /[^a-zA-Z0-9]/.test(password) },
+    { label: '8+ characters',    ok: password.length >= 8 },
+    { label: 'Uppercase letter', ok: /[A-Z]/.test(password) },
+    { label: 'Number',           ok: /[0-9]/.test(password) },
   ]
-  const allRulesOk = pwdRules.every(r => r.ok)
-  const pwdMatch = password === confirmPassword
+  const pwdOk = pwdRules.every(r => r.ok)
+  const canSubmit = fullName.trim() && email.trim() && pwdOk && !loading
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
     setError('')
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      setError('Please fill in all required fields.')
+    if (!fullName.trim() || !email.trim()) {
+      setError('Please fill in all fields.')
       return
     }
-    if (!allRulesOk) {
-      setError('Password does not meet all requirements.')
-      return
-    }
-    if (!pwdMatch) {
-      setError("Passwords don't match.")
+    if (!pwdOk) {
+      setError('Password must be 8+ characters with an uppercase letter and a number.')
       return
     }
     setLoading(true)
-    const supabase = createClient()
-    const { error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: `${firstName} ${lastName}`.trim(),
-          role: role === 'supplier' ? 'supplier_admin' : role === 'anchor' ? 'anchor_admin' : 'bank_admin',
-        },
-      },
-    })
-    setLoading(false)
-    if (authError) {
-      setError(authError.message)
-    } else {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          email: email.trim(),
+          password,
+          org_type: orgType,
+        }),
+      })
+      const data = await res.json() as { ok?: boolean; account_type?: string; error?: string }
+      if (!res.ok || !data.ok) {
+        setError(data.error ?? 'Failed to create account.')
+        setLoading(false)
+        return
+      }
+
+      // Bank lead — Strike sets up the account manually, no portal access yet.
+      if (data.account_type === 'bank') {
+        setBankDone(true)
+        setLoading(false)
+        return
+      }
+
+      // Org user — sign in and head to onboarding (KYB).
+      const supabase = createClient()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      if (signInError) {
+        router.push('/login')
+        return
+      }
       router.push('/onboarding')
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setLoading(false)
     }
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--ink)', margin: 0 }}>
-          Create your account
-        </h1>
-        <p style={{ fontSize: 13.5, color: 'var(--color-ink-3)', marginTop: 6, lineHeight: 1.6 }}>
-          You&apos;ll use this to sign in to Strike SCF.
-        </p>
-      </div>
-
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--offwhite)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 24px',
+      fontFamily: 'var(--font-body)',
+    }}>
       <div style={{
+        width: '100%', maxWidth: 440,
         background: 'var(--white)',
         border: '1px solid var(--border)',
-        padding: 24,
+        padding: 40,
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* First / Last name */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>First name</label>
-              <input
-                style={inputStyle}
-                placeholder="Priya"
-                value={firstName}
-                onChange={e => setFirstName(e.target.value)}
-                autoComplete="given-name"
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>Last name</label>
-              <input
-                style={inputStyle}
-                placeholder="Shah"
-                value={lastName}
-                onChange={e => setLastName(e.target.value)}
-                autoComplete="family-name"
-              />
-            </div>
-          </div>
-
-          {/* Email */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>Work email</label>
-            <input
-              style={inputStyle}
-              type="email"
-              placeholder="priya@company.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-            <div style={{ fontSize: 11.5, color: 'var(--color-ink-3)' }}>Use your company email address.</div>
-          </div>
-
-          {/* Password */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>Password</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                style={{ ...inputStyle, paddingRight: 38 }}
-                type={showPwd ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd(v => !v)}
-                style={{
-                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--color-ink-3)', padding: 4,
-                  display: 'flex', alignItems: 'center',
-                }}
-              >
-                <OBIcon name={showPwd ? 'eyeOff' : 'eye'} size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Password rules */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {pwdRules.map((r, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 11.5, color: r.ok ? 'var(--color-green, #1A6B42)' : 'var(--color-ink-4)',
-              }}>
-                <span>{r.ok ? '✓' : '○'}</span>
-                <span>{r.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Confirm password */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>Confirm password</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                style={{ ...inputStyle, paddingRight: 38 }}
-                type={showConfirm ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm(v => !v)}
-                style={{
-                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--color-ink-3)', padding: 4,
-                  display: 'flex', alignItems: 'center',
-                }}
-              >
-                <OBIcon name={showConfirm ? 'eyeOff' : 'eye'} size={14} />
-              </button>
-            </div>
-            {confirmPassword && !pwdMatch && (
-              <div style={{ fontSize: 11.5, color: 'var(--color-red, #B42318)' }}>
-                Passwords don&apos;t match
-              </div>
-            )}
-          </div>
+        {/* Logo */}
+        <div style={{ marginBottom: 24 }}>
+          <Image
+            src="/logo.png"
+            alt="Strike SCF"
+            width={180}
+            height={54}
+            style={{ objectFit: 'contain', objectPosition: 'left center', maxWidth: '100%', height: 'auto' }}
+            priority
+          />
         </div>
+
+        {bankDone ? (
+          /* ── Bank confirmation ───────────────────────────────────────── */
+          <div>
+            <div style={{
+              width: 48, height: 48, marginBottom: 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--color-green-bg)', color: 'var(--color-green)',
+            }}>
+              <Icon name="check" size={22} />
+            </div>
+            <h1 style={{
+              fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
+              letterSpacing: '-0.03em', color: 'var(--ink)', margin: '0 0 8px',
+            }}>
+              Thanks for registering
+            </h1>
+            <p style={{ fontSize: 14, color: 'var(--gray)', lineHeight: 1.6, margin: '0 0 24px' }}>
+              We&apos;ll be in touch to set up your bank account. A member of the Strike team
+              will reach out to {email.trim()} shortly.
+            </p>
+            <a
+              href="/login"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
+            >
+              Back to sign in
+            </a>
+          </div>
+        ) : (
+          /* ── Registration form ───────────────────────────────────────── */
+          <>
+            <h1 style={{
+              fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
+              letterSpacing: '-0.03em', color: 'var(--ink)', margin: '0 0 4px',
+            }}>
+              Create your account
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 24px' }}>
+              Register your organization on Strike SCF.
+            </p>
+
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Org type */}
+              <div>
+                <label style={labelStyle}>I am a…</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {ORG_TYPES.map(t => {
+                    const selected = orgType === t.id
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setOrgType(t.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '12px 14px', textAlign: 'left', width: '100%',
+                          border: `1px solid ${selected ? 'var(--blue)' : 'var(--border)'}`,
+                          background: selected ? 'var(--color-accent-light)' : 'var(--white)',
+                          cursor: 'pointer', fontFamily: 'inherit',
+                          transition: 'border-color 0.12s, background 0.12s',
+                        }}
+                      >
+                        <div style={{
+                          width: 34, height: 34, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: selected ? 'var(--blue)' : 'var(--offwhite)',
+                          color: selected ? 'var(--white)' : 'var(--color-ink-2)',
+                        }}>
+                          <Icon name={t.icon} size={16} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink)' }}>{t.title}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 1 }}>{t.desc}</div>
+                        </div>
+                        {selected && <span style={{ color: 'var(--blue)' }}><Icon name="check" size={16} /></span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Full name */}
+              <div>
+                <label style={labelStyle}>Full name</label>
+                <input
+                  style={inputStyle}
+                  type="text"
+                  placeholder="Priya Shah"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label style={labelStyle}>Work email</label>
+                <input
+                  style={inputStyle}
+                  type="email"
+                  placeholder="priya@company.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label style={labelStyle}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: 40 }}
+                    type={showPwd ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd(v => !v)}
+                    style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--color-ink-3)', padding: 4, display: 'flex', alignItems: 'center',
+                    }}
+                    aria-label={showPwd ? 'Hide password' : 'Show password'}
+                  >
+                    <Icon name={showPwd ? 'eyeOff' : 'eye'} size={14} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 8 }}>
+                  {pwdRules.map((r, i) => (
+                    <span key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      fontSize: 11.5, color: r.ok ? 'var(--color-green)' : 'var(--color-ink-4)',
+                    }}>
+                      <span>{r.ok ? '✓' : '○'}</span>{r.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {error && (
+                <div style={{ fontSize: 12.5, color: 'var(--color-red)' }}>{error}</div>
+              )}
+
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', opacity: canSubmit ? 1 : 0.6, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+              >
+                {loading ? 'Creating account…' : 'Create account'}
+              </button>
+            </form>
+
+            <p style={{ marginTop: 20, fontSize: 12.5, color: 'var(--color-ink-4)', textAlign: 'center' }}>
+              Already have an account?{' '}
+              <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
+                Sign in
+              </a>
+            </p>
+          </>
+        )}
       </div>
-
-      {error && (
-        <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-red, #B42318)' }}>
-          {error}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 32 }}>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={loading}
-          style={{
-            height: 40, padding: '0 24px', borderRadius: 7, fontSize: 14, fontWeight: 600,
-            background: 'var(--blue)', color: 'white',
-            border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8,
-            opacity: loading ? 0.7 : 1, fontFamily: 'inherit',
-          }}
-        >
-          {loading ? 'Creating account…' : 'Create account'}
-          {!loading && <OBIcon name="arrow" size={14} />}
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            height: 40, padding: '0 18px', borderRadius: 7, fontSize: 13.5,
-            background: 'transparent', color: 'var(--gray)',
-            border: '1px solid var(--border)',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          ← Back
-        </button>
-      </div>
-
-      <p style={{ marginTop: 16, fontSize: 12, color: 'var(--color-ink-4)' }}>
-        Already have an account?{' '}
-        <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
-          Sign in
-        </a>
-      </p>
     </div>
-  )
-}
-
-// ─── page ─────────────────────────────────────────────────────────────────────
-const SIGNUP_STEPS: Step[] = [
-  { label: 'Welcome', sub: 'Choose your role' },
-  { label: 'Account', sub: 'Email & password' },
-]
-
-export default function SignupPage() {
-  const [step, setStep] = useState(0)
-  const [role, setRole] = useState('supplier')
-
-  return (
-    <OBShell steps={SIGNUP_STEPS} current={step}>
-      {step === 0 && (
-        <StepWelcome
-          role={role}
-          setRole={setRole}
-          onNext={() => setStep(1)}
-        />
-      )}
-      {step === 1 && (
-        <StepAccount
-          role={role}
-          onBack={() => setStep(0)}
-        />
-      )}
-    </OBShell>
   )
 }

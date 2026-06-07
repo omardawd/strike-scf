@@ -9,7 +9,7 @@ import {
 import { PortalShell, Topbar, fmtMoney } from '@/components/portal-shell'
 import { LiquidityRouting } from '@/components/liquidity-routing'
 
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
+const SUPPLIER_ROLES = ['org_admin', 'org_member']
 const STEPS = ['Select Program', 'Invoice Details', 'Review & Submit']
 
 interface Program {
@@ -101,7 +101,7 @@ function StepPrograms({ programs, loading, onSelect }: {
             cursor: 'pointer',
             transition: 'box-shadow 0.15s',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,82,255,0.2)' }}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(20,40,204,0.2)' }}
           onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -519,7 +519,7 @@ function StepDDInvoice({
                 style={{
                   border: '1.5px solid',
                   borderColor: selectedTier?.days === tier.days ? 'var(--blue)' : 'var(--border)',
-                  background: selectedTier?.days === tier.days ? 'rgba(0,82,255,0.03)' : 'var(--white)',
+                  background: selectedTier?.days === tier.days ? 'rgba(20,40,204,0.03)' : 'var(--white)',
                   padding: '16px 20px',
                   cursor: 'pointer',
                   marginBottom: 8,

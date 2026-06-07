@@ -2210,7 +2210,7 @@ export default function TransactionDetailPage() {
 
   const [documents, setDocuments] = useState<{
     id: string; name: string; document_kind: string; mime_type: string
-    size_bytes: number; storage_path: string; signed_url: string | null; created_at: string
+    storage_path: string; signed_url: string | null; created_at: string
   }[]>([])
 
   const [collateral, setCollateral]                   = useState<CollateralItem[]>([])

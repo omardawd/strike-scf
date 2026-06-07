@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     .single()
 
   if (userError) {
+    console.error('[onboarding/documents] user fetch error:', userError)
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 })
   }
 
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
     })
 
   if (uploadError) {
+    console.error('[onboarding/documents] storage upload error:', uploadError)
     return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
   }
 
@@ -81,9 +83,7 @@ export async function POST(request: Request) {
       name: file.name,
       storage_path: storagePath,
       mime_type: file.type,
-      size_bytes: file.size,
-      uploaded_by_user_id: user.id,
-      entity_type: 'kyb' satisfies DocumentEntityType,
+      entity_type: 'organization' satisfies DocumentEntityType,
       entity_id: org_id,
       document_kind,
     })
@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     .single()
 
   if (docError || !doc) {
+    console.error('[onboarding/documents] documents insert error:', docError)
     return NextResponse.json({ error: 'Failed to record document' }, { status: 500 })
   }
 

@@ -32,9 +32,8 @@ async function createNotification({ userId, event, title, body: notifBody, deepL
   } catch {}
 }
 
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
 
 export async function GET(
   _request: Request,
@@ -64,9 +63,16 @@ export async function GET(
     return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
   }
 
-  const isSupplier = SUPPLIER_ROLES.includes(userData.role)
-  const isAnchor   = ANCHOR_ROLES.includes(userData.role)
   const isBank     = BANK_ROLES.includes(userData.role)
+  const isOrgUser  = ORG_ROLES.includes(userData.role)
+  // For org users, determine anchor vs supplier via org type
+  let isSupplier = false
+  let isAnchor   = false
+  if (isOrgUser && userData.org_id) {
+    const { data: txnGetOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    isAnchor   = txnGetOrgRow?.type === 'anchor'
+    isSupplier = txnGetOrgRow?.type === 'supplier'
+  }
 
   const hasAccess =
     (isSupplier && transaction.supplier_id === userData.org_id) ||
@@ -206,8 +212,19 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   }
 
+  // Determine isAnchor / isSupplier for PATCH routing based on org type
+  const patchIsBank    = BANK_ROLES.includes(userData.role)
+  const patchIsOrgUser = ORG_ROLES.includes(userData.role)
+  let patchIsAnchor   = false
+  let patchIsSupplier = false
+  if (patchIsOrgUser && userData.org_id) {
+    const { data: patchOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    patchIsAnchor   = patchOrgRow?.type === 'anchor'
+    patchIsSupplier = patchOrgRow?.type === 'supplier'
+  }
+
   // ── Anchor approval ────────────────────────────────────────────
-  if (ANCHOR_ROLES.includes(userData.role)) {
+  if (patchIsAnchor) {
     if (transaction.anchor_id !== userData.org_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -230,7 +247,7 @@ export async function PATCH(
           notes: body.notes ? String(body.notes) : 'Anchor approved early payment request',
         })
         const { data: supplierAdmin } = await adminClient.from('users').select('id, email, full_name')
-          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle()
+          .eq('org_id', transaction.supplier_id).eq('role', 'org_admin').limit(1).maybeSingle()
         if (supplierAdmin?.email) {
           await sendEmail({
             to: supplierAdmin.email,
@@ -497,7 +514,7 @@ export async function PATCH(
       })
 
       const { data: rejSupplierAdmin } = await adminClient.from('users').select('id')
-        .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle()
+        .eq('org_id', transaction.supplier_id).eq('role', 'org_admin').limit(1).maybeSingle()
       if (rejSupplierAdmin?.id) {
         await createNotification({
           userId: rejSupplierAdmin.id,
@@ -592,7 +609,7 @@ export async function PATCH(
   }
 
   // ── Supplier: respond to bank counter-offer (accept, counter back, or reject) ──
-  if (SUPPLIER_ROLES.includes(userData.role)) {
+  if (patchIsSupplier) {
     if (transaction.supplier_id !== userData.org_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -639,7 +656,7 @@ export async function PATCH(
         .from('users')
         .select('email, full_name')
         .eq('org_id', transaction.anchor_id)
-        .eq('role', 'anchor_admin')
+        .eq('role', 'org_admin')
         .limit(1)
         .maybeSingle()
       if (anchorAdmin?.email) {
@@ -818,7 +835,7 @@ export async function PATCH(
   }
 
   // ── Bank actions ───────────────────────────────────────────────
-  if (BANK_ROLES.includes(userData.role)) {
+  if (patchIsBank) {
     if (transaction.bank_id !== userData.bank_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -867,7 +884,7 @@ export async function PATCH(
         .from('users')
         .select('email, full_name')
         .eq('org_id', transaction.anchor_id)
-        .eq('role', 'anchor_admin')
+        .eq('role', 'org_admin')
         .limit(1)
         .maybeSingle()
       if (anchorAdmin?.email) {
@@ -924,7 +941,7 @@ export async function PATCH(
         .from('users')
         .select('email, full_name')
         .eq('org_id', transaction.supplier_id)
-        .eq('role', 'supplier_admin')
+        .eq('role', 'org_admin')
         .limit(1)
         .maybeSingle()
       if (supplierAdmin?.email) {
@@ -1010,7 +1027,7 @@ export async function PATCH(
         })
 
         const { data: anchorAdminCo } = await adminClient.from('users').select('email, full_name')
-          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle()
+          .eq('org_id', transaction.anchor_id).eq('role', 'org_admin').limit(1).maybeSingle()
         if (anchorAdminCo?.email) {
           const invoiceRefCo = transaction.invoice_number ?? id
           await sendEmail({
@@ -1083,9 +1100,9 @@ export async function PATCH(
 
       const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
         adminClient.from('users').select('id, email, full_name')
-          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
+          .eq('org_id', transaction.supplier_id).eq('role', 'org_admin').limit(1).maybeSingle(),
         adminClient.from('users').select('email, full_name')
-          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
+          .eq('org_id', transaction.anchor_id).eq('role', 'org_admin').limit(1).maybeSingle(),
       ])
 
       if (supplierAdmin?.email) {
@@ -1195,7 +1212,7 @@ export async function PATCH(
           : `Bank counter-offered anchor's repayment request`,
       })
       const { data: anchorAdminRr } = await adminClient.from('users').select('email, full_name')
-        .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle()
+        .eq('org_id', transaction.anchor_id).eq('role', 'org_admin').limit(1).maybeSingle()
       if (anchorAdminRr?.email) {
         const invoiceRefRr = transaction.invoice_number ?? id
         await sendEmail({
@@ -1284,7 +1301,7 @@ export async function PATCH(
         })
 
         const { data: anchorAdminAn } = await adminClient.from('users').select('email, full_name')
-          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle()
+          .eq('org_id', transaction.anchor_id).eq('role', 'org_admin').limit(1).maybeSingle()
         if (anchorAdminAn?.email) {
           const invoiceRefAn = transaction.invoice_number ?? id
           await sendEmail({
@@ -1387,7 +1404,7 @@ export async function PATCH(
         .from('users')
         .select('id, email, full_name')
         .eq('org_id', transaction.supplier_id)
-        .eq('role', 'supplier_admin')
+        .eq('role', 'org_admin')
         .limit(1)
         .maybeSingle()
       if (supplierAdmin?.email) {
@@ -1415,9 +1432,9 @@ export async function PATCH(
     if (action === 'reject') {
       const [{ data: supplierAdmin }, { data: anchorAdmin }] = await Promise.all([
         adminClient.from('users').select('id, email, full_name')
-          .eq('org_id', transaction.supplier_id).eq('role', 'supplier_admin').limit(1).maybeSingle(),
+          .eq('org_id', transaction.supplier_id).eq('role', 'org_admin').limit(1).maybeSingle(),
         adminClient.from('users').select('id, email, full_name')
-          .eq('org_id', transaction.anchor_id).eq('role', 'anchor_admin').limit(1).maybeSingle(),
+          .eq('org_id', transaction.anchor_id).eq('role', 'org_admin').limit(1).maybeSingle(),
       ])
       const rejectReason = body.rejection_reason ? String(body.rejection_reason) : null
       if (supplierAdmin?.email) {

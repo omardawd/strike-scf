@@ -7,8 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
-const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 export async function GET(
   request: Request,
@@ -44,39 +44,42 @@ export async function GET(
     let allowed = false
     if (BANK_ROLES.includes(userData.role)) {
       allowed = program.bank_id === userData.bank_id
-    } else if (ANCHOR_ROLES.includes(userData.role)) {
-      allowed = userData.org_id === anchorId
-    } else {
-      const { data: enr } = await adminClient
-        .from('program_enrollments')
-        .select('id')
-        .eq('program_id', programId)
-        .eq('anchor_org_id', anchorId)
-        .eq('org_id', userData.org_id)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle()
-
-      if (enr) {
+    } else if (ORG_ROLES.includes(userData.role)) {
+      // Check if caller's org is the anchor, or if they're a supplier enrolled under that anchor
+      if (userData.org_id === anchorId) {
         allowed = true
       } else {
-        // Fall back to invitation — supplier accepted invite but enrollment not yet created
-        let supplierEmailForCheck = userData.email as string | null
-        if (!supplierEmailForCheck) {
-          const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
-          supplierEmailForCheck = authUser?.user?.email ?? null
-        }
-        if (supplierEmailForCheck) {
-          const { data: inv } = await adminClient
-            .from('invitations')
-            .select('id')
-            .eq('program_id', programId)
-            .eq('anchor_org_id', anchorId)
-            .eq('email', supplierEmailForCheck)
-            .in('status', ['pending', 'accepted'])
-            .limit(1)
-            .maybeSingle()
-          allowed = !!inv
+        const { data: enr } = await adminClient
+          .from('program_enrollments')
+          .select('id')
+          .eq('program_id', programId)
+          .eq('anchor_org_id', anchorId)
+          .eq('org_id', userData.org_id)
+          .eq('status', 'active')
+          .limit(1)
+          .maybeSingle()
+
+        if (enr) {
+          allowed = true
+        } else {
+          // Fall back to invitation — supplier accepted invite but enrollment not yet created
+          let supplierEmailForCheck = userData.email as string | null
+          if (!supplierEmailForCheck) {
+            const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
+            supplierEmailForCheck = authUser?.user?.email ?? null
+          }
+          if (supplierEmailForCheck) {
+            const { data: inv } = await adminClient
+              .from('invitations')
+              .select('id')
+              .eq('program_id', programId)
+              .eq('anchor_org_id', anchorId)
+              .eq('email', supplierEmailForCheck)
+              .in('status', ['pending', 'accepted'])
+              .limit(1)
+              .maybeSingle()
+            allowed = !!inv
+          }
         }
       }
     }
@@ -324,8 +327,11 @@ export async function GET(
     return NextResponse.json({ anchors, pending_anchors, pending_suppliers, kyb_anchors, kyb_suppliers, signed_up_anchors, signed_up_suppliers, pending_anchor_requests })
   }
 
-  // ── ANCHOR ────────────────────────────────────────────────────────────────
-  if (ANCHOR_ROLES.includes(userData.role)) {
+  // ── ANCHOR / SUPPLIER ────────────────────────────────────────────────────
+  const { data: networkOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+  const networkOrgType = networkOrgRow?.type  // 'anchor' | 'supplier'
+
+  if (networkOrgType === 'anchor') {
     // public.users.email may be null for older invited users — fall back to auth.users
     let anchorEmail = userData.email as string | null
     if (!anchorEmail) {

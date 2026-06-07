@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     .single()
 
   const isBank = me?.role === 'bank_admin' || me?.role === 'bank_credit_officer'
-  const isSupplier = me?.role === 'supplier_admin' || me?.role === 'supplier_member'
+  const isSupplier = me?.role === 'org_admin' || me?.role === 'org_member'
 
   if (!me || (!isBank && !isSupplier)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

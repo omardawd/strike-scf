@@ -7,8 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BANK_ROLES   = ['bank_admin', 'bank_credit_officer']
-const ANCHOR_ROLES = ['anchor_admin', 'anchor_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 export async function GET(
   _request: Request,
@@ -48,7 +48,9 @@ export async function GET(
     // Allow active enrollments OR pending/accepted invitations (invited user viewing before approval).
     // Anchors: match by anchor_org_id (covers both their own row and supplier rows under them).
     // Suppliers: match by org_id.
-    const isAnchor = ANCHOR_ROLES.includes(userData.role)
+    // Determine if caller is an anchor org
+    const { data: callerOrgType } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
+    const isAnchor = callerOrgType?.type === 'anchor'
 
     // public.users.email may be null for older invited users — fall back to auth.users
     let userEmail = userData.email as string | null

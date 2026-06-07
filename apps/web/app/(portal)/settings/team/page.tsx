@@ -22,15 +22,13 @@ interface PendingInvitation {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  bank_admin:           'Bank Admin',
-  bank_credit_officer:  'Credit Officer',
-  anchor_admin:         'Anchor Admin',
-  anchor_member:        'Team Member',
-  supplier_admin:       'Supplier Admin',
-  supplier_member:      'Team Member',
+  bank_admin:          'Bank Admin',
+  bank_credit_officer: 'Credit Officer',
+  org_admin:           'Org Admin',
+  org_member:          'Team Member',
 }
 
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 
 function roleBadgeClass(role: string): string {
   if (role.includes('admin'))          return 'badge badge-active'
@@ -83,8 +81,8 @@ export default function TeamPage() {
 
   const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
 
-  const portalLabel = user?.role?.startsWith('bank')   ? 'Bank Portal'
-    : user?.role?.startsWith('anchor') ? 'Anchor Portal' : 'Supplier Portal'
+  const portalLabel = (user?.role === 'bank_admin' || user?.role === 'bank_credit_officer') ? 'Bank Portal'
+    : user?.org?.type === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
 
   const fetchTeam = useCallback(async () => {
     setLoading(true)

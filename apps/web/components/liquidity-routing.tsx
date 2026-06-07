@@ -70,8 +70,8 @@ export function LiquidityRouting({ program, orgId, invoiceAmount, onSuggestion }
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '12px 16px',
-        border: '1px solid rgba(0,82,255,0.2)',
-        background: 'rgba(0,82,255,0.02)',
+        border: '1px solid rgba(20,40,204,0.2)',
+        background: 'rgba(20,40,204,0.02)',
         fontFamily: 'var(--font-mono)',
         fontSize: 10,
         letterSpacing: '0.12em',
@@ -93,12 +93,12 @@ export function LiquidityRouting({ program, orgId, invoiceAmount, onSuggestion }
 
   return (
     <div style={{
-      border: '1px solid rgba(0,82,255,0.2)',
-      background: 'rgba(0,82,255,0.02)',
+      border: '1px solid rgba(20,40,204,0.2)',
+      background: 'rgba(20,40,204,0.02)',
     }}>
       <div style={{
         padding: '10px 16px',
-        borderBottom: '1px solid rgba(0,82,255,0.1)',
+        borderBottom: '1px solid rgba(20,40,204,0.1)',
         display: 'flex',
         alignItems: 'center',
         gap: 8,

@@ -21,7 +21,7 @@ export default function NewProgramPage() {
   const user   = useUser()
   const router = useRouter()
 
-  const portal = user?.role?.startsWith('anchor') ? 'anchor' : 'bank'
+  const portal = user?.org?.type === 'anchor' ? 'anchor' : 'bank'
   const visibleFinTypes = portal === 'anchor'
     ? FIN_TYPES.filter(t => t.id === 'dynamic_discounting')
     : FIN_TYPES.filter(t => t.id !== 'dynamic_discounting')
@@ -51,7 +51,7 @@ export default function NewProgramPage() {
   }, [portal])
 
   useEffect(() => {
-    if (user && user.role !== 'bank_admin' && user.role !== 'anchor_admin') {
+    if (user && user.role !== 'bank_admin' && user.role !== 'org_admin') {
       router.replace('/programs')
     }
   }, [user, router])
@@ -132,7 +132,7 @@ export default function NewProgramPage() {
     }
   }
 
-  if (user && user.role !== 'bank_admin' && user.role !== 'anchor_admin') return null
+  if (user && user.role !== 'bank_admin' && user.role !== 'org_admin') return null
 
   return (
     <PortalShell activeSection="programs">

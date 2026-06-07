@@ -6,20 +6,18 @@ import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 
 // ── Role constants ────────────────────────────────────────────────────────────
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
 
 const ROLE_LABELS: Record<string, string> = {
-  bank_admin:           'Bank Admin',
-  bank_credit_officer:  'Credit Officer',
-  anchor_admin:         'Anchor Admin',
-  anchor_member:        'Anchor Member',
-  supplier_admin:       'Supplier Admin',
-  supplier_member:      'Supplier Member',
+  bank_admin:          'Bank Admin',
+  bank_credit_officer: 'Credit Officer',
+  org_admin:           'Org Admin',
+  org_member:          'Team Member',
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
-type TabKey = 'profile' | 'org' | 'team'
+type TabKey = 'profile' | 'org' | 'team' | 'agent'
 
 interface Alert { kind: 'info' | 'error'; msg: string }
 
@@ -385,6 +383,15 @@ export default function SettingsPage() {
               onClick={() => setTab('team')}
             >
               Team
+            </button>
+          )}
+          {!isBankUser && user?.org_id && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => router.push('/settings/agent')}
+            >
+              AI Agent
             </button>
           )}
         </div>

@@ -276,8 +276,8 @@ function InvitePageContent() {
         )}
         {invitation?.invitation_mode === 'custom_kyb' && (
           <div style={{
-            background: 'rgba(0,82,255,0.05)',
-            border: '1px solid rgba(0,82,255,0.2)',
+            background: 'rgba(20,40,204,0.05)',
+            border: '1px solid rgba(20,40,204,0.2)',
             padding: '10px 14px',
             marginBottom: 16,
             fontFamily: 'var(--font-body)',

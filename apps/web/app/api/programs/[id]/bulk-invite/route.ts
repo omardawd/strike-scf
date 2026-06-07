@@ -25,7 +25,7 @@ export async function POST(
     .single()
   if (!userRow) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
-  if (userRow.role !== 'anchor_admin' && userRow.role !== 'bank_admin') {
+  if (userRow.role !== 'org_admin' && userRow.role !== 'bank_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -77,7 +77,7 @@ export async function POST(
           invitee_name: supplier.name || null,
           role: 'supplier',
           invited_by_user_id: userRow.id,
-          invited_by_actor_type: userRow.role === 'bank_admin' ? 'bank' : 'anchor',
+          invited_by_actor_type: userRow.role === 'bank_admin' || userRow.role === 'bank_credit_officer' ? 'bank' : 'anchor',
           bank_id: program.bank_id,
           program_id: programId,
           anchor_org_id: body.anchor_org_id,

@@ -115,7 +115,7 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                   padding: '32px 24px',
                   textAlign: 'center',
                   cursor: 'pointer',
-                  background: file ? 'rgba(0,82,255,0.02)' : '',
+                  background: file ? 'rgba(20,40,204,0.02)' : '',
                 }}
                 onClick={() => fileRef.current?.click()}
               >

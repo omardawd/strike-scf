@@ -7,9 +7,8 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const SUPPLIER_ROLES = ['supplier_admin', 'supplier_member']
-const ANCHOR_ROLES   = ['anchor_admin', 'anchor_member']
-const BANK_ROLES     = ['bank_admin', 'bank_credit_officer']
+const ORG_ROLES  = ['org_admin', 'org_member']
+const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
 
 const VALID_KINDS = [
   'invoice_pdf',
@@ -45,15 +44,14 @@ export async function GET(
   if (!transaction) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
 
   const hasAccess =
-    (SUPPLIER_ROLES.includes(userData.role) && transaction.supplier_id === userData.org_id) ||
-    (ANCHOR_ROLES.includes(userData.role)   && transaction.anchor_id   === userData.org_id) ||
-    (BANK_ROLES.includes(userData.role)     && transaction.bank_id     === userData.bank_id)
+    (ORG_ROLES.includes(userData.role) && (transaction.supplier_id === userData.org_id || transaction.anchor_id === userData.org_id)) ||
+    (BANK_ROLES.includes(userData.role) && transaction.bank_id === userData.bank_id)
 
   if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: docs, error } = await adminClient
     .from('documents')
-    .select('id, name, document_kind, mime_type, size_bytes, storage_path, created_at')
+    .select('id, name, document_kind, mime_type, storage_path, created_at')
     .eq('entity_type', 'transaction')
     .eq('entity_id', id)
     .order('created_at', { ascending: true })
@@ -103,9 +101,8 @@ export async function POST(
   if (!transaction) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
 
   const hasAccess =
-    (SUPPLIER_ROLES.includes(userData.role) && transaction.supplier_id === userData.org_id) ||
-    (ANCHOR_ROLES.includes(userData.role)   && transaction.anchor_id   === userData.org_id) ||
-    (BANK_ROLES.includes(userData.role)     && transaction.bank_id     === userData.bank_id)
+    (ORG_ROLES.includes(userData.role) && (transaction.supplier_id === userData.org_id || transaction.anchor_id === userData.org_id)) ||
+    (BANK_ROLES.includes(userData.role) && transaction.bank_id === userData.bank_id)
 
   if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -142,8 +139,6 @@ export async function POST(
       name:                 filename,
       storage_path:         storagePath,
       mime_type:            file.type,
-      size_bytes:           file.size,
-      uploaded_by_user_id:  user.id,
       entity_type:          'transaction',
       entity_id:            id,
       document_kind,
@@ -155,9 +150,9 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to record document' }, { status: 500 })
   }
 
-  const actorType = SUPPLIER_ROLES.includes(userData.role) ? 'supplier'
-    : ANCHOR_ROLES.includes(userData.role) ? 'anchor'
-    : 'bank'
+  const actorType = BANK_ROLES.includes(userData.role) ? 'bank'
+    : transaction.anchor_id === userData.org_id ? 'anchor'
+    : 'supplier'
 
   await adminClient.from('transaction_events').insert({
     transaction_id: id,

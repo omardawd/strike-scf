@@ -1,7 +1,10 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import type { OrgType, OrgStatus, KYBStatus, BusinessType, BankStatus, InstitutionType } from '@strike-scf/types'
+import type { OrgType, OrgStatus, KybStatus, BankStatus } from '@strike-scf/types'
+
+type BusinessType = string
+type InstitutionType = string
 
 const adminClient = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -90,8 +93,8 @@ export async function POST(request: Request) {
         city: prefilledData.city ?? null,
         state: prefilledData.state ?? null,
         zip: prefilledData.zip ?? null,
-        kyb_status: 'approved' satisfies KYBStatus,
-        status: 'approved' satisfies OrgStatus,
+        kyb_status: 'approved' satisfies KybStatus,
+        status: 'active' satisfies OrgStatus,
         kyb_submitted_at: new Date().toISOString(),
       }
 
@@ -172,8 +175,8 @@ export async function POST(request: Request) {
     city: city ?? null,
     state: state ?? null,
     zip: zip ?? null,
-    kyb_status: 'in_progress' satisfies KYBStatus,
-    status: 'in_progress' satisfies OrgStatus,
+    kyb_status: 'in_progress' satisfies KybStatus,
+    status: 'kyb_in_progress' satisfies OrgStatus,
   }
 
   const { data: org, error: orgError } = await adminClient

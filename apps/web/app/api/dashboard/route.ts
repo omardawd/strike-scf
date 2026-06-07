@@ -182,8 +182,15 @@ export async function GET() {
     .map((e: Record<string, unknown>) => e.programs)
     .filter(Boolean)
 
-  // ── ANCHOR ────────────────────────────────────────────────────────────────
-  if (userData.role === 'anchor_admin' || userData.role === 'anchor_member') {
+  // ── ANCHOR / SUPPLIER ────────────────────────────────────────────────────
+  const { data: orgData } = await adminClient
+    .from('organizations')
+    .select('type')
+    .eq('id', userData.org_id)
+    .single()
+  const orgType = orgData?.type  // 'anchor' | 'supplier'
+
+  if (orgType === 'anchor') {
     const programIds = (programs as Array<{ id: string }>).map((p) => p.id)
     let enrolled_supplier_count = 0
 
@@ -219,7 +226,7 @@ export async function GET() {
     return NextResponse.json({ portal: 'anchor', org_name, programs, enrolled_supplier_count, pending_approval, dd_savings })
   }
 
-  // ── SUPPLIER ──────────────────────────────────────────────────────────────
+  // ── SUPPLIER (default for org users) ──────────────────────────────────────
   const [{ count: active_transactions }, { data: perfData }] = await Promise.all([
     adminClient
       .from('transactions')

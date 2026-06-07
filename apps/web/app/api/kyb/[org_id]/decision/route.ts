@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import type { KYBStatus, OrgStatus, RiskTier, CreditDecision } from '@strike-scf/types'
+import type { KybStatus, OrgStatus, RiskTier } from '@strike-scf/types'
+
+type CreditDecision = 'approved' | 'override_approved' | 'more_info_requested' | 'rejected' | 'pending_countersign'
 import { sendEmail, kybApprovalEmailHtml, kybRejectionEmailHtml } from '@/lib/email'
 
 const adminClient = createAdmin(
@@ -138,8 +140,8 @@ export async function POST(
     let orgUpdate: Record<string, unknown> = {}
     if (decision === 'approved' || decision === 'override_approved') {
       orgUpdate = {
-        status: 'approved' satisfies OrgStatus,
-        kyb_status: 'approved' satisfies KYBStatus,
+        status: 'active' satisfies OrgStatus,
+        kyb_status: 'approved' satisfies KybStatus,
         credit_reviewed_at: new Date().toISOString(),
         ...(risk_tier !== undefined && { risk_tier }),
         ...(credit_score !== undefined && { credit_score }),
@@ -147,16 +149,16 @@ export async function POST(
     } else if (decision === 'rejected') {
       orgUpdate = {
         status: 'rejected' satisfies OrgStatus,
-        kyb_status: 'rejected' satisfies KYBStatus,
+        kyb_status: 'rejected' satisfies KybStatus,
         credit_reviewed_at: new Date().toISOString(),
       }
     } else if (decision === 'more_info_requested') {
       orgUpdate = {
-        kyb_status: 'more_info_requested' satisfies KYBStatus,
+        kyb_status: 'more_info_requested' satisfies KybStatus,
       }
     } else if (decision === 'pending_countersign') {
       orgUpdate = {
-        kyb_status: 'under_review' satisfies KYBStatus,
+        kyb_status: 'under_review' satisfies KybStatus,
       }
     }
 

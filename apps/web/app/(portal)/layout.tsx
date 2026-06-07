@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { PortalProvider, type PortalType } from '@/lib/portal-context'
-import { UserProvider } from '@/lib/user-context'
+import { UserProvider, type UserOrg } from '@/lib/user-context'
 import { PortalShell } from './portal-shell'
 
 const adminClient = createAdminClient(
@@ -10,10 +10,11 @@ const adminClient = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function derivePortal(role: string): PortalType {
+function derivePortal(role: string, orgType?: string | null): PortalType {
   if (role === 'bank_admin' || role === 'bank_credit_officer') return 'bank'
-  if (role === 'anchor_admin' || role === 'anchor_member') return 'anchor'
-  return 'supplier'
+  if (role === 'strike_admin') return 'admin'
+  // org_admin / org_member — sub-portal comes from the organization's type
+  return orgType === 'anchor' ? 'anchor' : 'supplier'
 }
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -29,7 +30,26 @@ export default async function PortalLayout({ children }: { children: React.React
 
   if (!userData) redirect('/login')
 
-  const portal = derivePortal(userData.role ?? '')
+  // Load the org for marketplace context. An org user with no bank_id is valid —
+  // there is no bank gate here anymore.
+  let org: UserOrg | null = null
+  if (userData.org_id) {
+    const { data: orgData } = await adminClient
+      .from('organizations')
+      .select('type, status, network_visible, passport_score')
+      .eq('id', userData.org_id)
+      .single()
+    if (orgData) {
+      org = {
+        type: orgData.type,
+        status: orgData.status,
+        network_visible: orgData.network_visible ?? false,
+        passport_score: orgData.passport_score ?? null,
+      }
+    }
+  }
+
+  const portal = derivePortal(userData.role ?? '', org?.type)
 
   return (
     <PortalProvider portal={portal}>
@@ -40,6 +60,7 @@ export default async function PortalLayout({ children }: { children: React.React
         role: userData.role ?? '',
         org_id: userData.org_id ?? null,
         bank_id: userData.bank_id ?? null,
+        org,
       }}>
         <PortalShell
           portal={portal}

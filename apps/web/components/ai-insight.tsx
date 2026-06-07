@@ -63,8 +63,8 @@ Format: [Assessment]. [Supporting data point]. [Recommended action].`,
 
   return (
     <div style={{
-      border: '1px solid rgba(0,82,255,0.22)',
-      background: 'rgba(0,82,255,0.02)',
+      border: '1px solid rgba(20,40,204,0.22)',
+      background: 'rgba(20,40,204,0.02)',
       marginBottom: 12,
     }}>
       <button
@@ -110,7 +110,7 @@ Format: [Assessment]. [Supporting data point]. [Recommended action].`,
       {expanded && (
         <div style={{
           padding: '0 14px 12px',
-          borderTop: '1px solid rgba(0,82,255,0.1)',
+          borderTop: '1px solid rgba(20,40,204,0.1)',
         }}>
           {loading ? (
             <div style={{

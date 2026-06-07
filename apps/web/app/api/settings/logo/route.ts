@@ -7,7 +7,7 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ADMIN_ROLES = ['bank_admin', 'anchor_admin', 'supplier_admin']
+const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
 const BUCKET      = 'logos'
 

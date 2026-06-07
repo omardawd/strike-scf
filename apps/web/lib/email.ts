@@ -162,6 +162,69 @@ export function kybRejectionEmailHtml({
   `
 }
 
+export function passportLiveEmailHtml({
+  recipientName,
+  orgName,
+  score,
+}: {
+  recipientName: string
+  orgName: string
+  score?: number | null
+}) {
+  const passportUrl = `${APP_URL}/passport`
+  return `
+    <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:40px 24px;color:#0f172a;">
+      <div style="font-size:20px;font-weight:700;color:#1B3BE8;margin-bottom:24px;letter-spacing:-0.03em;">
+        Strike SCF
+      </div>
+      <div style="width:52px;height:52px;border-radius:50%;background:rgba(201,168,76,0.14);display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12 L10 17 L19 8" stroke="#C9A84C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h2 style="font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-0.02em;">Your Strike Passport is live</h2>
+      <p style="color:#64748b;font-size:14px;line-height:1.7;margin:0 0 24px;">
+        Hi <strong>${recipientName}</strong>, <strong>${orgName}</strong>&apos;s Strike Passport has been verified and published to the network.${
+          typeof score === 'number'
+            ? ` Your starting PassportScore&trade; is <strong>${Math.round(score)}</strong>.`
+            : ''
+        } Counterparties and banks can now discover you on Strike Place.
+      </p>
+      <a href="${passportUrl}" style="display:inline-block;background:#1B3BE8;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">
+        View your Passport &rarr;
+      </a>
+      <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;line-height:1.6;">
+        Your PassportScore&trade; updates automatically as you complete trades on Strike.
+      </p>
+    </div>
+  `
+}
+
+export function passportReviewEmailHtml({
+  recipientName,
+  orgName,
+}: {
+  recipientName: string
+  orgName: string
+}) {
+  const passportUrl = `${APP_URL}/passport`
+  return `
+    <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:40px 24px;color:#0f172a;">
+      <div style="font-size:20px;font-weight:700;color:#1B3BE8;margin-bottom:24px;letter-spacing:-0.03em;">
+        Strike SCF
+      </div>
+      <h2 style="font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-0.02em;">Your application needs additional review</h2>
+      <p style="color:#64748b;font-size:14px;line-height:1.7;margin:0 0 24px;">
+        Hi <strong>${recipientName}</strong>, thanks for submitting <strong>${orgName}</strong>&apos;s application. Our automated KYB review is complete, and your file has been routed to a Strike analyst for a closer look. No action is needed from you right now — we&apos;ll be in touch shortly.
+      </p>
+      <a href="${passportUrl}" style="display:inline-block;background:#1B3BE8;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">
+        Check your status &rarr;
+      </a>
+      <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;line-height:1.6;">
+        Most reviews are completed within one business day.
+      </p>
+    </div>
+  `
+}
+
 export function transactionStatusEmailHtml({
   recipientName,
   eventBody,

@@ -1,7 +1,8 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import type { KYBStatus, OrgStatus, BankStatus } from '@strike-scf/types'
+import type { KybStatus, OrgStatus, BankStatus } from '@strike-scf/types'
+import { runKybAiReview } from '@/app/api/kyb/ai-review/route'
 
 const adminClient = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -82,9 +83,9 @@ export async function POST(request: Request) {
   const { error: updateError } = await adminClient
     .from('organizations')
     .update({
-      kyb_status: 'submitted' satisfies KYBStatus,
+      kyb_status: 'submitted' satisfies KybStatus,
       kyb_submitted_at: new Date().toISOString(),
-      status: 'submitted' satisfies OrgStatus,
+      status: 'kyb_submitted' satisfies OrgStatus,
       ...(bank_account_last4 !== undefined && { bank_account_last4 }),
       ...(bank_routing_number !== undefined && { bank_routing_number }),
       ...(bank_account_type !== undefined && { bank_account_type }),
@@ -94,6 +95,13 @@ export async function POST(request: Request) {
   if (updateError) {
     return NextResponse.json({ error: 'Failed to submit application' }, { status: 500 })
   }
+
+  // Kick off the AI KYB review → generates the Passport (score + narrative),
+  // writes credit_scores / agent_actions, and emails the applicant. Fired
+  // non-blocking so the applicant isn't held on the AI call.
+  runKybAiReview(org_id, { triggeredByUserId: user.id }).catch(err =>
+    console.error('[onboarding/submit] KYB AI review failed:', err)
+  )
 
   // Auto-enroll invited supplier in their program if not already enrolled
   const programId   = user.user_metadata?.program_id as string | undefined

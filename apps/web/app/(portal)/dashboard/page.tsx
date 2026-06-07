@@ -1,68 +1,183 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
-import { VolumeChart, ProgramPieChart, PeriodToggle, type Period } from '@/components/charts'
 import { AIInsight } from '@/components/ai-insight'
-import { RecommendationsPanel } from '@/components/recommendations-panel'
+import { AIInsightCard } from '@/components/ai-insight-card'
 import { SupplyGraph } from '@/components/supply-graph'
-import { RiskBadge } from '@/components/risk-badge'
+import { PassportScoreRing } from '@/components/passport-score-ring'
 
-// ============== Types ==============
-interface DashProgram { id: string; name: string; financing_types: string[]; status: string }
-interface BankData { portal: 'bank'; bank_name: string | null; program_count: number; active_program_count: number; enrolled_org_count: number; kyb_pending: number; pending_bank_review: number; active_transactions: number; suppliers_at_risk: number; tariff_exposed_count: number; outstanding_balance: number; margin_at_risk_label: string; at_risk_suppliers: Array<{ id: string; legal_name: string; risk_tier: string; risk_score: number | null; risk_flags: unknown }>; funding_queue?: any[] }
-interface AnchorData { portal: 'anchor'; org_name: string | null; programs: DashProgram[]; enrolled_supplier_count: number; pending_approval: number; dd_savings?: number | null }
-interface SupplierData { portal: 'supplier'; org_name: string | null; programs: DashProgram[]; active_transactions: number; performance_tier?: string; performance_score?: number | null; on_time_rate?: number | null; total_financed?: number }
-type DashData = BankData | AnchorData | SupplierData
-
-interface RouteState {
-  screen: string
-  programId?: string
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface BankData {
+  portal: 'bank'
+  bank_name: string | null
+  program_count: number
+  active_program_count: number
+  enrolled_org_count: number
+  kyb_pending: number
+  pending_bank_review: number
+  active_transactions: number
+  outstanding_balance: number
+  avg_rate?: number | null
+}
+interface AnchorData {
+  portal: 'anchor'
+  org_name: string | null
+  programs: Array<{ id: string; name: string; financing_types: string[]; status: string }>
+  enrolled_supplier_count: number
+  pending_approval: number
+}
+interface SupplierData {
+  portal: 'supplier'
+  org_name: string | null
+  programs: Array<{ id: string; name: string; financing_types: string[]; status: string }>
+  active_transactions: number
+  performance_tier?: string
+  performance_score?: number | null
+  on_time_rate?: number | null
+  total_financed?: number
 }
 
-interface BankSnapshot {
-  role: 'bank'
-  monthly_volume: Array<{ label: string; count: number; volume: number }>
-  status_breakdown: Array<{ status: string; count: number }>
-  program_breakdown?: Array<{ name: string; volume: number }>
-  portfolio: {
-    total_transactions: number
-    active_deals: number
-    outstanding_balance: number
-    total_repaid: number
-    avg_rate?: number | null
+interface NotifItem {
+  id: string; title: string; body: string
+  created_at: string; read: boolean; deep_link?: string | null
+}
+
+interface FinancingItem {
+  request: {
+    id: string
+    amount_requested: number
+    structure_type: string
+    status: string
+    ai_risk_assessment: string | null
+    offer_count: number
   }
+  buyer_passport: { legal_name: string | null; passport_score: number | null } | null
+  supplier_passport: { legal_name: string | null; passport_score: number | null } | null
+  all_offers_count: number
 }
-interface AnchorSnapshot {
-  role: 'anchor'
-  monthly_volume: Array<{ label: string; count: number; total_invoice_amount: number }>
-  program_breakdown?: Array<{ name: string; volume: number }>
-}
-interface SupplierSnapshot {
-  role: 'supplier'
-  monthly_volume: Array<{ label: string; count: number; total_financed: number }>
-  receivables?: { outstanding_count: number; outstanding_balance: number }
-  acceptance_rate?: number | null
-  program_breakdown?: Array<{ name: string; volume: number }>
-}
-type ReportingSnapshot = BankSnapshot | AnchorSnapshot | SupplierSnapshot
 
+interface DealItem {
+  id: string
+  buyer_org_id: string
+  supplier_org_id: string
+  status: string
+  goods_description: string | null
+  total_value: number | null
+  counterparty: { id: string; legal_name: string | null; passport_score: number | null } | null
+  user_role: 'buyer' | 'supplier'
+}
+
+interface ListingItem {
+  listing: { id: string; title: string; offer_count: number; status: string }
+}
+
+interface OrgFinancingReq {
+  id: string
+  amount_requested: number
+  structure_type: string
+  status: string
+  offer_count: number
+}
+
+interface PassportData {
+  organization: {
+    passport_score: number | null
+    network_visible: boolean
+    passport_narrative: string | null
+    risk_tier: string | null
+    trade_count_total: number
+    trade_volume_total: number
+    avg_payment_days: number | null
+  }
+  avg_rating: number | null
+  review_count: number
+  org_view_count_30d: number
+  bank_view_count_30d: number
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtCurrency(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`
   return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
-function fmtMoney(n: number | null | undefined): string {
-  if (!n || isNaN(Number(n))) return '$0'
-  const num = Number(n)
-  if (num >= 1_000_000) return '$' + (num / 1_000_000).toFixed(1) + 'M'
-  if (num >= 1_000) return '$' + (num / 1_000).toFixed(0) + 'K'
-  return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 })
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'morning'
+  if (h < 17) return 'afternoon'
+  return 'evening'
 }
 
-// ============== Icon ==============
+function fmtRelTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60_000)     return 'just now'
+  if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function todayFull(): string {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
+function dealStatusClass(status: string): string {
+  switch (status) {
+    case 'completed':          return 'badge-completed'
+    case 'cancelled':          return 'badge-rejected'
+    case 'negotiating':        return 'badge-pending'
+    case 'agreed':             return 'badge-active'
+    case 'financing_requested':
+    case 'financing_active':   return 'badge-funded'
+    case 'active':             return 'badge-active'
+    case 'disputed':           return 'badge-rejected'
+    default:                   return 'badge-draft'
+  }
+}
+
+function financingStatusClass(status: string): string {
+  switch (status) {
+    case 'open':            return 'badge-active'
+    case 'offers_received': return 'badge-offer'
+    case 'accepted':        return 'badge-funded'
+    case 'funded':          return 'badge-completed'
+    default:                return 'badge-draft'
+  }
+}
+
+function structureBadgeClass(s: string): string {
+  switch (s) {
+    case 'open':   return 'badge-active'
+    case 'custom': return 'badge-signing'
+    case 'preset': return 'badge-funded'
+    default:       return 'badge-draft'
+  }
+}
+
+function scoreColor(score: number | null | undefined): string {
+  if (!score) return 'var(--gray)'
+  if (score >= 70) return 'var(--color-green)'
+  if (score >= 45) return 'var(--color-amber)'
+  return 'var(--color-red)'
+}
+
+function scoreTierLabel(score: number | null | undefined): string {
+  if (!score) return 'Unrated'
+  if (score >= 70) return 'Preferred'
+  if (score >= 45) return 'Standard'
+  return 'At Risk'
+}
+
+function scoreTierClass(score: number | null | undefined): string {
+  if (!score) return 'badge-draft'
+  if (score >= 70) return 'badge-funded'
+  if (score >= 45) return 'badge-pending'
+  return 'badge-rejected'
+}
+
+// ─── Icon ─────────────────────────────────────────────────────────────────────
 function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {
   return (
     <svg width={size} height={size} className={className} aria-hidden="true">
@@ -71,7 +186,7 @@ function Icon({ name, size = 16, className }: { name: string; size?: number; cla
   )
 }
 
-// ============== Topbar ==============
+// ─── Topbar ───────────────────────────────────────────────────────────────────
 function Topbar({ crumbs, actions }: {
   crumbs: Array<{ label: string; onClick?: () => void }>
   actions?: React.ReactNode
@@ -99,15 +214,7 @@ function Topbar({ crumbs, actions }: {
   )
 }
 
-interface NotifItem {
-  id: string
-  title: string
-  body: string
-  created_at: string
-  read: boolean
-  deep_link?: string | null
-}
-
+// ─── NotifBell ────────────────────────────────────────────────────────────────
 function NotifBell() {
   const router = useRouter()
   const [notifications, setNotifications] = useState<NotifItem[]>([])
@@ -116,7 +223,7 @@ function NotifBell() {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/notifications')
+    fetch('/api/notifications?limit=20')
       .then(r => r.json())
       .then(d => {
         setNotifications(d.notifications ?? [])
@@ -140,8 +247,7 @@ function NotifBell() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     setUnreadCount(prev => Math.max(0, prev - 1))
     fetch(`/api/notifications/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ read: true }),
     }).catch(() => {})
   }
@@ -151,26 +257,15 @@ function NotifBell() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     setUnreadCount(0)
     ids.forEach(id => fetch(`/api/notifications/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ read: true }),
     }).catch(() => {}))
-  }
-
-  function fmtTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime()
-    if (diff < 60000)    return 'Just now'
-    if (diff < 3600000)  return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <button
-        className="icon-btn"
-        type="button"
-        aria-label="Notifications"
+        className="icon-btn" type="button" aria-label="Notifications"
         onClick={() => setOpen(o => !o)}
         style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--gray)' }}
       >
@@ -179,7 +274,7 @@ function NotifBell() {
       {unreadCount > 0 && (
         <span style={{
           position: 'absolute', top: -4, right: -4,
-          background: 'var(--color-red)', color: 'white',
+          background: 'var(--color-red)', color: 'var(--white)',
           borderRadius: '50%', width: 16, height: 16,
           fontSize: 10, display: 'flex', alignItems: 'center',
           justifyContent: 'center', fontWeight: 600, pointerEvents: 'none',
@@ -189,39 +284,39 @@ function NotifBell() {
         <div style={{
           position: 'absolute', top: 48, right: 0, width: 320,
           background: 'var(--white)', border: '1px solid var(--border)',
-          borderRadius: 10, boxShadow: '0 4px 16px var(--color-shadow)', zIndex: 100,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.08)', zIndex: 100,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Notifications</span>
             {unreadCount > 0 && (
-              <button type="button" style={{ fontSize: 12, color: 'var(--color-accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} onClick={markAllRead}>
+              <button type="button" style={{ fontSize: 12, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} onClick={markAllRead}>
                 Mark all read
               </button>
             )}
           </div>
           {notifications.length === 0 ? (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 13 }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
               No notifications yet
             </div>
           ) : (
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-              {notifications.slice(0, 5).map(n => (
+              {notifications.slice(0, 10).map(n => (
                 <div
                   key={n.id}
-                  style={{
-                    padding: '12px 16px', borderBottom: '1px solid var(--border)',
-                    cursor: 'pointer',
-                    borderLeft: n.read ? '2px solid transparent' : '2px solid var(--color-accent)',
-                  }}
                   onClick={() => {
                     if (!n.read) markRead(n.id)
                     if (n.deep_link) router.push(n.deep_link)
                     setOpen(false)
                   }}
+                  style={{
+                    padding: '12px 16px', borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    borderLeft: n.read ? '2px solid transparent' : '2px solid var(--blue)',
+                  }}
                 >
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{n.title}</div>
-                  <div style={{ color: 'var(--color-ink-3)', fontSize: 12, marginTop: 2 }}>{n.body}</div>
-                  <div style={{ color: 'var(--color-ink-4)', fontSize: 11, marginTop: 4 }}>{fmtTime(n.created_at)}</div>
+                  <div style={{ color: 'var(--gray)', fontSize: 12, marginTop: 2 }}>{n.body}</div>
+                  <div style={{ color: 'var(--gray-soft)', fontSize: 11, marginTop: 4 }}>{fmtRelTime(n.created_at)}</div>
                 </div>
               ))}
             </div>
@@ -232,763 +327,862 @@ function NotifBell() {
   )
 }
 
-// ============== Chart Helpers ==============
-function smoothPath(points: [number, number][]): string {
-  if (points.length < 2) return ''
-  const first = points[0]!
-  let d = `M ${first[0]} ${first[1]}`
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i]!
-    const p1 = points[i]!
-    const p2 = points[i + 1]!
-    const p3 = points[i + 2] ?? p2
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`
-  }
-  return d
-}
-
-function Sparkline({ data, color = 'var(--color-green)', height = 36, fill = false }: {
-  data: number[]
-  color?: string
-  height?: number
-  fill?: boolean
-}) {
-  if (data.length < 2) return <div style={{ height }} />
-  const w = 200, h = height, pad = 2
-  const min = Math.min(...data), max = Math.max(...data)
-  const range = max - min || 1
-  const pts: [number, number][] = data.map((v, i) => [
-    pad + (i / (data.length - 1)) * (w - pad * 2),
-    h - pad - ((v - min) / range) * (h - pad * 2),
-  ])
-  const d = smoothPath(pts)
-  const lastPt = pts[pts.length - 1]!
-  const firstPt = pts[0]!
-  const area = `${d} L ${lastPt[0]} ${h} L ${firstPt[0]} ${h} Z`
+// ─── Skeleton primitives ──────────────────────────────────────────────────────
+function SkeletonBlock({ height = 80, width = '100%' }: { height?: number; width?: string | number }) {
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height, display: 'block' }}>
-      {fill && <path d={area} fill={color} fillOpacity="0.12" />}
-      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <div style={{
+      background: 'var(--border)', height, width,
+      animation: 'skeleton-pulse 1.8s ease infinite',
+    }} />
   )
 }
 
-// ============== BANK DASHBOARD ==============
-function PortfolioBar({ activeProgramCount = 0 }: { activeProgramCount?: number }) {
+function SkeletonCard({ height = 120 }: { height?: number }) {
   return (
-    <div>
-      <div className="portfolio-bar">
-        <div style={{ width: '100%', height: '100%', background: 'var(--border)', borderRadius: 4 }} />
+    <div style={{
+      background: 'var(--white)', border: '1px solid var(--border)',
+      height, animation: 'skeleton-pulse 1.8s ease infinite',
+    }} />
+  )
+}
+
+// ─── Action Queue Strip ───────────────────────────────────────────────────────
+interface ActionCard { color: string; label: string; href: string; count: number }
+
+function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: boolean }) {
+  const router = useRouter()
+  const visible = cards.filter(c => c.count > 0)
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ flex: 1 }}><SkeletonCard height={60} /></div>
+        ))}
       </div>
-      <div className="portfolio-meta">
-        {activeProgramCount} active program{activeProgramCount !== 1 ? 's' : ''} · No portfolio data yet
+    )
+  }
+
+  if (visible.length === 0) {
+    return (
+      <div style={{
+        marginBottom: 24, padding: '12px 18px',
+        background: 'var(--color-green-bg)',
+        borderLeft: '3px solid var(--color-green)',
+        display: 'flex', alignItems: 'center', gap: 10,
+        fontSize: 13, color: 'var(--color-green)',
+      }}>
+        <span style={{ fontWeight: 600 }}>✓</span>
+        <span>All clear — no items need attention</span>
       </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+      {visible.map((card, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => router.push(card.href)}
+          style={{
+            flex: '1 1 180px', minWidth: 0,
+            background: 'var(--white)', border: '1px solid var(--border)',
+            borderLeft: `3px solid ${card.color}`,
+            padding: '12px 16px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, textAlign: 'left', fontFamily: 'inherit',
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--ink)' }}>{card.label}</span>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600,
+            color: card.color, flexShrink: 0,
+          }}>
+            {card.count}
+          </span>
+        </button>
+      ))}
     </div>
   )
 }
 
-function ScreenBankDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: BankData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
-  const user = useUser()
+// ─── KPI Strip ────────────────────────────────────────────────────────────────
+interface KpiItem { label: string; value: string; sub?: string; valueColor?: string }
+
+function KpiStrip({ kpis, loading }: { kpis: KpiItem[]; loading: boolean }) {
+  return (
+    <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
+      {kpis.map((k, i) => (
+        <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)' }}>
+          <div className="kpi-label">{k.label}</div>
+          {loading ? (
+            <div style={{ marginTop: 4, marginBottom: 4 }}><SkeletonBlock height={24} width={80} /></div>
+          ) : (
+            <div className="kpi-value" style={{
+              fontFamily: 'var(--font-display)', fontSize: 24, letterSpacing: '-0.02em',
+              color: k.valueColor ?? 'var(--ink)',
+            }}>{k.value}</div>
+          )}
+          {k.sub && <div className="kpi-delta kpi-delta-mut">{k.sub}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Passport Banner ──────────────────────────────────────────────────────────
+function PassportBanner({
+  passport, loading, size = 'md', extras,
+}: {
+  passport: PassportData | null
+  loading: boolean
+  size?: 'md' | 'lg'
+  extras?: React.ReactNode
+}) {
   const router = useRouter()
+
+  if (loading) return <div style={{ marginBottom: 24 }}><SkeletonCard height={96} /></div>
+
+  if (!passport || !passport.organization.passport_score) {
+    return (
+      <div style={{
+        marginBottom: 24, padding: '14px 18px',
+        background: 'var(--color-amber-bg)',
+        borderLeft: '3px solid var(--color-amber)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 13, color: 'var(--color-amber)', fontWeight: 500 }}>
+          Your Passport isn't visible on Strike Place yet. Complete verification to unlock the marketplace.
+        </span>
+        <button type="button" className="btn btn-sm" onClick={() => router.push('/onboarding')}
+          style={{ flexShrink: 0 }}>
+          Complete →
+        </button>
+      </div>
+    )
+  }
+
+  const { organization: org, avg_rating, review_count, org_view_count_30d, bank_view_count_30d } = passport
+  const score = org.passport_score
+
+  return (
+    <div style={{
+      marginBottom: 24, background: 'var(--white)',
+      border: '1px solid var(--border)',
+      borderLeft: '3px solid var(--teal)',
+      display: 'flex', alignItems: 'center', gap: 20,
+      padding: '16px 20px', flexWrap: 'wrap',
+    }}>
+      <PassportScoreRing score={score} size={size} showLabel />
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600,
+            color: 'var(--gold)', letterSpacing: '-0.02em',
+          }}>{score}</span>
+          <span className={`badge ${scoreTierClass(score)}`}>{scoreTierLabel(score)}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>PassportScore™</span>
+        </div>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Total Trades', value: String(org.trade_count_total) },
+            { label: 'Total Volume', value: fmtCurrency(org.trade_volume_total) },
+            ...(org.avg_payment_days != null ? [{ label: 'On-Time Rate', value: `${org.avg_payment_days}d avg` }] : []),
+          ].map(stat => (
+            <div key={stat.label}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{stat.label}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)' }}>{stat.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {extras}
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => router.push('/passport')}>
+        View Passport →
+      </button>
+    </div>
+  )
+}
+
+// ─── Deal Table (shared by anchor + supplier) ─────────────────────────────────
+function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
+  deals: DealItem[]
+  loading: boolean
+  emptyTitle: string
+  emptySub: string
+  emptyCta: React.ReactNode
+}) {
+  const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status)).slice(0, 5)
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16 }}>
+        {[1, 2, 3].map(i => <SkeletonCard key={i} height={48} />)}
+      </div>
+    )
+  }
+
+  if (activeDeals.length === 0) {
+    return (
+      <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>{emptyTitle}</div>
+        <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>{emptySub}</div>
+        {emptyCta}
+      </div>
+    )
+  }
+
+  return (
+    <table className="table" style={{ tableLayout: 'fixed' }}>
+      <thead>
+        <tr>
+          <th style={{ width: '26%' }}>Counterparty</th>
+          <th style={{ width: '30%' }}>Goods</th>
+          <th className="amount" style={{ width: '15%' }}>Value</th>
+          <th style={{ width: '18%' }}>Status</th>
+          <th style={{ width: '11%' }}></th>
+        </tr>
+      </thead>
+      <tbody>
+        {activeDeals.map(deal => (
+          <tr key={deal.id}>
+            <td>
+              <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {deal.counterparty?.legal_name ?? 'Unknown'}
+              </div>
+              {deal.counterparty?.passport_score != null && (
+                <div style={{ fontSize: 11, color: scoreColor(deal.counterparty.passport_score), marginTop: 1 }}>
+                  Score {deal.counterparty.passport_score}
+                </div>
+              )}
+            </td>
+            <td>
+              <div style={{ fontSize: 12, color: 'var(--gray)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                {(deal.goods_description ?? '—').slice(0, 40)}
+              </div>
+            </td>
+            <td className="amount">{deal.total_value ? fmtCurrency(deal.total_value) : '—'}</td>
+            <td><span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span></td>
+            <td className="row-actions">
+              <a href={`/deals/${deal.id}`} className="btn btn-sm btn-ghost">View</a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// ─── BANK DASHBOARD ──────────────────────────────────────────────────────────
+function BankDashboard() {
+  const user = useUser()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
-  const queue = data?.funding_queue ?? []
+  const [loading, setLoading] = useState(true)
+  const [dashData, setDashData] = useState<BankData | null>(null)
+  const [financing, setFinancing] = useState<FinancingItem[]>([])
+  const [notifications, setNotifications] = useState<NotifItem[]>([])
 
-  const bankSnap    = reportingSnap?.role === 'bank' ? reportingSnap : null
-  const bankMonthly = bankSnap?.monthly_volume.map(m => m.count) ?? []
-  const bankVolItems = (bankSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))
-  const bankProgramBreakdown = bankSnap?.program_breakdown ?? []
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/dashboard').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/marketplace/financing').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/notifications?unread_only=true&limit=5').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([dash, fin, notifs]) => {
+      if (dash?.portal === 'bank') setDashData(dash as BankData)
+      const rawRequests: unknown[] = (fin as any)?.requests ?? []
+      setFinancing(rawRequests.slice(0, 5) as FinancingItem[])
+      setNotifications(((notifs as any)?.notifications ?? []) as NotifItem[])
+      setLoading(false)
+    })
+  }, [])
 
-  const kpis = [
-    { label: 'Active Programs', value: data ? String(data.active_program_count) : '—', delta: data ? `${data.program_count} total` : 'Loading',                                                          deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-accent)', sparkData: [] as number[] },
-    { label: 'Enrolled Orgs',   value: data ? String(data.enrolled_org_count) : '—',   delta: 'Across programs',                                                                                         deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-green)',  sparkData: [] as number[] },
-    { label: 'KYB Pending',     value: data ? String(data.kyb_pending) : '—',          delta: 'Awaiting review',                                                                                         deltaClass: (data?.kyb_pending ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',                         color: 'var(--color-amber)',  sparkData: [] as number[] },
-    { label: 'Pending Review',  value: data ? String(data.pending_bank_review) : '—',  delta: (data?.pending_bank_review ?? 0) > 0 ? 'Needs review' : 'None pending',                                  deltaClass: (data?.pending_bank_review ?? 0) > 0 ? 'kpi-delta-warn' : 'kpi-delta-mut',              color: 'var(--color-amber)',  sparkData: [] as number[] },
-    { label: 'Active Deals',    value: data ? String(data.active_transactions) : '—',  delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',                                    deltaClass: 'kpi-delta-mut',                                                                              color: 'var(--color-ink-4)', sparkData: bankMonthly },
+  const kybPending = dashData?.kyb_pending ?? 0
+  const openFinancing = financing.length
+  const txnsPending = dashData?.pending_bank_review ?? 0
+  const attentionCount = kybPending + openFinancing + txnsPending
+
+  const actionCards: ActionCard[] = [
+    { color: 'var(--color-amber)', label: `${kybPending} KYB review${kybPending !== 1 ? 's' : ''} pending`, count: kybPending, href: '/kyb' },
+    { color: 'var(--blue)', label: `${openFinancing} open financing request${openFinancing !== 1 ? 's' : ''}`, count: openFinancing, href: '/marketplace/financing' },
+    { color: 'var(--color-amber)', label: `${txnsPending} transaction${txnsPending !== 1 ? 's' : ''} awaiting review`, count: txnsPending, href: '/transactions' },
+  ]
+
+  const kpis: KpiItem[] = [
+    { label: 'Active Programs',    value: loading ? '—' : String(dashData?.active_program_count ?? 0), sub: dashData ? `${dashData.program_count} total` : undefined },
+    { label: 'Outstanding Balance', value: loading ? '—' : fmtCurrency(dashData?.outstanding_balance ?? 0), valueColor: 'var(--blue)' },
+    { label: 'Avg Financing Rate', value: loading ? '—' : (dashData?.avg_rate != null ? `${dashData.avg_rate}%` : '—') },
+    { label: 'Enrolled Orgs',     value: loading ? '—' : String(dashData?.enrolled_org_count ?? 0) },
   ]
 
   return (
     <>
-      <Topbar
-        crumbs={[{ label: 'Dashboard' }]}
-      />
+      <Topbar crumbs={[{ label: 'Dashboard' }]} />
       <div className="page">
+
+        {/* 1. Page header */}
         <div className="page-header">
-          <div className="eyebrow">{data?.bank_name ?? 'Bank'} · Portfolio Command</div>
-          <h1 className="t-page-title">Good morning, {firstName}</h1>
+          <div className="eyebrow">{dashData?.bank_name ?? 'Bank'} · Command Center</div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
+            Good {greeting()}, {firstName}
+          </h1>
           <div className="subtitle">
-            {data && data.kyb_pending > 0 ? `${data.kyb_pending} KYB review${data.kyb_pending !== 1 ? 's' : ''} pending · ` : ''}
-            {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            {loading ? 'Loading…'
+              : attentionCount > 0
+              ? `${attentionCount} item${attentionCount !== 1 ? 's' : ''} need your attention · ${todayFull()}`
+              : `Everything is up to date · ${todayFull()}`
+            }
           </div>
         </div>
 
-        <AIInsight
-          title="Portfolio Overview"
-          collapsed={true}
-          prompt="Based on this bank's current portfolio data, provide a brief executive summary. Highlight key metrics, any concentration risks, and one recommended action for today."
-          context={{
-            active_programs: data?.active_program_count ?? 0,
-            pending_kyb: data?.kyb_pending ?? 0,
-            pending_review: data?.pending_bank_review ?? 0,
-            active_deals: data?.active_transactions ?? 0,
-            enrolled_orgs: data?.enrolled_org_count ?? 0,
-          }}
-        />
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '1px',
-          background: 'var(--border)',
-          marginBottom: 1,
-          marginTop: 24,
-        }}>
-          {[
-            {
-              label: 'Suppliers at risk',
-              value: data?.suppliers_at_risk ?? 0,
-              color: (data?.suppliers_at_risk ?? 0) > 0 ? '#DC2626' : 'var(--ink)',
-              sub: 'Red tier score',
-            },
-            {
-              label: 'Tariff exposed',
-              value: data?.tariff_exposed_count ?? 0,
-              color: (data?.tariff_exposed_count ?? 0) > 0 ? '#D97706' : 'var(--ink)',
-              sub: 'High tariff risk',
-            },
-            {
-              label: 'Outstanding',
-              value: fmtCurrency(data?.outstanding_balance ?? 0),
-              color: 'var(--blue)',
-              sub: 'Funded transactions',
-            },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ background: 'var(--white)', padding: '20px 24px' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'var(--gray)',
-                marginBottom: 8,
-              }}>{kpi.label}</div>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                color: kpi.color,
-              }}>{kpi.value}</div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 9,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'var(--gray)',
-                marginTop: 4,
-              }}>{kpi.sub}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="kpi-strip-5" style={{ gap: '1px', background: 'var(--border)' }}>
-          {kpis.map((k, i) => (
-            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value mono">{k.value}</div>
-              <div className={`kpi-delta ${k.deltaClass}`}>{k.delta}</div>
-              <Sparkline data={k.sparkData} color={k.color} fill />
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 24 }}>
-          <SupplyGraph bankId={''} />
-        </div>
-
-        <div style={{ marginTop: 24 }}>
-          <RecommendationsPanel
-            bankId={data?.bank_name ?? ''}
-            maxItems={2}
-          />
-        </div>
-
-        <div style={{
-          border: '1px solid var(--border)',
-          background: 'var(--white)',
-          marginTop: 24,
-        }}>
-          <div style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <span style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--ink)',
-            }}>
-              Funding Queue
-              {queue.length > 0 && (
-                <span style={{ marginLeft: 8, color: 'var(--blue)' }}>· {queue.length}</span>
-              )}
-            </span>
-            <span style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 9,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--gray)',
-            }}>AI-prioritized</span>
+        {dashData && (
+          <div style={{ marginBottom: 24 }}>
+            <AIInsightCard
+              variant="banner"
+              portal="bank"
+              page="dashboard"
+              context={{
+                bank_name: dashData.bank_name,
+                active_programs: dashData.active_program_count,
+                total_programs: dashData.program_count,
+                enrolled_orgs: dashData.enrolled_org_count,
+                kyb_pending: dashData.kyb_pending,
+                pending_bank_review: dashData.pending_bank_review,
+                active_transactions: dashData.active_transactions,
+                outstanding_balance: dashData.outstanding_balance,
+              }}
+            />
           </div>
+        )}
 
-          {queue.length === 0 ? (
-            <div style={{
-              padding: '24px 20px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--gray)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              textAlign: 'center',
-            }}>
-              No pending financing decisions
-            </div>
-          ) : (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
-              gap: 1,
-              background: 'var(--border)',
-            }}>
-              {['Supplier', 'Amount', 'Status', 'Waiting', 'Action'].map(h => (
-                <div key={h} style={{
-                  background: 'var(--offwhite)',
-                  padding: '8px 14px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 9,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  color: 'var(--gray)',
-                }}>{h}</div>
-              ))}
-            </div>
-          )}
+        {/* 2. Action queue */}
+        <ActionQueueStrip cards={actionCards} loading={loading} />
 
-          {queue.map((item: any) => (
-            <div key={item.id} style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 80px',
-              gap: 1,
-              background: 'var(--border)',
-              borderLeft: item.priority_score >= 60
-                ? '3px solid #DC2626'
-                : item.priority_score >= 35
-                ? '3px solid #D97706'
-                : '3px solid transparent',
-            }}>
-              <div style={{ background: 'var(--white)', padding: '10px 14px' }}>
-                <div style={{
-                  fontFamily: 'var(--font-body)',
-                  fontSize: 13,
-                  color: 'var(--ink)',
-                  marginBottom: 3,
-                }}>
-                  {item.organizations?.legal_name}
-                </div>
-                <RiskBadge
-                  tier={item.organizations?.risk_tier}
-                  flags={item.organizations?.risk_flags?.slice(0, 1)}
-                  size="sm"
-                />
-              </div>
-              <div style={{
-                background: 'var(--white)',
-                padding: '10px 14px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 13,
-                color: 'var(--ink)',
-                display: 'flex',
-                alignItems: 'center',
-              }}>
-                {fmtMoney(item.invoice_amount)}
-              </div>
-              <div style={{
-                background: 'var(--white)',
-                padding: '10px 14px',
-                display: 'flex',
-                alignItems: 'center',
-              }}>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 9,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: item.status === 'pending_bank_review' ? 'var(--blue)' : 'var(--gray)',
-                }}>
-                  {item.status === 'pending_bank_review' ? 'Awaiting review' : 'Counter review'}
-                </span>
-              </div>
-              <div style={{
-                background: 'var(--white)',
-                padding: '10px 14px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                color: item.days_waiting > 3 ? '#DC2626' : 'var(--gray)',
-                display: 'flex',
-                alignItems: 'center',
-              }}>
-                {item.days_waiting}d
-              </div>
-              <div style={{
-                background: 'var(--white)',
-                padding: '10px 14px',
-                display: 'flex',
-                alignItems: 'center',
-              }}>
-                <a
-                  href={`/transactions/${item.id}`}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontSize: 11 }}>
-                  Review
-                </a>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* 3. KPI strip */}
+        <KpiStrip kpis={kpis} loading={loading} />
 
-        <div className="grid-2-1" style={{ marginTop: 24 }}>
+        {/* 4. Two-column */}
+        <div className="split-65" style={{ marginBottom: 24 }}>
+
+          {/* LEFT — Financing Marketplace */}
           <div className="card">
             <div className="card-head">
-              <h3 className="t-card-head">Volume · last 6 months</h3>
-              <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+              <span>Open Financing Requests</span>
+              <a href="/marketplace/financing" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
             </div>
-            <div className="card-body">
-              <VolumeChart data={bankVolItems} height={160} color="#2563EB" />
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Action required</h3></div>
-            <div className="action-list">
-              {(data?.kyb_pending ?? 0) > 0 && (
-                <button className="action-row" data-tone="amber" onClick={() => router.push('/kyb')}>
-                  <div>
-                    <div className="action-label">KYB applications pending</div>
-                    <div className="action-sub">Review business verification applications</div>
-                  </div>
-                  <span className="action-num">{data!.kyb_pending}</span>
-                  <Icon name="chev-right" size={14} className="action-chev" />
-                </button>
-              )}
-              {(data?.pending_bank_review ?? 0) > 0 && (
-                <button className="action-row" data-tone="amber" onClick={() => router.push('/transactions')}>
-                  <div>
-                    <div className="action-label">Transactions pending review</div>
-                    <div className="action-sub">Awaiting bank approval</div>
-                  </div>
-                  <span className="action-num">{data!.pending_bank_review}</span>
-                  <Icon name="chev-right" size={14} className="action-chev" />
-                </button>
-              )}
-              {(data?.kyb_pending ?? 0) === 0 && (data?.pending_bank_review ?? 0) === 0 && (
-                <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                  No actions required
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid-1-1-1" style={{ marginTop: 24 }}>
-          <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
-            <div className="card-body">
-              <ProgramPieChart segments={bankProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Status breakdown</h3></div>
-            {(bankSnap?.status_breakdown ?? []).length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                No transactions yet
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {[1, 2, 3].map(i => <SkeletonCard key={i} height={96} />)}
+              </div>
+            ) : financing.length === 0 ? (
+              <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>No open financing requests right now</div>
+                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>Check back soon or browse the full marketplace.</div>
+                <a href="/marketplace/financing" className="btn btn-sm btn-ghost">Browse marketplace →</a>
               </div>
             ) : (
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(bankSnap!.status_breakdown ?? []).slice(0, 5).map(row => {
-                  const total = bankSnap!.status_breakdown.reduce((s, r) => s + r.count, 0)
-                  const pct   = total > 0 ? Math.round((row.count / total) * 100) : 0
-                  const STATUS_LABELS: Record<string, string> = {
-                    pending_anchor_approval: 'Anchor Review', pending_bank_review: 'Bank Review',
-                    financing_approved: 'Approved', funded: 'Funded', completed: 'Completed', rejected: 'Rejected',
-                  }
-                  return (
-                    <div key={row.status}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <span style={{ fontSize: 11, color: 'var(--color-ink-2)' }}>{STATUS_LABELS[row.status] ?? row.status}</span>
-                        <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{row.count} ({pct}%)</span>
+              <div>
+                {financing.map((item) => (
+                  <div key={item.request.id} style={{
+                    padding: '16px 20px',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{
+                        fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600,
+                        letterSpacing: '-0.02em', color: 'var(--ink)',
+                      }}>
+                        {fmtCurrency(item.request.amount_requested)}
+                      </span>
+                      <span className={`badge ${structureBadgeClass(item.request.structure_type)}`}>
+                        {item.request.structure_type}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                        <PassportScoreRing score={item.buyer_passport?.passport_score ?? null} size="sm" />
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>BUYER</span>
                       </div>
-                      <div style={{ height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                        <PassportScoreRing score={item.supplier_passport?.passport_score ?? null} size="sm" />
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>SUPPLIER</span>
+                      </div>
+                      {item.request.ai_risk_assessment && (
                         <div style={{
-                          height: '100%', width: `${pct}%`, borderRadius: 2, transition: 'width 0.4s',
-                          background: row.status === 'completed' ? 'var(--color-green)' : row.status === 'rejected' ? 'var(--color-red)' : 'var(--color-accent)',
-                        }} />
-                      </div>
+                          flex: 1, fontSize: 12, color: 'var(--gray)', fontStyle: 'italic',
+                          overflow: 'hidden', display: '-webkit-box',
+                          WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
+                        }}>
+                          {item.request.ai_risk_assessment}
+                        </div>
+                      )}
                     </div>
-                  )
-                })}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <a href={`/marketplace/financing/${item.request.id}`} className="btn btn-sm btn-blue">Submit Offer</a>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          <div className="card">
-            <div className="card-head"><h3 className="t-card-head">Portfolio summary</h3></div>
-            {bankSnap ? (
-              <div className="card-body">
-                <div className="kv-rows">
-                  <div className="kv-row"><span className="k">Total transactions</span><span className="v">{bankSnap.portfolio.total_transactions}</span></div>
-                  <div className="kv-row"><span className="k">Active deals</span><span className="v">{bankSnap.portfolio.active_deals}</span></div>
-                  <div className="kv-row"><span className="k">Outstanding</span><span className="v">{fmtCurrency(bankSnap.portfolio.outstanding_balance)}</span></div>
-                  <div className="kv-row"><span className="k">Total repaid</span><span className="v">{fmtCurrency(bankSnap.portfolio.total_repaid)}</span></div>
-                  {bankSnap.portfolio.avg_rate != null && (
-                    <div className="kv-row"><span className="k">Avg rate</span><span className="v">{bankSnap.portfolio.avg_rate}%</span></div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>No data yet</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
 
-// ============== ANCHOR DASHBOARD ==============
-function ScreenAnchorDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: AnchorData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
-  const user = useUser()
-  const router = useRouter()
-  const firstName = user?.full_name?.split(' ')[0] ?? 'there'
-
-  const anchorSnap           = reportingSnap?.role === 'anchor' ? reportingSnap : null
-  const anchorMonthly        = anchorSnap?.monthly_volume?.map(m => m.total_invoice_amount) ?? []
-  const anchorVolItems       = (anchorSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_invoice_amount, count: m.count }))
-  const lastMonth            = anchorSnap?.monthly_volume?.length ? anchorSnap.monthly_volume[anchorSnap.monthly_volume.length - 1] : null
-  const currentMonthFinanced = lastMonth?.total_invoice_amount ?? null
-  const totalPayablesFinanced = anchorSnap?.monthly_volume?.reduce((s, m) => s + m.total_invoice_amount, 0) ?? null
-  const anchorProgramBreakdown = anchorSnap?.program_breakdown ?? []
-
-  return (
-    <>
-      <Topbar
-        crumbs={[{ label: 'Dashboard' }]}
-      />
-      <div className="page">
-        <div className="page-header">
-          <div className="eyebrow">{data?.org_name ?? 'Organization'} · Overview</div>
-          <h1 className="t-page-title">Good morning, {firstName}</h1>
-          <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
-        </div>
-
-        <AIInsight
-          title="Payables Snapshot"
-          collapsed={true}
-          prompt="Based on this anchor's current payables data, provide a brief summary. Highlight pending approvals, upcoming obligations, and one recommended action."
-          context={{
-            pending_approval: data?.pending_approval ?? 0,
-            enrolled_programs: data?.programs?.length ?? 0,
-            total_invoice_volume: totalPayablesFinanced ?? 0,
-          }}
-        />
-
-        <div className="kpi-strip-5" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
-          {[
-            { label: 'Payables financed',   value: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? fmtCurrency(totalPayablesFinanced) : '—', delta: totalPayablesFinanced != null && totalPayablesFinanced > 0 ? 'Last 6 months' : 'No data yet', color: 'var(--color-anchor)', sparkData: anchorMonthly },
-            { label: 'Pending approval',    value: data ? String(data.pending_approval) : '—',                                          delta: (data?.pending_approval ?? 0) > 0 ? 'Awaiting action' : 'Up to date',  color: 'var(--color-amber)',  sparkData: [] as number[] },
-            { label: 'Financed this month', value: currentMonthFinanced != null && currentMonthFinanced > 0 ? fmtCurrency(currentMonthFinanced) : '—', delta: currentMonthFinanced != null && currentMonthFinanced > 0 ? 'This month' : 'No data yet', color: 'var(--color-green)',  sparkData: anchorMonthly },
-            { label: 'Due in 30 days',      value: '—',                                                                                        delta: 'No data yet',                                                              color: 'var(--color-amber)',  sparkData: [] as number[] },
-            { label: 'DD Savings captured', value: (data?.dd_savings ?? 0) > 0 ? fmtCurrency(data!.dd_savings!) : '—', delta: (data?.dd_savings ?? 0) > 0 ? 'From completed early payments' : 'No DD transactions yet', color: 'var(--blue)', sparkData: [] as number[] },
-          ].map((k, i) => (
-            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value mono">{k.value}</div>
-              <div className="kpi-delta kpi-delta-mut">{k.delta}</div>
-              <Sparkline data={k.sparkData} color={k.color} fill />
-            </div>
-          ))}
-        </div>
-
-        <div className="grid-2-1" style={{ marginTop: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Invoice approvals</h3></div>
-              {(data?.pending_approval ?? 0) > 0 ? (
-                <div className="action-list">
-                  <button className="action-row" data-tone="amber" onClick={() => router.push('/transactions')}>
-                    <div>
-                      <div className="action-label">{data!.pending_approval} invoice{data!.pending_approval !== 1 ? 's' : ''} awaiting approval</div>
-                      <div className="action-sub">Review and approve or reject</div>
-                    </div>
-                    <Icon name="chev-right" size={14} className="action-chev" />
-                  </button>
-                </div>
-              ) : (
-                <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                  No invoices awaiting approval
-                </div>
-              )}
-            </div>
-            <div className="card">
-              <div className="card-head">
-                <h3 className="t-card-head">Invoice volume · last 6 months</h3>
-                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
-              </div>
-              <div className="card-body">
-                <VolumeChart data={anchorVolItems} height={140} color="#0F766E" />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
-              <div className="card-body">
-                <ProgramPieChart segments={anchorProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">My programs</h3></div>
-              <div className="prog-mini-list">
-                {(data?.programs ?? []).length === 0 ? (
-                  <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>No enrolled programs</div>
-                ) : (data?.programs ?? []).map((p) => {
-                  const typeLabel = p.financing_types?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) ?? 'SCF'
-                  return (
-                    <button key={p.id} className="prog-mini" onClick={() => router.push('/programs')}>
-                      <div>
-                        <div className="prog-mini-name">{p.name}</div>
-                        <div className="prog-mini-bank">{typeLabel}</div>
-                      </div>
-                      <span className="program-type-pill">{typeLabel}</span>
-                      <span className="badge badge-active">Active</span>
-                      <Icon name="chev-right" size={14} className="chev" />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Repayment schedule</h3></div>
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                No repayments scheduled
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ============== SUPPLIER DASHBOARD ==============
-function ScreenSupplierDashboard({ navigate: _navigate, data, reportingSnap, volPeriod, setVolPeriod }: { navigate: (r: RouteState) => void; data: SupplierData | null; reportingSnap: ReportingSnapshot | null; volPeriod: Period; setVolPeriod: (p: Period) => void }) {
-  const user = useUser()
-  const router = useRouter()
-  const firstName = user?.full_name?.split(' ')[0] ?? 'there'
-
-  function isSupplierSnapshot(s: ReportingSnapshot | null): s is SupplierSnapshot {
-    return s?.role === 'supplier'
-  }
-
-  const supplierSnap = isSupplierSnapshot(reportingSnap) ? reportingSnap : null
-  const outstandingCount = supplierSnap?.receivables?.outstanding_count ?? 0
-  const outstandingBalance = supplierSnap?.receivables?.outstanding_balance ?? 0
-  const supplierMonthly  = supplierSnap?.monthly_volume?.map(m => m.total_financed) ?? []
-  const supplierVolItems = (supplierSnap?.monthly_volume ?? []).map(m => ({ label: m.label, value: m.total_financed, count: m.count }))
-  const financedYTD      = supplierSnap?.monthly_volume?.reduce((s, m) => s + m.total_financed, 0) ?? null
-  const avgNetProceeds = outstandingCount > 0 ? outstandingBalance / outstandingCount : null
-  const acceptanceRate = supplierSnap?.acceptance_rate ?? null
-  const supplierProgramBreakdown = supplierSnap?.program_breakdown ?? []
-
-  return (
-    <>
-      <Topbar
-        crumbs={[{ label: 'Dashboard' }]}
-      />
-      <div className="page">
-        <div className="page-header">
-          <div className="eyebrow">{data?.org_name ?? 'Organization'} · Overview</div>
-          <h1 className="t-page-title">Good morning, {firstName}</h1>
-          <div className="subtitle">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
-        </div>
-
-        <AIInsight
-          title="Receivables Snapshot"
-          collapsed={true}
-          prompt="Based on this supplier's current receivables data, provide a brief summary. Highlight outstanding financing, any pending actions needed, and one tip to optimize their cash flow."
-          context={{
-            active_transactions: data?.active_transactions ?? 0,
-            outstanding_balance: supplierSnap?.receivables?.outstanding_balance ?? 0,
-            enrolled_programs: data?.programs?.length ?? 0,
-          }}
-        />
-
-        <div className="kpi-strip-4" style={{ marginTop: 24, gap: '1px', background: 'var(--border)' }}>
-          {[
-            { label: 'Financed YTD',        value: financedYTD != null && financedYTD > 0 ? fmtCurrency(financedYTD) : '—',  delta: financedYTD != null && financedYTD > 0 ? 'Year to date' : 'No data yet',  color: 'var(--color-green)',  sparkData: supplierMonthly },
-            { label: 'Active transactions',  value: data ? String(data.active_transactions) : '—',                            delta: (data?.active_transactions ?? 0) > 0 ? 'In progress' : 'None active',        color: 'var(--gray)', sparkData: [] as number[] },
-            { label: 'Avg net proceeds',     value: avgNetProceeds != null ? fmtCurrency(avgNetProceeds) : '—',           delta: avgNetProceeds != null ? 'Per funded deal' : 'No data yet',                    color: 'var(--color-green)', sparkData: supplierMonthly },
-            { label: 'Acceptance rate',      value: acceptanceRate != null ? `${acceptanceRate}%` : '—',                   delta: acceptanceRate != null ? 'Of submitted txns' : 'No data yet',            color: 'var(--color-green)', sparkData: [] as number[] },
-          ].map((k, i) => (
-            <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)', padding: 24 }}>
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value mono">{k.value}</div>
-              <div className="kpi-delta kpi-delta-mut">{k.delta}</div>
-              <Sparkline data={k.sparkData} color={k.color} fill />
-            </div>
-          ))}
-        </div>
-
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Trust Tier</div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 20,
-                fontWeight: 600,
-                color: data?.performance_tier === 'preferred' ? '#059669' : data?.performance_tier === 'under_review' ? '#DC2626' : 'var(--ink)',
-              }}>
-                {(data?.performance_tier ?? 'standard').replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
-              </div>
-            </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', textAlign: 'right' }}>
-              {data?.performance_score != null ? `Score ${data.performance_score}/100` : 'Build your record'}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid-2-1" style={{ marginTop: 24 }}>
+          {/* RIGHT — Recent Activity + AI Insight */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Financing activity · last 6 months</h3>
-                <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
+                <span>Recent Activity</span>
               </div>
-              <div className="card-body">
-                <VolumeChart data={supplierVolItems} height={160} color="#059669" />
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Active transactions</h3></div>
-              {(data?.active_transactions ?? 0) > 0 ? (
-                <div className="action-list">
-                  <button className="action-row" onClick={() => router.push('/transactions')}>
-                    <div>
-                      <div className="action-label">{data!.active_transactions} transaction{data!.active_transactions !== 1 ? 's' : ''} in progress</div>
-                      <div className="action-sub">View and manage your transactions</div>
-                    </div>
-                    <Icon name="chev-right" size={14} className="action-chev" />
-                  </button>
+              {loading ? (
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[1, 2, 3].map(i => <SkeletonBlock key={i} height={12} />)}
+                </div>
+              ) : notifications.length === 0 ? (
+                <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
+                  No recent activity
                 </div>
               ) : (
-                <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>
-                  No active transactions
+                <div className="dash-activity">
+                  {notifications.map(n => (
+                    <div key={n.id} className="dash-act-row">
+                      <div className={`dash-act-dot ${n.read ? '' : 'tone-blue'}`} style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="dash-act-text" style={{ fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{n.title}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{n.body}</div>
+                      </div>
+                      <div className="dash-act-time">{fmtRelTime(n.created_at)}</div>
+                    </div>
+                  ))}
                 </div>
               )}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--blue)' }}>
+                View all notifications →
+              </div>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Program usage</h3></div>
-              <div className="card-body">
-                <ProgramPieChart segments={supplierProgramBreakdown.map(p => ({ name: p.name, volume: p.volume }))} />
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3 className="t-card-head">My programs</h3></div>
-              <div className="prog-mini-list">
-                {(data?.programs ?? []).length === 0 ? (
-                  <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-ink-4)', fontSize: 12 }}>No enrolled programs</div>
-                ) : (data?.programs ?? []).map((p) => {
-                  const typeLabel = p.financing_types?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) ?? 'SCF'
-                  return (
-                    <button key={p.id} className="prog-mini" onClick={() => router.push('/programs')}>
-                      <div>
-                        <div className="prog-mini-name">{p.name}</div>
-                        <div className="prog-mini-bank">{typeLabel}</div>
-                      </div>
-                      <span className="program-type-pill">{typeLabel}</span>
-                      <span className="badge badge-active">Active</span>
-                      <Icon name="chev-right" size={14} className="chev" />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <AIInsight
+              title="Portfolio Insight"
+              collapsed={true}
+              prompt="Based on this bank's portfolio, what is the single most important action the bank should take today? Be specific and direct."
+              context={{
+                active_programs: dashData?.active_program_count ?? 0,
+                kyb_pending: dashData?.kyb_pending ?? 0,
+                transactions_pending_review: dashData?.pending_bank_review ?? 0,
+                outstanding_balance: dashData?.outstanding_balance ?? 0,
+                enrolled_orgs: dashData?.enrolled_org_count ?? 0,
+                open_financing_requests: openFinancing,
+              }}
+            />
           </div>
         </div>
+
+        {/* 5. Supply graph */}
+        <SupplyGraph bankId={''} />
       </div>
     </>
   )
 }
 
-// ============== Coming Soon ==============
-function ComingSoon({ screen }: { screen: string }) {
-  return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="t-page-title">{screen.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</h1>
-        <div className="subtitle">Coming soon</div>
-      </div>
-      <div className="card">
-        <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>
-          This section is under construction.
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ============== Dashboard Page ==============
-const noNavigate = (_r: RouteState) => {}
-
-export default function DashboardPage() {
-  const portal = usePortal()
-  const [dashData, setDashData] = useState<DashData | null>(null)
-  const [reportingSnap, setReportingSnap] = useState<ReportingSnapshot | null>(null)
-  const [volPeriod, setVolPeriod] = useState<Period>('monthly')
-
-  const fetchReporting = useCallback((period: Period) => {
-    fetch(`/api/reporting?period=${period}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.monthly_volume) setReportingSnap(d as ReportingSnapshot) })
-      .catch(() => {})
-  }, [])
+// ─── ANCHOR (BUYER) DASHBOARD ────────────────────────────────────────────────
+function AnchorDashboard() {
+  const user = useUser()
+  const firstName = user?.full_name?.split(' ')[0] ?? 'there'
+  const [loading, setLoading] = useState(true)
+  const [dashData, setDashData] = useState<AnchorData | null>(null)
+  const [deals, setDeals] = useState<DealItem[]>([])
+  const [listings, setListings] = useState<ListingItem[]>([])
+  const [financing, setFinancing] = useState<OrgFinancingReq[]>([])
+  const [notifications, setNotifications] = useState<NotifItem[]>([])
+  const [passport, setPassport] = useState<PassportData | null>(null)
 
   useEffect(() => {
-    fetch('/api/dashboard')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setDashData(d) })
-      .catch(() => {})
-    fetchReporting('monthly')
-  }, [fetchReporting])
+    const orgId = user?.org_id
+    const base: Promise<unknown>[] = [
+      fetch('/api/dashboard').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/deals').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/marketplace/listings?own=true&limit=3').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/marketplace/financing').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/notifications?unread_only=true&limit=5').then(r => r.ok ? r.json() : null).catch(() => null),
+      orgId
+        ? fetch(`/api/passport/${orgId}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        : Promise.resolve(null),
+    ]
 
-  function handlePeriodChange(p: Period) {
-    setVolPeriod(p)
-    fetchReporting(p)
-  }
+    Promise.all(base).then(([dash, dealsRes, listRes, finRes, notifRes, passRes]) => {
+      if ((dash as any)?.portal === 'anchor') setDashData(dash as AnchorData)
+      setDeals(((dealsRes as any)?.deals ?? []) as DealItem[])
+      setListings((((listRes as any)?.listings ?? []) as ListingItem[]).slice(0, 3))
+      setFinancing((((finRes as any)?.requests ?? []) as OrgFinancingReq[]).slice(0, 3))
+      setNotifications(((notifRes as any)?.notifications ?? []) as NotifItem[])
+      if (passRes) setPassport(passRes as PassportData)
+      setLoading(false)
+    })
+  }, [user?.org_id])
 
-  if (portal === 'bank')
-    return <ScreenBankDashboard     navigate={noNavigate} data={dashData?.portal === 'bank'     ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
-  if (portal === 'anchor')
-    return <ScreenAnchorDashboard   navigate={noNavigate} data={dashData?.portal === 'anchor'   ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
-  return   <ScreenSupplierDashboard navigate={noNavigate} data={dashData?.portal === 'supplier' ? dashData : null} reportingSnap={reportingSnap} volPeriod={volPeriod} setVolPeriod={handlePeriodChange} />
+  const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status))
+  const completedVolume = deals.filter(d => d.status === 'completed').reduce((s, d) => s + (d.total_value ?? 0), 0)
+  const financingActiveAmt = financing.filter(f => ['open', 'offers_received', 'accepted'].includes(f.status)).reduce((s, f) => s + f.amount_requested, 0)
+
+  const dealsNeedingAction = deals.filter(d => d.status === 'negotiating' && d.user_role === 'buyer').length
+  const listingsWithOffers = listings.filter(l => l.listing.offer_count > 0).length
+  const financingWithOffers = financing.filter(f => f.status === 'offers_received').length
+
+  const actionCards: ActionCard[] = [
+    { color: 'var(--color-amber)', label: `${dealsNeedingAction} deal${dealsNeedingAction !== 1 ? 's' : ''} awaiting your action`, count: dealsNeedingAction, href: '/deals' },
+    { color: 'var(--blue)', label: `${listingsWithOffers} listing${listingsWithOffers !== 1 ? 's' : ''} with offers`, count: listingsWithOffers, href: '/marketplace/listings' },
+    { color: 'var(--color-green)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} received`, count: financingWithOffers, href: '/marketplace/financing' },
+  ]
+
+  const kpis: KpiItem[] = [
+    { label: 'Active Deals',         value: loading ? '—' : String(activeDeals.length) },
+    { label: 'Trade Volume',         value: loading ? '—' : fmtCurrency(completedVolume), sub: 'Completed deals', valueColor: completedVolume > 0 ? 'var(--color-green)' : undefined },
+    { label: 'Financing Active',     value: loading ? '—' : fmtCurrency(financingActiveAmt), valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined },
+    { label: 'Marketplace Listings', value: loading ? '—' : String(listings.length) },
+  ]
+
+  return (
+    <>
+      <Topbar crumbs={[{ label: 'Dashboard' }]} />
+      <div className="page">
+
+        {/* 1. Header */}
+        <div className="page-header">
+          <div className="eyebrow">BUYER PORTAL</div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
+            Good {greeting()}, {firstName}
+          </h1>
+          <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
+        </div>
+
+        {/* 2. PassportScore banner */}
+        <PassportBanner passport={passport} loading={loading} size="md" />
+
+        {/* 3. Action queue */}
+        <ActionQueueStrip cards={actionCards} loading={loading} />
+
+        {/* 4. KPI strip */}
+        <KpiStrip kpis={kpis} loading={loading} />
+
+        {/* 5. Two-column */}
+        <div className="split-65" style={{ marginBottom: 24 }}>
+
+          {/* LEFT — My Deals */}
+          <div className="card">
+            <div className="card-head">
+              <span>Active Deals</span>
+              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+            </div>
+            <DealTable
+              deals={deals}
+              loading={loading}
+              emptyTitle="No active deals yet."
+              emptySub=""
+              emptyCta={
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <a href="/marketplace" className="btn btn-sm btn-blue">Browse Strike Place</a>
+                  <a href="/deals/import" className="btn btn-sm btn-ghost">Finance Existing Trade</a>
+                </div>
+              }
+            />
+          </div>
+
+          {/* RIGHT — My Listings + Financing */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            <div className="card">
+              <div className="card-head">
+                <span>My Listings</span>
+                <a href="/marketplace/listings/new" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>+ New</a>
+              </div>
+              {loading ? (
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2].map(i => <SkeletonBlock key={i} height={14} />)}
+                </div>
+              ) : listings.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No listings yet</div>
+              ) : (
+                <div>
+                  {listings.map(item => (
+                    <div key={item.listing.id} style={{
+                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                        {item.listing.title}
+                      </div>
+                      {item.listing.offer_count > 0 && (
+                        <span className="badge badge-offer">{item.listing.offer_count} offer{item.listing.offer_count !== 1 ? 's' : ''}</span>
+                      )}
+                      <span className={`badge ${dealStatusClass(item.listing.status)}`}>{item.listing.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                <a href="/marketplace/listings/new" className="btn btn-sm btn-primary" style={{ display: 'block', textAlign: 'center' }}>Post a Listing</a>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-head"><span>Financing Requests</span></div>
+              {loading ? (
+                <div style={{ padding: 16 }}><SkeletonBlock height={14} /></div>
+              ) : financing.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests yet</div>
+              ) : (
+                <div>
+                  {financing.map(f => (
+                    <div key={f.id} style={{
+                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                    }}>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                        <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>
+                        {f.offer_count > 0 && <span style={{ fontSize: 11, color: 'var(--gray)' }}>{f.offer_count} offer{f.offer_count !== 1 ? 's' : ''}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                <a href="/deals" className="btn btn-sm btn-ghost" style={{ display: 'block', textAlign: 'center' }}>Request Financing</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. AI Insight */}
+        <AIInsight
+          title="Trade Intelligence"
+          collapsed={true}
+          prompt={`This buyer has ${activeDeals.length} active deals worth $${completedVolume.toFixed(0)} total. They have ${listings.length} marketplace listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
+          context={{
+            active_deals: activeDeals.length,
+            completed_deal_volume: completedVolume,
+            marketplace_listings: listings.length,
+            financing_requests: financing.length,
+            listings_with_offers: listingsWithOffers,
+            financing_with_offers: financingWithOffers,
+          }}
+        />
+      </div>
+    </>
+  )
+}
+
+// ─── SUPPLIER DASHBOARD ──────────────────────────────────────────────────────
+function SupplierDashboard() {
+  const user = useUser()
+  const firstName = user?.full_name?.split(' ')[0] ?? 'there'
+  const [loading, setLoading] = useState(true)
+  const [dashData, setDashData] = useState<SupplierData | null>(null)
+  const [deals, setDeals] = useState<DealItem[]>([])
+  const [financing, setFinancing] = useState<OrgFinancingReq[]>([])
+  const [notifications, setNotifications] = useState<NotifItem[]>([])
+  const [passport, setPassport] = useState<PassportData | null>(null)
+
+  useEffect(() => {
+    const orgId = user?.org_id
+    const base: Promise<unknown>[] = [
+      fetch('/api/dashboard').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/deals').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/marketplace/financing').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/notifications?unread_only=true&limit=5').then(r => r.ok ? r.json() : null).catch(() => null),
+      orgId
+        ? fetch(`/api/passport/${orgId}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        : Promise.resolve(null),
+    ]
+
+    Promise.all(base).then(([dash, dealsRes, finRes, notifRes, passRes]) => {
+      if ((dash as any)?.portal === 'supplier') setDashData(dash as SupplierData)
+      setDeals(((dealsRes as any)?.deals ?? []) as DealItem[])
+      setFinancing((((finRes as any)?.requests ?? []) as OrgFinancingReq[]).slice(0, 3))
+      setNotifications(((notifRes as any)?.notifications ?? []) as NotifItem[])
+      if (passRes) setPassport(passRes as PassportData)
+      setLoading(false)
+    })
+  }, [user?.org_id])
+
+  const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status))
+  const completedDeals = deals.filter(d => d.status === 'completed').length
+  const totalFinanced = financing.filter(f => ['accepted', 'funded'].includes(f.status)).reduce((s, f) => s + f.amount_requested, 0)
+
+  const dealsNeedingAction = deals.filter(d =>
+    (d.status === 'negotiating' && d.user_role === 'supplier') || d.status === 'agreed'
+  ).length
+  const financingWithOffers = financing.filter(f => f.status === 'offers_received').length
+
+  const actionCards: ActionCard[] = [
+    { color: 'var(--color-amber)', label: `${dealsNeedingAction} deal${dealsNeedingAction !== 1 ? 's' : ''} awaiting your action`, count: dealsNeedingAction, href: '/deals' },
+    { color: 'var(--blue)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} to review`, count: financingWithOffers, href: '/marketplace/financing' },
+  ]
+
+  const score = passport?.organization?.passport_score ?? null
+  const kpis: KpiItem[] = [
+    { label: 'Active Deals',    value: loading ? '—' : String(activeDeals.length) },
+    { label: 'Total Financed',  value: loading ? '—' : fmtCurrency(totalFinanced), valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined },
+    { label: 'PassportScore',   value: loading ? '—' : (score ? String(score) : '—'), valueColor: scoreColor(score) },
+    { label: 'Completed Deals', value: loading ? '—' : String(completedDeals), sub: 'Track record' },
+  ]
+
+  const passportExtras = passport ? (
+    <div style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
+      <div>Viewed by <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>{passport.bank_view_count_30d}</strong> banks this month</div>
+      {passport.organization.passport_narrative && (
+        <div style={{
+          marginTop: 4, maxWidth: 220, fontStyle: 'italic',
+          overflow: 'hidden', display: '-webkit-box',
+          WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
+        }}>
+          "{passport.organization.passport_narrative.slice(0, 120)}{passport.organization.passport_narrative.length > 120 ? '…' : ''}"
+        </div>
+      )}
+    </div>
+  ) : undefined
+
+  return (
+    <>
+      <Topbar crumbs={[{ label: 'Dashboard' }]} />
+      <div className="page">
+
+        {/* 1. Header */}
+        <div className="page-header">
+          <div className="eyebrow">SUPPLIER PORTAL</div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
+            Good {greeting()}, {firstName}
+          </h1>
+          <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
+        </div>
+
+        {/* 2. PassportScore banner */}
+        <PassportBanner passport={passport} loading={loading} size="lg" extras={passportExtras} />
+
+        {/* 3. Action queue */}
+        <ActionQueueStrip cards={actionCards} loading={loading} />
+
+        {/* 4. KPI strip */}
+        <KpiStrip kpis={kpis} loading={loading} />
+
+        {/* 5. Two-column */}
+        <div className="split-65" style={{ marginBottom: 24 }}>
+
+          {/* LEFT — My Deals */}
+          <div className="card">
+            <div className="card-head">
+              <span>Active Deals</span>
+              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+            </div>
+            <DealTable
+              deals={deals}
+              loading={loading}
+              emptyTitle="No active deals yet."
+              emptySub="List your products on Strike Place to start receiving offers."
+              emptyCta={<a href="/marketplace/listings/new" className="btn btn-sm btn-blue">List on Strike Place</a>}
+            />
+          </div>
+
+          {/* RIGHT — Financing + Passport Activity */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            <div className="card">
+              <div className="card-head"><span>Active Financing</span></div>
+              {loading ? (
+                <div style={{ padding: 16 }}><SkeletonBlock height={14} /></div>
+              ) : financing.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests</div>
+              ) : (
+                <div>
+                  {financing.map(f => (
+                    <div key={f.id} style={{
+                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                    }}>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                        <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>
+                        {f.offer_count > 0 && (
+                          <span style={{ fontSize: 11, color: 'var(--blue)' }}>{f.offer_count} offer{f.offer_count !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="card-head"><span>Passport Activity</span></div>
+              {loading ? (
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2, 3].map(i => <SkeletonBlock key={i} height={12} />)}
+                </div>
+              ) : !passport ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
+                  No passport data yet
+                </div>
+              ) : (
+                <div className="kv-rows">
+                  <div className="kv-row">
+                    <span className="k">Org views · 30d</span>
+                    <span className="v">{passport.org_view_count_30d}</span>
+                  </div>
+                  <div className="kv-row">
+                    <span className="k">Bank views · 30d</span>
+                    <span className="v">{passport.bank_view_count_30d}</span>
+                  </div>
+                  {passport.avg_rating != null && (
+                    <div className="kv-row">
+                      <span className="k">Avg review</span>
+                      <span className="v">{passport.avg_rating.toFixed(1)}/5 · {passport.review_count} review{passport.review_count !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  {notifications.length === 0 && (
+                    <div className="kv-row">
+                      <span className="k">Last activity</span>
+                      <span className="v plain" style={{ color: 'var(--gray)' }}>No recent activity</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                <a href="/settings/agent" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>Improve your score →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. AI Insight */}
+        <AIInsight
+          title="Supplier Intelligence"
+          collapsed={true}
+          prompt={`This supplier has a PassportScore of ${score ?? 'N/A'} (${scoreTierLabel(score)} tier). They have ${activeDeals.length} active deals and ${financing.length} financing requests. What is the single most impactful action they can take today to improve their PassportScore and access better financing rates?`}
+          context={{
+            passport_score: score,
+            score_tier: scoreTierLabel(score),
+            active_deals: activeDeals.length,
+            financing_requests: financing.length,
+            on_time_rate: dashData?.on_time_rate,
+            completed_deals: completedDeals,
+            bank_views_30d: passport?.bank_view_count_30d ?? 0,
+          }}
+        />
+      </div>
+    </>
+  )
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+export default function DashboardPage() {
+  const portal = usePortal()
+  if (portal === 'bank')   return <BankDashboard />
+  if (portal === 'anchor') return <AnchorDashboard />
+  return <SupplierDashboard />
 }

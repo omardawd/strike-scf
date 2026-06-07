@@ -1,6 +1,13 @@
 'use client'
 import { createContext, useContext } from 'react'
 
+export interface UserOrg {
+  type: 'anchor' | 'supplier'
+  status: string
+  network_visible: boolean
+  passport_score: number | null
+}
+
 export interface UserProfile {
   id: string
   full_name: string
@@ -8,6 +15,8 @@ export interface UserProfile {
   role: string
   org_id: string | null
   bank_id: string | null
+  // Present for org_admin / org_member users; null for bank and strike_admin users.
+  org: UserOrg | null
 }
 
 const UserContext = createContext<UserProfile | null>(null)

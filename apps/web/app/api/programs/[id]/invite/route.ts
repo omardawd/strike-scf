@@ -25,7 +25,7 @@ export async function POST(
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
-  if (userData.role !== 'bank_admin' && userData.role !== 'anchor_admin') {
+  if (userData.role !== 'bank_admin' && userData.role !== 'org_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -52,8 +52,8 @@ export async function POST(
   if (!['anchor', 'supplier'].includes(role)) {
     return NextResponse.json({ error: 'role must be anchor or supplier' }, { status: 400 })
   }
-  if (userData.role === 'anchor_admin' && role === 'anchor') {
-    return NextResponse.json({ error: 'Anchor admins can only invite suppliers' }, { status: 403 })
+  if (userData.role === 'org_admin' && role === 'anchor') {
+    return NextResponse.json({ error: 'Org admins can only invite suppliers' }, { status: 403 })
   }
   if (role === 'supplier' && !anchor_org_id) {
     return NextResponse.json({ error: 'anchor_org_id is required when inviting a supplier' }, { status: 400 })
@@ -86,12 +86,12 @@ export async function POST(
   }
 
   const inviteRole = role
-  const actorType  = userData.role.startsWith('bank') ? 'bank' : 'anchor'
+  const actorType  = (userData.role === 'bank_admin' || userData.role === 'bank_credit_officer') ? 'bank' : 'anchor'
   const expiresAt  = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
   // Anchor inviting supplier on non-DD program requires bank approval first
   const isDDProgram = ((program.financing_types ?? []) as string[]).includes('dynamic_discounting')
-  const isAnchorInvitingSupplier = userData.role === 'anchor_admin' && role === 'supplier'
+  const isAnchorInvitingSupplier = userData.role === 'org_admin' && role === 'supplier'
   const needsBankReview = isAnchorInvitingSupplier && !isDDProgram
 
   const record: Record<string, unknown> = {
@@ -180,7 +180,7 @@ export async function PATCH(
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
-  if (userData.role !== 'bank_admin' && userData.role !== 'anchor_admin') {
+  if (userData.role !== 'bank_admin' && userData.role !== 'org_admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
