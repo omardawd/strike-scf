@@ -47,6 +47,13 @@ const SEND_ICON = (
   </svg>
 )
 
+// TF.2 — Strike spark/bolt mark for the always-present floating trigger button.
+const TRIGGER_ICON = (
+  <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M13 2.5 5.5 13h5l-1.2 8.5L19 10h-5.2z" />
+  </svg>
+)
+
 export function AIOverlay({ portal, userName }: AIOverlayProps) {
   const pathname = usePathname()
   const isAIPage = pathname.startsWith('/ai')
@@ -58,6 +65,13 @@ export function AIOverlay({ portal, userName }: AIOverlayProps) {
   const [clusterOpen, setClusterOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+
+  // TF.2 — unread "signal" count on the floating trigger.
+  // NOTE: `ai_signals` is not yet in the live schema (see apps/web/CLAUDE.md), so the
+  // badge is wired to the user's unread notifications (GET /api/notifications), which is
+  // the closest existing org/user-scoped "active signals" source. Fully fail-soft:
+  // any error or a zero count renders no badge.
+  const [signalCount, setSignalCount] = useState(0)
 
   // Cluster drag position
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -85,6 +99,29 @@ export function AIOverlay({ portal, userName }: AIOverlayProps) {
     if (focused || input.trim().length > 0) setPillVisible(true)
     else if (!hovering.current) setPillVisible(false)
   }, [focused, input])
+
+  // ── TF.2: unread signal count for the trigger badge (fail-soft) ──
+  useEffect(() => {
+    if (isAIPage) return
+    let cancelled = false
+    async function loadSignals() {
+      try {
+        const res = await fetch('/api/notifications?unread_only=true&limit=100')
+        if (!res.ok) return
+        const data = await res.json()
+        const count = typeof data?.unread_count === 'number'
+          ? data.unread_count
+          : Array.isArray(data?.notifications) ? data.notifications.length : 0
+        if (!cancelled) setSignalCount(count > 0 ? count : 0)
+      } catch {
+        if (!cancelled) setSignalCount(0)
+      }
+    }
+    loadSignals()
+    const id = window.setInterval(loadSignals, 60_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+    // Refetch when the cluster closes — the user may have acted on signals.
+  }, [isAIPage, clusterOpen])
 
   // ── Listen for external prompt events (from insight cards) ──
   useEffect(() => {
@@ -217,6 +254,9 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
       <style>{`
         @keyframes strike-overlay-spin { to { transform: rotate(360deg); } }
         @keyframes strike-overlay-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        /* TF.2 — floating Strike AI trigger button */
+        .strike-ai-fab { transition: background 0.15s, box-shadow 0.15s; }
+        .strike-ai-fab:hover { background: var(--blue-hover); box-shadow: var(--shadow-elevated); }
       `}</style>
 
       {/* Trigger zone */}
@@ -276,6 +316,44 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
           {SEND_ICON}
         </button>
       </div>
+
+      {/* TF.2 — always-present floating trigger button. Hidden while the cluster is open,
+          and while the centered hover-pill is showing (they'd overlap on narrow viewports
+          and are redundant entry points in that moment).
+          Clicking opens the Strike AI overlay; a red badge surfaces unread signals. */}
+      {!clusterOpen && !showPill && (
+        <button
+          type="button"
+          className="strike-ai-fab"
+          aria-label={signalCount > 0 ? `Open Strike AI (${signalCount} unread)` : 'Open Strike AI'}
+          title="Strike AI"
+          onClick={() => setClusterOpen(true)}
+          style={{
+            position: 'fixed', bottom: 20, right: 20, zIndex: 150,
+            width: 52, height: 52, borderRadius: '50%',
+            background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: 'var(--shadow-card)',
+          }}
+        >
+          {TRIGGER_ICON}
+          {signalCount > 0 && (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18,
+                padding: '0 5px', borderRadius: 999,
+                background: 'var(--color-red)', color: '#fff',
+                fontSize: 10, fontWeight: 700, lineHeight: '18px',
+                fontFamily: 'var(--font-body)', textAlign: 'center',
+                border: '2px solid var(--white)', boxSizing: 'content-box',
+              }}
+            >
+              {signalCount > 9 ? '9+' : signalCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Floating cluster */}
       {clusterOpen && (
