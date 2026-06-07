@@ -69,21 +69,63 @@
 }
 
 [data-theme="dark"] {
-  --white:         #0F1117;
-  --offwhite:      #161A23;
-  --ink:           #F3F4F6;
-  --ink-soft:      #E5E7EB;
-  --gray:          #9AA0AB;
-  --gray-soft:     #6B7280;
-  --border:        #1F2937;
-  --border-strong: #374151;
-  --color-card:    #0F1117;
-  --color-bg:      #161A23;
-  --color-bg-2:    #1A1F2B;
-  --color-ink-1:   #F3F4F6;
-  --color-ink-2:   #D1D5DB;
-  --color-ink-3:   #9AA0AB;
-  --color-ink-4:   #6B7280;
+  /* ── Deep-navy base (Track I dark-mode redesign) ──
+     Page = deep navy #0D1B3E; cards sit a step lighter (#13244D) for
+     separation; wells sit a step darker (#0A1631). No pure black. */
+  --white:         #13244D;   /* card / elevated surface — lighter than page */
+  --offwhite:      #0D1B3E;   /* page background — deep navy */
+  --ink:           #EEF2FB;   /* primary text ~14:1 on navy */
+  --ink-soft:      #DCE3F2;
+  --gray:          #A7B2CC;   /* secondary text ~6.5:1 on cards */
+  --gray-soft:     #8A97B5;   /* tertiary / labels / placeholders ~4.7:1 (AA) */
+  --border:        #26375E;   /* navy-tinted, visible on cards */
+  --border-strong: #3A4E7A;
+
+  /* Strike blue: full --blue stays for borders/icons; background-tinted
+     variants are darkened so they don't glow on the navy base. */
+  --blue:          #3D5AE0;   /* slightly lifted for icon/border legibility on navy */
+  --blue-hover:    #4E6BF0;
+  --blue-light:    #16265C;   /* navy-tinted accent fill (was near-white lavender) */
+  --blue-dim:      #2A3F7A;
+
+  --color-card:    #13244D;
+  --color-bg:      #0D1B3E;
+  --color-bg-2:    #0A1631;   /* recessed wells / tracks — darker than page */
+  --color-ink-1:   #EEF2FB;
+  --color-ink-2:   #C7D0E6;
+  --color-ink-3:   #A7B2CC;
+  --color-ink-4:   #8A97B5;   /* bumped from #6B7280 for AA on cards */
+
+  /* Re-point accent aliases at the dark blue variants */
+  --color-accent:        #3D5AE0;
+  --color-accent-mid:    #4E6BF0;
+  --color-accent-light:  #16265C;
+  --color-anchor:        #3D5AE0;
+  --color-anchor-bg:     #16265C;
+
+  /* Semantic pastels: keep saturated text, swap near-white pastel
+     backgrounds for low-opacity navy-compatible tints (no glare). */
+  --color-green:      #34D399;
+  --color-green-bg:   rgba(16,185,129,0.16);
+  --color-amber:      #FBBF24;
+  --color-amber-bg:   rgba(245,158,11,0.16);
+  --color-red:        #F87171;
+  --color-red-bg:     rgba(239,68,68,0.18);
+  --color-purple:     #A78BFA;
+  --color-purple-bg:  rgba(124,58,237,0.20);
+
+  /* Gold: fine on navy — keep highlight color, soften the fill */
+  --gold:      #C9A84C;
+  --gold-dim:  rgba(201,168,76,0.16);
+  --teal:      #2DD4BF;
+  --teal-dim:  rgba(0,191,165,0.16);
+
+  --color-shadow: rgba(0,0,0,0.40);
+
+  /* AI insight card surface — a navy variant distinct from the regular
+     card bg (#13244D) so the insight stands apart (color only; Track E
+     owns the radius/structure of these cards). */
+  --ai-insight-bg: #182C5E;
 }
 
 /* Portal accent swap */
@@ -271,7 +313,7 @@ a { color: inherit; }
   font-weight: 600;
   border: 1px solid var(--blue);
   background: var(--blue);
-  color: var(--white);
+  color: #fff;
   border-radius: var(--radius-button);
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s, box-shadow .2s;
@@ -282,14 +324,14 @@ a { color: inherit; }
 .btn-primary {
   background: var(--blue);
   border-color: var(--blue);
-  color: var(--white);
+  color: #fff;
   box-shadow: var(--shadow-button);
 }
 .btn-primary:hover { background: var(--blue-hover); border-color: var(--blue-hover); }
 .btn-blue {
   background: var(--blue);
   border-color: var(--blue);
-  color: var(--white);
+  color: #fff;
   box-shadow: var(--shadow-button);
 }
 .btn-blue:hover {
@@ -1158,7 +1200,7 @@ a { color: inherit; }
   color: var(--color-red);
   border: 1px solid var(--color-red);
 }
-.btn-danger:hover { background: var(--color-red); color: var(--white); }
+.btn-danger:hover { background: var(--color-red); color: #fff; }
 
 .form-textarea {
   width: 100%; box-sizing: border-box; padding: 8px 10px;

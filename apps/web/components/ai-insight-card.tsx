@@ -178,7 +178,7 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
     if (!insight) return null
     return (
       <div style={{
-        background: 'var(--white)',
+        background: 'var(--ai-insight-bg, var(--white))',
         border: '1px solid var(--border)',
         borderRadius: 12,
         padding: 14,
@@ -215,7 +215,7 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
   return (
     <div style={{
       position: 'fixed', bottom: 24, right: 24, width: 320, zIndex: 170,
-      background: 'var(--white)', boxShadow: 'var(--shadow-elevated)',
+      background: 'var(--ai-insight-bg, var(--white))', boxShadow: 'var(--shadow-elevated)',
       borderRadius: 16, padding: 16,
       transform: visible ? 'translateY(0)' : 'translateY(20px)',
       opacity: visible ? 1 : 0,
