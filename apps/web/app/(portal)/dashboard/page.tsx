@@ -848,7 +848,6 @@ function AnchorDashboard() {
 
         {/* 1. Header */}
         <div className="page-header">
-          <div className="eyebrow">BUYER PORTAL</div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
             Good {greeting()}, {firstName}
           </h1>
@@ -1052,7 +1051,6 @@ function SupplierDashboard() {
 
         {/* 1. Header */}
         <div className="page-header">
-          <div className="eyebrow">SUPPLIER PORTAL</div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
             Good {greeting()}, {firstName}
           </h1>

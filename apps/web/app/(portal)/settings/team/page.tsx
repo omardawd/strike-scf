@@ -81,9 +81,6 @@ export default function TeamPage() {
 
   const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
 
-  const portalLabel = (user?.role === 'bank_admin' || user?.role === 'bank_credit_officer') ? 'Bank Portal'
-    : user?.org?.type === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
-
   const fetchTeam = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
@@ -181,7 +178,6 @@ export default function TeamPage() {
       <Topbar
         onBack={() => router.push('/settings')}
         crumbs={[
-          { label: portalLabel },
           { label: 'Settings', onClick: () => router.push('/settings') },
           { label: 'Team' },
         ]}

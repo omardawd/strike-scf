@@ -87,8 +87,6 @@ export default function TransactionsPage() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
 
-  const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
-
   useEffect(() => {
     fetch('/api/transactions')
       .then(r => {
@@ -117,7 +115,7 @@ export default function TransactionsPage() {
   return (
     <PortalShell activeSection="transactions">
       <Topbar
-        crumbs={[{ label: portalLabel }, { label: 'Transactions' }]}
+        crumbs={[{ label: 'Transactions' }]}
         actions={
           <>
             <NotifBell />

@@ -190,7 +190,6 @@ export default function CollateralPage() {
     <PortalShell activeSection="collateral">
       <Topbar
         crumbs={[
-          { label: 'Bank Portal', onClick: () => router.push('/dashboard') },
           { label: 'Collateral' },
         ]}
         actions={

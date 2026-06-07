@@ -2238,8 +2238,6 @@ export default function TransactionDetailPage() {
     } catch {}
   }, [])
 
-  const portalLabel = portal === 'bank' ? 'Bank Portal' : portal === 'anchor' ? 'Anchor Portal' : 'Supplier Portal'
-
   const load = useCallback(() => {
     if (!id) return
     setLoading(true)
@@ -2410,7 +2408,6 @@ export default function TransactionDetailPage() {
           router.push(backPath)
         }}
         crumbs={[
-          { label: portalLabel },
           { label: 'Transactions', onClick: () => router.push('/transactions') },
           { label: loading ? '…' : (txn?.id ?? 'Transaction') },
         ]}

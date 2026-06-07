@@ -101,12 +101,6 @@ export default function SettingsPage() {
   const isBankUser = BANK_ROLES.includes(user?.role ?? '')
   const tabLabel   = isBankUser ? 'Institution' : 'Company'
 
-  const portalLabel = portal === 'bank'
-    ? 'Bank Portal'
-    : portal === 'anchor'
-    ? 'Anchor Portal'
-    : 'Supplier Portal'
-
   // ── Profile tab ─────────────────────────────────────────────────────────────
   const [profile, setProfile] = useState({ full_name: '', email: '', role: '' })
   const [profileSaving, setProfileSaving] = useState(false)
@@ -347,7 +341,6 @@ export default function SettingsPage() {
     <PortalShell activeSection="settings">
       <Topbar
         crumbs={[
-          { label: portalLabel, onClick: () => router.push('/dashboard') },
           { label: 'Settings' },
         ]}
         actions={<NotifBell />}

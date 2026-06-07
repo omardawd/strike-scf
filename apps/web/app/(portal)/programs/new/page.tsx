@@ -139,7 +139,6 @@ export default function NewProgramPage() {
       <Topbar
         onBack={() => router.push('/programs')}
         crumbs={[
-          { label: portal === 'anchor' ? 'Anchor Portal' : 'Bank Portal' },
           { label: 'My Programs', onClick: () => router.push('/programs') },
           { label: 'New Program' },
         ]}

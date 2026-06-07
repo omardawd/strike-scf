@@ -1,18 +1,11 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
-import { usePortal } from '@/lib/portal-context'
 
 const PATH_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/programs':  'My Programs',
   '/reporting': 'Reporting & Analytics',
-}
-
-const PORTAL_LABELS: Record<string, string> = {
-  bank:     'Bank Portal',
-  anchor:   'Anchor Portal',
-  supplier: 'Supplier Portal',
 }
 
 function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {
@@ -203,8 +196,6 @@ export function Topbar({
   actions?: React.ReactNode
 }) {
   const pathname    = usePathname()
-  const portal      = usePortal()
-  const portalLabel = PORTAL_LABELS[portal] ?? 'Portal'
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
 
@@ -242,12 +233,8 @@ export function Topbar({
         textTransform: 'uppercase',
         color: 'var(--gray)',
       }}>
-        <span className="crumb-portal">{portalLabel}</span>
         {derivedTitle && (
-          <>
-            <span className="crumb-sep">›</span>
-            <span className="crumb-current">{derivedTitle}</span>
-          </>
+          <span className="crumb-current">{derivedTitle}</span>
         )}
       </div>
       <div className="topbar-spacer" />

@@ -331,7 +331,7 @@ export default function KYBDetailPage() {
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Bank Portal' }, { label: 'KYB Review', onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
+        crumbs={[{ label: 'KYB Review', onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
         actions={<NotifBell />}
       />
     <div className="page">

@@ -1057,7 +1057,6 @@ export default function NewTransactionPage() {
     <PortalShell activeSection="transactions">
       <Topbar
         crumbs={[
-          { label: 'Supplier Portal', onClick: () => router.push('/dashboard') },
           { label: 'Transactions', onClick: () => router.push('/transactions') },
           { label: 'New Transaction' },
         ]}

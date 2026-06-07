@@ -115,7 +115,7 @@ export default function KYBQueuePage() {
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Bank Portal' }, { label: 'KYB Review' }]}
+        crumbs={[{ label: 'KYB Review' }]}
         actions={<NotifBell />}
       />
       <div className="page">

@@ -141,11 +141,6 @@ export default function ReportingPage() {
 
   if (!user) return null
 
-  const portalLabel =
-    user.role?.startsWith('bank')     ? 'Bank Portal'
-    : user.role?.startsWith('anchor') ? 'Anchor Portal'
-    : 'Supplier Portal'
-
   // Narrowed bank data for bank-specific computations
   const bankData = data?.role === 'bank' ? data : null
   const totalStatusCount = bankData
@@ -157,7 +152,6 @@ export default function ReportingPage() {
       <Topbar
         onBack={() => router.push('/dashboard')}
         crumbs={[
-          { label: portalLabel },
           { label: 'Reporting' },
         ]}
         actions={<NotifBell />}
