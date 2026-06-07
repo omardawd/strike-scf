@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { usePortal, type PortalType } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
+import { useRoomsUnread } from '@/lib/use-rooms-unread'
 
 // ── Role labels (v2 roles only) ──
 const ROLE_LABELS: Record<string, string> = {
@@ -296,6 +297,12 @@ export function Sidebar() {
   const router   = useRouter()
   const pathname = usePathname()
 
+  // TG.3 — live unread-rooms count for the Strike Rooms badge (ORG_NAV only).
+  // Called unconditionally (hooks rule). Safe for every portal: the hook and its
+  // /api/rooms/unread backend key off room_participants.user_id, so bank/admin
+  // users (and orgs not in any room) get 0 with no error. 0 ⇒ no badge.
+  const roomsUnread = useRoomsUnread()
+
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window === 'undefined') return 'light'
     return localStorage.getItem('strike-theme') === 'dark' ? 'dark' : 'light'
@@ -392,6 +399,13 @@ export function Sidebar() {
             {section.label && collapsed && si > 0 && <div className="nav-section-divider" />}
             {section.items.map(item => {
               const active = bestLen >= 0 && matchLen(pathname, item.href) === bestLen
+              // TG.3 — Strike Rooms (ORG_NAV only) gets a LIVE unread badge from the
+              // realtime hook, overriding any static config string. Other items keep
+              // their static badge. 0 ⇒ no badge.
+              const isRooms = item.href === '/rooms'
+              const badge = isRooms
+                ? (roomsUnread > 0 ? (roomsUnread > 99 ? '99+' : String(roomsUnread)) : undefined)
+                : item.badge
               return (
                 <Link
                   key={`${item.label}-${item.href}`}
@@ -400,11 +414,32 @@ export function Sidebar() {
                   style={{ textDecoration: 'none' }}
                   // TA.2 — native tooltip surfaces the label when collapsed (icons-only).
                   title={collapsed ? item.label : undefined}
-                  aria-label={item.label}
+                  aria-label={badge ? `${item.label} (${badge} unread)` : item.label}
                 >
-                  <NavIcon name={item.icon} />
+                  {/* TG.3 — collapsed mode hides .nav-badge, so overlay a small dot on
+                      the rooms icon to keep the unread signal visible icons-only. */}
+                  {isRooms && collapsed && roomsUnread > 0 ? (
+                    <span style={{ position: 'relative', display: 'inline-flex' }}>
+                      <NavIcon name={item.icon} />
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position:     'absolute',
+                          top:          -2,
+                          right:        -2,
+                          width:        8,
+                          height:       8,
+                          borderRadius: 'var(--radius-badge)',
+                          background:   'var(--blue)',
+                          boxShadow:    '0 0 0 2px var(--white)',
+                        }}
+                      />
+                    </span>
+                  ) : (
+                    <NavIcon name={item.icon} />
+                  )}
                   {!collapsed && <span>{item.label}</span>}
-                  {item.badge && !collapsed && <span className="nav-badge">{item.badge}</span>}
+                  {badge && !collapsed && <span className="nav-badge">{badge}</span>}
                 </Link>
               )
             })}
