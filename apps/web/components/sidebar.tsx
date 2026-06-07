@@ -86,16 +86,13 @@ const BANK_NAV: NavSection[] = [
     ],
   },
   {
-    label: 'Network',
-    items: [
-      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
-    ],
-  },
-  {
+    // Track E request (TE.2): Strike Passport must appear in EVERY portal.
+    // Placed in the bank "Intelligence" group per the request.
     label: 'Intelligence',
     items: [
-      { label: 'Reporting',    href: '/reporting',     icon: 'analytics' },
-      { label: 'Supply Graph', href: '/supply-graph',  icon: 'supply-graph' },
+      { label: 'Strike Passport', href: '/passport',     icon: 'passport' },
+      { label: 'Reporting',       href: '/reporting',    icon: 'analytics' },
+      { label: 'Supply Graph',    href: '/supply-graph', icon: 'supply-graph' },
     ],
   },
 ]
@@ -110,9 +107,11 @@ const ADMIN_NAV: NavSection[] = [
   {
     label: 'Administration',
     items: [
-      { label: 'KYB Queue',      href: '/admin', icon: 'passport' },
-      { label: 'Platform Stats', href: '/admin', icon: 'analytics' },
-      { label: 'Room Reports',   href: '/admin', icon: 'rooms' },
+      { label: 'KYB Queue',       href: '/admin',    icon: 'analytics' },
+      { label: 'Platform Stats',  href: '/admin',    icon: 'programs' },
+      { label: 'Room Reports',    href: '/admin',    icon: 'rooms' },
+      // Track E request (TE.2): Passport reachable from every portal.
+      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
     ],
   },
 ]
