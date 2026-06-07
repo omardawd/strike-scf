@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (pathname.includes('..')) {
@@ -82,7 +82,7 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse
 }
 
-export const proxyConfig = {
+export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)'
   ],
