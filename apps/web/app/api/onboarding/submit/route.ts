@@ -80,12 +80,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // ── AUTH-CRITICAL: platform UNLOCK happens HERE, on SUBMISSION (TD.4) ──────────
+  // The org becomes network-visible and gets an initial PassportScore the moment
+  // it submits — NOT on later bank/AI approval. This removes the approval
+  // bottleneck. We set these synchronously so the unlock is guaranteed even if the
+  // async AI review below fails. Strike Admin can still flag/suspend later.
+  //   kyb_status     -> 'submitted'  (gate checks kyb_status !== 'not_started')
+  //   network_visible -> true        (org now appears in counterparty queries)
   const { error: updateError } = await adminClient
     .from('organizations')
     .update({
       kyb_status: 'submitted' satisfies KybStatus,
       kyb_submitted_at: new Date().toISOString(),
       status: 'kyb_submitted' satisfies OrgStatus,
+      network_visible: true,
       ...(bank_account_last4 !== undefined && { bank_account_last4 }),
       ...(bank_routing_number !== undefined && { bank_routing_number }),
       ...(bank_account_type !== undefined && { bank_account_type }),
@@ -96,9 +104,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to submit application' }, { status: 500 })
   }
 
-  // Kick off the AI KYB review → generates the Passport (score + narrative),
+  // Compute the INITIAL PassportScore immediately via /api/risk/score. The risk
+  // route writes `risk_score` on the org; we mirror it into `passport_score`. With
+  // KYB just submitted (unverified) the score lands in the ~20–45 band — expected.
+  // Best-effort: a failure here must not block submission (the async AI review
+  // below also produces a score), so we swallow errors.
+  try {
+    const origin = new URL(request.url).origin
+    const cookie = request.headers.get('cookie') ?? ''
+    const scoreRes = await fetch(`${origin}/api/risk/score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ org_id }),
+    })
+    if (scoreRes.ok) {
+      const scoreData = await scoreRes.json() as { risk_score?: number }
+      if (typeof scoreData.risk_score === 'number') {
+        await adminClient
+          .from('organizations')
+          .update({
+            passport_score: scoreData.risk_score,
+            passport_score_updated_at: new Date().toISOString(),
+          })
+          .eq('id', org_id)
+      }
+    }
+  } catch (err) {
+    console.error('[onboarding/submit] initial risk/score failed (non-fatal):', err)
+  }
+
+  // Kick off the AI KYB review → enriches the Passport (refined score + narrative),
   // writes credit_scores / agent_actions, and emails the applicant. Fired
-  // non-blocking so the applicant isn't held on the AI call.
+  // non-blocking so the applicant isn't held on the AI call. This NEVER reverts the
+  // unlock above: it only sets network_visible (to true) on approval, and only ever
+  // moves kyb_status forward to 'under_review'/'approved' — all unlocked states.
   runKybAiReview(org_id, { triggeredByUserId: user.id }).catch(err =>
     console.error('[onboarding/submit] KYB AI review failed:', err)
   )

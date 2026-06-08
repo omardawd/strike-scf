@@ -21,15 +21,18 @@ export async function POST(request: Request) {
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'User not found or not linked to an org' }, { status: 401 })
 
-  // Only org users with active status may submit offers
+  // Feature gate (TD.4): unlock on Passport SUBMISSION, not approval. A
+  // network-visible org (set true on submission) may submit offers — we no longer
+  // require status==='active' (which only happens after AI approval). Ghost orgs
+  // (network_visible=false) remain blocked.
   const { data: orgData } = await adminClient
     .from('organizations')
-    .select('id, status, legal_name, passport_score')
+    .select('id, status, kyb_status, network_visible, legal_name, passport_score')
     .eq('id', userData.org_id)
     .single()
   if (!orgData) return NextResponse.json({ error: 'Organization not found' }, { status: 403 })
-  if (orgData.status !== 'active') {
-    return NextResponse.json({ error: 'Organization must be active to submit offers' }, { status: 403 })
+  if (!orgData.network_visible || orgData.kyb_status === 'not_started') {
+    return NextResponse.json({ error: 'Activate your Passport to submit offers' }, { status: 403 })
   }
 
   let body: SubmitOfferPayload

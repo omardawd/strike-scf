@@ -124,14 +124,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only organization members can create listings' }, { status: 403 })
   }
 
+  // Feature gate (TD.4): platform unlocks on Passport SUBMISSION, not approval.
+  // A network-visible org (network_visible=true is set on submission) may post —
+  // we no longer require status==='active' (which only happens after AI approval).
   const { data: org } = await adminClient
     .from('organizations')
-    .select('status')
+    .select('status, kyb_status, network_visible')
     .eq('id', me.org_id)
     .single()
 
-  if (!org || org.status !== 'active') {
-    return NextResponse.json({ error: 'Organization must be active to post listings' }, { status: 403 })
+  if (!org || !org.network_visible || org.kyb_status === 'not_started') {
+    return NextResponse.json({ error: 'Activate your Passport to post listings' }, { status: 403 })
   }
 
   let body: CreateListingPayload & { status?: string }
