@@ -8,7 +8,7 @@ const adminClient = createAdmin(
 )
 
 const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
-const ORG_ROLES  = ['anchor_admin', 'anchor_member', 'supplier_admin', 'supplier_member']
+const ORG_ROLES  = ['org_admin', 'org_member']
 
 export async function GET(
   _req: Request,

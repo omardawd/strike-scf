@@ -7,7 +7,7 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ORG_ROLES = ['anchor_admin', 'anchor_member', 'supplier_admin', 'supplier_member']
+const ORG_ROLES = ['org_admin', 'org_member']
 
 export async function PATCH(
   request: Request,
