@@ -6,9 +6,7 @@ import { KYB_REFERRER_KEY } from '@/lib/kyb-referrer'
 import { Topbar, NotifBell } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
 import { RiskBadge } from '@/components/risk-badge'
-import type { RiskTier } from '@strike-scf/types'
-
-type CreditDecision = 'approved' | 'override_approved' | 'more_info_requested' | 'rejected' | 'pending_countersign'
+import { PassportScoreRing } from '@/components/passport-score-ring'
 
 interface Document {
   id: string
@@ -98,8 +96,6 @@ interface Organization {
   credit_reviewed_at: string | null
 }
 
-type DecisionMode = 'none' | 'approve' | 'request_info' | 'reject'
-
 function kybBadgeClass(status: string): string {
   switch (status) {
     case 'submitted': return 'badge badge-pending'
@@ -173,16 +169,7 @@ export default function KYBDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [riskData, setRiskData] = useState<any>(null)
 
-  // Decision panel state
-  const [mode, setMode] = useState<DecisionMode>('none')
-  const [riskTier, setRiskTier] = useState<RiskTier | ''>('')
-  const [creditScoreInput, setCreditScoreInput] = useState('')
-  const [overrideReason, setOverrideReason] = useState('')
-  const [infoMessage, setInfoMessage] = useState('')
-  const [rejectionReason, setRejectionReason] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [approvalBanner, setApprovalBanner] = useState(false)
+  // TC.6 — KYB approval removed from the bank portal; this view is read-only.
   const [referrer, setReferrer] = useState('/kyb')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [internalDocs, setInternalDocs] = useState<any[]>([])
@@ -275,52 +262,8 @@ export default function KYBDetailPage() {
     }
   }
 
-  async function submitDecision(decision: CreditDecision) {
-    setSubmitting(true)
-    setSubmitError(null)
-    try {
-      const body: Record<string, unknown> = { decision }
-      if (decision === 'approved' || decision === 'override_approved') {
-        if (riskTier) body.risk_tier = riskTier
-        if (creditScoreInput) body.credit_score = parseInt(creditScoreInput, 10)
-        if (overrideReason) body.override_reason = overrideReason
-      } else if (decision === 'more_info_requested') {
-        body.info_request_message = infoMessage
-      } else if (decision === 'rejected') {
-        body.rejection_reason = rejectionReason
-      }
-
-      const res = await fetch(`/api/kyb/${orgId}/decision`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) {
-        setSubmitError(data.error ?? 'Failed to submit decision')
-        return
-      }
-      // Reset state and refresh
-      setMode('none')
-      setRiskTier('')
-      setCreditScoreInput('')
-      setOverrideReason('')
-      setInfoMessage('')
-      setRejectionReason('')
-      if (decision === 'rejected') {
-        router.push(referrer)
-        return
-      }
-      if (decision === 'approved' || decision === 'override_approved') {
-        setApprovalBanner(true)
-      }
-      await fetchData()
-    } catch {
-      setSubmitError('Failed to submit decision')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  // TC.6 — bank KYB approve/reject/request-info action removed. The /api/kyb/[org_id]/decision
+  // endpoint is no longer called from the bank portal; Strike Admin retains KYB management.
 
   if (!isAuthorized) return null
 
@@ -372,14 +315,6 @@ export default function KYBDetailPage() {
           </div>
         )}
       </div>
-
-      {approvalBanner && (
-        <div className="alert alert-success" style={{ marginBottom: 16 }}>
-          <div className="alert-body">
-            Organization approved — they will receive platform access shortly.
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="card" style={{ color: 'var(--color-danger)', padding: 16 }}>{error}</div>
@@ -564,218 +499,67 @@ export default function KYBDetailPage() {
             </div>
           </div>
 
-          {/* RIGHT — Sticky decision panel or read-only status */}
-          <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start' }}>
-            {['submitted', 'under_review', 'in_progress', 'more_info_requested'].includes(org.kyb_status) ? (
-              <>
-                <AIInsight
-                  title="KYB Risk Summary"
-                  prompt="Based on this organization's KYB submission, provide a brief risk assessment. Highlight any concerns and recommend approve, request more info, or reject."
-                  context={{
-                    org_name: org?.legal_name,
-                    org_type: org?.type,
-                    kyb_status: org?.kyb_status,
-                    city: org?.city,
-                    state: org?.state,
-                    industry: (org as unknown as Record<string, unknown>)?.industry_naics,
-                    annual_revenue: (org as unknown as Record<string, unknown>)?.annual_revenue_range,
-                    document_count: documents?.length ?? 0,
-                    ein_provided: !!org?.ein,
-                    risk_score: riskData?.risk_score,
-                    risk_tier: riskData?.risk_tier,
-                    risk_flags: riskData?.risk_flags,
-                    tariff_exposure: riskData?.tariff_exposure,
-                  }}
-                  collapsed={false}
-                />
-              <div className="card">
-                <div className="card-head"><h3 className="t-card-head">Make a decision</h3></div>
-                <div className="decision-panel">
-                  {submitError && (
-                    <div style={{ color: 'var(--color-danger)', fontSize: 13, marginBottom: 8 }}>{submitError}</div>
-                  )}
+          {/* RIGHT — Read-only counterparty intel (TC.6: KYB approval removed from bank portal).
+              Banks evaluate counterparties via PassportScore; Strike platform handles verification. */}
+          <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <AIInsight
+              title="Counterparty Risk Summary"
+              prompt="Based on this organization's profile, provide a brief read-only risk assessment for a bank evaluating it as a counterparty. Focus on trade-finance risk signals. Do not recommend a KYB approval decision — verification is handled by the Strike platform."
+              context={{
+                org_name: org?.legal_name,
+                org_type: org?.type,
+                kyb_status: org?.kyb_status,
+                city: org?.city,
+                state: org?.state,
+                industry: (org as unknown as Record<string, unknown>)?.industry_naics,
+                annual_revenue: (org as unknown as Record<string, unknown>)?.annual_revenue_range,
+                document_count: documents?.length ?? 0,
+                ein_provided: !!org?.ein,
+                risk_score: riskData?.risk_score,
+                risk_tier: riskData?.risk_tier,
+                risk_flags: riskData?.risk_flags,
+                tariff_exposure: riskData?.tariff_exposure,
+              }}
+              collapsed={false}
+            />
 
-                  <div className="decision-actions">
-                    <button
-                      className="btn btn-primary btn-full"
-                      type="button"
-                      onClick={() => setMode(mode === 'approve' ? 'none' : 'approve')}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-full"
-                      type="button"
-                      onClick={() => setMode(mode === 'request_info' ? 'none' : 'request_info')}
-                    >
-                      Request More Info
-                    </button>
-                    <button
-                      className="btn btn-danger btn-full"
-                      type="button"
-                      onClick={() => setMode(mode === 'reject' ? 'none' : 'reject')}
-                    >
-                      Reject
-                    </button>
-                  </div>
+            {/* PassportScore (read-only) */}
+            <div className="card">
+              <div className="card-head"><h3 className="t-card-head">PassportScore</h3></div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: 20 }}>
+                <PassportScoreRing score={riskData?.risk_score ?? org.credit_score ?? null} size="md" showLabel />
+                <a
+                  href={`/passport/${org.id}`}
+                  className="btn btn-ghost btn-sm"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  View full Passport →
+                </a>
+              </div>
+            </div>
 
-                  {mode === 'approve' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-                      <div className="decision-divider" />
-                      <div>
-                        <label className="field-label" htmlFor="risk-tier">Risk tier</label>
-                        <select
-                          id="risk-tier"
-                          className="input"
-                          value={riskTier}
-                          onChange={e => setRiskTier(e.target.value as RiskTier | '')}
-                        >
-                          <option value="">— Select tier —</option>
-                          <option value="A">Tier A</option>
-                          <option value="B">Tier B</option>
-                          <option value="C">Tier C</option>
-                          <option value="D">Tier D</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="field-label" htmlFor="credit-score">Credit score (optional)</label>
-                        <input
-                          id="credit-score"
-                          className="input"
-                          type="number"
-                          min={0}
-                          max={100}
-                          placeholder="0 – 100"
-                          value={creditScoreInput}
-                          onChange={e => setCreditScoreInput(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="field-label" htmlFor="override-note">Override note (optional)</label>
-                        <textarea
-                          id="override-note"
-                          className="input"
-                          rows={2}
-                          placeholder="Add context for override if needed…"
-                          value={overrideReason}
-                          onChange={e => setOverrideReason(e.target.value)}
-                        />
-                      </div>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        type="button"
-                        disabled={submitting}
-                        onClick={() => submitDecision('approved')}
-                      >
-                        {submitting ? 'Submitting…' : 'Confirm Approval'}
-                      </button>
-                    </div>
-                  )}
-
-                  {mode === 'request_info' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
-                      <div className="decision-divider" />
-                      <div>
-                        <label className="field-label" htmlFor="info-message">Message to applicant</label>
-                        <textarea
-                          id="info-message"
-                          className="input"
-                          rows={4}
-                          placeholder="Describe what additional information is needed…"
-                          value={infoMessage}
-                          onChange={e => setInfoMessage(e.target.value)}
-                        />
-                      </div>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        type="button"
-                        disabled={submitting || infoMessage.trim().length < 10}
-                        onClick={() => submitDecision('more_info_requested')}
-                      >
-                        {submitting ? 'Submitting…' : 'Send Request'}
-                      </button>
-                    </div>
-                  )}
-
-                  {mode === 'reject' && (
-                    <div className="reject-block">
-                      <div className="decision-divider" />
-                      <div>
-                        <label className="field-label" htmlFor="reject-reason">Rejection reason (required)</label>
-                        <textarea
-                          id="reject-reason"
-                          className="input"
-                          rows={3}
-                          placeholder="Explain the reason for rejection…"
-                          value={rejectionReason}
-                          onChange={e => setRejectionReason(e.target.value)}
-                        />
-                      </div>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        type="button"
-                        disabled={submitting || rejectionReason.trim().length < 10}
-                        onClick={() => submitDecision('rejected')}
-                      >
-                        {submitting ? 'Submitting…' : 'Confirm Rejection'}
-                      </button>
-                    </div>
-                  )}
+            {/* Verification status (read-only — no decision actions) */}
+            <div className="card">
+              <div className="card-head"><h3 className="t-card-head">Verification status</h3></div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <span className={kybBadgeClass(org.kyb_status)} style={{ alignSelf: 'flex-start' }}>
+                  {kybStatusLabel(org.kyb_status)}
+                </span>
+                {org.risk_tier && (
+                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>Risk tier: <strong>{org.risk_tier}</strong></div>
+                )}
+                {org.credit_score != null && (
+                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>Credit score: <strong>{org.credit_score}</strong></div>
+                )}
+                {org.credit_reviewed_at && (
+                  <div style={{ fontSize: 13, color: 'var(--gray)' }}>Last reviewed {formatDate(org.credit_reviewed_at)}</div>
+                )}
+                <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5, marginTop: 4 }}>
+                  Verification is managed by the Strike platform. Banks evaluate counterparties
+                  via PassportScore and trade history — no bank KYB action is required.
                 </div>
               </div>
-              </>
-            ) : (
-              <div className="card">
-                <div className="card-head"><h3 className="t-card-head">Decision</h3></div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {org.kyb_status === 'approved' && (
-                    <>
-                      <span className="badge badge-active" style={{ alignSelf: 'flex-start' }}>Approved</span>
-                      {org.credit_reviewed_at && (
-                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          Reviewed {formatDate(org.credit_reviewed_at)}
-                        </div>
-                      )}
-                      {org.risk_tier && (
-                        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-                          Risk tier: <strong>{org.risk_tier}</strong>
-                        </div>
-                      )}
-                      {latestDecision?.rejection_reason && (
-                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          {latestDecision.rejection_reason}
-                        </div>
-                      )}
-                      {org.credit_score != null && (
-                        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-                          Credit score: <strong>{org.credit_score}</strong>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {org.kyb_status === 'rejected' && (
-                    <>
-                      <span className="badge badge-rejected" style={{ alignSelf: 'flex-start' }}>Rejected</span>
-                      {org.credit_reviewed_at && (
-                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          Decided {formatDate(org.credit_reviewed_at)}
-                        </div>
-                      )}
-                      {latestDecision?.rejection_reason && (
-                        <div style={{ fontSize: 13, color: '#DC2626' }}>
-                          Reason: {latestDecision.rejection_reason}
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {!['approved', 'rejected'].includes(org.kyb_status) && (
-                    <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                      {kybStatusLabel(org.kyb_status)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       ) : null}

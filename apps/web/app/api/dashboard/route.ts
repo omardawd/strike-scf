@@ -90,6 +90,30 @@ export async function GET() {
       .eq('bank_id', userData.bank_id)
       .contains('risk_flags', '[{"code":"tariff_exposed"}]')
 
+    // TC.6 — PassportScore distribution across the bank's portfolio (replaces the
+    // KYB Queue widget). Banks evaluate counterparties via PassportScore, not KYB.
+    const { data: scoreOrgs } = await adminClient
+      .from('organizations')
+      .select('passport_score')
+      .eq('bank_id', userData.bank_id)
+
+    const passportBuckets = { strong: 0, fair: 0, weak: 0, pending: 0 }
+    let scoreSum = 0
+    let scored = 0
+    for (const o of scoreOrgs ?? []) {
+      const s = (o as { passport_score: number | null }).passport_score
+      if (s == null) { passportBuckets.pending++; continue }
+      scoreSum += s; scored++
+      if (s >= 70) passportBuckets.strong++
+      else if (s >= 45) passportBuckets.fair++
+      else passportBuckets.weak++
+    }
+    const passport_distribution = {
+      total: (scoreOrgs ?? []).length,
+      avg_score: scored > 0 ? Math.round(scoreSum / scored) : null,
+      ...passportBuckets,
+    }
+
     // Total outstanding funded balance
     const { data: fundedTxns } = await adminClient
       .from('transactions')
@@ -160,6 +184,7 @@ export async function GET() {
       margin_at_risk_label: marginAtRisk,
       at_risk_suppliers:    riskOrgs?.slice(0, 5) ?? [],
       funding_queue:        rankedQueue,
+      passport_distribution,
     })
   }
 

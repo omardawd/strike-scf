@@ -20,6 +20,15 @@ interface BankData {
   active_transactions: number
   outstanding_balance: number
   avg_rate?: number | null
+  // TC.6 — portfolio PassportScore distribution (replaces KYB Queue widget)
+  passport_distribution?: {
+    total: number
+    avg_score: number | null
+    strong: number
+    fair: number
+    weak: number
+    pending: number
+  }
 }
 interface AnchorData {
   portal: 'anchor'
@@ -584,6 +593,76 @@ function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
 }
 
 // ─── BANK DASHBOARD ──────────────────────────────────────────────────────────
+// TC.6 — PassportScore Overview widget. Distribution of portfolio passport_scores;
+// replaces the bank "KYB Queue" widget (banks evaluate via PassportScore, not KYB).
+function PassportOverviewWidget({
+  dist,
+  loading,
+}: {
+  dist?: { total: number; avg_score: number | null; strong: number; fair: number; weak: number; pending: number }
+  loading: boolean
+}) {
+  const segments = dist
+    ? [
+        { key: 'strong',  label: 'Strong 70+',  value: dist.strong,  color: 'var(--color-green)' },
+        { key: 'fair',    label: 'Fair 45–69',  value: dist.fair,    color: 'var(--color-amber)' },
+        { key: 'weak',    label: 'Weak <45',    value: dist.weak,    color: 'var(--color-red)' },
+        { key: 'pending', label: 'Pending',     value: dist.pending, color: 'var(--gray-soft)' },
+      ]
+    : []
+  const total = dist?.total ?? 0
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span>PassportScore Overview</span>
+        <a href="/reporting" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>Portfolio →</a>
+      </div>
+      <div className="card-body" style={{ padding: 16 }}>
+        {loading ? (
+          <SkeletonBlock height={48} />
+        ) : !dist || total === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
+            No counterparties in your portfolio yet.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+              <PassportScoreRing score={dist.avg_score} size="sm" />
+              <div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                  Avg PassportScore
+                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
+                  {dist.avg_score ?? '—'}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>{total} counterpart{total === 1 ? 'y' : 'ies'}</div>
+              </div>
+            </div>
+
+            {/* Distribution bar */}
+            <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', background: 'var(--border)', marginBottom: 12 }}>
+              {segments.filter(s => s.value > 0).map(s => (
+                <div key={s.key} title={`${s.label}: ${s.value}`} style={{ flex: s.value, background: s.color }} />
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+              {segments.map(s => (
+                <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+                  <span style={{ color: 'var(--gray)', flex: 1 }}>{s.label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function BankDashboard() {
   const user = useUser()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
@@ -606,14 +685,14 @@ function BankDashboard() {
     })
   }, [])
 
-  const kybPending = dashData?.kyb_pending ?? 0
+  // TC.6 — banks no longer approve KYB; the KYB review queue is removed from the
+  // bank dashboard. Counterparties are evaluated via PassportScore (widget below).
   const openFinancing = financing.length
   const txnsPending = dashData?.pending_bank_review ?? 0
-  const attentionCount = kybPending + openFinancing + txnsPending
+  const attentionCount = openFinancing + txnsPending
 
   const actionCards: ActionCard[] = [
-    { color: 'var(--color-amber)', label: `${kybPending} KYB review${kybPending !== 1 ? 's' : ''} pending`, count: kybPending, href: '/kyb' },
-    { color: 'var(--blue)', label: `${openFinancing} open financing request${openFinancing !== 1 ? 's' : ''}`, count: openFinancing, href: '/marketplace/financing' },
+    { color: 'var(--blue)', label: `${openFinancing} open Strike Place request${openFinancing !== 1 ? 's' : ''}`, count: openFinancing, href: '/marketplace/financing' },
     { color: 'var(--color-amber)', label: `${txnsPending} transaction${txnsPending !== 1 ? 's' : ''} awaiting review`, count: txnsPending, href: '/transactions' },
   ]
 
@@ -673,10 +752,10 @@ function BankDashboard() {
         {/* 4. Two-column */}
         <div className="split-65" style={{ marginBottom: 24 }}>
 
-          {/* LEFT — Financing Marketplace */}
+          {/* LEFT — Strike Place */}
           <div className="card">
             <div className="card-head">
-              <span>Open Financing Requests</span>
+              <span>Strike Place</span>
               <a href="/marketplace/financing" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
             </div>
             {loading ? (
@@ -736,8 +815,12 @@ function BankDashboard() {
             )}
           </div>
 
-          {/* RIGHT — Recent Activity + AI Insight */}
+          {/* RIGHT — PassportScore Overview + Recent Activity + AI Insight */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* TC.6 — PassportScore Overview (replaces the KYB Queue widget) */}
+            <PassportOverviewWidget dist={dashData?.passport_distribution} loading={loading} />
+
             <div className="card">
               <div className="card-head">
                 <span>Recent Activity</span>
@@ -775,11 +858,12 @@ function BankDashboard() {
               prompt="Based on this bank's portfolio, what is the single most important action the bank should take today? Be specific and direct."
               context={{
                 active_programs: dashData?.active_program_count ?? 0,
-                kyb_pending: dashData?.kyb_pending ?? 0,
+                portfolio_avg_passport_score: dashData?.passport_distribution?.avg_score ?? null,
+                portfolio_weak_scores: dashData?.passport_distribution?.weak ?? 0,
                 transactions_pending_review: dashData?.pending_bank_review ?? 0,
                 outstanding_balance: dashData?.outstanding_balance ?? 0,
                 enrolled_orgs: dashData?.enrolled_org_count ?? 0,
-                open_financing_requests: openFinancing,
+                open_strike_place_requests: openFinancing,
               }}
             />
           </div>
