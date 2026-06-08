@@ -743,42 +743,6 @@ export default function ProgramDetailPage() {
                       )}
                     </div>
 
-                    {/* Linked deals */}
-                    <div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-                        Linked deals {pipeline?.linked_deals.length ? `(${pipeline.linked_deals.length})` : ''}
-                      </div>
-                      {!pipeline || pipeline.linked_deals.length === 0 ? (
-                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          No funded deals yet. Accepted Strike Place offers matching this program appear here.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                          {pipeline.linked_deals.map(d => (
-                            <div
-                              key={d.id}
-                              onClick={() => d.deal_id && router.push(`/deals/${d.deal_id}`)}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                                background: 'var(--white)', cursor: d.deal_id ? 'pointer' : 'default',
-                              }}
-                            >
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', minWidth: 96 }}>
-                                {fmtMoney(d.amount)}
-                              </span>
-                              <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {d.counterparty}
-                              </span>
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
-                                {d.rate_apr != null ? `${d.rate_apr}%` : '—'} · {d.tenor_days ?? '—'}d
-                              </span>
-                              <span className={`badge ${statusBadge(d.status)}`}>{d.status.replace(/_/g, ' ')}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
                     {/* Offer pipeline (pending) */}
                     <div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
@@ -865,8 +829,81 @@ export default function ProgramDetailPage() {
               </div>
             )}
 
-            {/* ── BANK + IF: Suppliers ── */}
-            {portal === 'bank' && isIFOnly && (
+            {/* ── BANK: Financed Deals ── */}
+            {portal === 'bank' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div className="section-title">
+                    Financed Deals{pipeline?.linked_deals.length ? ` (${pipeline.linked_deals.length})` : ''}
+                  </div>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={goToStrikePlace}>
+                    Source on Strike Place →
+                  </button>
+                </div>
+                {!pipeline || pipeline.linked_deals.length === 0 ? (
+                  <div className="card">
+                    <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
+                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>
+                        No financed deals yet. When you accept a financing request from Strike Place, it will appear here.
+                      </div>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={goToStrikePlace}>
+                        Browse Strike Place →
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {pipeline.linked_deals.map(d => (
+                      <div
+                        key={d.id}
+                        onClick={() => d.deal_id && router.push(`/deals/${d.deal_id}`)}
+                        style={{
+                          background: 'var(--white)',
+                          border: '1px solid var(--border)',
+                          borderLeft: '3px solid var(--blue)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '16px 20px',
+                          cursor: d.deal_id ? 'pointer' : 'default',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 16,
+                          transition: 'box-shadow 0.15s',
+                        }}
+                        onMouseEnter={d.deal_id ? e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-card)' } : undefined}
+                        onMouseLeave={d.deal_id ? e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none' } : undefined}
+                      >
+                        <div style={{ minWidth: 110 }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>Financed</div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--blue)', fontVariantNumeric: 'tabular-nums' }}>
+                            {fmtMoney(d.amount)}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {d.counterparty}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
+                            {d.type.replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>
+                            {d.rate_apr != null ? `${d.rate_apr}% APR` : '—'} · {d.tenor_days ?? '—'}d
+                          </div>
+                          <span className={`badge ${statusBadge(d.status)}`}>{d.status.replace(/_/g, ' ')}</span>
+                        </div>
+                        {d.deal_id && (
+                          <div style={{ color: 'var(--gray)', fontSize: 16, flexShrink: 0 }}>→</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── BANK + IF: Suppliers (legacy invite-based flow) ── */}
+            {portal === 'bank' && isIFOnly && false && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>Suppliers</div>
                 {suppliers.length === 0 && pendingSuppliers.length === 0 ? (
@@ -941,8 +978,8 @@ export default function ProgramDetailPage() {
               </div>
             )}
 
-            {/* ── BANK: Anchor & Supplier Network ── */}
-            {portal === 'bank' && !isIFOnly && (
+            {/* ── BANK: Anchor & Supplier Network (legacy invite-based flow) ── */}
+            {portal === 'bank' && !isIFOnly && false && (
               <>
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>Anchor &amp; Supplier Network</div>

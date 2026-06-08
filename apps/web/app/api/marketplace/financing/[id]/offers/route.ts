@@ -49,6 +49,19 @@ export async function POST(
     }, { status: 400 })
   }
 
+  // Validate program_id belongs to this bank (if provided)
+  if (body.program_id) {
+    const { data: prog } = await adminClient
+      .from('programs')
+      .select('id')
+      .eq('id', body.program_id)
+      .eq('bank_id', me.bank_id)
+      .single()
+    if (!prog) {
+      return NextResponse.json({ error: 'Program not found or does not belong to your bank' }, { status: 400 })
+    }
+  }
+
   const { data: financingReq } = await adminClient
     .from('financing_requests')
     .select('id, status, preferred_tenor_days, amount_requested')
@@ -66,6 +79,7 @@ export async function POST(
     .upsert({
       request_id:         requestId,
       bank_id:            me.bank_id,
+      program_id:         body.program_id ?? null,
       offered_rate_apr:   body.offered_rate_apr,
       offered_amount:     body.offered_amount,
       offered_tenor_days: body.offered_tenor_days,

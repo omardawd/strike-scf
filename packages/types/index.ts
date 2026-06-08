@@ -637,6 +637,7 @@ export interface SubmitFinancingOfferPayload {
   structure_type: FinancingType
   conditions?: string
   notes?: string
+  program_id?: string | null
 }
 
 export interface SendRoomMessagePayload {

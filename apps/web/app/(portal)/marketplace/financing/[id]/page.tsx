@@ -118,6 +118,14 @@ function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; l
 
 const FINANCING_TYPES: FinancingType[] = ['reverse_factoring', 'invoice_factoring', 'po_financing', 'dynamic_discounting']
 
+interface BankProgram {
+  id: string
+  name: string
+  financing_types: string[]
+  status: string
+  currency: string
+}
+
 function BankOfferForm({
   request,
   existingOffer,
@@ -127,9 +135,14 @@ function BankOfferForm({
   existingOffer: FinancingRequestOffer | null
   onSubmit: (offer: FinancingRequestOffer) => void
 }) {
+  const router = useRouter()
   const [editing, setEditing]   = useState(!existingOffer)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
+
+  const [programs, setPrograms]       = useState<BankProgram[]>([])
+  const [programsLoaded, setProgramsLoaded] = useState(false)
+  const [programId, setProgramId]     = useState<string>('')
 
   const [rateApr,    setRateApr]    = useState(existingOffer?.offered_rate_apr.toString()   ?? '')
   const [amount,     setAmount]     = useState(existingOffer?.offered_amount.toString()     ?? request.amount_requested.toString())
@@ -137,6 +150,23 @@ function BankOfferForm({
   const [structure,  setStructure]  = useState<FinancingType>(existingOffer?.structure_type ?? (request.financing_type ?? 'invoice_factoring'))
   const [conditions, setConditions] = useState(existingOffer?.conditions ?? '')
   const [notes,      setNotes]      = useState(existingOffer?.notes ?? '')
+
+  useEffect(() => {
+    fetch('/api/programs')
+      .then(r => r.json())
+      .then(d => {
+        const list: BankProgram[] = (d.programs ?? []).filter((p: BankProgram) => p.status !== 'closed')
+        setPrograms(list)
+        // Auto-select best matching program
+        const match = list.find(p =>
+          p.financing_types.includes(request.financing_type ?? structure) &&
+          (p.currency ?? 'USD') === (request.currency ?? 'USD')
+        ) ?? list[0]
+        if (match) setProgramId(match.id)
+        setProgramsLoaded(true)
+      })
+      .catch(() => setProgramsLoaded(true))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -154,6 +184,7 @@ function BankOfferForm({
           structure_type:     structure,
           conditions:         conditions || undefined,
           notes:              notes || undefined,
+          program_id:         programId || null,
         }),
       })
       const json = await res.json()
@@ -215,12 +246,73 @@ function BankOfferForm({
     )
   }
 
+  // No programs exist — Strike AI prompts to create one
+  if (programsLoaded && programs.length === 0) {
+    return (
+      <div className="card">
+        <div className="card-head">Submit an Offer</div>
+        <div className="card-body">
+          <div style={{
+            borderLeft: '3px solid var(--teal)',
+            background: 'var(--teal-dim)',
+            padding: '16px 20px',
+            display: 'flex',
+            gap: 12,
+            marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 16, color: 'var(--teal)', flexShrink: 0, marginTop: 2 }}>✦</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
+                Strike AI · Action Required
+              </span>
+              <p style={{ fontSize: 13.5, color: 'var(--teal)', lineHeight: 1.6, margin: 0 }}>
+                You don't have any active programs set up. Strike AI recommends creating a program first — it lets you track all financed deals, manage capacity, and monitor performance in one place.
+              </p>
+            </div>
+          </div>
+          <button
+            className="btn btn-primary"
+            type="button"
+            style={{ width: '100%' }}
+            onClick={() => router.push('/programs/new')}
+          >
+            Create a Program →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="card">
       <div className="card-head">{existingOffer ? 'Edit Your Offer' : 'Submit an Offer'}</div>
       <form onSubmit={handleSubmit}>
         <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <div className="alert alert-error">{error}</div>}
+
+          {/* Program selector */}
+          {programsLoaded && programs.length > 0 && (
+            <div className="form-field">
+              <label className="field-label">Book under Program</label>
+              <select
+                className="input form-select"
+                value={programId}
+                onChange={e => setProgramId(e.target.value)}
+              >
+                <option value="">— No program (unlinked) —</option>
+                {programs.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.financing_types.map(t => t.replace(/_/g, ' ')).join(', ')} · {p.currency ?? 'USD'}
+                  </option>
+                ))}
+              </select>
+              {programId && (
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+                  If accepted, this deal will appear under the selected program's deal pipeline.
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="form-row-2">
             <div className="form-field">
