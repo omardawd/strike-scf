@@ -1846,6 +1846,7 @@
   padding: 16px 20px 48px;
   max-width: 1680px;
   margin: 0 auto;
+  animation: page-fade 0.3s ease;
 }
 
 /* ── Stats bar ───────────────────────────────────────── */
@@ -1855,7 +1856,8 @@
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   margin-bottom: 14px;
 }
@@ -1899,7 +1901,8 @@
   padding: 8px 10px;
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-card);
   margin-bottom: 12px;
 }
 .term-filter {
@@ -1960,7 +1963,8 @@
 .term-board {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   min-width: 0;
 }
@@ -2103,7 +2107,8 @@
 .term-detail {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 .term-detail-head {
@@ -2174,8 +2179,8 @@
 }
 
 .term-ai-note {
-  border-left: 2px solid var(--blue);
-  background: var(--blue-light);
+  border-left: 3px solid var(--teal);
+  background: var(--teal-dim);
   padding: 10px 12px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: 12px;
@@ -2188,7 +2193,7 @@
   font-size: 8.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--blue);
+  color: var(--teal);
   margin-bottom: 4px;
 }
 
