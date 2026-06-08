@@ -25,13 +25,29 @@ export async function GET() {
   if (!me) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
   if (BANK_ROLES.includes(me.role)) {
-    const { data: requests, error } = await adminClient
+    const { data: rawRequests, error } = await adminClient
       .from('financing_requests')
       .select('*')
       .in('status', ['open', 'offers_received'])
       .order('created_at', { ascending: false })
 
     if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
+
+    // TD.5 — ghost enforcement: NEVER surface a financing request whose REQUESTOR
+    // org is a ghost (network_visible=false) to a bank. Service role bypasses RLS,
+    // so this manual filter is required.
+    const requestorIds = [...new Set((rawRequests ?? []).map((r: any) => r.requesting_org_id as string).filter(Boolean))]
+    const visibleRequestorIds = new Set<string>()
+    if (requestorIds.length > 0) {
+      const { data: requestorOrgs } = await adminClient
+        .from('organizations')
+        .select('id, network_visible')
+        .in('id', requestorIds)
+      for (const o of requestorOrgs ?? []) {
+        if (o.network_visible === true) visibleRequestorIds.add(o.id)
+      }
+    }
+    const requests = (rawRequests ?? []).filter((r: any) => visibleRequestorIds.has(r.requesting_org_id))
 
     const dealIds = [...new Set((requests ?? []).map((r: any) => r.deal_id as string))]
     const dealsMap: Record<string, any> = {}

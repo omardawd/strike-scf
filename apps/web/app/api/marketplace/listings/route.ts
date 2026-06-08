@@ -85,7 +85,7 @@ export async function GET(request: Request) {
   if (orgIds.length > 0) {
     const { data: orgs } = await adminClient
       .from('organizations')
-      .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, trade_count_total, trade_volume_total, country_of_origin, description')
+      .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, trade_count_total, trade_volume_total, country_of_origin, description, network_visible')
       .in('id', orgIds)
 
     for (const org of orgs ?? []) {
@@ -93,7 +93,15 @@ export async function GET(request: Request) {
     }
   }
 
-  const result = (listings ?? []).map((listing: any) => ({
+  // TD.5 — ghost enforcement: NEVER surface a listing whose CREATOR org is a ghost
+  // (network_visible=false) to the marketplace. The service role bypasses RLS, so
+  // this manual filter is required. The `mine` view is exempt — a user always sees
+  // their own listings regardless of their own visibility.
+  const visibleListings = mine
+    ? (listings ?? [])
+    : (listings ?? []).filter((l: any) => orgsMap[l.org_id]?.network_visible === true)
+
+  const result = visibleListings.map((listing: any) => ({
     listing,
     poster_org: orgsMap[listing.org_id] ?? null,
     poster_passport_narrative: null,
