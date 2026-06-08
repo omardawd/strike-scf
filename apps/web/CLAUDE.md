@@ -274,6 +274,11 @@ deals
   --     dispute_resolved_at, dispute_resolved_by, dispute_resolution
   --   confirmed_at, in_preparation_at
   -- AI doc generation fires on status -> 'agreed'
+  -- Financing-structure columns added by DEAL-FLOW migration:
+  --   noa_document_id UUID, noa_generated_at, noa_sent_to_buyer_at,
+  --     noa_acknowledged_at, noa_acknowledged_by — Invoice Factoring NOA
+  --   po_financing_converted_at — PO Financing converts on shipment
+  --   dd_offer_presented_at, dd_offer_accepted_at, dd_offer_declined_at — Dynamic Discounting
 
 deal_status enum values (all live):
   negotiating | agreed | documents_pending | confirmed | in_preparation
@@ -601,7 +606,12 @@ anon client for reads with RLS). Key routes:
 - /api/deals/[id]/upload-document — Multipart upload to deal-documents bucket; G7 duplicate invoice check
 - /api/deals/[id]/events — GET deal_events audit log (party members only)
 - /api/deals/check-overdue — Vercel cron (daily 08:00 UTC); moves overdue deals to payment_overdue; G9 grace period for pending financing
-- /api/marketplace/financing/[id]/reject — Close financing request without activation; reverts deal to delivery_confirmed
+- /api/deals/[id]/transition — POST; canonical route for ALL deal status changes; action + payload; returns updated deal + financing_context
+- /api/deals/[id]/available-actions — GET; returns {actions, financing_context, deal_status, user_role} for UI + AI agent
+- /api/deals/[id]/acknowledge-noa — POST; buyer acknowledges Invoice Factoring NOA; unlocks payment instructions
+- /api/deals/[id]/dd-offer — POST; anchor (buyer) presents Dynamic Discounting early payment offer to supplier
+- /api/deals/[id]/dd-respond — POST; supplier accepts ({accepted:true}) or declines ({accepted:false}) DD offer
+- /api/marketplace/financing/[id]/reject — Close financing request without activation; structure-aware revert (IF clears NOA, PO blocked post-conversion)
 - /api/rooms — Room list + create public room
 - /api/rooms/[id]/messages — Send message + AI moderation
 - /api/passport/[org_id] — Full passport profile
@@ -612,6 +622,20 @@ anon client for reads with RLS). Key routes:
 - /api/notifications — Notification center
 - /api/admin/* — Strike admin actions
 - /api/organizations/search — Network-visible org search
+
+### Financing-structure-aware deal flow (DEAL-FLOW implementation)
+
+Four financing structures are a **lens** over the deal flow — steps don't change, but rendering/amounts/recipient/gates do. All logic lives in one place:
+
+- **`lib/deals/financing-context.ts`** — `getFinancingContext(deal, txn, program, bankOrg, supplierOrg)` is the single source of truth. Returns `FinancingContext` with all UI-relevant fields. Pure function, no imports from component files. Import from here; never compute financing logic elsewhere.
+  - `DealFinancingStructure` = `'reverse_factoring' | 'invoice_factoring' | 'po_financing' | 'dynamic_discounting' | null` (local type — do NOT confuse with `FinancingStructure` from `packages/types/index.ts` which is `'preset'|'custom'|'open'`)
+  - DB uses `type: 'factoring'` for IF; `mapStructure()` normalizes both to `'invoice_factoring'`
+- **`lib/deals/transitions.ts`** — `PERMITTED_TRANSITIONS` map; `getPermittedTransition(status, action, role, fc)` returns the rule or null.
+- **`components/deals/DealRoadmap.tsx`** — receives `FinancingContext` as props; zero financing logic inside.
+- **`components/deals/ActionPanel.tsx`** — receives `availableActions` + `FinancingContext` as props; zero financing logic inside. Sub-components: `FinancingActiveBanner`, `DDOfferForm`, `NOAAcknowledgmentForm`, `DDRespondForm`, `GenericActionForm`.
+- **Deal page (`app/(portal)/deals/[id]/page.tsx`)** computes `financingContext` via `getFinancingContext()` then passes it to both components. Sets `data-ai-context` attribute for the AI overlay.
+- **RF gate**: can only request after `delivery_confirmed` (post-shipment). **PO gate**: must request at `confirmed` or `in_preparation` (pre-shipment). **IF NOA gate**: buyer must acknowledge before `confirm_payment_sent` is available. **DD flow**: anchor presents offer → supplier accept/decline.
+- `transactions.repayment_routing` (TEXT): `'buyer_to_bank'` (RF/IF/PO) or `'direct'` (DD).
 
 ### Key design decisions
 - deal_source: 'marketplace' | 'imported' | 'direct' on deals table
