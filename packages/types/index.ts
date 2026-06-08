@@ -50,11 +50,19 @@ export type DealStatus =
   | 'negotiating'
   | 'agreed'
   | 'documents_pending'
-  | 'active'
+  | 'confirmed'
+  | 'in_preparation'
+  | 'shipped'
+  | 'delivery_confirmed'
+  | 'in_dispute'
+  | 'payment_due'
+  | 'payment_overdue'
+  | 'payment_confirmed'
+  | 'active'              // legacy — treat as confirmed in UI
   | 'financing_requested'
   | 'financing_active'
   | 'completed'
-  | 'disputed'
+  | 'disputed'            // legacy alias for in_dispute
   | 'cancelled'
 
 export type RoomType = 'public' | 'private'
@@ -371,13 +379,81 @@ export interface Deal {
   financing_request_id: string | null
   agreed_at: string | null
   active_at: string | null
+  confirmed_at: string | null
+  in_preparation_at: string | null
+  shipped_at: string | null
   completed_at: string | null
   cancelled_at: string | null
+  cancelled_by: string | null
   cancellation_reason: string | null
   total_value: number | null
   payment_days_actual: number | null
+  // Shipment (G1.2)
+  shipment_tracking_ref: string | null
+  shipment_carrier: string | null
+  shipment_estimated_delivery: string | null
+  commercial_invoice_id: string | null
+  commercial_invoice_issued_at: string | null
+  // Payment instructions (seller's bank — direct payment)
+  payment_bank_name: string | null
+  payment_account_number: string | null
+  payment_routing_number: string | null
+  payment_swift_iban: string | null
+  payment_account_name: string | null
+  payment_reference: string | null
+  payment_instructions_set_at: string | null
+  payment_instructions_set_by: string | null
+  // Financing fork
+  financing_payment_active: boolean
+  // Payment confirmation (buyer-side)
+  payment_confirmed_at: string | null
+  payment_confirmed_by: string | null
+  payment_amount: number | null
+  payment_currency: string | null
+  payment_external_reference: string | null
+  // Overdue
+  payment_due_date: string | null
+  overdue_notified_at: string | null
+  // Amendments
+  amendment_history: AmendmentRecord[] | null
+  // External counterparty (imported deals)
+  external_counterparty_email: string | null
+  external_counterparty_name: string | null
+  external_counterparty_country: string | null
+  // Dispute
+  disputed_at: string | null
+  disputed_by: string | null
+  dispute_reason: string | null
+  dispute_category: string | null
+  dispute_resolved_at: string | null
+  dispute_resolved_by: string | null
+  dispute_resolution: string | null
   created_at: string
   updated_at: string
+}
+
+export interface AmendmentRecord {
+  id: string
+  proposed_by: string
+  proposed_at: string
+  field: string
+  current_value: string | number | null
+  proposed_value: string | number | null
+  reason: string
+  status: 'pending' | 'accepted' | 'rejected'
+  responded_at: string | null
+  response: string | null
+}
+
+export interface DealEvent {
+  id: string
+  deal_id: string
+  event_type: string
+  actor_user_id: string | null
+  actor_org_id: string | null
+  description: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
 }
 
 export interface FinancingRequest {
