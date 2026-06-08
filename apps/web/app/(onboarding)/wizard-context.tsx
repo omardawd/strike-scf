@@ -2,7 +2,16 @@
 
 import { createContext, useContext } from 'react'
 
-export const WIZARD_STEPS = ['Business', 'Contact', 'Financial', 'Documents', 'Review'] as const
+// TD.3 — Passport activation wizard, 7 steps.
+export const WIZARD_STEPS = [
+  'Identity & Legal',
+  'Address & Contact',
+  'Ownership & Compliance',
+  'Financial & Trade',
+  'Systems & Intent',
+  'Documents',
+  'Review & Submit',
+] as const
 export const TOTAL_STEPS = WIZARD_STEPS.length
 
 export interface WizardContextValue {

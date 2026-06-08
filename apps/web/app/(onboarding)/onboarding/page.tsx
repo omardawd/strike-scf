@@ -90,18 +90,39 @@ interface DocSpec {
   label: string
   required: boolean
 }
+// Common to all orgs (TD.3 — Document Upload, role-split).
+const BASE_DOCS: DocSpec[] = [
+  { kind: 'certificate_of_incorporation', label: 'Certificate of incorporation / business registration', required: true },
+  { kind: 'photo_id', label: 'Government-issued photo ID of authorized signatory (ID document, not a selfie)', required: true },
+  { kind: 'proof_of_address', label: 'Proof of business address — utility bill, bank letter or lease dated within 90 days', required: true },
+  { kind: 'ubo_declaration', label: 'Corporate ownership / UBO declaration — signed', required: true },
+]
 const SUPPLIER_DOCS: DocSpec[] = [
-  { kind: 'certificate_of_incorporation', label: 'Certificate of incorporation', required: true },
-  { kind: 'ein_letter', label: 'EIN letter', required: true },
-  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: true },
-  { kind: 'bank_statements', label: 'Bank statements — last 6 months', required: true },
-  { kind: 'trade_reference', label: 'Trade reference letter — improves your PassportScore', required: false },
+  ...BASE_DOCS,
+  { kind: 'bank_statements', label: 'Business bank statements — last 6 months', required: true },
+  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: false },
+  { kind: 'tax_return', label: 'Latest corporate tax return', required: false },
 ]
 const ANCHOR_DOCS: DocSpec[] = [
-  { kind: 'certificate_of_incorporation', label: 'Certificate of incorporation', required: true },
-  { kind: 'ein_letter', label: 'EIN letter', required: true },
-  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: true },
-  { kind: 'bank_statements', label: 'Bank statements — last 6 months', required: true },
+  ...BASE_DOCS,
+  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: false },
+  { kind: 'board_resolution', label: 'Board resolution / authority letter authorizing the signatory', required: true },
+]
+
+// Reference data for the new Financial & Trade and Systems & Intent steps.
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'CNY', 'JPY', 'INR', 'SGD', 'AED', 'AUD']
+const INVOICE_SIZES = ['<$10K', '$10K–$50K', '$50K–$250K', '$250K–$1M', '$1M+']
+const PAYMENT_TERM_DAYS = ['30', '45', '60', '90', '120']
+const CUSTOMER_COUNT_RANGES = ['1–5', '6–20', '21–100', '100+']
+const PERCENT_RANGES = ['<10%', '10–25%', '25–50%', '>50%']
+const ERP_SYSTEMS = ['SAP', 'Oracle', 'NetSuite', 'QuickBooks', 'Xero', 'Other', 'None']
+const FINANCING_NEEDS = ['Invoices', 'POs', 'Both']
+const INTENT_OPTIONS = [
+  'Supplier financing',
+  'Buyer financing',
+  'Find new suppliers',
+  'Find new buyers',
+  'All of the above',
 ]
 
 // ─────────────────────────────────────────────────────────────
@@ -327,6 +348,41 @@ function MultiSelect({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+// Yes/No segmented control for compliance declarations (Step 3).
+function YesNo({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: '' | 'yes' | 'no'
+  onChange: (v: 'yes' | 'no') => void
+}) {
+  return (
+    <div className="form-field">
+      <div className="form-label-row">
+        <label className="form-label">{label}</label>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {(['no', 'yes'] as const).map((opt) => {
+          const on = value === opt
+          return (
+            <button
+              type="button"
+              key={opt}
+              onClick={() => onChange(opt)}
+              className={`radio-card ${on ? 'selected' : ''}`.trim()}
+              style={{ flex: 1, justifyContent: 'center', textTransform: 'capitalize' }}
+            >
+              {opt}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -578,6 +634,50 @@ export default function OnboardingWizard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEin, setShowEin] = useState(false)
+  // Final attestation (Step 7) — gates submission per TD.3.
+  const [attested, setAttested] = useState(false)
+
+  // ── Supplemental KYB profile (Steps 3 & 5) ──────────────────────────────────
+  // These TD.3 fields have no dedicated column on `organizations` (TD = existing
+  // columns only, no migration). They are collected to complete the activation
+  // flow and gate progression, kept in local state. Persisted KYB data (legal,
+  // contact, financial, docs) still flows through /api/onboarding/progress.
+  const [profile, setProfile] = useState({
+    // Step 3 — Ownership & Compliance
+    ceo_name: '',
+    ubo_summary: '',
+    pep: '' as '' | 'yes' | 'no',
+    sanctioned: '' as '' | 'yes' | 'no',
+    bankruptcy: '' as '' | 'yes' | 'no',
+    litigation: '' as '' | 'yes' | 'no',
+    // Step 4 — Trade profile extras
+    primary_currency: '',
+    avg_invoice_size: '',
+    payment_terms_offered: '',
+    payment_terms_received: '',
+    // Step 4 — supplier-only
+    customer_count: '',
+    largest_customer_pct: '',
+    financing_need: '',
+    // Step 4 — anchor-only
+    supplier_count: '',
+    largest_supplier_pct: '',
+    supplier_payment_terms: '',
+    // Step 5 — Systems & Intent
+    erp_system: '',
+    primary_bank_name: '',
+    intent: [] as string[],
+    ai_matching: true,
+  })
+  function updateProfile(patch: Partial<typeof profile>) {
+    setProfile((p) => ({ ...p, ...patch }))
+  }
+  function toggleIntent(value: string) {
+    setProfile((p) => ({
+      ...p,
+      intent: p.intent.includes(value) ? p.intent.filter((v) => v !== value) : [...p.intent, value],
+    }))
+  }
 
   const orgType: 'anchor' | 'supplier' = org?.type === 'anchor' ? 'anchor' : 'supplier'
   const docSpecs = orgType === 'anchor' ? ANCHOR_DOCS : SUPPLIER_DOCS
@@ -641,13 +741,16 @@ export default function OnboardingWizard() {
   }
 
   function validate(current: number): string | null {
+    // Step 1 — Identity & Legal
     if (current === 1) {
       if (!form.legal_name.trim()) return 'Legal business name is required.'
       if (!form.business_type) return 'Please select a business type.'
       if (!form.country_of_incorporation) return 'Country of incorporation is required.'
       if (!form.years_in_operation.trim()) return 'Years in operation is required.'
       if (!form.industry_naics) return 'Please select your industry.'
+      if (!form.ein.trim()) return 'Tax ID / EIN is required.'
     }
+    // Step 2 — Address & Contact
     if (current === 2) {
       if (!form.primary_contact_name.trim()) return 'Primary contact name is required.'
       if (!form.primary_contact_title.trim()) return 'Primary contact title is required.'
@@ -658,19 +761,35 @@ export default function OnboardingWizard() {
       if (!form.zip.trim()) return 'ZIP is required.'
       if (!form.country) return 'Country is required.'
     }
+    // Step 3 — Ownership & Compliance
     if (current === 3) {
+      if (!profile.ceo_name.trim()) return 'CEO / director name is required.'
+      if (!profile.pep) return 'Please answer the PEP declaration.'
+      if (!profile.sanctioned) return 'Please answer the sanctioned-countries declaration.'
+      if (!profile.bankruptcy) return 'Please answer the bankruptcy declaration.'
+      if (!profile.litigation) return 'Please answer the material-litigation declaration.'
+    }
+    // Step 4 — Financial & Trade Profile
+    if (current === 4) {
       if (!form.annual_revenue_range) return 'Annual revenue range is required.'
       if (!form.employee_count_range) return 'Employee count range is required.'
-      if (!form.ein.trim()) return 'EIN is required.'
+      if (!profile.primary_currency) return 'Primary operating currency is required.'
       if (orgType === 'supplier') {
         if (!form.country_of_origin) return 'Country of origin is required.'
         if (form.sourcing_countries.length === 0) return 'Select at least one sourcing country.'
+        if (!profile.financing_need) return 'Please select your financing need.'
       } else {
         if (form.product_categories.length === 0) return 'Select at least one product category.'
       }
       if (!form.payment_terms_preference) return 'Payment terms preference is required.'
     }
-    if (current === 4) {
+    // Step 5 — Systems & Intent
+    if (current === 5) {
+      if (!profile.erp_system) return 'Please select your ERP system (or None).'
+      if (profile.intent.length === 0) return 'Select at least one thing you want to do on Strike.'
+    }
+    // Step 6 — Documents
+    if (current === 6) {
       const missing = docSpecs.filter((d) => d.required && docs[d.kind]?.status !== 'done')
       if (missing.length > 0) return `Please upload: ${missing.map((d) => d.label).join(', ')}.`
     }
@@ -684,8 +803,9 @@ export default function OnboardingWizard() {
       return
     }
     setError(null)
-    // Persist data-bearing steps; the documents step saves on upload.
-    if (step <= 3 || step === 5) {
+    // Persist the steps that write to existing columns (1 Identity, 2 Address,
+    // 4 Financial). Steps 3 & 5 are local-only; documents save on upload.
+    if (step === 1 || step === 2 || step === 4) {
       const ok = await saveProgress()
       if (!ok) return
     }
@@ -726,6 +846,10 @@ export default function OnboardingWizard() {
   }
 
   async function submit() {
+    if (!attested) {
+      setError('Please confirm the information is accurate to activate your Passport.')
+      return
+    }
     const ok = await saveProgress()
     if (!ok) return
     if (!org) {
@@ -742,7 +866,9 @@ export default function OnboardingWizard() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Submission failed.')
-      router.push('/dashboard')
+      // Platform unlocks immediately on submit (TD.4). Land on the dashboard with
+      // the success banner (TD.3).
+      router.push('/dashboard?activated=1')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Submission failed.')
       setSaving(false)
@@ -757,10 +883,10 @@ export default function OnboardingWizard() {
 
   return (
     <div className="page" style={{ padding: 0, maxWidth: 'none', animation: 'page-fade 0.3s ease' }}>
-      {/* ── Step 1 — Business basics ─────────────────────────── */}
+      {/* ── Step 1 — Identity & Legal ────────────────────────── */}
       {step === 1 && (
         <>
-          <StepHeader step={1} title="Tell us about your business" sub="Start with your legal details. We cross-check these against public records." />
+          <StepHeader step={1} title="Identity & Legal" sub="Start with your legal details. We cross-check these against public records." />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Field label="Legal business name">
@@ -798,10 +924,29 @@ export default function OnboardingWizard() {
               <Field label="Industry (NAICS)">
                 <NaicsSelect value={form.industry_naics} onChange={(code) => update({ industry_naics: code })} />
               </Field>
+              <Field label="Tax ID / EIN" hint="Stored securely and only shared with verification partners.">
+                <div className="input-with-status">
+                  <input
+                    className="form-input mono"
+                    type={showEin ? 'text' : 'password'}
+                    value={form.ein}
+                    onChange={(e) => update({ ein: e.target.value })}
+                    placeholder="12-3456789"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEin((s) => !s)}
+                    className="input-status"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)' }}
+                  >
+                    {showEin ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </Field>
               <Field label="Website" optional>
                 <input className="form-input" value={form.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://acme.com" />
               </Field>
-              <Field label="Description" optional>
+              <Field label="Products / services" optional hint="2–3 sentences on what your business does.">
                 <textarea
                   className="form-textarea"
                   rows={3}
@@ -819,10 +964,10 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 2 — Contact & address ───────────────────────── */}
+      {/* ── Step 2 — Address & Contact ───────────────────────── */}
       {step === 2 && (
         <>
-          <StepHeader step={2} title="Contact & address" sub="Who should we reach out to, and where is your business registered?" />
+          <StepHeader step={2} title="Address & Contact" sub="Who should we reach out to, and where is your business registered?" />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Field label="Primary contact name">
@@ -866,10 +1011,31 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 3 — Financial profile ───────────────────────── */}
+      {/* ── Step 3 — Ownership & Compliance ──────────────────── */}
       {step === 3 && (
         <>
-          <StepHeader step={3} title="Financial profile" sub="This helps us size financing and tailor your Strike Passport." />
+          <StepHeader step={3} title="Ownership & Compliance" sub="Tell us who controls the business and confirm a few compliance declarations." />
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Field label="CEO / director name(s)">
+                <input className="form-input" value={profile.ceo_name} onChange={(e) => updateProfile({ ceo_name: e.target.value })} placeholder="Jane Doe, John Smith" />
+              </Field>
+              <Field label="Ultimate beneficial owner(s) & ownership %" optional hint="List each UBO and their ownership stake. You'll also upload a signed UBO declaration.">
+                <input className="form-input" value={profile.ubo_summary} onChange={(e) => updateProfile({ ubo_summary: e.target.value })} placeholder="Jane Doe — 60%, John Smith — 40%" />
+              </Field>
+              <YesNo label="Is any owner, director or officer a Politically Exposed Person (PEP)?" value={profile.pep} onChange={(v) => updateProfile({ pep: v })} />
+              <YesNo label="Does the business operate in, or source from, sanctioned countries?" value={profile.sanctioned} onChange={(v) => updateProfile({ sanctioned: v })} />
+              <YesNo label="Has the business filed for bankruptcy in the last 7 years?" value={profile.bankruptcy} onChange={(v) => updateProfile({ bankruptcy: v })} />
+              <YesNo label="Is the business subject to any material litigation?" value={profile.litigation} onChange={(v) => updateProfile({ litigation: v })} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 4 — Financial & Trade Profile ───────────────── */}
+      {step === 4 && (
+        <>
+          <StepHeader step={4} title="Financial & Trade Profile" sub="This helps us size financing and tailor your Strike Passport." />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="form-row-2">
@@ -881,7 +1047,7 @@ export default function OnboardingWizard() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Employee count">
+                <Field label="Number of employees">
                   <select className="form-input form-select" value={form.employee_count_range} onChange={(e) => update({ employee_count_range: e.target.value })}>
                     <option value="">Select…</option>
                     {EMPLOYEE_RANGES.map((r) => (
@@ -890,25 +1056,24 @@ export default function OnboardingWizard() {
                   </select>
                 </Field>
               </div>
-              <Field label="EIN (Federal Tax ID)" hint="Stored securely and only shared with verification partners.">
-                <div className="input-with-status">
-                  <input
-                    className="form-input mono"
-                    type={showEin ? 'text' : 'password'}
-                    value={form.ein}
-                    onChange={(e) => update({ ein: e.target.value })}
-                    placeholder="12-3456789"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowEin((s) => !s)}
-                    className="input-status"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)' }}
-                  >
-                    {showEin ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </Field>
+              <div className="form-row-2">
+                <Field label="Primary operating currency">
+                  <select className="form-input form-select" value={profile.primary_currency} onChange={(e) => updateProfile({ primary_currency: e.target.value })}>
+                    <option value="">Select…</option>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Average invoice size" optional>
+                  <select className="form-input form-select" value={profile.avg_invoice_size} onChange={(e) => updateProfile({ avg_invoice_size: e.target.value })}>
+                    <option value="">Select…</option>
+                    {INVOICE_SIZES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
 
               {orgType === 'supplier' ? (
                 <>
@@ -920,23 +1085,80 @@ export default function OnboardingWizard() {
                       ))}
                     </select>
                   </Field>
-                  <Field label="Sourcing countries">
+                  <Field label="Countries you source from">
                     <MultiSelect
                       options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
                       selected={form.sourcing_countries}
                       onToggle={(v) => toggleInArray('sourcing_countries', v)}
                     />
                   </Field>
+                  <div className="form-row-2">
+                    <Field label="Number of active customers" optional>
+                      <select className="form-input form-select" value={profile.customer_count} onChange={(e) => updateProfile({ customer_count: e.target.value })}>
+                        <option value="">Select…</option>
+                        {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                      </select>
+                    </Field>
+                    <Field label="Largest customer % of revenue" optional>
+                      <select className="form-input form-select" value={profile.largest_customer_pct} onChange={(e) => updateProfile({ largest_customer_pct: e.target.value })}>
+                        <option value="">Select…</option>
+                        {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Financing need">
+                    <select className="form-input form-select" value={profile.financing_need} onChange={(e) => updateProfile({ financing_need: e.target.value })}>
+                      <option value="">Select…</option>
+                      {FINANCING_NEEDS.map((c) => (<option key={c} value={c}>{c}</option>))}
+                    </select>
+                  </Field>
                 </>
               ) : (
-                <Field label="Product categories">
-                  <MultiSelect
-                    options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
-                    selected={form.product_categories}
-                    onToggle={(v) => toggleInArray('product_categories', v)}
-                  />
-                </Field>
+                <>
+                  <Field label="Product categories">
+                    <MultiSelect
+                      options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                      selected={form.product_categories}
+                      onToggle={(v) => toggleInArray('product_categories', v)}
+                    />
+                  </Field>
+                  <div className="form-row-2">
+                    <Field label="Number of active suppliers" optional>
+                      <select className="form-input form-select" value={profile.supplier_count} onChange={(e) => updateProfile({ supplier_count: e.target.value })}>
+                        <option value="">Select…</option>
+                        {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                      </select>
+                    </Field>
+                    <Field label="Largest supplier % of spend" optional>
+                      <select className="form-input form-select" value={profile.largest_supplier_pct} onChange={(e) => updateProfile({ largest_supplier_pct: e.target.value })}>
+                        <option value="">Select…</option>
+                        {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Typical payment terms offered to suppliers" optional>
+                    <select className="form-input form-select" value={profile.supplier_payment_terms} onChange={(e) => updateProfile({ supplier_payment_terms: e.target.value })}>
+                      <option value="">Select…</option>
+                      {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
+                    </select>
+                  </Field>
+                </>
               )}
+
+              <div className="form-row-2">
+                <Field label="Payment terms offered" optional>
+                  <select className="form-input form-select" value={profile.payment_terms_offered} onChange={(e) => updateProfile({ payment_terms_offered: e.target.value })}>
+                    <option value="">Select…</option>
+                    {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
+                  </select>
+                </Field>
+                <Field label="Payment terms received" optional>
+                  <select className="form-input form-select" value={profile.payment_terms_received} onChange={(e) => updateProfile({ payment_terms_received: e.target.value })}>
+                    <option value="">Select…</option>
+                    {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
+                  </select>
+                </Field>
+              </div>
 
               <Field label="Payment terms preference">
                 <select className="form-input form-select" value={form.payment_terms_preference} onChange={(e) => update({ payment_terms_preference: e.target.value })}>
@@ -951,10 +1173,54 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 4 — Document upload ──────────────────────────── */}
-      {step === 4 && (
+      {/* ── Step 5 — Systems & Intent ────────────────────────── */}
+      {step === 5 && (
         <>
-          <StepHeader step={4} title="Upload your documents" sub="We’ll save your progress — you can return to finish any time." />
+          <StepHeader step={5} title="Systems & Intent" sub="Tell us how you operate and what you want to do on Strike." />
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-row-2">
+                <Field label="ERP system">
+                  <select className="form-input form-select" value={profile.erp_system} onChange={(e) => updateProfile({ erp_system: e.target.value })}>
+                    <option value="">Select…</option>
+                    {ERP_SYSTEMS.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </Field>
+                <Field label="Primary bank name" optional>
+                  <input className="form-input" value={profile.primary_bank_name} onChange={(e) => updateProfile({ primary_bank_name: e.target.value })} placeholder="e.g. Atlas Bank" />
+                </Field>
+              </div>
+              <Field label="What do you want to do on Strike?">
+                <MultiSelect
+                  options={INTENT_OPTIONS.map((c) => ({ value: c, label: c }))}
+                  selected={profile.intent}
+                  onToggle={toggleIntent}
+                />
+              </Field>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                <span
+                  onClick={() => updateProfile({ ai_matching: !profile.ai_matching })}
+                  style={{
+                    width: 38, height: 22, flexShrink: 0,
+                    background: profile.ai_matching ? 'var(--blue)' : 'var(--color-border-strong)',
+                    borderRadius: '999px', position: 'relative', transition: 'background 0.15s',
+                  }}
+                >
+                  <span style={{ position: 'absolute', top: 2, left: profile.ai_matching ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
+                </span>
+                <span style={{ fontSize: 13, color: 'var(--color-ink-1)' }}>
+                  Let Strike AI suggest matching counterparties and financing
+                </span>
+              </label>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 6 — Document upload ──────────────────────────── */}
+      {step === 6 && (
+        <>
+          <StepHeader step={6} title="Upload your documents" sub="We’ll save your progress — you can return to finish any time." />
           <div className="info-box" style={{ margin: '0 0 16px' }}>
             <span>
               {docSpecs.filter((d) => d.required && docs[d.kind]?.status === 'done').length} of{' '}
@@ -972,10 +1238,10 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 5 — Review & submit ─────────────────────────── */}
-      {step === 5 && (
+      {/* ── Step 7 — Review & Submit ─────────────────────────── */}
+      {step === 7 && (
         <>
-          <StepHeader step={5} title="Review & submit" sub="Check everything looks right, then submit for verification." />
+          <StepHeader step={7} title="Review & Submit" sub="Check everything looks right, then activate your Passport." />
 
           {/* Passport preview */}
           <div
@@ -1063,15 +1329,26 @@ export default function OnboardingWizard() {
             />
           </ReviewSection>
 
-          {/* Financial */}
-          <ReviewSection label="Financial profile" onEdit={() => goTo(3)}>
+          {/* Ownership & Compliance */}
+          <ReviewSection label="Ownership & compliance" onEdit={() => goTo(3)}>
+            <ReviewRow k="CEO / director(s)" v={profile.ceo_name} />
+            <ReviewRow k="Beneficial owners" v={profile.ubo_summary} />
+            <ReviewRow k="PEP" v={profile.pep ? profile.pep.toUpperCase() : ''} />
+            <ReviewRow k="Sanctioned exposure" v={profile.sanctioned ? profile.sanctioned.toUpperCase() : ''} />
+            <ReviewRow k="Bankruptcy (7y)" v={profile.bankruptcy ? profile.bankruptcy.toUpperCase() : ''} />
+            <ReviewRow k="Material litigation" v={profile.litigation ? profile.litigation.toUpperCase() : ''} />
+          </ReviewSection>
+
+          {/* Financial & Trade */}
+          <ReviewSection label="Financial & trade profile" onEdit={() => goTo(4)}>
             <ReviewRow k="Annual revenue" v={form.annual_revenue_range} />
             <ReviewRow k="Employees" v={form.employee_count_range} />
-            <ReviewRow k="EIN" v={form.ein ? '•••••' + form.ein.slice(-4) : ''} />
+            <ReviewRow k="Operating currency" v={profile.primary_currency} />
             {orgType === 'supplier' ? (
               <>
                 <ReviewRow k="Country of origin" v={countryName(form.country_of_origin)} />
                 <ReviewRow k="Sourcing countries" v={form.sourcing_countries.map(countryName).join(', ')} />
+                <ReviewRow k="Financing need" v={profile.financing_need} />
               </>
             ) : (
               <ReviewRow k="Product categories" v={form.product_categories.join(', ')} />
@@ -1079,8 +1356,16 @@ export default function OnboardingWizard() {
             <ReviewRow k="Payment terms" v={form.payment_terms_preference} />
           </ReviewSection>
 
+          {/* Systems & Intent */}
+          <ReviewSection label="Systems & intent" onEdit={() => goTo(5)}>
+            <ReviewRow k="ERP system" v={profile.erp_system} />
+            <ReviewRow k="Primary bank" v={profile.primary_bank_name} />
+            <ReviewRow k="Intent" v={profile.intent.join(', ')} />
+            <ReviewRow k="AI matching" v={profile.ai_matching ? 'Enabled' : 'Disabled'} />
+          </ReviewSection>
+
           {/* Documents */}
-          <ReviewSection label="Documents" onEdit={() => goTo(4)}>
+          <ReviewSection label="Documents" onEdit={() => goTo(6)}>
             <div className="doc-list-inset">
               {docSpecs.map((spec) => {
                 const done = docs[spec.kind]?.status === 'done'
@@ -1110,10 +1395,21 @@ export default function OnboardingWizard() {
             </div>
           </ReviewSection>
 
-          <p className="submit-disclaimer">
-            By submitting, you confirm the information provided is accurate and authorize Strike SCF to verify your
-            identity and company details with third-party data providers.
-          </p>
+          <label
+            className="submit-disclaimer"
+            style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}
+          >
+            <input
+              type="checkbox"
+              checked={attested}
+              onChange={(e) => setAttested(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--blue)' }}
+            />
+            <span>
+              I confirm all information is accurate and authorize Strike SCF to verify my business details
+              with third-party data providers.
+            </span>
+          </label>
         </>
       )}
 
@@ -1141,8 +1437,8 @@ export default function OnboardingWizard() {
             {saving ? 'Saving…' : 'Continue'}
           </button>
         ) : (
-          <button type="button" className="btn btn-blue" onClick={submit} disabled={saving}>
-            {saving ? 'Submitting…' : 'Submit for verification'}
+          <button type="button" className="btn btn-blue" onClick={submit} disabled={saving || !attested}>
+            {saving ? 'Submitting…' : 'Activate My Passport'}
           </button>
         )}
       </div>
