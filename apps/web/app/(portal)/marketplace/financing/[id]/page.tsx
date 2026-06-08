@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
@@ -456,9 +456,13 @@ function OrgOffersList({
 export default function FinancingDetailPage() {
   const params   = useParams()
   const router   = useRouter()
+  const search   = useSearchParams()
   const portal   = usePortal()
   const id       = params?.id as string
   const isBank   = portal === 'bank'
+  // TC.5 — set when the user arrives here right after Strike AI created a matching
+  // program inline; surfaces a confirmation so the offer form context is clear.
+  const newProgramId = search?.get('program') ?? null
 
   const [data,      setData]      = useState<DetailData | null>(null)
   const [loading,   setLoading]   = useState(true)
@@ -660,6 +664,14 @@ export default function FinancingDetailPage() {
                   <PassportMiniCard passport={buyer_passport}    label="Buyer" />
                   <PassportMiniCard passport={supplier_passport} label="Supplier" />
                 </div>
+
+                {newProgramId && (
+                  <div className="alert alert-success">
+                    <div className="alert-body">
+                      Program created by Strike AI and selected for this offer. You can now submit.
+                    </div>
+                  </div>
+                )}
 
                 <BankOfferForm
                   request={request}
