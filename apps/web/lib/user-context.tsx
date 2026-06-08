@@ -4,6 +4,7 @@ import { createContext, useContext } from 'react'
 export interface UserOrg {
   type: 'anchor' | 'supplier'
   status: string
+  kyb_status: string
   network_visible: boolean
   passport_score: number | null
 }

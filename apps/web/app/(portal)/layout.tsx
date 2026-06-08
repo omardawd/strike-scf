@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { PortalProvider, type PortalType } from '@/lib/portal-context'
 import { UserProvider, type UserOrg } from '@/lib/user-context'
 import { PortalShell } from './portal-shell'
+import { GhostGate } from '@/components/ghost-gate'
 
 const adminClient = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,13 +37,14 @@ export default async function PortalLayout({ children }: { children: React.React
   if (userData.org_id) {
     const { data: orgData } = await adminClient
       .from('organizations')
-      .select('type, status, network_visible, passport_score')
+      .select('type, status, kyb_status, network_visible, passport_score')
       .eq('id', userData.org_id)
       .single()
     if (orgData) {
       org = {
         type: orgData.type,
         status: orgData.status,
+        kyb_status: orgData.kyb_status ?? 'not_started',
         network_visible: orgData.network_visible ?? false,
         passport_score: orgData.passport_score ?? null,
       }
@@ -66,7 +68,9 @@ export default async function PortalLayout({ children }: { children: React.React
           portal={portal}
           userName={userData.full_name ?? undefined}
         >
-          {children}
+          {/* Central Tier-0 gate. Strict no-op for bank/admin/non-ghost users —
+              only ghost orgs see locked cards on actionable pages. */}
+          <GhostGate>{children}</GhostGate>
         </PortalShell>
       </UserProvider>
     </PortalProvider>

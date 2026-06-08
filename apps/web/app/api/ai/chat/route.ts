@@ -29,6 +29,35 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
 
+  // Ghost (Tier-0) enforcement (TD.2): if the caller's org has not activated its
+  // Passport (network_visible=false AND kyb_status not_started/in_progress), Strike
+  // AI is INFO-ONLY. We override the system prompt and strip any tools so it cannot
+  // touch org data or take actions — its only job is to explain the value of the
+  // Passport and guide the user to activate it. Enforced server-side so it holds no
+  // matter which client surface (overlay / dedicated page) called it.
+  let ghostOverride = false
+  if (userRow.org_id) {
+    const { data: orgRow } = await adminClient
+      .from('organizations')
+      .select('network_visible, kyb_status')
+      .eq('id', userRow.org_id)
+      .single()
+    if (orgRow && !orgRow.network_visible &&
+        (orgRow.kyb_status === 'not_started' || orgRow.kyb_status === 'in_progress')) {
+      ghostOverride = true
+    }
+  }
+
+  const GHOST_SYSTEM_PROMPT =
+    'This user has not completed their Passport on Strike SCF. Your ONLY goal is to ' +
+    'help them understand the value of completing it and guide them to click ' +
+    '"Activate Passport". You do not have access to any organization data, deals, ' +
+    'financing, or platform actions, and you must not pretend to. If they ask to do ' +
+    'anything that requires an active Passport (post a listing, request financing, ' +
+    'view counterparties, run analytics), briefly explain that activating their ' +
+    'Passport unlocks it, then point them to "Activate Passport". Keep replies short ' +
+    'and encouraging.'
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
@@ -63,10 +92,11 @@ export async function POST(req: NextRequest) {
   const anthropicBody: Record<string, unknown> = {
     model,
     max_tokens: body.max_tokens ?? 1024,
-    system: body.system,
+    system: ghostOverride ? GHOST_SYSTEM_PROMPT : body.system,
     messages: body.messages,
   }
-  if (body.tools && Array.isArray(body.tools)) {
+  // Ghost users get NO tools — info-only, no platform actions.
+  if (!ghostOverride && body.tools && Array.isArray(body.tools)) {
     anthropicBody.tools = body.tools
     if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
   }

@@ -444,21 +444,29 @@ function PassportBanner({
 
   if (loading) return <div style={{ marginBottom: 24 }}><SkeletonCard height={96} /></div>
 
+  // Ghost / pre-verification: no PassportScore yet. Show the inactive score ring
+  // ("—", "Passport Inactive") with a nudge to activate (TD.2).
   if (!passport || !passport.organization.passport_score) {
     return (
       <div style={{
-        marginBottom: 24, padding: '14px 18px',
-        background: 'var(--color-amber-bg)',
+        marginBottom: 24, background: 'var(--white)',
+        border: '1px solid var(--border)',
         borderLeft: '3px solid var(--color-amber)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-        flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: 20,
+        padding: '16px 20px', flexWrap: 'wrap',
       }}>
-        <span style={{ fontSize: 13, color: 'var(--color-amber)', fontWeight: 500 }}>
-          Your Passport isn't visible on Strike Place yet. Complete verification to unlock the marketplace.
-        </span>
-        <button type="button" className="btn btn-sm" onClick={() => router.push('/onboarding')}
+        <PassportScoreRing score={null} size={size} showLabel pendingLabel="Passport Inactive" />
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
+            Passport Inactive
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.55 }}>
+            Complete verification to get your PassportScore and unlock the platform.
+          </div>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => router.push('/onboarding')}
           style={{ flexShrink: 0 }}>
-          Complete →
+          Activate Passport →
         </button>
       </div>
     )

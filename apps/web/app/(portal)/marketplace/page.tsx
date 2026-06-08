@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { useUser } from '@/lib/user-context'
+import { useGhost } from '@/lib/use-ghost'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import type { ListingWithPassport } from '@strike-scf/types'
 
@@ -186,6 +187,7 @@ type TypeFilter = 'all' | 'po' | 'product'
 export default function MarketplacePage() {
   const router = useRouter()
   const user = useUser()
+  const { isGhost } = useGhost()
 
   const [mainTab, setMainTab] = useState<MainTab>('marketplace')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
@@ -281,14 +283,18 @@ export default function MarketplacePage() {
         crumbs={[{ label: 'Strike Place' }]}
         actions={
           <div className="topbar-right">
+            {/* Ghost orgs browse only — actions route to Passport activation. */}
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => router.push('/marketplace/listings/new')}
+              onClick={() => router.push(isGhost ? '/onboarding' : '/marketplace/listings/new')}
             >
-              Post a Listing
+              {isGhost ? 'Activate to Post' : 'Post a Listing'}
             </button>
-            <button className="btn btn-blue btn-sm">
-              Finance an Existing Trade
+            <button
+              className="btn btn-blue btn-sm"
+              onClick={() => { if (isGhost) router.push('/onboarding') }}
+            >
+              {isGhost ? 'Activate to Finance' : 'Finance an Existing Trade'}
             </button>
           </div>
         }
@@ -369,6 +375,22 @@ export default function MarketplacePage() {
                 </select>
               </div>
 
+              {/* Ghost browse-only notice — listings stay visible; actions gated. */}
+              {isGhost && (
+                <div className="ghost-action-lock" style={{ marginBottom: 16 }}>
+                  <p className="ghost-action-lock-title">You're browsing Strike Place</p>
+                  <p className="ghost-action-lock-body">
+                    Listings are visible to everyone. Activate your Passport to submit offers and request financing.
+                  </p>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => router.push('/onboarding')}
+                  >
+                    Activate Passport →
+                  </button>
+                </div>
+              )}
+
               {/* Feed */}
               <div className="mp-listing-feed">
                 {loading
@@ -443,16 +465,16 @@ export default function MarketplacePage() {
                   <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--gray)', textAlign: 'center' }}>Loading…</div>
                 ) : ownPassport && !ownPassport.network_visible ? (
                   <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center' }}>
-                    <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel />
+                    <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel pendingLabel="Passport Inactive" />
                     <p style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
-                      Complete KYB to publish your Passport and appear in search results.
+                      Activate your Passport to publish your profile and appear in search results.
                     </p>
                     <button
                       className="btn btn-blue btn-sm"
                       style={{ width: '100%' }}
                       onClick={() => router.push('/onboarding')}
                     >
-                      Complete KYB
+                      Activate Passport →
                     </button>
                   </div>
                 ) : ownPassport ? (

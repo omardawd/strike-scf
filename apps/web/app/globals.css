@@ -1936,3 +1936,83 @@ textarea.input {
 .days-pill, .wait-badge, .program-type-pill, .actor-pill, .range-pill, .nav-badge {
   border-radius: var(--radius-badge);
 }
+
+/* === ghost locked states (Track D) ===
+   Centered locked-feature card shown to Tier-0 (ghost) orgs on actionable pages,
+   plus the inline locked-action card used on browse-only pages (Strike Place).
+   Tokens only — no raw hex. */
+.ghost-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 24px;
+}
+.ghost-lock-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 40px 36px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.ghost-lock-logo { margin-bottom: 2px; }
+.ghost-lock-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--blue-light);
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ghost-lock-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0;
+}
+.ghost-lock-body {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--gray);
+  margin: 0;
+  max-width: 340px;
+}
+.ghost-lock-cta { margin-top: 8px; }
+
+/* Inline locked-action card — for browse-only pages where listings stay visible
+   but action buttons (Submit Offer / Request Financing) are gated. */
+.ghost-action-lock {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--blue-light);
+  padding: 20px 22px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.ghost-action-lock-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+.ghost-action-lock-body {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--gray);
+  margin: 0;
+}
