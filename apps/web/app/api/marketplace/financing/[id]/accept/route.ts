@@ -70,6 +70,30 @@ export async function PATCH(
 
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 500 })
 
+  // TC.4 — program linkage. The accepted marketplace offer should attach to the
+  // funding bank's matching program (financing type ∈ program.financing_types AND
+  // currency match). The SCF-engine transaction created below carries program_id so
+  // the bank's program detail can surface it under "linked deals". No-match → null.
+  let matchedProgramId: string | null = null
+  try {
+    const offerCurrency = financingReq.currency ?? deal.agreed_currency ?? 'USD'
+    const { data: bankPrograms } = await adminClient
+      .from('programs')
+      .select('id, financing_types, currency, status, created_at')
+      .eq('bank_id', offer.bank_id)
+      .neq('status', 'closed')
+      .order('created_at', { ascending: false })
+
+    const match = (bankPrograms ?? []).find((p: any) =>
+      Array.isArray(p.financing_types) &&
+      p.financing_types.includes(offer.structure_type) &&
+      (p.currency ?? 'USD') === offerCurrency
+    )
+    matchedProgramId = match?.id ?? null
+  } catch (err) {
+    console.error('Program match lookup failed (non-fatal):', err)
+  }
+
   // Accept the offer, reject all others
   await adminClient
     .from('financing_request_offers')
@@ -102,6 +126,8 @@ export async function PATCH(
       .from('transactions')
       .insert({
         bank_id:                    offer.bank_id,
+        program_id:                 matchedProgramId,
+        deal_id:                    deal.id,
         anchor_id:                  deal.buyer_org_id,
         supplier_id:                deal.supplier_org_id,
         source:                     'marketplace',

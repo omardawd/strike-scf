@@ -305,6 +305,23 @@ export default function ProgramDetailPage() {
   const [activating, setActivating] = useState(false)
   const [deleting, setDeleting]     = useState(false)
 
+  // TC.4 — program-first deal-sourcing data (bank only)
+  const [pipeline, setPipeline] = useState<{
+    linked_deals: Array<{ id: string; deal_id: string | null; type: string; counterparty: string; amount: number; rate_apr: number | null; tenor_days: number | null; status: string; created_at: string }>
+    offer_pipeline: Array<{ id: string; request_id: string; rate_apr: number; amount: number; tenor_days: number; structure_type: string; submitted_at: string }>
+    capacity: { program_limit: number | null; committed: number; available: number | null; currency: string }
+  } | null>(null)
+
+  // Map a program's financing types + currency onto Strike Place filter params.
+  function goToStrikePlace() {
+    const type = program?.financing_types?.[0] ?? ''
+    const currency = program?.currency ?? 'USD'
+    const qs = new URLSearchParams()
+    if (type) qs.set('type', type)
+    if (currency) qs.set('currency', currency)
+    router.push(`/marketplace/financing?${qs.toString()}`)
+  }
+
   const load = useCallback(async () => {
     if (!id) return
     setError(null)
@@ -313,7 +330,10 @@ export default function ProgramDetailPage() {
         fetch(`/api/programs/${id}`),
         fetch(`/api/programs/${id}/network`),
       ]
-      if (portal === 'bank') fetches.push(fetch(`/api/programs/${id}/analytics?period=${volPeriod}`))
+      if (portal === 'bank') {
+        fetches.push(fetch(`/api/programs/${id}/analytics?period=${volPeriod}`))
+        fetches.push(fetch(`/api/programs/${id}/pipeline`))
+      }
 
       const results = await Promise.all(fetches)
       if (!results[0]!.ok) throw new Error(`HTTP ${results[0]!.status}`)
@@ -338,6 +358,9 @@ export default function ProgramDetailPage() {
 
       if (portal === 'bank' && results[2]?.ok) {
         setAnalytics(await results[2].json())
+      }
+      if (portal === 'bank' && results[3]?.ok) {
+        setPipeline(await results[3].json())
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
@@ -544,14 +567,13 @@ export default function ProgramDetailPage() {
         ]}
         actions={
           <>
+            {/* TC.4 — program-first flow: banks source deals on Strike Place instead of
+                inviting anchors. The "Source deals on Strike Place" CTA pre-filters the
+                terminal by this program's financing type + currency. */}
             {portal === 'bank' && program && (
-              isIFOnly
-                ? <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
-                    <Icon name="plus" size={14} /> Invite Supplier
-                  </button>
-                : <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('anchor')}>
-                    <Icon name="plus" size={14} /> Invite Anchor
-                  </button>
+              <button className="btn btn-primary btn-sm" type="button" onClick={goToStrikePlace}>
+                Source deals on Strike Place →
+              </button>
             )}
             {portal === 'anchor' && (
               <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
@@ -681,6 +703,118 @@ export default function ProgramDetailPage() {
                       <div className="kv-row"><span className="k">Created</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
                     </div>
                   )}
+                </div>
+
+                {/* TC.4 — Program-first: capacity, linked deals, offer pipeline */}
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <div className="card-head">
+                    <h3 className="t-card-head">Deal sourcing</h3>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={goToStrikePlace}>
+                      Source on Strike Place →
+                    </button>
+                  </div>
+                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {/* Available capacity */}
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                        Available capacity
+                      </div>
+                      {pipeline?.capacity.program_limit != null ? (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--blue)', fontVariantNumeric: 'tabular-nums' }}>
+                              {fmtMoney(pipeline.capacity.available ?? 0)}
+                            </span>
+                            <span style={{ fontSize: 12, color: 'var(--gray)' }}>
+                              of {fmtMoney(pipeline.capacity.program_limit)} ({fmtMoney(pipeline.capacity.committed)} committed)
+                            </span>
+                          </div>
+                          <div style={{ marginTop: 8, height: 6, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${Math.min(100, pipeline.capacity.program_limit ? (pipeline.capacity.committed / pipeline.capacity.program_limit) * 100 : 0)}%`,
+                              height: '100%', background: 'var(--blue)',
+                            }} />
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
+                          No program limit set · {pipeline ? fmtMoney(pipeline.capacity.committed) : '—'} committed
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Linked deals */}
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                        Linked deals {pipeline?.linked_deals.length ? `(${pipeline.linked_deals.length})` : ''}
+                      </div>
+                      {!pipeline || pipeline.linked_deals.length === 0 ? (
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
+                          No funded deals yet. Accepted Strike Place offers matching this program appear here.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                          {pipeline.linked_deals.map(d => (
+                            <div
+                              key={d.id}
+                              onClick={() => d.deal_id && router.push(`/deals/${d.deal_id}`)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                                background: 'var(--white)', cursor: d.deal_id ? 'pointer' : 'default',
+                              }}
+                            >
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', minWidth: 96 }}>
+                                {fmtMoney(d.amount)}
+                              </span>
+                              <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {d.counterparty}
+                              </span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                                {d.rate_apr != null ? `${d.rate_apr}%` : '—'} · {d.tenor_days ?? '—'}d
+                              </span>
+                              <span className={`badge ${statusBadge(d.status)}`}>{d.status.replace(/_/g, ' ')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Offer pipeline (pending) */}
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                        Offer pipeline {pipeline?.offer_pipeline.length ? `(${pipeline.offer_pipeline.length} pending)` : ''}
+                      </div>
+                      {!pipeline || pipeline.offer_pipeline.length === 0 ? (
+                        <div style={{ fontSize: 13, color: 'var(--gray)' }}>
+                          No pending offers matching this program.{' '}
+                          <button className="btn-link" type="button" onClick={goToStrikePlace} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', padding: 0, fontWeight: 500 }}>
+                            Browse Strike Place →
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                          {pipeline.offer_pipeline.map(o => (
+                            <div
+                              key={o.id}
+                              onClick={() => router.push(`/marketplace/financing/${o.request_id}`)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--white)', cursor: 'pointer' }}
+                            >
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--color-amber)', fontVariantNumeric: 'tabular-nums', minWidth: 60 }}>
+                                {o.rate_apr}%
+                              </span>
+                              <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>
+                                {fmtMoney(o.amount)}
+                              </span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                                {o.tenor_days}d · {o.structure_type.replace(/_/g, ' ')}
+                              </span>
+                              <span className="badge badge-pending">Pending</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {analytics && (
