@@ -146,11 +146,8 @@ export async function PATCH(
     console.error('Transaction creation failed (non-fatal):', err)
   }
 
-  // Update deal status
-  await adminClient
-    .from('deals')
-    .update({ status: 'financing_active' })
-    .eq('id', financingReq.deal_id)
+  // Note: do NOT overwrite deal.status here. The deal flow continues normally.
+  // financing_payment_active is set to true only when the bank actually disburses.
 
   // Notify the accepted bank
   try {

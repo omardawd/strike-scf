@@ -117,7 +117,7 @@ export async function PATCH(
   // Fetch offer with listing data
   const { data: offer } = await adminClient
     .from('marketplace_offers')
-    .select('*, marketplace_listings(id, status, org_id, title, target_price, currency, offer_count)')
+    .select('*, marketplace_listings(id, status, org_id, title, target_price, currency, offer_count, listing_type)')
     .eq('id', offerId)
     .single()
 
@@ -125,7 +125,7 @@ export async function PATCH(
 
   const listing = offer.marketplace_listings as {
     id: string; status: string; org_id: string; title: string;
-    target_price: number | null; currency: string; offer_count: number
+    target_price: number | null; currency: string; offer_count: number; listing_type: string
   }
   const listingOrgId: string = listing.org_id
   const offerorOrgId: string = offer.from_org_id
@@ -191,9 +191,18 @@ export async function PATCH(
 
   // ── COUNTER ───────────────────────────────────────────────
   if (action === 'counter') {
-    // Bidirectional: listing owner counters a pending offer; offeror counters a countered offer
-    const isListingOwnerCounter = userData.org_id === listingOrgId && offer.status === 'pending'
-    const isOfferorCounter = userData.org_id === offerorOrgId && offer.status === 'countered'
+    if (!['pending', 'countered'].includes(offer.status)) {
+      return NextResponse.json({ error: 'Cannot counter in the current state' }, { status: 409 })
+    }
+    // Turn-based: whoever received the last counter gets to counter next.
+    // No rounds yet (initial offer) → listing owner goes first.
+    const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
+    const lastRound = rounds.length > 0 ? rounds[rounds.length - 1] : null
+    const isListingOwnerTurn = !lastRound || (lastRound as any).by_org_id === offerorOrgId
+    const isOfferorTurn = lastRound != null && (lastRound as any).by_org_id === listingOrgId
+
+    const isListingOwnerCounter = userData.org_id === listingOrgId && isListingOwnerTurn
+    const isOfferorCounter = userData.org_id === offerorOrgId && isOfferorTurn
     if (!isListingOwnerCounter && !isOfferorCounter) {
       return NextResponse.json({ error: 'Cannot counter in the current state' }, { status: 409 })
     }
@@ -202,7 +211,6 @@ export async function PATCH(
     }
 
     const newRound = (offer.current_round ?? 1) + 1
-    const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
     const counterRound = {
       round: newRound,
       offered_price,
@@ -311,25 +319,15 @@ export async function PATCH(
     // Update offer status
     await adminClient.from('marketplace_offers').update({ status: 'accepted', updated_at: now }).eq('id', offerId)
 
-    // Derive buyer/supplier from org types
-    const [{ data: listingOrgRow }, { data: offerorOrgRow }] = await Promise.all([
-      adminClient.from('organizations').select('type, legal_name').eq('id', listingOrgId).single(),
-      adminClient.from('organizations').select('type, legal_name').eq('id', offerorOrgId).single(),
-    ])
-
+    // Derive buyer/supplier from listing_type — the canonical source of truth.
+    // po_request: poster = buyer (anchor wanting goods), offeror = seller (supplier)
+    // product_service: poster = seller (supplier offering goods), offeror = buyer (anchor)
     let buyerOrgId: string
     let supplierOrgId: string
-    // For a PO request: the listing org is the buyer; offeror is the supplier
-    // For a product listing: listing org is the supplier; offeror is the buyer
-    // Fall back to org type if available
-    if (listingOrgRow?.type === 'anchor') {
+    if (listing.listing_type === 'po_request') {
       buyerOrgId = listingOrgId
       supplierOrgId = offerorOrgId
-    } else if (offerorOrgRow?.type === 'anchor') {
-      buyerOrgId = offerorOrgId
-      supplierOrgId = listingOrgId
     } else {
-      // default: listing org is supplier, offeror is buyer
       supplierOrgId = listingOrgId
       buyerOrgId = offerorOrgId
     }
@@ -362,6 +360,9 @@ export async function PATCH(
     if (dealErr || !deal) {
       return NextResponse.json({ error: 'Failed to create deal' }, { status: 500 })
     }
+
+    // Link deal back to the offer so the UI can show "View Deal →"
+    await adminClient.from('marketplace_offers').update({ deal_id: deal.id }).eq('id', offerId)
 
     // Update listing: matched + linked deal
     await adminClient.from('marketplace_listings').update({

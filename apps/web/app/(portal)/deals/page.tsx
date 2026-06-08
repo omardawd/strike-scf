@@ -35,6 +35,7 @@ interface DealRow {
     risk_tier: string | null
   } | null
   financing_request: FinancingRequestSummary | null
+  marketplace_listings: { id: string; title: string; listing_type: string } | null
 }
 
 const TAB_STATUS_MAP: Record<DealTab, string | null> = {
@@ -287,7 +288,11 @@ export default function DealsPage() {
                   return (
                     <tr key={deal.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
                       <td>
-                        <span className="mono" style={{ color: 'var(--gray)' }}>{shortId(deal.id)}</span>
+                        {deal.marketplace_listings?.title ? (
+                          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{deal.marketplace_listings.title}</span>
+                        ) : (
+                          <span className="mono" style={{ color: 'var(--gray)' }}>Deal #{shortId(deal.id)}</span>
+                        )}
                         <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 2 }}>
                           {SOURCE_LABEL[deal.deal_source] ?? deal.deal_source}
                         </div>

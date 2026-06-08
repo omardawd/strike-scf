@@ -7,6 +7,7 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
+import { createClient } from '@/lib/supabase/client'
 import {
   getFinancingContext,
   type DealForContext,
@@ -349,6 +350,21 @@ export default function DealDetailPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Realtime: re-fetch when the deal row changes (financing acceptance, status update, etc.)
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`deal-detail:${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'deals',
+        filter: `id=eq.${id}`,
+      }, () => { load() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [id, load])
 
   useEffect(() => {
     if (!data || financeActionTriggered.current) return

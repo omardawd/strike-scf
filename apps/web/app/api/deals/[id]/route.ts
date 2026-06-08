@@ -78,10 +78,11 @@ export async function GET(
     financingRequest = fr
   }
 
-  // Fetch linked transaction when financing is active or a DD offer is pending
+  // Fetch linked transaction when financing is active, accepted, or a DD offer is pending
   let linkedTransaction = null
   const needsTxn = deal.financing_payment_active
-    || deal.status === 'financing_active'
+    || financingRequest?.status === 'accepted'
+    || financingRequest?.status === 'funded'
     || deal.dd_offer_presented_at != null
   if (needsTxn) {
     const { data: txn } = await adminClient

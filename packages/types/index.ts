@@ -329,6 +329,7 @@ export interface MarketplaceOffer {
   id: string
   listing_id: string
   from_org_id: string
+  deal_id: string | null
   offered_price: number
   offered_quantity: number | null
   proposed_delivery_date: string | null

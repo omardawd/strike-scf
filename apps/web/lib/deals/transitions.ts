@@ -61,7 +61,7 @@ export const PERMITTED_TRANSITIONS: Record<string, TransitionRule> = {
   'agreed:upload_documents': {
     nextStatus: 'documents_pending',
     allowedRoles: ORG_ROLES,
-    requiredFields: ['payment_bank_name', 'payment_account_number'],
+    requiredFields: ['payment_bank_name', 'payment_account_name'],
     sideEffects: ['notify_counterparty', 'create_deal_event', 'send_email'],
   },
   'documents_pending:confirm': {

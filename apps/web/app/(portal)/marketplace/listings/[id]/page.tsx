@@ -276,6 +276,12 @@ function OfferCard({
   const isCounting = counteringOfferId === offer.id
   const roomId = (offer.metadata?.room_id as string | undefined) ?? null
 
+  // Turn-based counter logic: whoever received the last counter gets to respond.
+  const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
+  const lastRound = rounds.length > 0 ? rounds[rounds.length - 1] : null
+  const isListingOwnerTurn = !lastRound || (lastRound as any).by_org_id === offer.from_org_id
+  const isOfferorTurn = lastRound != null && (lastRound as any).by_org_id !== offer.from_org_id
+
   return (
     <div className="mp-offer-card" style={isInactive ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
       <div className="mp-offer-card-status">
@@ -305,9 +311,13 @@ function OfferCard({
             </div>
             <div className="passport-mini-info">
               <div className="passport-mini-org">
-                <span className="passport-mini-org-name">
+                <button
+                  className="passport-mini-org-name"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--gray-soft)', textUnderlineOffset: 2 }}
+                  onClick={() => router.push(`/passport/${offeror_org.id as string}`)}
+                >
                   {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || 'Unknown'}
-                </span>
+                </button>
                 <span className="passport-mini-type">{offeror_org.type as string}</span>
               </div>
               <div className="passport-mini-stats">
@@ -367,6 +377,16 @@ function OfferCard({
           </button>
         )}
 
+        {offer.status === 'accepted' && offer.deal_id && (
+          <button
+            className="btn btn-sm btn-blue"
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => router.push(`/deals/${offer.deal_id}`)}
+          >
+            View Deal →
+          </button>
+        )}
+
         {showActions && (
           <div className="mp-offer-actions">
             {isListingOwner && offer.status === 'pending' && (
@@ -383,9 +403,19 @@ function OfferCard({
               </>
             )}
             {isListingOwner && offer.status === 'countered' && (
-              <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
-                Accept Counter
-              </button>
+              <>
+                {isListingOwnerTurn && (
+                  <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
+                    Counter
+                  </button>
+                )}
+                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>
+                  Reject
+                </button>
+                <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
+                  Accept Counter
+                </button>
+              </>
             )}
             {isMyOffer && offer.status === 'pending' && (
               <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>
@@ -394,9 +424,11 @@ function OfferCard({
             )}
             {isMyOffer && offer.status === 'countered' && (
               <>
-                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
-                  Counter
-                </button>
+                {isOfferorTurn && (
+                  <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
+                    Counter
+                  </button>
+                )}
                 <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
                   Accept Counter
                 </button>

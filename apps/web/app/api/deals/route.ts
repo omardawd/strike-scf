@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
   let query = adminClient
     .from('deals')
-    .select('*')
+    .select('*, marketplace_listings(id, title, listing_type)')
     .or(`buyer_org_id.eq.${userData.org_id},supplier_org_id.eq.${userData.org_id}`)
     .order('created_at', { ascending: false })
 
