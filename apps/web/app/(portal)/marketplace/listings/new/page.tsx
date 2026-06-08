@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import type { ListingType } from '@strike-scf/types'
@@ -62,7 +62,7 @@ const DEFAULT_FORM: FormState = {
   payment_terms: '',
 }
 
-export default function NewListingPage() {
+function NewListingPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [listingType, setListingType] = useState<ListingType>('po_request')
@@ -560,5 +560,13 @@ export default function NewListingPage() {
         </div>
       </div>
     </>
+  )
+}
+
+export default function NewListingPage() {
+  return (
+    <Suspense>
+      <NewListingPageInner />
+    </Suspense>
   )
 }
