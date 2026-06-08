@@ -55,19 +55,54 @@ export async function POST(
 
   const now = new Date().toISOString()
 
+  // G6.1: Structure-specific revert logic
+  // Fetch the financing type from the request
+  const financingType = (fr as any).financing_type ?? null
+
+  // Determine what status to revert the deal to
+  let revertStatus = 'delivery_confirmed'
+  let extraUpdates: Record<string, unknown> = {}
+
+  if (financingType === 'invoice_factoring' || financingType === 'factoring') {
+    // IF rejected: revert to shipped or delivery_confirmed depending on current status
+    if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)) {
+      revertStatus = 'delivery_confirmed'
+    } else {
+      revertStatus = 'shipped'
+    }
+    // Clear any NOA data that may have been generated
+    extraUpdates = {
+      noa_document_id: null,
+      noa_generated_at: null,
+      noa_acknowledged_at: null,
+      noa_acknowledged_by: null,
+      noa_sent_to_buyer_at: null,
+    }
+  } else if (financingType === 'po_financing') {
+    // PO rejected pre-shipment: revert to confirmed or in_preparation
+    if (['confirmed', 'in_preparation'].includes(deal.status)) {
+      revertStatus = deal.status // stay at current pre-shipment status
+    }
+    // Cannot reject post-conversion
+    if (['shipped', 'delivery_confirmed', 'payment_due'].includes(deal.status)) {
+      return NextResponse.json({ error: 'PO Financing cannot be rejected after conversion on shipment.' }, { status: 400 })
+    }
+  }
+
   // Close the financing request
   await adminClient
     .from('financing_requests')
     .update({ status: 'closed', updated_at: now })
     .eq('id', id)
 
-  // Revert deal to delivery_confirmed (removes financing_requested flag implicitly)
+  // Revert deal
   const { data: updatedDeal, error: dealErr } = await adminClient
     .from('deals')
     .update({
-      status: 'delivery_confirmed',
+      status: revertStatus,
       financing_payment_active: false,
       updated_at: now,
+      ...extraUpdates,
     })
     .eq('id', fr.deal_id)
     .select()
@@ -81,7 +116,7 @@ export async function POST(
     event_type: 'financing_rejected',
     actor_user_id: userData.id,
     actor_org_id: userData.org_id,
-    description: 'Financing request closed without activation. Deal reverted to delivery_confirmed.',
+    description: `Financing request closed without activation. Deal reverted to ${revertStatus}.`,
   })
 
   // Notify both parties
@@ -107,6 +142,18 @@ export async function POST(
         }),
       })
     }
+  }
+
+  // G6.1: If IF was rejected and NOA was generated, send NOA cancellation notice to buyer
+  if ((financingType === 'invoice_factoring' || financingType === 'factoring') && buyerRes.data?.primary_contact_email) {
+    void sendEmail({
+      to: buyerRes.data.primary_contact_email,
+      subject: `Notice of Assignment Cancelled — Deal #${shortId}`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:500px;padding:32px 24px;color:#0f172a">
+        <p>The Notice of Assignment for Invoice #${shortId} has been cancelled. Payment is now due directly to ${sellerRes.data?.legal_name ?? 'the supplier'}.</p>
+        <p><a href="${process.env.NEXT_PUBLIC_APP_URL ?? ''}/deals/${fr.deal_id}">View Deal →</a></p>
+      </div>`,
+    })
   }
 
   return NextResponse.json({ deal: updatedDeal ?? null, financing_request_id: id })

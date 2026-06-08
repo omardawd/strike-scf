@@ -5,71 +5,64 @@ import Link from 'next/link'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
-import type { Deal, Organization, Room, FinancingRequest, FinancingStructure, FinancingType, AmendmentRecord } from '@strike-scf/types'
+import { DealRoadmap } from '@/components/deals/DealRoadmap'
+import { ActionPanel } from '@/components/deals/ActionPanel'
+import {
+  getFinancingContext,
+  type DealForContext,
+  type TransactionForContext,
+  type BankForContext,
+  type OrgForContext,
+} from '@/lib/deals/financing-context'
+import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
+import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@strike-scf/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface DealDoc { id: string; name: string; document_kind: string; mime_type: string; created_at: string }
 interface AiDoc   { kind: 'ai_po' | 'ai_invoice' | 'ai_contract'; content: string; generated_at: string | null }
 interface UploadedDoc { id: string; kind: string; name: string; url: string | null; created_at: string }
+interface DealDoc { id: string; name: string; document_kind: string; mime_type: string; created_at: string }
 
 interface LinkedTransaction {
   id: string
+  type: string
   status: string
   financing_amount_approved: number | null
   repayment_due_date: string | null
   tenor_days: number | null
   financing_rate_apr: number | null
+  discount_rate: number | null
+  discount_amount: number | null
+  early_payment_date: string | null
+  repayment_routing: string | null
+  bank_id: string | null
   bank?: { id: string; display_name: string; legal_name: string } | null
 }
 
 interface DealDetail {
-  deal: Deal & { agreed_price?: number }
+  deal: Deal & {
+    agreed_price?: number
+    noa_acknowledged_at?: string | null
+    noa_document_id?: string | null
+    dd_offer_presented_at?: string | null
+    dd_offer_accepted_at?: string | null
+    dd_offer_declined_at?: string | null
+    po_financing_converted_at?: string | null
+  }
   buyer_org: Organization | null
   supplier_org: Organization | null
   room: { id: string; name: string } | null
   financing_request: FinancingRequest | null
   linked_transaction: LinkedTransaction | null
   documents: DealDoc[]
-  user_role: 'buyer' | 'supplier'
+  user_role: 'buyer' | 'supplier' | 'bank'
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const ROADMAP_STEPS = [
-  { key: 'agreed',             label: 'Agreed' },
-  { key: 'documents_pending',  label: 'Documents' },
-  { key: 'confirmed',          label: 'Confirmed' },
-  { key: 'in_preparation',     label: 'Preparation' },
-  { key: 'shipped',            label: 'Shipped' },
-  { key: 'delivery_confirmed', label: 'Delivered' },
-  { key: 'payment',            label: 'Payment' },
-  { key: 'completed',          label: 'Completed' },
-]
-
-function statusToStepIndex(status: string): number {
-  switch (status) {
-    case 'negotiating':         return -1
-    case 'agreed':              return 0
-    case 'documents_pending':   return 1
-    case 'confirmed':
-    case 'active':              return 2
-    case 'in_preparation':      return 3
-    case 'shipped':             return 4
-    case 'delivery_confirmed':
-    case 'payment_due':
-    case 'payment_overdue':     return 5
-    case 'payment_confirmed':   return 6
-    case 'completed':           return 7
-    default:                    return -1
-  }
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const AI_DOC_LABELS: Record<string, string> = {
   ai_po: 'PURCHASE ORDER', ai_invoice: 'COMMERCIAL INVOICE', ai_contract: 'TRADE AGREEMENT',
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
@@ -114,489 +107,21 @@ function sourceBadgeClass(source: string): string {
   }
 }
 
-function daysUntil(dateStr: string | null | undefined): number | null {
-  if (!dateStr) return null
-  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-}
-
-// ─── Roadmap (G2.1) ───────────────────────────────────────────────────────────
-
-function DealRoadmap({ status, financingActive, bankName }: {
-  status: string; financingActive: boolean; bankName?: string | null
-}) {
-  const currentIdx  = statusToStepIndex(status)
-  const isDispute   = ['in_dispute', 'disputed'].includes(status)
-  const isCancelled = status === 'cancelled'
-
-  return (
-    <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: 480 }}>
-        {ROADMAP_STEPS.map((step, i) => {
-          const isPast    = i < currentIdx
-          const isCurrent = i === currentIdx
-          const isLast    = i === ROADMAP_STEPS.length - 1
-          const isPayment = step.key === 'payment'
-          const isPayOverdue = isCurrent && ['payment_due', 'payment_overdue'].includes(status)
-          const dotBg = isCancelled
-            ? 'var(--border-strong)'
-            : isDispute && isCurrent
-            ? 'var(--color-red)'
-            : isPayOverdue
-            ? '#F59E0B'
-            : isCurrent
-            ? 'var(--blue)'
-            : isPast
-            ? 'var(--color-green)'
-            : 'var(--offwhite)'
-          const dotBorder = (isPast || isCurrent) ? 'none' : '2px solid var(--border-strong)'
-          const lineColor = isPast ? 'var(--color-green)' : 'var(--border)'
-          return (
-            <div key={step.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: isLast ? '0 0 auto' : 1, minWidth: 64 }}>
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                {i > 0 && <div style={{ flex: 1, height: 2, background: lineColor }} />}
-                <div style={{
-                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                  background: dotBg, border: dotBorder,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: isCurrent && !isCancelled ? `0 0 0 4px ${isPayOverdue ? 'rgba(245,158,11,0.18)' : 'var(--blue-light)'}` : 'none',
-                }}>
-                  {isPast && (
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                  {isCurrent && isDispute && <span style={{ fontSize: 10, color: 'white', fontWeight: 700 }}>!</span>}
-                </div>
-                {!isLast && <div style={{ flex: 1, height: 2, background: lineColor }} />}
-              </div>
-              <div style={{
-                fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
-                color: isCancelled ? 'var(--gray-soft)' : isCurrent ? 'var(--ink)' : isPast ? 'var(--color-green)' : 'var(--gray-soft)',
-                fontWeight: isCurrent ? 700 : 400, marginTop: 7, textAlign: 'center', whiteSpace: 'nowrap',
-              }}>{step.label}</div>
-              {isPayment && financingActive && bankName && isCurrent && (
-                <div style={{ fontSize: 9, color: 'var(--blue)', fontFamily: 'var(--font-body)', marginTop: 2, textAlign: 'center', maxWidth: 72 }}>
-                  Via {bankName}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-      {isCancelled && (
-        <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', borderRadius: 8, fontSize: 12, color: 'var(--color-red)', textAlign: 'center' }}>
-          This deal was cancelled
-        </div>
-      )}
-      {isDispute && (
-        <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', borderRadius: 8, fontSize: 12, color: 'var(--color-red)', textAlign: 'center' }}>
-          This deal is in dispute
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Action Panel (G2.2) ─────────────────────────────────────────────────────
-
-function Waiting({ msg }: { msg: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--color-amber)', flexShrink: 0, animation: 'pulse-dot 2s ease infinite' }} />
-      <span style={{ fontSize: 13, color: 'var(--gray)' }}>{msg}</span>
-    </div>
-  )
-}
-
-function ActionPanel({ deal, userRole, counterparty, linkedTransaction, onRefresh }: {
-  deal: Deal; userRole: 'buyer' | 'supplier'
-  counterparty: Organization | null; linkedTransaction: LinkedTransaction | null
-  onRefresh: () => void
-}) {
-  const [loading, setLoading]               = useState(false)
-  const [error, setError]                   = useState<string | null>(null)
-  const [showPayInstr, setShowPayInstr]     = useState(false)
-  const [piBank, setPiBank]                 = useState('')
-  const [piAccountName, setPiAccountName]   = useState('')
-  const [piAccountNumber, setPiAccountNumber] = useState('')
-  const [piRouting, setPiRouting]           = useState('')
-  const [piSwift, setPiSwift]               = useState('')
-  const [piRef, setPiRef]                   = useState('')
-  const [piCurrency, setPiCurrency]         = useState(deal.agreed_currency ?? 'USD')
-  const [showShipForm, setShowShipForm]     = useState(false)
-  const [shipTracking, setShipTracking]     = useState('')
-  const [shipCarrier, setShipCarrier]       = useState('')
-  const [shipEstDelivery, setShipEstDelivery] = useState('')
-  const [shipFile, setShipFile]             = useState<File | null>(null)
-  const [shipDocId, setShipDocId]           = useState<string | null>(null)
-  const [shipDocUploading, setShipDocUploading] = useState(false)
-  const [showDeliveryForm, setShowDeliveryForm] = useState(false)
-  const [disputeCategory, setDisputeCategory]   = useState('')
-  const [disputeReason, setDisputeReason]       = useState('')
-  const [showPaymentForm, setShowPaymentForm] = useState(false)
-  const [payDate, setPayDate]   = useState('')
-  const [payRef, setPayRef]     = useState('')
-  const [payAmount, setPayAmount] = useState('')
-
-  const id = deal.id
-  const financingActive = deal.financing_payment_active ?? false
-  const bankName = linkedTransaction?.bank?.display_name ?? linkedTransaction?.bank?.legal_name ?? null
-  const repaymentAmount = linkedTransaction?.financing_amount_approved ?? null
-  const repaymentDue = linkedTransaction?.repayment_due_date ?? null
-  const cp = counterparty?.legal_name ?? 'counterparty'
-  const dueInDays = daysUntil(deal.payment_due_date)
-  const isOverdue = deal.payment_due_date ? new Date(deal.payment_due_date) < new Date() : false
-  const status = deal.status
-
-  async function post(path: string, body: Record<string, unknown>): Promise<boolean> {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch(`/api/deals/${id}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Action failed'); return false }
-      onRefresh(); return true
-    } catch { setError('Network error'); return false }
-    finally { setLoading(false) }
-  }
-
-  async function patch(body: Record<string, unknown>): Promise<boolean> {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch(`/api/deals/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Action failed'); return false }
-      onRefresh(); return true
-    } catch { setError('Network error'); return false }
-    finally { setLoading(false) }
-  }
-
-  async function uploadShipDoc(file: File): Promise<string | null> {
-    setShipDocUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('document_kind', 'commercial_invoice')
-      const res = await fetch(`/api/deals/${id}/upload-document`, { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Upload failed'); return null }
-      return json.document?.id ?? null
-    } finally { setShipDocUploading(false) }
-  }
-
-  async function submitPaymentInstructions() {
-    const ok = await post('/payment-instructions', {
-      payment_bank_name: piBank, payment_account_name: piAccountName,
-      payment_account_number: piAccountNumber || undefined,
-      payment_routing_number: piRouting || undefined,
-      payment_swift_iban: piSwift || undefined,
-      payment_reference: piRef || undefined, payment_currency: piCurrency,
-    })
-    if (ok) setShowPayInstr(false)
-  }
-
-  async function submitShipment() {
-    let docId = shipDocId
-    if (shipFile && !docId) { docId = await uploadShipDoc(shipFile); if (!docId) return; setShipDocId(docId) }
-    const ok = await post('/ship', { shipment_tracking_ref: shipTracking, shipment_carrier: shipCarrier, shipment_estimated_delivery: shipEstDelivery || undefined, commercial_invoice_id: docId })
-    if (ok) setShowShipForm(false)
-  }
-
-  async function raiseDispute() {
-    if (!disputeCategory || !disputeReason) { setError('Category and reason are required'); return }
-    const ok = await post('/delivery', { action: 'dispute', dispute_category: disputeCategory, dispute_reason: disputeReason })
-    if (ok) setShowDeliveryForm(false)
-  }
-
-  async function submitPayment() {
-    const ok = await post('/payment', { action: 'buyer_confirm', payment_date: payDate || undefined, payment_external_reference: payRef || undefined, payment_amount: payAmount ? parseFloat(payAmount) : undefined })
-    if (ok) setShowPaymentForm(false)
-  }
-
-  function OverdueBanner() {
-    if (!deal.payment_due_date) return null
-    if (status === 'payment_overdue' || isOverdue) {
-      return <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, fontSize: 12, color: 'var(--color-red)', marginBottom: 12 }}>Payment was due on {fmtDate(deal.payment_due_date)} — now overdue.</div>
-    }
-    if (dueInDays !== null && dueInDays <= 3) {
-      return <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 12, color: '#92400e', marginBottom: 12 }}>Payment due in {dueInDays} day{dueInDays !== 1 ? 's' : ''} ({fmtDate(deal.payment_due_date)}).</div>
-    }
-    return null
-  }
-
-  function FinancingNotice() {
-    if (!financingActive || !bankName) return null
-    return (
-      <div style={{ padding: '12px 14px', background: 'rgba(20,40,204,0.06)', border: '1.5px solid rgba(20,40,204,0.18)', borderRadius: 8, fontSize: 12, color: 'var(--ink)', marginBottom: 12, lineHeight: 1.6 }}>
-        <strong>Financing is active on this deal.</strong><br/>
-        {userRole === 'buyer'
-          ? `${cp} received an advance from ${bankName}. Payment must be made to ${bankName}, not ${cp}. Paying the seller directly will not satisfy your financing obligation.`
-          : `You received an advance from ${bankName}. Repayment is the buyer's obligation.`}
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>
-        <button className="btn btn-ghost btn-sm" onClick={() => setError(null)}>Dismiss</button>
-      </div>
-    )
-  }
-
-  // AGREED / DOCUMENTS_PENDING ─ Seller
-  if (['agreed', 'documents_pending'].includes(status) && userRole === 'supplier') {
-    const hasInstr = !!deal.payment_instructions_set_at
-    if (hasInstr) return <Waiting msg={`Awaiting buyer to upload their Purchase Order`} />
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Set payment instructions</div>
-        <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>Provide your bank details so the buyer knows where to send payment.</div>
-        {!showPayInstr ? (
-          <button className="btn btn-primary btn-sm" onClick={() => setShowPayInstr(true)}>Set Payment Instructions</button>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="form-field"><label className="field-label">Bank Name *</label><input className="input" value={piBank} onChange={e => setPiBank(e.target.value)} placeholder="e.g. Chase" /></div>
-            <div className="form-field"><label className="field-label">Account Holder Name *</label><input className="input" value={piAccountName} onChange={e => setPiAccountName(e.target.value)} /></div>
-            <div className="form-row-2">
-              <div className="form-field"><label className="field-label">Account Number</label><input className="input" value={piAccountNumber} onChange={e => setPiAccountNumber(e.target.value)} /></div>
-              <div className="form-field"><label className="field-label">Routing / SWIFT / IBAN</label><input className="input" value={piSwift || piRouting} onChange={e => { setPiSwift(e.target.value); setPiRouting('') }} /></div>
-            </div>
-            <div className="form-row-2">
-              <div className="form-field"><label className="field-label">Payment Reference</label><input className="input" value={piRef} onChange={e => setPiRef(e.target.value)} placeholder="e.g. invoice number" /></div>
-              <div className="form-field"><label className="field-label">Currency</label><input className="input" value={piCurrency} onChange={e => setPiCurrency(e.target.value)} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-sm" disabled={loading || !piBank || !piAccountName} onClick={submitPaymentInstructions}>{loading ? 'Saving…' : 'Save & Submit'}</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowPayInstr(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // AGREED / DOCUMENTS_PENDING ─ Buyer
-  if (['agreed', 'documents_pending'].includes(status) && userRole === 'buyer') {
-    if (!deal.payment_instructions_set_at) return <Waiting msg={`Waiting for ${cp} to issue proforma invoice and payment instructions`} />
-    if (status === 'documents_pending') {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Upload your Purchase Order</div>
-          <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>Review the seller&apos;s terms and upload your PO to confirm the deal. You can attach files in the Documents section.</div>
-          <button className="btn btn-primary btn-sm" disabled={loading} onClick={() => patch({ status: 'confirmed' })}>{loading ? 'Confirming…' : 'Confirm & Proceed'}</button>
-        </div>
-      )
-    }
-    return <Waiting msg={`Waiting for ${cp} to issue proforma invoice`} />
-  }
-
-  // CONFIRMED ─ Seller
-  if (status === 'confirmed' && userRole === 'supplier') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>Deal confirmed. Start preparing the order.</div>
-        <button className="btn btn-primary btn-sm" disabled={loading} onClick={() => patch({ status: 'in_preparation' })}>{loading ? 'Updating…' : 'Start Preparation'}</button>
-      </div>
-    )
-  }
-
-  if (status === 'confirmed' && userRole === 'buyer') return <Waiting msg="Deal confirmed. Waiting for seller to begin preparation." />
-
-  // IN_PREPARATION ─ Seller
-  if (status === 'in_preparation' && userRole === 'supplier') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!showShipForm ? (
-          <>
-            <div style={{ fontSize: 13, color: 'var(--gray)' }}>Order is in preparation. Mark it shipped when ready.</div>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowShipForm(true)}>Mark as Shipped</button>
-          </>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Shipment details</div>
-            <div className="form-field"><label className="field-label">Tracking Reference *</label><input className="input" value={shipTracking} onChange={e => setShipTracking(e.target.value)} placeholder="e.g. MSKU1234567" /></div>
-            <div className="form-field"><label className="field-label">Carrier *</label><input className="input" value={shipCarrier} onChange={e => setShipCarrier(e.target.value)} placeholder="e.g. Maersk, FedEx Freight" /></div>
-            <div className="form-field"><label className="field-label">Estimated Delivery Date</label><input className="input" type="date" value={shipEstDelivery} onChange={e => setShipEstDelivery(e.target.value)} /></div>
-            <div className="form-field">
-              <label className="field-label">Commercial Invoice</label>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>This document will be used for any financing requests.</div>
-              {shipDocId ? <div style={{ fontSize: 12, color: 'var(--color-green)' }}>✓ Uploaded</div>
-                : <input type="file" accept=".pdf,.png,.jpg,.jpeg,.docx" onChange={e => setShipFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-sm" disabled={loading || shipDocUploading || !shipTracking || !shipCarrier} onClick={submitShipment}>
-                {shipDocUploading ? 'Uploading…' : loading ? 'Submitting…' : 'Confirm Shipment'}
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowShipForm(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (status === 'in_preparation' && userRole === 'buyer') {
-    return <div style={{ fontSize: 13, color: 'var(--gray)' }}>Order in preparation.{deal.shipment_estimated_delivery ? <> Est. ship: <strong>{fmtDate(deal.shipment_estimated_delivery)}</strong></> : null}</div>
-  }
-
-  // SHIPPED ─ Seller
-  if (status === 'shipped' && userRole === 'supplier') return <Waiting msg={`Waiting for ${cp} to confirm delivery`} />
-
-  // SHIPPED ─ Buyer
-  if (status === 'shipped' && userRole === 'buyer') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {deal.shipment_tracking_ref && (
-          <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>
-            <div style={{ color: 'var(--gray)', marginBottom: 3 }}>Tracking</div>
-            <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink)' }}>{deal.shipment_tracking_ref}</div>
-            {deal.shipment_carrier && <div style={{ color: 'var(--gray)', marginTop: 2 }}>{deal.shipment_carrier}</div>}
-            {deal.shipment_estimated_delivery && <div style={{ color: 'var(--gray)', marginTop: 2 }}>Est. delivery: {fmtDate(deal.shipment_estimated_delivery)}</div>}
-          </div>
-        )}
-        {!showDeliveryForm ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary btn-sm" disabled={loading} onClick={() => post('/delivery', { action: 'confirm' })}>{loading ? 'Confirming…' : 'Confirm Delivery'}</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowDeliveryForm(true)}>Raise a Dispute</button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-red)' }}>Raise a dispute</div>
-            <div className="form-field">
-              <label className="field-label">Category *</label>
-              <select className="input form-select" value={disputeCategory} onChange={e => setDisputeCategory(e.target.value)}>
-                <option value="">Select category</option>
-                <option value="non_delivery">Non-delivery</option>
-                <option value="wrong_goods">Wrong goods</option>
-                <option value="quality_issue">Quality issue</option>
-                <option value="document_dispute">Document dispute</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="form-field">
-              <label className="field-label">Describe the issue *</label>
-              <textarea className="input" rows={3} value={disputeReason} onChange={e => setDisputeReason(e.target.value)} placeholder="Describe what happened" style={{ resize: 'vertical' }} />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-danger btn-sm" disabled={loading || !disputeCategory || !disputeReason} onClick={raiseDispute}>{loading ? 'Submitting…' : 'Submit Dispute'}</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowDeliveryForm(false)}>Back</button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // DELIVERY_CONFIRMED / PAYMENT_DUE / PAYMENT_OVERDUE ─ Seller
-  if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status) && userRole === 'supplier') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <FinancingNotice />
-        {financingActive && bankName
-          ? <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>Your advance of {fmt(repaymentAmount, deal.agreed_currency)} was received from {bankName}. Repayment is the buyer&apos;s obligation.</div>
-          : <Waiting msg={`Waiting for ${cp} to send payment`} />}
-        {deal.payment_due_date && <div style={{ fontSize: 12, color: 'var(--gray)' }}>Payment due: {fmtDate(deal.payment_due_date)}</div>}
-      </div>
-    )
-  }
-
-  // DELIVERY_CONFIRMED / PAYMENT_DUE / PAYMENT_OVERDUE ─ Buyer
-  if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status) && userRole === 'buyer') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <OverdueBanner />
-        <FinancingNotice />
-        {!financingActive && deal.payment_bank_name && (
-          <div style={{ padding: '12px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>Payment Instructions</div>
-            {deal.payment_bank_name && <div style={{ fontSize: 13, marginBottom: 4 }}>{deal.payment_bank_name}</div>}
-            {deal.payment_account_name && <div style={{ fontSize: 12, color: 'var(--gray)' }}>Account: {deal.payment_account_name}</div>}
-            {deal.payment_account_number && <div style={{ fontSize: 12, color: 'var(--gray)' }}>Acct #: ****{deal.payment_account_number.slice(-4)}</div>}
-            {(deal.payment_swift_iban ?? deal.payment_routing_number) && <div style={{ fontSize: 12, color: 'var(--gray)' }}>SWIFT/Routing: {deal.payment_swift_iban ?? deal.payment_routing_number}</div>}
-            {deal.payment_reference && <div style={{ fontSize: 12, color: 'var(--gray)' }}>Ref: {deal.payment_reference}</div>}
-          </div>
-        )}
-        {financingActive && bankName && (
-          <div style={{ padding: '12px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment to {bankName}</div>
-            {repaymentAmount && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>{fmt(repaymentAmount, deal.agreed_currency)}</div>}
-            {repaymentDue && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>Due: {fmtDate(repaymentDue)}</div>}
-          </div>
-        )}
-        {!showPaymentForm ? (
-          <button className="btn btn-primary btn-sm" onClick={() => setShowPaymentForm(true)}>
-            {financingActive && bankName ? `Confirm Repayment Sent to ${bankName}` : 'Confirm Payment Sent'}
-          </button>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="form-row-2">
-              <div className="form-field"><label className="field-label">Payment Date</label><input className="input" type="date" value={payDate} onChange={e => setPayDate(e.target.value)} /></div>
-              <div className="form-field"><label className="field-label">Amount Sent</label><input className="input" type="number" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
-            </div>
-            <div className="form-field"><label className="field-label">Bank Reference Number</label><input className="input" value={payRef} onChange={e => setPayRef(e.target.value)} placeholder="Your bank's transaction ID" /></div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-sm" disabled={loading} onClick={submitPayment}>{loading ? 'Submitting…' : 'Confirm Payment'}</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowPaymentForm(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // PAYMENT_CONFIRMED ─ Seller
-  if (status === 'payment_confirmed' && userRole === 'supplier') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {deal.payment_external_reference && <div style={{ fontSize: 12, color: 'var(--gray)' }}>Buyer reference: <strong>{deal.payment_external_reference}</strong></div>}
-        <div style={{ fontSize: 13, color: 'var(--gray)' }}>Confirm that you have received the payment to complete this deal.</div>
-        <button className="btn btn-primary btn-sm" disabled={loading} onClick={() => post('/payment', { action: 'seller_confirm' })}>{loading ? 'Completing…' : 'Confirm Payment Received'}</button>
-      </div>
-    )
-  }
-
-  if (status === 'payment_confirmed' && userRole === 'buyer') return <Waiting msg={`Payment sent. Waiting for ${cp} to confirm receipt.`} />
-
-  // IN_DISPUTE
-  if (['in_dispute', 'disputed'].includes(status)) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 13, color: 'var(--color-red)', fontWeight: 600 }}>Dispute in progress</div>
-        <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>Submit evidence below. Strike Admin will mediate.</div>
-        {financingActive && bankName && (
-          <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', borderRadius: 8, fontSize: 12, color: 'var(--color-red)', lineHeight: 1.6 }}>
-            Repayment of {fmt(repaymentAmount, deal.agreed_currency)} to {bankName} is still due{repaymentDue ? ` on ${fmtDate(repaymentDue)}` : ''}. The dispute does not pause this obligation.
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (status === 'completed') return <div style={{ fontSize: 13, color: 'var(--color-green)', fontWeight: 600 }}>Deal complete.</div>
-  if (status === 'cancelled') return <div style={{ fontSize: 13, color: 'var(--gray)' }}>Deal was cancelled.{deal.cancellation_reason ? ` Reason: ${deal.cancellation_reason}` : ''}</div>
-
-  return null
-}
-
 // ─── Amendment Banner ─────────────────────────────────────────────────────────
 
-function AmendmentBanner({ deal, userRole, onRefresh }: { deal: Deal; userRole: 'buyer' | 'supplier'; onRefresh: () => void }) {
+function AmendmentBanner({ deal, onRefresh }: { deal: Deal; onRefresh: () => void }) {
   const [responding, setResponding] = useState(false)
   const history: AmendmentRecord[] = Array.isArray(deal.amendment_history) ? deal.amendment_history : []
   const pending = history.find(a => a.status === 'pending')
   if (!pending) return null
 
-  const iAmProposed = false // simplified — server enforces who can respond
-
   async function respond(accepted: boolean) {
-    if (!pending) return
     setResponding(true)
     try {
       await fetch(`/api/deals/${deal.id}/amendment`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amendment_id: pending.id, response: accepted ? 'accepted' : 'rejected' }),
+        body: JSON.stringify({ amendment_id: pending!.id, response: accepted ? 'accepted' : 'rejected' }),
       })
       onRefresh()
     } finally { setResponding(false) }
@@ -611,19 +136,17 @@ function AmendmentBanner({ deal, userRole, onRefresh }: { deal: Deal; userRole: 
         <div><span style={{ color: 'var(--blue)', fontWeight: 600 }}>To: </span>{String(pending.proposed_value ?? '—')}</div>
       </div>
       {pending.reason && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>Reason: {pending.reason}</div>}
-      {!iAmProposed && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button className="btn btn-primary btn-sm" disabled={responding} onClick={() => respond(true)}>Accept</button>
-          <button className="btn btn-ghost btn-sm" disabled={responding} onClick={() => respond(false)}>Reject</button>
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button className="btn btn-primary btn-sm" disabled={responding} onClick={() => respond(true)}>Accept</button>
+        <button className="btn btn-ghost btn-sm" disabled={responding} onClick={() => respond(false)}>Reject</button>
+      </div>
     </div>
   )
 }
 
 // ─── Propose Amendment Form ───────────────────────────────────────────────────
 
-function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal; onRefresh: () => void }) {
+function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price?: number }; onRefresh: () => void }) {
   const [open, setOpen] = useState(false)
   const [field, setField] = useState('')
   const [proposedValue, setProposedValue] = useState('')
@@ -715,7 +238,7 @@ function DisputeEvidencePanel({ deal, onRefresh }: { deal: Deal; onRefresh: () =
   )
 }
 
-// ─── AI Doc Cards ─────────────────────────────────────────────────────────────
+// ─── AI Doc Card ──────────────────────────────────────────────────────────────
 
 function AiDocCard({ doc }: { doc: AiDoc }) {
   const [expanded, setExpanded] = useState(false)
@@ -787,9 +310,9 @@ export default function DealDetailPage() {
   const [aiDocs, setAiDocs] = useState<AiDoc[]>([])
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
+  const [availableActions, setAvailableActions] = useState<AvailableAction[]>([])
   const [showFinancingForm, setShowFinancingForm] = useState(false)
-  const [finStructure, setFinStructure] = useState<FinancingStructure>('open')
-  const [finType, setFinType] = useState<FinancingType | ''>('')
+  const [finType, setFinType] = useState('')
   const [finAmount, setFinAmount] = useState('')
   const [finRateMax, setFinRateMax] = useState('')
   const [finSubmitting, setFinSubmitting] = useState(false)
@@ -806,9 +329,15 @@ export default function DealDetailPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    fetch(`/api/deals/${id}`)
-      .then(r => r.json())
-      .then(d => { if (d.error) setError(d.error); else setData(d) })
+    Promise.all([
+      fetch(`/api/deals/${id}`).then(r => r.json()),
+      fetch(`/api/deals/${id}/available-actions`).then(r => r.json()).catch(() => ({ actions: [] })),
+    ])
+      .then(([dealData, actionsData]) => {
+        if (dealData.error) setError(dealData.error)
+        else setData(dealData)
+        setAvailableActions(actionsData.actions ?? [])
+      })
       .catch(() => setError('Failed to load deal'))
       .finally(() => setLoading(false))
   }, [id])
@@ -863,11 +392,64 @@ export default function DealDetailPage() {
     return () => { if (pollInterval.current) { clearInterval(pollInterval.current); pollInterval.current = null } }
   }, [data, id, loadDocs, aiDocs.length, uploadedDocs.length])
 
+  // ── Action router — maps action names to the right API endpoints ──────────
+
+  async function handleTransition(action: string, payload: Record<string, unknown>): Promise<void> {
+    let url: string
+    let body: Record<string, unknown>
+    let method = 'POST'
+
+    if (action === 'acknowledge_noa') {
+      url = `/api/deals/${id}/acknowledge-noa`
+      body = payload
+    } else if (action === 'present_dd_offer') {
+      url = `/api/deals/${id}/dd-offer`
+      body = payload
+    } else if (action === 'dd_accept') {
+      url = `/api/deals/${id}/dd-respond`
+      body = { accepted: true }
+    } else if (action === 'dd_decline') {
+      url = `/api/deals/${id}/dd-respond`
+      body = { accepted: false }
+    } else if (action === 'cancel') {
+      url = `/api/deals/${id}/cancel`
+      body = { cancellation_reason: payload.cancellation_reason, confirmed: true }
+    } else if (action === 'confirm') {
+      // Buyer confirms documents
+      url = `/api/deals/${id}`
+      method = 'PATCH'
+      body = { status: 'confirmed' }
+    } else {
+      // All other actions go through the transition API
+      url = `/api/deals/${id}/transition`
+      body = { action, payload }
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error ?? 'Action failed')
+    load()
+  }
+
   async function submitFinancingRequest() {
     if (!data) return
     setFinSubmitting(true); setFinError(null)
     try {
-      const res = await fetch('/api/marketplace/financing', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deal_id: id, structure_type: finStructure, financing_type: finType || undefined, amount_requested: parseFloat(finAmount), preferred_rate_max: finRateMax ? parseFloat(finRateMax) : undefined, currency: data.deal.agreed_currency ?? 'USD' }) })
+      const res = await fetch('/api/marketplace/financing', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deal_id: id,
+          structure_type: 'open',
+          financing_type: finType || undefined,
+          amount_requested: parseFloat(finAmount),
+          preferred_rate_max: finRateMax ? parseFloat(finRateMax) : undefined,
+          currency: data.deal.agreed_currency ?? 'USD',
+        }),
+      })
       const json = await res.json()
       if (!res.ok) { setFinError(json.error ?? 'Submission failed'); return }
       setShowFinancingForm(false); router.push(`/marketplace/financing/${json.financing_request.id}`)
@@ -910,16 +492,68 @@ export default function DealDetailPage() {
   const counterparty = user_role === 'buyer' ? supplier_org : buyer_org
   const dealValue = deal.total_value ?? deal.agreed_price ?? null
   const currency = deal.agreed_currency ?? 'USD'
-  const financingActive = deal.financing_payment_active ?? false
-  const bankName = linked_transaction?.bank?.display_name ?? null
   const isGenerating = deal.status === 'agreed' && !deal.documents_generated_at && docsLoading
   const hasAiDocs   = aiDocs.length > 0
   const hasUploaded = uploadedDocs.length > 0 || documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind)).length > 0
   const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active']
   const canCancel   = CANCELLABLE.includes(deal.status) && !deal.financing_payment_active
-  const canFinance  = ['agreed', 'active', 'confirmed', 'in_preparation'].includes(deal.status) && !deal.financing_requested
+  const canFinance  = ['delivery_confirmed', 'shipped', 'confirmed', 'in_preparation'].includes(deal.status) && !deal.financing_requested && !deal.financing_payment_active
   const canAmend    = ['confirmed', 'in_preparation', 'active'].includes(deal.status) && !deal.financing_payment_active
   const isActive    = !['completed', 'cancelled', 'in_dispute', 'disputed'].includes(deal.status)
+
+  // Compute financing context (G4.3)
+  const txn = linked_transaction
+  const txnForCtx: TransactionForContext | null = txn
+    ? {
+        type: txn.type,
+        status: txn.status,
+        financing_amount_approved: txn.financing_amount_approved,
+        repayment_due_date: txn.repayment_due_date,
+        discount_rate: txn.discount_rate,
+        discount_amount: txn.discount_amount,
+        early_payment_date: txn.early_payment_date,
+        repayment_routing: txn.repayment_routing,
+        bank_id: txn.bank_id,
+      }
+    : null
+
+  const bankOrgForCtx: BankForContext | null = txn?.bank
+    ? { id: txn.bank.id, display_name: txn.bank.display_name, legal_name: txn.bank.legal_name }
+    : null
+
+  const supplierOrgForCtx: OrgForContext = {
+    legal_name: supplier_org?.legal_name ?? null,
+    primary_contact_email: supplier_org?.primary_contact_email ?? null,
+  }
+
+  const dealForCtx: DealForContext = {
+    status: deal.status,
+    financing_payment_active: deal.financing_payment_active ?? false,
+    total_value: deal.total_value,
+    agreed_price: deal.agreed_price,
+    agreed_currency: deal.agreed_currency,
+    payment_due_date: deal.payment_due_date,
+    payment_bank_name: deal.payment_bank_name,
+    payment_account_number: deal.payment_account_number,
+    payment_account_name: deal.payment_account_name,
+    payment_swift_iban: deal.payment_swift_iban,
+    payment_routing_number: deal.payment_routing_number,
+    payment_reference: deal.payment_reference,
+    noa_acknowledged_at: deal.noa_acknowledged_at ?? null,
+    noa_document_id: deal.noa_document_id ?? null,
+  }
+
+  const financingContext = getFinancingContext(dealForCtx, txnForCtx, null, bankOrgForCtx, supplierOrgForCtx)
+
+  const hasDDOffer = !!(deal.dd_offer_presented_at && !deal.dd_offer_accepted_at && !deal.dd_offer_declined_at)
+
+  // G5.1 — AI context summary for the overlay
+  const recentActions = availableActions.filter(a => a.available).slice(0, 3).map(a => `- ${a.action}: ${a.description}`).join('\n')
+  const aiContext = [
+    `Deal #${shortId(deal.id)} | Status: ${deal.status} | Role: ${user_role}`,
+    `Financing: ${financingContext.aiContextSummary}`,
+    recentActions ? `Available actions:\n${recentActions}` : 'No actions available for this user.',
+  ].join('\n')
 
   return (
     <>
@@ -927,39 +561,57 @@ export default function DealDetailPage() {
         crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: `Deal #${shortId(deal.id)}` }]}
         actions={<div className="topbar-right">{room && <Link href={`/rooms/${room.id}`} className="btn btn-ghost btn-sm">Open Deal Room →</Link>}</div>}
       />
-      <div className="page" style={{ maxWidth: 1280 }}>
+      {/* G5.1 — AI context injected via data attribute for ai-overlay.tsx */}
+      <div className="page" style={{ maxWidth: 1280 }} data-page-name="deal-detail" data-ai-context={aiContext}>
         {/* Header */}
         <div className="page-header" style={{ marginBottom: 24 }}>
           <div className="page-id-title">
             <span className="id-text">Deal #{shortId(deal.id)}</span>
             <span className={statusBadgeClass(deal.status)}>{deal.status.replace(/_/g, ' ')}</span>
             <span className={sourceBadgeClass(deal.deal_source)}>{deal.deal_source}</span>
+            {financingContext.financingBadgeLabel && (
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {financingContext.financingBadgeLabel}
+              </span>
+            )}
           </div>
           <p className="subtitle" style={{ marginTop: 4 }}>
-            {user_role === 'buyer' ? 'You are the buyer' : 'You are the supplier'} on this deal{counterparty && ` with ${counterparty.legal_name}`}
+            {user_role === 'buyer' ? 'You are the buyer' : user_role === 'supplier' ? 'You are the supplier' : 'Bank view'} on this deal{counterparty && ` with ${counterparty.legal_name}`}
           </p>
         </div>
 
         {/* Amendment banner */}
-        {canAmend && <AmendmentBanner deal={deal} userRole={user_role} onRefresh={load} />}
+        {canAmend && <AmendmentBanner deal={deal} onRefresh={load} />}
 
         <div className="split-panel">
           {/* ── Main panel ── */}
           <div className="split-panel-main">
-            {/* Roadmap */}
+            {/* Roadmap — G4.1 */}
             <div className="card">
               <div className="card-head">Deal Progress</div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
-                <DealRoadmap status={deal.status} financingActive={financingActive} bankName={bankName} />
+                <DealRoadmap
+                  status={deal.status}
+                  financingContext={financingContext}
+                  currentUserRole={user_role}
+                />
               </div>
             </div>
 
-            {/* Action Required */}
+            {/* Action Required — G4.2 */}
             {isActive && (
               <div className="card" style={{ border: '1.5px solid var(--blue-light)' }}>
                 <div className="card-head" style={{ color: 'var(--blue)' }}>Action Required</div>
                 <div className="card-body">
-                  <ActionPanel deal={deal} userRole={user_role} counterparty={counterparty} linkedTransaction={linked_transaction} onRefresh={load} />
+                  <ActionPanel
+                    dealId={deal.id}
+                    availableActions={availableActions}
+                    financingContext={financingContext}
+                    currentUserRole={user_role}
+                    hasDDOffer={hasDDOffer}
+                    onActionSubmit={handleTransition}
+                    onRefresh={load}
+                  />
                 </div>
               </div>
             )}
@@ -985,6 +637,44 @@ export default function DealDetailPage() {
                 {deal.import_notes && <div className="kv-row"><span className="k">Notes</span><span className="v plain" style={{ fontSize: 12 }}>{deal.import_notes}</span></div>}
               </div>
             </div>
+
+            {/* Financing context details (replaces old inline financing info) */}
+            {financingContext.isActive && (
+              <div className="card">
+                <div className="card-head">
+                  Active Financing
+                  {financingContext.financingBadgeLabel && (
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {financingContext.financingBadgeLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="kv-list">
+                  <div className="kv-row"><span className="k">Structure</span><span className="v plain">{financingContext.structure?.replace(/_/g, ' ') ?? '—'}</span></div>
+                  <div className="kv-row"><span className="k">Payment to</span><span className="v plain">{financingContext.paymentRecipientName}</span></div>
+                  <div className="kv-row"><span className="k">Amount</span><span className="v" style={{ fontFamily: 'var(--font-mono)' }}>{fmt(financingContext.paymentAmount, financingContext.paymentCurrency)}</span></div>
+                  {financingContext.paymentDueDate && <div className="kv-row"><span className="k">Due Date</span><span className="v">{fmtDate(financingContext.paymentDueDate)}</span></div>}
+                  {financingContext.ddDiscountRate != null && <div className="kv-row"><span className="k">Discount Rate</span><span className="v">{financingContext.ddDiscountRate}% annualized</span></div>}
+                  {financingContext.ddDiscountAmount != null && <div className="kv-row"><span className="k">Discount Amount</span><span className="v" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-red)' }}>-{fmt(financingContext.ddDiscountAmount, financingContext.paymentCurrency)}</span></div>}
+                  {financingContext.noaRequired && (
+                    <div className="kv-row">
+                      <span className="k">NOA Status</span>
+                      <span className={`badge ${financingContext.noaAcknowledged ? 'badge-completed' : 'badge-pending'}`} style={{ fontSize: 10 }}>
+                        {financingContext.noaAcknowledged ? 'Acknowledged' : 'Pending'}
+                      </span>
+                    </div>
+                  )}
+                  {financingContext.structure === 'po_financing' && (
+                    <div className="kv-row">
+                      <span className="k">PO Status</span>
+                      <span className={`badge ${financingContext.poFinancingConverted ? 'badge-completed' : 'badge-offer'}`} style={{ fontSize: 10 }}>
+                        {financingContext.poFinancingConverted ? 'Converted' : 'Pre-Shipment'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Shipment info */}
             {deal.shipment_tracking_ref && (
@@ -1044,7 +734,7 @@ export default function DealDetailPage() {
               )}
             </div>
 
-            {/* Financing */}
+            {/* Financing request panel */}
             <div className="card">
               <div className="card-head">Financing</div>
               {financing_request ? (
@@ -1065,12 +755,23 @@ export default function DealDetailPage() {
                 <div className="card-body">
                   {finError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{finError}</div>}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div className="form-row-2">
-                      <div className="form-field"><label className="field-label">Structure Type</label><select className="input form-select" value={finStructure} onChange={e => setFinStructure(e.target.value as FinancingStructure)}><option value="open">Open (any structure)</option><option value="preset">Preset</option><option value="custom">Custom</option></select></div>
-                      <div className="form-field"><label className="field-label">Financing Type (optional)</label><select className="input form-select" value={finType} onChange={e => setFinType(e.target.value as FinancingType | '')}><option value="">No preference</option><option value="reverse_factoring">Reverse Factoring</option><option value="invoice_factoring">Invoice Factoring</option><option value="po_financing">PO Financing</option><option value="dynamic_discounting">Dynamic Discounting</option></select></div>
+                    <div className="form-field">
+                      <label className="field-label">Financing Type (optional)</label>
+                      <select className="input form-select" value={finType} onChange={e => setFinType(e.target.value)}>
+                        <option value="">No preference (open to all)</option>
+                        <option value="reverse_factoring">Reverse Factoring</option>
+                        <option value="invoice_factoring">Invoice Factoring</option>
+                        <option value="po_financing">PO Financing</option>
+                      </select>
                     </div>
                     <div className="form-field" style={{ maxWidth: 260 }}><label className="field-label">Amount Requested ({currency})</label><input className="input" type="number" min="0" required value={finAmount} onChange={e => setFinAmount(e.target.value)} /></div>
                     <div className="form-field" style={{ maxWidth: 200 }}><label className="field-label">Max Rate APR % (optional)</label><input className="input" type="number" step="0.01" min="0" value={finRateMax} onChange={e => setFinRateMax(e.target.value)} placeholder="e.g. 6.0" /></div>
+                    {finType === 'reverse_factoring' && !['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status) && (
+                      <div className="alert alert-warn" style={{ fontSize: 12 }}>Reverse Factoring requires delivery confirmation first.</div>
+                    )}
+                    {finType === 'po_financing' && !['confirmed', 'in_preparation'].includes(deal.status) && (
+                      <div className="alert alert-warn" style={{ fontSize: 12 }}>PO Financing must be requested before shipment.</div>
+                    )}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="btn btn-blue btn-sm" disabled={finSubmitting || !finAmount} onClick={submitFinancingRequest}>{finSubmitting ? 'Submitting…' : 'Submit Financing Request'}</button>
                       <button className="btn btn-ghost btn-sm" disabled={finSubmitting} onClick={() => { setShowFinancingForm(false); setFinError(null) }}>Cancel</button>
@@ -1080,7 +781,14 @@ export default function DealDetailPage() {
               ) : (
                 <div className="card-body">
                   <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6, marginBottom: 12 }}>Ready to unlock early payment? Submit this deal to Strike Place and receive competitive financing offers from banks.</div>
-                  <button className="btn btn-blue btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => { setFinAmount(String(dealValue ?? '')); setShowFinancingForm(true) }} disabled={!canFinance}>Request Financing</button>
+                  <button
+                    className="btn btn-blue btn-sm"
+                    style={{ alignSelf: 'flex-start' }}
+                    onClick={() => { setFinAmount(String(dealValue ?? '')); setShowFinancingForm(true) }}
+                    disabled={!canFinance}
+                  >
+                    Request Financing
+                  </button>
                 </div>
               )}
             </div>
@@ -1115,6 +823,11 @@ export default function DealDetailPage() {
               <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>{fmt(dealValue, currency)}</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency}</div>
+                {financingContext.isActive && financingContext.structure !== 'dynamic_discounting' && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: 'var(--blue)' }}>
+                    Repayment: {fmt(financingContext.paymentAmount, currency)} to {financingContext.paymentRecipientName}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1148,7 +861,7 @@ export default function DealDetailPage() {
               </div>
             )}
 
-            {/* Counterparty confirmation */}
+            {/* Counterparty confirmation (imported deals) */}
             {deal.deal_source === 'imported' && (
               <div className={`alert ${deal.counterparty_confirmed ? 'alert-info' : 'alert-warn'}`} style={{ fontSize: 12 }}>
                 <span className="alert-icon">{deal.counterparty_confirmed ? '✓' : '⏳'}</span>

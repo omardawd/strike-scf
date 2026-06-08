@@ -190,14 +190,39 @@ export async function POST(request: Request) {
     .single()
 
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
-  if (!['agreed', 'active'].includes(deal.status)) {
-    return NextResponse.json({ error: 'Deal must be agreed or active to request financing' }, { status: 400 })
-  }
   if (deal.financing_requested) {
     return NextResponse.json({ error: 'Financing already requested for this deal' }, { status: 400 })
   }
   if (deal.buyer_org_id !== me.org_id && deal.supplier_org_id !== me.org_id) {
     return NextResponse.json({ error: 'You must be a party to this deal' }, { status: 403 })
+  }
+
+  // G3.1 — G3.2: Financing structure gates
+  const financingType = body.financing_type ?? null
+  const VALID_POST_SHIPMENT = ['shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue']
+  const VALID_ALL_STAGES = ['agreed', 'active', 'confirmed', 'in_preparation', ...VALID_POST_SHIPMENT]
+
+  if (!VALID_ALL_STAGES.includes(deal.status)) {
+    return NextResponse.json({ error: 'Deal must be active to request financing' }, { status: 400 })
+  }
+
+  if (financingType === 'reverse_factoring') {
+    if (!VALID_POST_SHIPMENT.includes(deal.status)) {
+      return NextResponse.json({
+        error: 'Reverse Factoring requires delivery confirmation before financing can be requested.',
+        current_status: deal.status,
+        required_status: 'delivery_confirmed',
+      }, { status: 400 })
+    }
+  }
+
+  if (financingType === 'po_financing') {
+    if (!['confirmed', 'in_preparation'].includes(deal.status)) {
+      return NextResponse.json({
+        error: 'PO Financing must be requested before shipment. Use Invoice Factoring or Reverse Factoring for post-shipment financing.',
+        current_status: deal.status,
+      }, { status: 400 })
+    }
   }
 
   const [{ data: buyerOrg }, { data: supplierOrg }] = await Promise.all([

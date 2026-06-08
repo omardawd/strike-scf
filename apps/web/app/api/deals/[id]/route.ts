@@ -78,12 +78,15 @@ export async function GET(
     financingRequest = fr
   }
 
-  // Fetch linked transaction when financing is active (for repayment details)
+  // Fetch linked transaction when financing is active or a DD offer is pending
   let linkedTransaction = null
-  if (deal.financing_payment_active || deal.status === 'financing_active') {
+  const needsTxn = deal.financing_payment_active
+    || deal.status === 'financing_active'
+    || deal.dd_offer_presented_at != null
+  if (needsTxn) {
     const { data: txn } = await adminClient
       .from('transactions')
-      .select('id, status, financing_amount_approved, repayment_due_date, bank_id, tenor_days, financing_rate_apr')
+      .select('id, type, status, financing_amount_approved, repayment_due_date, bank_id, tenor_days, financing_rate_apr, discount_rate, discount_amount, early_payment_date, repayment_routing')
       .eq('deal_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
