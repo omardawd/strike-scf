@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type RoleChoice = 'anchor' | 'supplier' | 'both' | 'bank'
@@ -83,16 +83,32 @@ function roleToOrgType(role: RoleChoice): 'anchor' | 'supplier' | 'bank' {
 
 export default function SignupPage() {
   const router = useRouter()
-  const [role, setRole] = useState<RoleChoice>('anchor')
+  const searchParams = useSearchParams()
+  const inviteToken    = searchParams.get('invite_token') ?? ''
+  const prefillEmail   = searchParams.get('email') ?? ''
+  const prefillCompany = searchParams.get('company') ?? ''
+  const prefillCountry = searchParams.get('country') ?? ''
+
+  const [role, setRole] = useState<RoleChoice>('supplier')
   const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(prefillEmail)
   const [password, setPassword] = useState('')
-  const [companyName, setCompanyName] = useState('')
-  const [country, setCountry] = useState('')
+  const [companyName, setCompanyName] = useState(prefillCompany)
+  const [country, setCountry] = useState(prefillCountry)
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [bankDone, setBankDone] = useState(false)
+
+  // Pre-fill invite fields on mount
+  useEffect(() => {
+    if (prefillEmail) setEmail(prefillEmail)
+    if (prefillCompany) setCompanyName(prefillCompany)
+    if (prefillCountry) {
+      const found = COUNTRIES.find(c => c.name.toLowerCase() === prefillCountry.toLowerCase() || c.code.toLowerCase() === prefillCountry.toLowerCase())
+      if (found) setCountry(found.code)
+    }
+  }, [prefillEmail, prefillCompany, prefillCountry])
 
   const isBank = role === 'bank'
 
@@ -160,6 +176,22 @@ export default function SignupPage() {
         router.push('/login')
         return
       }
+
+      // If signed up via a network invite token, auto-accept the invitation
+      if (inviteToken) {
+        try {
+          const inviteRes = await fetch(`/api/invite/${inviteToken}/accept`, { method: 'POST' })
+          if (inviteRes.ok) {
+            const inviteData = await inviteRes.json()
+            const msg = inviteData.anchor_name && inviteData.network_name
+              ? `?welcome_network=${encodeURIComponent(inviteData.network_name)}&welcome_anchor=${encodeURIComponent(inviteData.anchor_name)}`
+              : ''
+            router.push(`/dashboard${msg}`)
+            return
+          }
+        } catch { /* non-fatal — fall through to dashboard */ }
+      }
+
       router.push('/dashboard')
     } catch {
       setError('Something went wrong. Please try again.')
@@ -292,14 +324,20 @@ export default function SignupPage() {
               <div>
                 <label style={labelStyle}>Work email</label>
                 <input
-                  style={inputStyle}
+                  style={{ ...inputStyle, background: inviteToken && prefillEmail ? 'var(--offwhite)' : undefined }}
                   type="email"
                   placeholder="priya@company.com"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={e => { if (!inviteToken || !prefillEmail) setEmail(e.target.value) }}
+                  readOnly={!!(inviteToken && prefillEmail)}
                   autoComplete="email"
                   required
                 />
+                {inviteToken && prefillEmail && (
+                  <p style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+                    Email is pre-filled from your invitation and cannot be changed.
+                  </p>
+                )}
               </div>
 
               {/* Company + country (org accounts only — banks are provisioned by Strike) */}

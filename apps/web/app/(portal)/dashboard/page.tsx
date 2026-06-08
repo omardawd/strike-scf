@@ -1071,6 +1071,8 @@ function SupplierDashboard() {
   const [financing, setFinancing] = useState<OrgFinancingReq[]>([])
   const [notifications, setNotifications] = useState<NotifItem[]>([])
   const [passport, setPassport] = useState<PassportData | null>(null)
+  const [pendingNetworks, setPendingNetworks] = useState<any[]>([])
+  const router = useRouter()
 
   useEffect(() => {
     const orgId = user?.org_id
@@ -1082,14 +1084,17 @@ function SupplierDashboard() {
       orgId
         ? fetch(`/api/passport/${orgId}`).then(r => r.ok ? r.json() : null).catch(() => null)
         : Promise.resolve(null),
+      fetch('/api/networks/supplier').then(r => r.ok ? r.json() : null).catch(() => null),
     ]
 
-    Promise.all(base).then(([dash, dealsRes, finRes, notifRes, passRes]) => {
+    Promise.all(base).then(([dash, dealsRes, finRes, notifRes, passRes, networkRes]) => {
       if ((dash as any)?.portal === 'supplier') setDashData(dash as SupplierData)
       setDeals(((dealsRes as any)?.deals ?? []) as DealItem[])
       setFinancing((((finRes as any)?.requests ?? []) as OrgFinancingReq[]).slice(0, 3))
       setNotifications(((notifRes as any)?.notifications ?? []) as NotifItem[])
       if (passRes) setPassport(passRes as PassportData)
+      const nets = (networkRes as any)?.networks ?? []
+      setPendingNetworks(nets.filter((n: any) => n.membership?.status === 'invited'))
       setLoading(false)
     })
   }, [user?.org_id])
@@ -1145,6 +1150,40 @@ function SupplierDashboard() {
 
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="lg" extras={passportExtras} />
+
+        {/* 2b. Network Invitations widget (hidden when no pending invites) */}
+        {!loading && pendingNetworks.length > 0 && (
+          <div className="card" style={{ marginBottom: 8, borderLeft: '3px solid var(--color-amber)', paddingLeft: 16 }}>
+            <div className="card-head" style={{ marginBottom: 10 }}>
+              <span style={{ fontWeight: 700 }}>📬 Network Invitations</span>
+              <a href="/networks" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>
+                View all ({pendingNetworks.length}) →
+              </a>
+            </div>
+            {pendingNetworks.slice(0, 2).map((item: any) => (
+              <div key={item.membership.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 0', borderBottom: '1px solid var(--border)', gap: 12,
+              }}>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{item.anchor?.legal_name ?? 'A buyer'}</strong> invited you to{' '}
+                  <em>"{item.network?.name}"</em>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => router.push('/networks')}
+                    style={{
+                      padding: '6px 12px', fontSize: 12, borderRadius: 'var(--radius-button)',
+                      background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600,
+                    }}
+                  >
+                    View
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 3. Action queue */}
         <ActionQueueStrip cards={actionCards} loading={loading} />

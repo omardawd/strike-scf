@@ -13,6 +13,7 @@ const PATH_PAGE_NAMES: Record<string, string> = {
   '/marketplace':               'Strike Place',
   '/deals/import':              'Finance an Existing Trade',
   '/deals':                     'My Deals',
+  '/networks':                  'Networks',
   '/rooms':                     'Strike Rooms',
   '/passport':                  'My Passport',
   '/programs':                  'Programs',

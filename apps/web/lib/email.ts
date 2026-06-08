@@ -358,6 +358,102 @@ export function dealFinancingRejectedEmailHtml({ recipientName, sellerName, deal
   `)
 }
 
+// ---- Network emails ----------------------------------------
+
+const APP_URL_NETWORK = (() => {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.strikescf.com').trim()
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
+  return raw.includes('localhost') ? `http://${raw}` : `https://${raw}`
+})()
+
+function networkEmailWrapper(body: string): string {
+  return `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:40px 24px;color:#0f172a;">
+    <div style="font-size:20px;font-weight:700;color:#1428CC;margin-bottom:24px;letter-spacing:-0.03em;">Strike SCF</div>
+    ${body}
+    <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;line-height:1.6;">This is an automated notification from Strike SCF. Do not reply to this email.</p>
+  </div>`
+}
+
+export function networkInviteExistingOrgHtml({
+  anchorName,
+  networkName,
+  networkDescription,
+  personalNote,
+  networksUrl,
+}: {
+  anchorName: string
+  networkName: string
+  networkDescription?: string | null
+  personalNote?: string | null
+  networksUrl?: string
+}) {
+  const url = networksUrl ?? `${APP_URL_NETWORK}/networks`
+  return networkEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">${anchorName} has invited you to their supplier network</h2>
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px;">Network</div>
+      <div style="font-size:14px;font-weight:600;color:#0f172a;">${networkName}</div>
+      ${networkDescription ? `<div style="font-size:13px;color:#64748b;margin-top:6px;">${networkDescription}</div>` : ''}
+    </div>
+    ${personalNote ? `<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 16px;font-style:italic;">"${personalNote}"</p>` : ''}
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 20px;">Accepting this invitation will allow you to see ${anchorName}'s private listings on Strike Place and receive targeted financing opportunities from their network.</p>
+    <a href="${url}" style="display:inline-block;background:#1428CC;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">Accept Invitation →</a>
+    <p style="color:#94a3b8;font-size:12px;margin:20px 0 0;line-height:1.6;">If you don't want to join this network, you can decline from your Networks page or ignore this email.</p>
+  `)
+}
+
+export function networkInviteNewEmailHtml({
+  anchorName,
+  networkName,
+  inviteToken,
+}: {
+  anchorName: string
+  networkName: string
+  inviteToken: string
+}) {
+  const url = `${APP_URL_NETWORK}/invite/${inviteToken}`
+  return networkEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">${anchorName} has invited you to join their supplier network</h2>
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px;">Network</div>
+      <div style="font-size:14px;font-weight:600;color:#0f172a;">${networkName}</div>
+    </div>
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 20px;">Strike SCF is an AI-native supply chain finance platform. Joining gives you access to invoice financing, your PassportScore, and Strike Place — the open trade marketplace.</p>
+    <a href="${url}" style="display:inline-block;background:#1428CC;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">Accept Invitation &amp; Create Account →</a>
+    <p style="color:#94a3b8;font-size:12px;margin:20px 0 0;line-height:1.6;">This invitation expires in 30 days.</p>
+  `)
+}
+
+export function networkSupplierJoinedEmailHtml({
+  supplierName,
+  networkName,
+  networkId,
+}: {
+  supplierName: string
+  networkName: string
+  networkId: string
+}) {
+  const url = `${APP_URL_NETWORK}/networks/${networkId}`
+  return networkEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">${supplierName} has joined your network</h2>
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 20px;"><strong>${supplierName}</strong> has accepted your invitation and is now an active member of <strong>${networkName}</strong>.</p>
+    <a href="${url}" style="display:inline-block;background:#1428CC;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">View network members →</a>
+  `)
+}
+
+export function networkRemovedEmailHtml({
+  anchorName,
+  networkName,
+}: {
+  anchorName: string
+  networkName: string
+}) {
+  return networkEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">You have been removed from a supplier network</h2>
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 20px;">You have been removed from <strong>${anchorName}</strong>'s <strong>${networkName}</strong> network. You no longer have access to that network's private listings on Strike Place.</p>
+  `)
+}
+
 export function dealDisputeResolvedEmailHtml({ recipientName, resolution, dealId, dealShortId }: { recipientName: string; resolution: string; dealId: string; dealShortId: string }) {
   const labels: Record<string, string> = {
     buyer_favor: 'resolved in favour of the buyer',

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isListingVisibleToOrg } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,6 +36,26 @@ export async function GET(
 
   if (error || !listing) {
     return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+  }
+
+  // Network visibility enforcement: ghost orgs see nothing
+  if (me.org_id) {
+    const { data: requesterOrg } = await adminClient
+      .from('organizations')
+      .select('network_visible')
+      .eq('id', me.org_id)
+      .single()
+    if (requesterOrg && requesterOrg.network_visible === false) {
+      return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+    }
+  }
+
+  // Network-only listing: return 404 if requester is not a member (don't reveal it exists)
+  if (listing.visibility === 'network_only' && me.org_id && listing.org_id !== me.org_id) {
+    const visible = await isListingVisibleToOrg(adminClient, listing, me.org_id)
+    if (!visible) {
+      return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+    }
   }
 
   // Increment view_count (fire-and-forget, non-atomic — matches codebase pattern)

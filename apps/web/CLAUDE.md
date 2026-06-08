@@ -291,9 +291,16 @@ deal_events                 -- audit log for deal lifecycle events (created by m
   RLS: org members can read events for deals they are party to
 
 marketplace_listings        -- Strike Place product/PO listings
+                            -- visibility (public|network_only), network_id FK → anchor_networks
 marketplace_offers          -- offers on listings (realtime-subscribed)
 financing_requests          -- marketplace financing requests (preset|custom|open)
+                            -- visibility (public|network_only), network_id FK → anchor_networks
 financing_request_offers    -- bank offers on financing requests (realtime-subscribed)
+
+anchor_networks             -- anchor-owned supplier networks; id, anchor_org_id, name, visibility_default, member_count
+anchor_network_members      -- supplier memberships; status: invited|active|declined|suspended|removed
+                            -- UNIQUE(network_id, supplier_org_id); anchor sees all members, suppliers see only own row
+network_invite_tokens       -- one-time invite links for new (not-yet-on-Strike) suppliers; expires in 30 days
 
 rooms                       -- Strike Rooms (private deal rooms + public)
 room_participants           -- room_id, org_id, bank_id, user_id, role, joined_at, last_read_at
@@ -581,8 +588,10 @@ cd apps/web && npx tsc --noEmit
 - app/(portal)/deals/ — Deal lifecycle (marketplace + imported)
 - app/(portal)/rooms/ — Strike Rooms (private deal rooms + public)
 - app/(portal)/passport/ — Strike Passport + peer reviews
+- app/(portal)/networks/ — Anchor Supplier Networks (list + [id] detail; role-aware: anchor vs supplier view)
 - app/(portal)/admin/ — Strike admin (strike_admin role only)
 - app/(portal)/settings/agent/ — AI Agent preferences
+- app/(auth)/invite/[token]/ — Network invite landing page (public, no portal shell)
 
 ### New API routes
 All new API routes follow existing patterns (service role for writes,
@@ -622,6 +631,16 @@ anon client for reads with RLS). Key routes:
 - /api/notifications — Notification center
 - /api/admin/* — Strike admin actions
 - /api/organizations/search — Network-visible org search
+- /api/networks — GET (anchor's networks) / POST (create network)
+- /api/networks/[id] — PATCH (update) / DELETE (delete; blocked if active members)
+- /api/networks/[id]/members — GET (anchor-only member list; suppliers cannot see other members)
+- /api/networks/[id]/invite — POST (invite existing org or new email)
+- /api/networks/[id]/accept — POST (supplier accepts invitation)
+- /api/networks/[id]/decline — POST (supplier declines invitation)
+- /api/networks/[id]/members/[org_id] — PATCH (update notes/status) / DELETE (remove member)
+- /api/networks/supplier — GET (supplier's own network memberships; never includes other members)
+- /api/invite/[token] — GET (public; returns anchor/network info for landing page)
+- /api/invite/[token]/accept — POST (called after Tier 0 signup via invite link; auto-activates membership)
 
 ### Financing-structure-aware deal flow (DEAL-FLOW implementation)
 
@@ -636,6 +655,23 @@ Four financing structures are a **lens** over the deal flow — steps don't chan
 - **Deal page (`app/(portal)/deals/[id]/page.tsx`)** computes `financingContext` via `getFinancingContext()` then passes it to both components. Sets `data-ai-context` attribute for the AI overlay.
 - **RF gate**: can only request after `delivery_confirmed` (post-shipment). **PO gate**: must request at `confirmed` or `in_preparation` (pre-shipment). **IF NOA gate**: buyer must acknowledge before `confirm_payment_sent` is available. **DD flow**: anchor presents offer → supplier accept/decline.
 - `transactions.repayment_routing` (TEXT): `'buyer_to_bank'` (RF/IF/PO) or `'direct'` (DD).
+
+### Anchor Supplier Networks (NETWORKS implementation)
+
+Networks are anchor-owned closed groups. Visibility is enforced at the API layer on every listing/financing request query.
+
+- **`lib/networks/visibility.ts`** — single source of truth for network visibility filtering.
+  - `getVisibilityFilter(admin, orgId)` → `{publicOnly, activeNetworkIds}` — call before any listing/financing browse
+  - `buildListingVisibilityOr(filter, orgId)` → OR string for Supabase query builder (uses `org_id` not `poster_org_id`)
+  - `isListingVisibleToOrg(admin, listing, orgId)` → bool — used in [id] GET routes for network-only 404s
+- Ghost mode: `network_visible=false` orgs return empty arrays from every browse/list route
+- Network-only listings/financing requests: return 404 (not 403) to non-members — never reveal they exist
+- Supplier isolation: `GET /api/networks/[id]/members` is anchor-only; suppliers get 403
+- Invite flow: existing orgs receive in-platform notification + email → accept/decline in /networks portal page
+- New email invites: create `network_invite_tokens` row → invite landing page `/invite/[token]` → signup with pre-filled fields → auto-accept via `POST /api/invite/[token]/accept`
+- Banks are NEVER part of supplier networks — network visibility has no effect on bank-facing financing requests
+- `Networks` nav item added to BOTH anchor and supplier sidebars (position: after Financing, before Strike Rooms)
+- Supplier dashboard: pending network invitations widget shown when `status='invited'` memberships exist
 
 ### Key design decisions
 - deal_source: 'marketplace' | 'imported' | 'direct' on deals table

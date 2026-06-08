@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isListingVisibleToOrg } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,6 +39,27 @@ export async function GET(
     .single()
 
   if (reqError || !request) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Ghost mode check: ghost orgs see nothing
+  if (isOrg && me.org_id) {
+    const { data: requesterOrg } = await adminClient
+      .from('organizations')
+      .select('network_visible')
+      .eq('id', me.org_id)
+      .single()
+    if (requesterOrg && requesterOrg.network_visible === false) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
+
+  // Network-only financing request: return 404 if org is not a member
+  if (isOrg && me.org_id && request.visibility === 'network_only' && request.network_id) {
+    const syntheticListing = { visibility: 'network_only', network_id: request.network_id, org_id: request.requesting_org_id }
+    const visible = await isListingVisibleToOrg(adminClient, syntheticListing, me.org_id)
+    if (!visible) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
 
   // Org: must be party to the deal
   if (isOrg) {

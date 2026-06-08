@@ -38,13 +38,14 @@ interface NavSection {
 // TB.1/TB.2: "My Programs" + "Transactions" removed and the now-empty "Programs"
 //            group dropped (pages stay; surfaced via /deals — TB.3).
 // TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
-const ORG_NAV: NavSection[] = [
+const ANCHOR_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
       { label: 'Strike Place',    href: '/marketplace',           icon: 'marketplace' },
       { label: 'My Deals',        href: '/deals',                 icon: 'deals' },
       { label: 'Financing',       href: '/marketplace/financing', icon: 'financing' },
+      { label: 'Networks',        href: '/networks',              icon: 'networks' },
       { label: 'Strike Rooms',    href: '/rooms',                 icon: 'rooms' },
       { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
       { label: 'Analytics',       href: '/reporting',             icon: 'analytics' },
@@ -52,8 +53,20 @@ const ORG_NAV: NavSection[] = [
   },
 ]
 
-const ANCHOR_NAV: NavSection[]   = ORG_NAV
-const SUPPLIER_NAV: NavSection[] = ORG_NAV
+const SUPPLIER_NAV: NavSection[] = [
+  {
+    items: [
+      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    href: '/marketplace',           icon: 'marketplace' },
+      { label: 'My Deals',        href: '/deals',                 icon: 'deals' },
+      { label: 'Financing',       href: '/marketplace/financing', icon: 'financing' },
+      { label: 'Networks',        href: '/networks',              icon: 'networks' },
+      { label: 'Strike Rooms',    href: '/rooms',                 icon: 'rooms' },
+      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
+      { label: 'Analytics',       href: '/reporting',             icon: 'analytics' },
+    ],
+  },
+]
 
 // TA.5: Transactions, KYB Review, Settings removed from bank nav (pages stay).
 // TA.6: Supply Graph kept but routed to /supply-graph (full-page "Coming Soon").
@@ -108,7 +121,7 @@ function matchLen(pathname: string, href: string): number {
 type NavIconName =
   | 'dashboard' | 'marketplace' | 'deals' | 'rooms' | 'passport'
   | 'programs'  | 'analytics'   | 'supply-graph' | 'ai' | 'financing'
-  | 'notifications' | 'settings'
+  | 'notifications' | 'settings' | 'networks'
 
 const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
   // Dashboard — 4-square grid
@@ -205,6 +218,17 @@ const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
     <>
       <circle cx="10" cy="10" r="2.6" />
       <path d="M10 2.2v2.2M10 15.6v2.2M2.2 10h2.2M15.6 10h2.2M4.5 4.5l1.6 1.6M13.9 13.9l1.6 1.6M15.5 4.5l-1.6 1.6M6.1 13.9L4.5 15.5" />
+    </>
+  ),
+  // Networks — 3 circles connected by lines
+  networks: (
+    <>
+      <circle cx="10" cy="4"  r="2" />
+      <circle cx="3"  cy="15" r="2" />
+      <circle cx="17" cy="15" r="2" />
+      <line x1="10" y1="6"  x2="3.8"  y2="13.2" strokeLinecap="round" />
+      <line x1="10" y1="6"  x2="16.2" y2="13.2" strokeLinecap="round" />
+      <line x1="5"  y1="15" x2="15"   y2="15"   strokeLinecap="round" />
     </>
   ),
 }

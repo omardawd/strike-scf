@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateListingPayload } from '@strike-scf/types'
+import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,9 +28,22 @@ export async function GET(request: Request) {
   const sort        = searchParams.get('sort') ?? 'newest'
   const search      = searchParams.get('search')
   const mine        = searchParams.get('mine') === 'true' || searchParams.get('own') === 'true'
+  const networkId   = searchParams.get('network_id')
   const page        = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
   const limit       = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20')))
   const offset      = (page - 1) * limit
+
+  // Ghost mode: if org is not network_visible, return empty
+  if (me.org_id) {
+    const { data: org } = await adminClient
+      .from('organizations')
+      .select('network_visible')
+      .eq('id', me.org_id)
+      .single()
+    if (org && org.network_visible === false) {
+      return NextResponse.json({ listings: [], total: 0, page, hasMore: false })
+    }
+  }
 
   let query = adminClient
     .from('marketplace_listings')
@@ -38,11 +52,21 @@ export async function GET(request: Request) {
   if (mine && me.org_id) {
     // Return only the caller's own org's listings (all statuses)
     query = query.eq('org_id', me.org_id)
+  } else if (networkId) {
+    // Network-specific browse: only listings in this network
+    query = query.eq('network_id', networkId).eq('status', 'active')
   } else {
-    // Marketplace browse: active + network-visible, exclude own org
+    // Marketplace browse: apply visibility filter
     query = query.eq('status', 'active').eq('network_visible', true)
     if (me.org_id) {
       query = query.neq('org_id', me.org_id)
+      // Apply network visibility filter for org users
+      const visFilter = await getVisibilityFilter(adminClient, me.org_id)
+      const orFilter = buildListingVisibilityOr(visFilter, me.org_id)
+      query = (query as any).or(orFilter)
+    } else {
+      // Non-org user (bank/admin): public listings only
+      query = (query as any).eq('visibility', 'public')
     }
   }
 
@@ -158,6 +182,18 @@ export async function POST(request: Request) {
 
   const isDraft = body.status === 'draft'
 
+  const bodyWithVisibility = body as CreateListingPayload & {
+    status?: string
+    visibility?: string
+    network_id?: string
+  }
+  const visibility = bodyWithVisibility.visibility ?? 'public'
+  const listingNetworkId = bodyWithVisibility.network_id ?? null
+
+  if (visibility === 'network_only' && !listingNetworkId) {
+    return NextResponse.json({ error: 'network_id is required when visibility is network_only' }, { status: 400 })
+  }
+
   const { data: listing, error: insertError } = await adminClient
     .from('marketplace_listings')
     .insert({
@@ -180,6 +216,8 @@ export async function POST(request: Request) {
       expires_at: body.expires_at ?? null,
       status: isDraft ? 'draft' : 'active',
       network_visible: !isDraft,
+      visibility: isDraft ? 'public' : visibility,
+      network_id: listingNetworkId,
     })
     .select()
     .single()
@@ -226,6 +264,51 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       // Non-fatal — listing is created without an AI summary
+    }
+
+    // G9.6 — notify active network members of a new network_only listing
+    if (visibility === 'network_only' && listingNetworkId) {
+      try {
+        const { data: anchorOrg } = await adminClient
+          .from('organizations')
+          .select('legal_name')
+          .eq('id', me.org_id)
+          .single()
+
+        const { data: activeMembers } = await adminClient
+          .from('anchor_network_members')
+          .select('supplier_org_id')
+          .eq('network_id', listingNetworkId)
+          .eq('status', 'active')
+
+        const { data: networkRow } = await adminClient
+          .from('anchor_networks')
+          .select('name')
+          .eq('id', listingNetworkId)
+          .single()
+
+        if (activeMembers && activeMembers.length > 0) {
+          const supplierOrgIds = activeMembers.map((m: { supplier_org_id: string }) => m.supplier_org_id)
+          const { data: supplierUsers } = await adminClient
+            .from('users')
+            .select('id')
+            .in('org_id', supplierOrgIds)
+            .in('role', ['org_admin', 'org_member'])
+
+          const notifRows = (supplierUsers ?? []).map((u: { id: string }) => ({
+            user_id:   u.id,
+            event:     'network_listing_posted',
+            title:     `${anchorOrg?.legal_name ?? 'A buyer'} posted a new listing in ${networkRow?.name ?? 'your network'}`,
+            body:      `New listing: ${listing.title}`,
+            deep_link: `/marketplace/listings/${listing.id}`,
+            read:      false,
+          }))
+
+          if (notifRows.length > 0) {
+            await adminClient.from('notifications').insert(notifRows)
+          }
+        }
+      } catch { /* non-fatal */ }
     }
   }
 

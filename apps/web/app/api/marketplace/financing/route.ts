@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateFinancingRequestPayload } from '@strike-scf/types'
+import { getVisibilityFilter } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -126,6 +127,18 @@ export async function GET() {
   }
 
   if (ORG_ROLES.includes(me.role)) {
+    // Ghost mode check
+    if (me.org_id) {
+      const { data: myOrg } = await adminClient
+        .from('organizations')
+        .select('network_visible')
+        .eq('id', me.org_id)
+        .single()
+      if (myOrg && myOrg.network_visible === false) {
+        return NextResponse.json({ requests: [] })
+      }
+    }
+
     const { data: requests, error } = await adminClient
       .from('financing_requests')
       .select('*')

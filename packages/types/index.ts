@@ -723,3 +723,52 @@ export interface SendRoomMessagePayload {
   metadata?: Record<string, unknown>
   reply_to_id?: string
 }
+
+// ---- ANCHOR NETWORKS ----------------------------------------
+
+export type ListingVisibility = 'public' | 'network_only'
+
+export interface AnchorNetwork {
+  id: string
+  anchor_org_id: string
+  name: string
+  description: string | null
+  visibility_default: ListingVisibility
+  member_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AnchorNetworkMember {
+  id: string
+  network_id: string
+  supplier_org_id: string
+  status: 'invited' | 'active' | 'declined' | 'suspended' | 'removed'
+  invited_at: string
+  invited_by_user_id: string | null
+  joined_at: string | null
+  declined_at: string | null
+  removed_at: string | null
+  removed_by_user_id: string | null
+  buyer_notes: string | null
+  organization?: {
+    legal_name: string
+    passport_score: number | null
+    kyb_status: string
+    country: string | null
+  }
+}
+
+export interface NetworkInviteToken {
+  id: string
+  token: string
+  network_id: string
+  anchor_org_id: string
+  invited_email: string
+  prefill_company_name: string | null
+  prefill_country: string | null
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled'
+  expires_at: string
+  accepted_at: string | null
+  accepted_by_org_id: string | null
+}

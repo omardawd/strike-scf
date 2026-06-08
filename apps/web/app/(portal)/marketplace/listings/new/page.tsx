@@ -1,6 +1,6 @@
 'use client'
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import type { ListingType } from '@strike-scf/types'
 
@@ -64,10 +64,30 @@ const DEFAULT_FORM: FormState = {
 
 export default function NewListingPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [listingType, setListingType] = useState<ListingType>('po_request')
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [visibility, setVisibility] = useState<'public' | 'network_only'>('public')
+  const [networkId, setNetworkId] = useState<string>('')
+  const [networks, setNetworks] = useState<any[]>([])
+
+  // Pre-fill network_id and visibility from query params (e.g. from Network detail page)
+  useEffect(() => {
+    const qNetworkId   = searchParams.get('network_id')
+    const qVisibility  = searchParams.get('visibility')
+    if (qNetworkId)  setNetworkId(qNetworkId)
+    if (qVisibility === 'network_only') setVisibility('network_only')
+  }, [])
+
+  // Load anchor's networks for the visibility selector
+  useEffect(() => {
+    fetch('/api/networks')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setNetworks(data.networks ?? []) })
+      .catch(() => {})
+  }, [])
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -89,12 +109,18 @@ export default function NewListingPage() {
     delivery_deadline: form.delivery_deadline || undefined,
     expires_at: form.expires_at || undefined,
     payment_terms: form.payment_terms || undefined,
+    visibility,
+    network_id: visibility === 'network_only' ? (networkId || undefined) : undefined,
     ...(status ? { status } : {}),
   })
 
   const submit = async (asDraft: boolean) => {
     if (!form.title.trim()) {
       setError('Title is required.')
+      return
+    }
+    if (!asDraft && visibility === 'network_only' && !networkId) {
+      setError('Please select a network for this private listing.')
       return
     }
     setError(null)
@@ -391,6 +417,52 @@ export default function NewListingPage() {
 
                 </div>
               </div>
+            </div>
+
+            {/* Visibility selector */}
+            <div style={{ background: 'var(--offwhite)', borderRadius: 'var(--radius-card)', padding: '20px 20px', marginBottom: 16, border: '1.5px solid var(--border)' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Visibility</div>
+              <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 14 }}>Who can see this listing?</div>
+
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 12 }}>
+                <input type="radio" name="vis" checked={visibility === 'public'} onChange={() => setVisibility('public')} style={{ marginTop: 2 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>Public</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>Visible to all verified organizations on Strike Place</div>
+                </div>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="radio" name="vis" checked={visibility === 'network_only'} onChange={() => setVisibility('network_only')} style={{ marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>My Network</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>Visible only to suppliers in one of your networks</div>
+                  {visibility === 'network_only' && (
+                    <div style={{ marginTop: 10 }}>
+                      {networks.length === 0 ? (
+                        <p style={{ fontSize: 13, color: 'var(--color-amber)' }}>
+                          You don't have any networks yet.{' '}
+                          <a href="/networks" style={{ color: 'var(--blue)', fontWeight: 600 }}>Create one →</a>
+                        </p>
+                      ) : (
+                        <select
+                          value={networkId}
+                          onChange={e => setNetworkId(e.target.value)}
+                          style={{
+                            width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-input)',
+                            border: '1.5px solid var(--border)', fontSize: 13, background: 'var(--white)',
+                          }}
+                        >
+                          <option value="">Select a network…</option>
+                          {networks.map((n: any) => (
+                            <option key={n.id} value={n.id}>{n.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
             </div>
 
             {/* Inline error */}
