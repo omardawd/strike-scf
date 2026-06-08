@@ -50,7 +50,7 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
     { data: org },
     { data: perf },
     { data: reviews },
-    { count: completedDealsCount },
+    { data: completedDeals },
     { count: docCount },
   ] = await Promise.all([
     adminClient.from('organizations').select('*').eq('id', orgId).single(),
@@ -67,7 +67,7 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
       .eq('reviewed_org_id', orgId),
     adminClient
       .from('deals')
-      .select('id', { count: 'exact', head: true })
+      .select('id, total_value')
       .or(`buyer_org_id.eq.${orgId},supplier_org_id.eq.${orgId}`)
       .eq('status', 'completed'),
     adminClient
@@ -75,6 +75,9 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
       .select('id', { count: 'exact', head: true })
       .eq('entity_id', orgId),
   ])
+
+  const completedDealsCount = completedDeals?.length ?? 0
+  const tradeVolumeTotal = (completedDeals ?? []).reduce((sum, d) => sum + (d.total_value ?? 0), 0)
 
   if (!org) throw new Error('Organization not found')
 
@@ -169,7 +172,8 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
       passport_score_updated_at: now,
       risk_score: totalScore,
       risk_tier: riskTier,
-      trade_count_total: completedDealsCount ?? 0,
+      trade_count_total: completedDealsCount,
+      trade_volume_total: tradeVolumeTotal,
       avg_payment_days: avgPayDays,
       dispute_rate_network: perf?.dispute_rate ?? null,
       passport_narrative: narrative,

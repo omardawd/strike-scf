@@ -495,12 +495,7 @@ function PassportBanner({
       <PassportScoreRing score={score} size={size} showLabel />
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-          <span style={{
-            fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600,
-            color: 'var(--gold)', letterSpacing: '-0.02em',
-          }}>{score}</span>
           <span className={`badge ${scoreTierClass(score)}`}>{scoreTierLabel(score)}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>PassportScore™</span>
         </div>
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           {[
@@ -1113,12 +1108,11 @@ function SupplierDashboard() {
     { color: 'var(--blue)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} to review`, count: financingWithOffers, href: '/marketplace/financing' },
   ]
 
-  const score = passport?.organization?.passport_score ?? null
   const kpis: KpiItem[] = [
     { label: 'Active Deals',    value: loading ? '—' : String(activeDeals.length) },
     { label: 'Total Financed',  value: loading ? '—' : fmtCurrency(totalFinanced), valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined },
-    { label: 'PassportScore',   value: loading ? '—' : (score ? String(score) : '—'), valueColor: scoreColor(score) },
     { label: 'Completed Deals', value: loading ? '—' : String(completedDeals), sub: 'Track record' },
+    { label: 'Bank Views',      value: loading ? '—' : String(passport?.bank_view_count_30d ?? 0), sub: 'Last 30 days' },
   ]
 
   const passportExtras = passport ? (
@@ -1253,10 +1247,10 @@ function SupplierDashboard() {
         <AIInsight
           title="Supplier Intelligence"
           collapsed={true}
-          prompt={`This supplier has a PassportScore of ${score ?? 'N/A'} (${scoreTierLabel(score)} tier). They have ${activeDeals.length} active deals and ${financing.length} financing requests. What is the single most impactful action they can take today to improve their PassportScore and access better financing rates?`}
+          prompt={`This supplier has a PassportScore of ${passport?.organization?.passport_score ?? 'N/A'} (${scoreTierLabel(passport?.organization?.passport_score ?? null)} tier). They have ${activeDeals.length} active deals and ${financing.length} financing requests. What is the single most impactful action they can take today to improve their PassportScore and access better financing rates?`}
           context={{
-            passport_score: score,
-            score_tier: scoreTierLabel(score),
+            passport_score: passport?.organization?.passport_score ?? null,
+            score_tier: scoreTierLabel(passport?.organization?.passport_score ?? null),
             active_deals: activeDeals.length,
             financing_requests: financing.length,
             on_time_rate: dashData?.on_time_rate,

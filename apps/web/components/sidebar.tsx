@@ -41,23 +41,13 @@ interface NavSection {
 const ORG_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',    href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike Place', href: '/marketplace',           icon: 'marketplace' },
-      { label: 'My Deals',     href: '/deals',                 icon: 'deals' },
-      { label: 'Financing',    href: '/marketplace/financing', icon: 'financing' },
-    ],
-  },
-  {
-    label: 'Network',
-    items: [
-      { label: 'Strike Rooms',    href: '/rooms',    icon: 'rooms' },
-      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
-    ],
-  },
-  {
-    label: 'Reporting',
-    items: [
-      { label: 'Analytics', href: '/reporting', icon: 'analytics' },
+      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    href: '/marketplace',           icon: 'marketplace' },
+      { label: 'My Deals',        href: '/deals',                 icon: 'deals' },
+      { label: 'Financing',       href: '/marketplace/financing', icon: 'financing' },
+      { label: 'Strike Rooms',    href: '/rooms',                 icon: 'rooms' },
+      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
+      { label: 'Analytics',       href: '/reporting',             icon: 'analytics' },
     ],
   },
 ]
@@ -71,24 +61,12 @@ const SUPPLIER_NAV: NavSection[] = ORG_NAV
 const BANK_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',          href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike Place',        href: '/marketplace/financing', icon: 'marketplace' },
-    ],
-  },
-  {
-    label: 'SCF Engine',
-    items: [
-      { label: 'Programs', href: '/programs', icon: 'programs' },
-    ],
-  },
-  {
-    // Track E request (TE.2): Strike Passport must appear in EVERY portal.
-    // Placed in the bank "Intelligence" group per the request.
-    label: 'Intelligence',
-    items: [
-      { label: 'Strike Passport', href: '/passport',     icon: 'passport' },
-      { label: 'Reporting',       href: '/reporting',    icon: 'analytics' },
-      { label: 'Supply Graph',    href: '/supply-graph', icon: 'supply-graph' },
+      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    href: '/marketplace/financing', icon: 'marketplace' },
+      { label: 'Programs',        href: '/programs',              icon: 'programs' },
+      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
+      { label: 'Reporting',       href: '/reporting',             icon: 'analytics' },
+      { label: 'Supply Graph',    href: '/supply-graph',          icon: 'supply-graph' },
     ],
   },
 ]
@@ -97,17 +75,11 @@ const BANK_NAV: NavSection[] = [
 const ADMIN_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
-    ],
-  },
-  {
-    label: 'Administration',
-    items: [
-      { label: 'KYB Queue',       href: '/admin',    icon: 'analytics' },
-      { label: 'Platform Stats',  href: '/admin',    icon: 'programs' },
-      { label: 'Room Reports',    href: '/admin',    icon: 'rooms' },
-      // Track E request (TE.2): Passport reachable from every portal.
-      { label: 'Strike Passport', href: '/passport', icon: 'passport' },
+      { label: 'Dashboard',       href: '/dashboard', icon: 'dashboard' },
+      { label: 'KYB Queue',       href: '/admin',     icon: 'analytics' },
+      { label: 'Platform Stats',  href: '/admin',     icon: 'programs' },
+      { label: 'Room Reports',    href: '/admin',     icon: 'rooms' },
+      { label: 'Strike Passport', href: '/passport',  icon: 'passport' },
     ],
   },
 ]
