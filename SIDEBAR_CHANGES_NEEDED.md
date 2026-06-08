@@ -8,7 +8,16 @@ sidebar directly. The sidebar owner applies them and moves them to "APPLIED".
 
 ## OPEN (awaiting application)
 
-_(none — append new requests here)_
+### Wave 3
+- **Track C → sidebar owner (TC.1):** In `BANK_NAV`, rename the "Financing Requests"
+  nav item label to **"Strike Place"** (keep its `href` — the route stays
+  `/marketplace/financing`; no alias needed, deep links unaffected). Swap its icon to
+  the exchange / columns-building "marketplace" icon already used for the org
+  "Strike Place" item (the `NAV_ICONS` entry the org nav references for Strike Place —
+  reuse that same icon key for the bank item so both portals match). No other
+  `BANK_NAV` items change. The page header, breadcrumbs, and bank dashboard widget
+  were already renamed to "Strike Place" in TC.1/TC.2/TC.6 commits; only the sidebar
+  label + icon remain (owned by Track A).
 
 ---
 
