@@ -256,8 +256,34 @@ abbreviated — query the table or the generated `packages/types/database.types.
 
 ```
 deals
-  id, deal_source (enum: marketplace|imported|direct), status, ...
+  id, deal_source (enum: marketplace|imported|direct),
+  status (enum — full list below), ...
+  -- Operational columns added by migration 00000000000007:
+  --   shipment_tracking_ref, shipment_carrier, shipment_estimated_delivery, shipped_at
+  --   commercial_invoice_id, commercial_invoice_issued_at
+  --   payment_bank_name, payment_account_number, payment_routing_number,
+  --     payment_swift_iban, payment_account_name, payment_reference,
+  --     payment_instructions_set_at, payment_instructions_set_by
+  --   financing_payment_active (bool) — true when bank advance is active on this deal
+  --   payment_confirmed_at, payment_confirmed_by, payment_amount,
+  --     payment_currency, payment_external_reference
+  --   payment_due_date, overdue_notified_at
+  --   amendment_history (jsonb — AmendmentRecord[])
+  --   external_counterparty_email/name/country
+  --   cancelled_by, disputed_at, disputed_by, dispute_reason, dispute_category,
+  --     dispute_resolved_at, dispute_resolved_by, dispute_resolution
+  --   confirmed_at, in_preparation_at
   -- AI doc generation fires on status -> 'agreed'
+
+deal_status enum values (all live):
+  negotiating | agreed | documents_pending | confirmed | in_preparation
+  shipped | delivery_confirmed | in_dispute | payment_due | payment_overdue
+  payment_confirmed | completed | cancelled
+  active | financing_requested | financing_active | disputed   ← legacy aliases, keep for compat
+
+deal_events                 -- audit log for deal lifecycle events (created by migration 007)
+  id, deal_id, event_type, actor_user_id, actor_org_id, description, metadata, created_at
+  RLS: org members can read events for deals they are party to
 
 marketplace_listings        -- Strike Place product/PO listings
 marketplace_offers          -- offers on listings (realtime-subscribed)
@@ -565,6 +591,17 @@ anon client for reads with RLS). Key routes:
 - /api/deals/import — Create imported (pre-existing) deals
 - /api/deals/extract — AI document extraction (Haiku)
 - /api/deals/[id]/generate-documents — AI doc generation (Haiku)
+- /api/deals/[id]/payment-instructions — Seller sets bank details; advances agreed→documents_pending
+- /api/deals/[id]/ship — Seller marks shipped (tracking ref, carrier, optional invoice upload)
+- /api/deals/[id]/delivery — Buyer confirms delivery or raises dispute (action=confirm|dispute)
+- /api/deals/[id]/payment — Buyer confirms payment sent (action=buyer_confirm); seller confirms receipt (action=seller_confirm)
+- /api/deals/[id]/cancel — Cancel with server-enforced policy (blocked ≥ shipped or financing_payment_active)
+- /api/deals/[id]/amendment — POST propose / PATCH respond; locked when financing_payment_active
+- /api/deals/[id]/dispute — Submit evidence (action=submit_evidence) or Strike Admin resolves (action=resolve)
+- /api/deals/[id]/upload-document — Multipart upload to deal-documents bucket; G7 duplicate invoice check
+- /api/deals/[id]/events — GET deal_events audit log (party members only)
+- /api/deals/check-overdue — Vercel cron (daily 08:00 UTC); moves overdue deals to payment_overdue; G9 grace period for pending financing
+- /api/marketplace/financing/[id]/reject — Close financing request without activation; reverts deal to delivery_confirmed
 - /api/rooms — Room list + create public room
 - /api/rooms/[id]/messages — Send message + AI moderation
 - /api/passport/[org_id] — Full passport profile
@@ -586,6 +623,25 @@ anon client for reads with RLS). Key routes:
 - AI document generation fires on deal status → 'agreed'
 - Financing acceptance creates a transaction row in the SCF engine
   (source='marketplace') — bridges marketplace to existing SCF flow
+- Deal flow status machine: negotiating→agreed→documents_pending→confirmed→
+  in_preparation→shipped→delivery_confirmed→[payment_due/overdue]→
+  payment_confirmed→completed; financing_payment_active=true forks payment to bank
+- financing_payment_active: bool on deals — set true when bank advance disbursed;
+  blocks amendments, cancellation, and changes buyer's payment target to the bank
+- payment_due_date: calculated from agreed_payment_terms (Net\d+ regex) on delivery confirmation
+- amendment_history: JSONB array (AmendmentRecord[]); only one pending at a time;
+  server rejects if financing_payment_active or status not in confirmed/in_preparation/active
+- Cancellation: server-enforced; cancellable only at negotiating/agreed/documents_pending/
+  confirmed/in_preparation/active; blocked at shipped and later; reason required at in_preparation
+- Dispute: raised by buyer at shipped; both parties submit evidence; Strike Admin resolves
+  with buyer_favor→cancelled, seller_favor→delivery_confirmed, mutual_settlement→completed,
+  escalated→stays in_dispute
+- Overdue cron: /api/deals/check-overdue (daily 08:00 UTC via vercel.json); 2-business-day
+  grace period if financing_request still open/offers_received at due date (G9.1)
+- Invoice duplicate detection: on commercial_invoice upload, checks documents table for
+  same org; if found, logs agent_actions fraud_flagged and returns warning in response
+- deal_events: write an event row after every status change or significant action;
+  use this table for the deal timeline (not agent_actions)
 
 ### Supabase Storage buckets required
 - kyb-documents (private) — KYB uploads
