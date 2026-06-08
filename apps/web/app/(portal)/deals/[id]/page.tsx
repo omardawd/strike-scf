@@ -36,7 +36,7 @@ interface DealDetail {
   room: { id: string; name: string } | null
   financing_request: FinancingRequest | null
   documents: DealDoc[]
-  user_role: 'buyer' | 'supplier'
+  user_role: 'buyer' | 'supplier' | 'bank'
 }
 
 const AI_DOC_LABELS: Record<string, string> = {
@@ -431,7 +431,7 @@ export default function DealDetailPage() {
   }
 
   const { deal, buyer_org, supplier_org, room, financing_request, documents, user_role } = data
-  const counterparty = user_role === 'buyer' ? supplier_org : buyer_org
+  const counterparty = user_role === 'bank' ? null : user_role === 'buyer' ? supplier_org : buyer_org
   const dealValue = deal.total_value ?? deal.agreed_price ?? null
   const currency = deal.agreed_currency ?? 'USD'
 
@@ -441,6 +441,7 @@ export default function DealDetailPage() {
 
   // Quick action for this status + role
   function QuickActions() {
+    if (user_role === 'bank') return null
     if (actionLoading) {
       return <button className="btn btn-secondary btn-full" disabled>Loading…</button>
     }
@@ -508,7 +509,11 @@ export default function DealDetailPage() {
             <span className={sourceBadgeClass(deal.deal_source)}>{deal.deal_source}</span>
           </div>
           <p className="subtitle" style={{ marginTop: 4 }}>
-            {user_role === 'buyer' ? 'You are the buyer' : 'You are the supplier'} on this deal
+            {user_role === 'bank'
+              ? `You are the financing bank on this deal`
+              : user_role === 'buyer'
+                ? 'You are the buyer'
+                : 'You are the supplier'}
             {counterparty && ` with ${counterparty.legal_name}`}
           </p>
         </div>

@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: userData } = await adminClient
     .from('users')
-    .select('id, role, org_id')
+    .select('id, role, org_id, bank_id')
     .eq('id', user.id)
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
@@ -34,8 +34,26 @@ export async function GET(
 
   if (error || !deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
 
-  if (deal.buyer_org_id !== userData.org_id && deal.supplier_org_id !== userData.org_id) {
+  const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
+  const isOrgParty = deal.buyer_org_id === userData.org_id || deal.supplier_org_id === userData.org_id
+  const isBankUser = BANK_ROLES.includes(userData.role)
+
+  if (!isOrgParty && !isBankUser) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Bank users must have a transaction (accepted offer) for this deal
+  if (isBankUser) {
+    const { data: txCheck } = await adminClient
+      .from('transactions')
+      .select('id')
+      .eq('deal_id', id)
+      .eq('bank_id', userData.bank_id)
+      .limit(1)
+      .maybeSingle()
+    if (!txCheck) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   const [buyerOrgRes, supplierOrgRes, documentsRes] = await Promise.all([
@@ -60,29 +78,62 @@ export async function GET(
     financingRequest = fr
   }
 
+  // Fetch linked transaction when financing is active (for repayment details)
+  let linkedTransaction = null
+  if (deal.financing_payment_active || deal.status === 'financing_active') {
+    const { data: txn } = await adminClient
+      .from('transactions')
+      .select('id, status, financing_amount_approved, repayment_due_date, bank_id, tenor_days, financing_rate_apr')
+      .eq('deal_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (txn) {
+      linkedTransaction = txn
+      if (txn.bank_id) {
+        const { data: bank } = await adminClient
+          .from('banks')
+          .select('id, display_name, legal_name')
+          .eq('id', txn.bank_id)
+          .single()
+        linkedTransaction = { ...txn, bank }
+      }
+    }
+  }
+
   return NextResponse.json({
     deal,
     buyer_org: buyerOrgRes.data,
     supplier_org: supplierOrgRes.data,
     room,
     financing_request: financingRequest,
+    linked_transaction: linkedTransaction,
     documents: documentsRes.data ?? [],
-    user_role: deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier',
+    user_role: isBankUser ? 'bank' : deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier',
   })
 }
 
-// Allowed status transitions per role
+// Simple status transitions via PATCH. Complex operations (ship, delivery, payment, cancel)
+// have dedicated endpoints with additional validation and side-effects.
 const ALLOWED_TRANSITIONS: Record<string, Record<string, string[]>> = {
   buyer: {
-    agreed: ['active', 'cancelled'],
-    active: ['financing_requested', 'cancelled'],
-    financing_requested: ['cancelled'],
+    // New flow
+    documents_pending: ['confirmed'],       // buyer uploads PO and confirms
+    // Legacy
+    agreed: ['active'],
+    active: ['financing_requested'],
+    financing_requested: [],
   },
   supplier: {
-    negotiating: ['agreed', 'cancelled'],
-    agreed: ['cancelled'],
-    active: ['completed', 'cancelled'],
-    financing_active: ['cancelled'],
+    // New flow
+    negotiating: ['agreed'],
+    agreed: ['documents_pending'],          // seller advances after uploading proforma
+    documents_pending: ['confirmed'],       // seller confirms docs are complete
+    confirmed: ['in_preparation'],          // seller starts preparation
+    payment_confirmed: ['completed'],       // seller confirms payment received
+    // Legacy
+    active: ['completed'],
+    financing_active: [],
   },
 }
 
@@ -175,8 +226,10 @@ export async function PATCH(
   const now = new Date().toISOString()
   const updates: Record<string, unknown> = { status, updated_at: now }
   if (status === 'cancelled' && cancellation_reason) updates.cancellation_reason = cancellation_reason
-  if (status === 'active')    updates.active_at    = now
-  if (status === 'completed') updates.completed_at = now
+  if (status === 'active')         updates.active_at         = now
+  if (status === 'confirmed')      updates.confirmed_at      = now
+  if (status === 'in_preparation') updates.in_preparation_at = now
+  if (status === 'completed')      updates.completed_at      = now
 
   const { data: updated, error: updateError } = await adminClient
     .from('deals')
