@@ -136,7 +136,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'User not found' }, { status: 401 })
   }
 
-  const isBank = userData.role === 'bank_admin'
+  // Both bank roles can create programs (credit officers source deals on Strike Place — TC.5).
+  const isBank = userData.role === 'bank_admin' || userData.role === 'bank_credit_officer'
   // For org users, look up org type to determine anchor vs other
   let isAnchorAdmin = false
   if (userData.role === 'org_admin' && userData.org_id) {
@@ -235,6 +236,30 @@ export async function POST(request: Request) {
         enrolled_at:         new Date().toISOString(),
       })
     } catch {}
+  }
+
+  // TC.5 — when this program was created via the Strike AI inline "Create Program"
+  // mid-flow on Strike Place, record it to the agent_actions audit log. Fail-soft:
+  // if the agent_action_type enum has not yet been extended with 'program_created'
+  // on this database, the insert is swallowed and program creation still succeeds.
+  if (program && body.agent_origin === 'strike_ai_inline') {
+    try {
+      await adminClient.from('agent_actions').insert({
+        bank_id:        effectiveBankId,
+        action_type:    'program_created',
+        entity_type:    'program',
+        entity_id:      program.id,
+        reasoning:      'Bank had no program matching a Strike Place financing request; Strike AI created one inline so an offer could be submitted.',
+        input_summary:  `type=${(financing_types as string[]).join(',')} currency=${(body.currency as string) ?? 'USD'}`,
+        output_summary: `Created program "${(name as string).trim()}" (${program.id})`,
+        outcome:        'success',
+        requires_approval: false,
+        human_approved: true,
+        model:          'claude-haiku-4-5-20251001',
+      })
+    } catch (err) {
+      console.error('[program create] agent_actions log failed (non-fatal):', err)
+    }
   }
 
   return NextResponse.json({ program_id: program.id, program }, { status: 201 })
