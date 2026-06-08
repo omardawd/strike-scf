@@ -50,7 +50,7 @@ apps/web/
 │   │   ├── ai/           ← STRIKE AI — dedicated agent page (chat + history + doc gen)
 │   │   │
 │   │   ├── marketplace/  ← STRIKE PLACE — listings + offers hub
-│   │   │   ├── financing/[id]/   ← Financing requests (bank "Financing Requests")
+│   │   │   ├── financing/[id]/   ← Financing requests (bank "Strike Place" view)
 │   │   │   └── listings/{new,[id]} ← Create / view a listing
 │   │   ├── deals/        ← MY DEALS — deal lifecycle (deal_source: marketplace|imported|direct)
 │   │   │   ├── [id]/             ← Deal detail (AI doc gen on status → 'agreed')
@@ -60,27 +60,59 @@ apps/web/
 │   │   ├── passport/     ← MY PASSPORT / PassportScore (network trust score)
 │   │   │   ├── [org_id]/         ← Public passport profile
 │   │   │   └── review/[org_id]/  ← Submit a peer review
+│   │   ├── networks/     ← Anchor Supplier Networks (anchor creates/manages; supplier sees memberships)
+│   │   │   └── [id]/             ← Network detail (anchor: member management; supplier: read-only)
+│   │   ├── supply-graph/ ← Supply Graph — "Coming Soon" full-page card (bank portal)
 │   │   ├── admin/        ← STRIKE ADMIN (strike_admin role only)
 │   │   │
 │   │   ├── programs/     ← Program list, detail, new program wizard
-│   │   │   └── [id]/anchor/[anchor_id]/supplier/[supplier_id]  ← Bank drilldown
-│   │   │       (also [id]/supplier/[supplier_id])
-│   │   ├── transactions/ ← Transaction list, detail ([id]), new wizard
-│   │   ├── kyb/          ← KYB review (bank all / orgs own) — kyb/[org_id]
+│   │   │   ├── [id]/anchor/[anchor_id]/  ← Bank anchor drilldown
+│   │   │   │   └── supplier/[supplier_id]/  ← Bank anchor→supplier drilldown
+│   │   │   └── [id]/supplier/[supplier_id]/ ← Bank supplier drilldown
+│   │   ├── transactions/ ← Transaction list, detail ([id]), new wizard (pages remain; no sidebar link)
+│   │   ├── kyb/          ← KYB review — Strike Admin queue + per-org; bank view is read-only (no sidebar link for bank)
 │   │   ├── collateral/   ← Collateral requirements management
-│   │   ├── reporting/    ← Analytics & reporting (+ #supply-graph)
-│   │   └── settings/     ← Profile, bank settings, team/, agent/ (AI Agent prefs)
+│   │   ├── reporting/    ← Analytics & reporting
+│   │   └── settings/     ← Profile, bank settings, team/, agent/ (AI Agent prefs; no sidebar link)
 │   └── api/              ← Route groups: admin, ai, auth, collateral, dashboard,
 │   │                       deals, documents, email, graph, invitations, kyb,
-│   │                       marketplace, notifications, onboarding, organizations,
-│   │                       passport, performance, programs, recommendations,
-│   │                       reporting, risk, rooms, send, settings, transactions
-├── components/           ← Shared UI components (sidebar role-aware + grouped)
+│   │                       marketplace, networks, notifications, onboarding,
+│   │                       organizations, passport, performance, programs,
+│   │                       recommendations, reporting, risk, rooms, settings,
+│   │                       transactions
+├── components/           ← Shared UI components
+│   ├── sidebar.tsx               ← Role-aware sidebar (collapse to icon-only, localStorage key strike_sidebar_collapsed)
+│   ├── portal-shell.tsx          ← Sidebar + main layout + AIOverlay
+│   ├── topbar.tsx                ← Page topbar
+│   ├── ghost-gate.tsx            ← GhostGate: wraps all portal children in (portal)/layout.tsx; locks ghost orgs
+│   ├── ghost-lock.tsx            ← GhostLock: the locked-state card shown inside ghost-gated pages
+│   ├── deals/ActionPanel.tsx     ← Deal action buttons (receives FinancingContext as props)
+│   ├── deals/DealRoadmap.tsx     ← Deal timeline/roadmap (receives FinancingContext as props)
+│   ├── ai-overlay.tsx            ← Global AI overlay (hover-pill + draggable cluster); mounted on every page except /ai
+│   ├── ai-insight-card.tsx       ← Contextual AI insight banner/compact/floating → /api/ai/insight
+│   ├── ai-insight.tsx            ← Inline collapsible AI insight widget → /api/ai/chat
+│   ├── ai-panel.tsx              ← DEPRECATED/ORPHANED — old sliding panel, replaced by ai-overlay.tsx
+│   ├── doc-generator.tsx         ← Document export (template picker + /api/ai/documents)
+│   ├── bulk-invite-modal.tsx     ← Modal for bulk-inviting suppliers to a program
+│   ├── create-program-flow.tsx   ← Multi-step program creation wizard component
+│   ├── liquidity-routing.tsx     ← Liquidity routing component (deal financing flow)
+│   ├── performance-scorecard.tsx ← Supplier performance scorecard display
+│   ├── recommendations-panel.tsx ← AI recommendations panel
+│   ├── passport-score-ring.tsx   ← PassportScore ring SVG component
+│   ├── passport-sections.tsx     ← Passport profile section cards
+│   ├── supply-graph.tsx          ← Supply graph network visualization
+│   ├── risk-badge.tsx            ← Risk tier / score badge
+│   ├── charts.tsx                ← Recharts-based chart components
+│   └── email-template.tsx        ← Resend email HTML template
 ├── lib/                  ← Utilities, Supabase clients, contexts
 └── reference/            ← Original design mockups (JSX/HTML) — design reference
 ```
 
-> Sidebar nav is **role-aware & grouped** (`components/sidebar.tsx`). Org (buyer+supplier): Dashboard · Strike AI · Strike Place · My Deals · Financing | Programs: My Programs, Transactions | Network: Strike Rooms, My Passport | Reporting: Analytics | Account: Settings, AI Agent. Bank: Dashboard · Strike AI · Financing Requests | SCF Engine: Programs, Transactions, KYB Review | Intelligence: Reporting, Supply Graph | Settings. Admin: Dashboard, Strike AI, KYB Queue, Platform Stats, Room Reports.
+> Sidebar nav is **role-aware & flat** (`components/sidebar.tsx`). Collapses to icon-only mode (56px width); persisted in localStorage `strike_sidebar_collapsed`. All labels below are what users currently see — removed items (Settings, AI Agent, Strike AI, My Programs, Transactions, KYB Review) still have pages but no sidebar link.
+>
+> - **Anchor & Supplier** (identical): Dashboard · Strike Place (`/marketplace`) · My Deals (`/deals`) · Financing (`/marketplace/financing`) · Networks (`/networks`) · Strike Rooms (`/rooms`) · Strike Passport (`/passport`) · Analytics (`/reporting`)
+> - **Bank**: Dashboard · Strike Place (`/marketplace/financing`) · Programs (`/programs`) · Strike Passport (`/passport`) · Reporting (`/reporting`) · Supply Graph (`/supply-graph`)
+> - **Admin**: Dashboard · KYB Queue (`/admin`) · Platform Stats (`/admin`) · Room Reports (`/admin`) · Strike Passport (`/passport`)
 
 ---
 
@@ -321,8 +353,19 @@ ai_negotiation_state        -- per-deal: deal_id(unique), current_round, last_of
                             -- market_context, suggested_counter
 ```
 
-> NOT yet in the live schema (created by Track 2 migrations): `erp_connections`,
+> NOT yet in the live schema (planned for Track 2): `erp_connections`,
 > `erp_sync_data`, `ai_signals`, `ai_signal_resolutions`.
+
+**Migrations in `supabase/migrations/`** (applied in order):
+- `00000000000000_baseline_schema.sql` — 29 enums, 32 tables, 136 constraints, 44 indexes, functions, triggers
+- `00000000000001_baseline_rls.sql` — RLS enabled + 19 policies
+- `00000000000002_fix_rooms_rls.sql` — corrects self-referential rooms_private policy
+- `00000000000003_missing_rls_policies.sql` — adds missing policies
+- `00000000000004_passport_room_rls.sql` — RLS for passport_views, room_participants
+- `00000000000005_agent_action_program_created.sql` — adds `program_created` to `agent_actions.action_type` enum
+- `00000000000006_deal_status_new_values.sql` — adds new deal_status enum values
+- `00000000000007_deal_flow_columns.sql` — shipment, payment, financing, dispute, overdue, amendment columns on `deals`; `deal_events` table
+- `00000000000008_anchor_networks.sql` — `anchor_networks`, `anchor_network_members`, `network_invite_tokens` tables + RLS
 
 ---
 
@@ -532,8 +575,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 ANTHROPIC_API_KEY
 RESEND_API_KEY
+CRON_SECRET              ← required; middleware gates /api/risk/refresh-signals on x-cron-secret header
 NEXT_PUBLIC_DEV_BANK_ID=ff1a209f-aa2a-471c-95c8-9d01018cdecd
 ```
+
+Vercel crons (`vercel.json`):
+- `/api/risk/refresh-signals` — daily 00:00 UTC (gated by `CRON_SECRET` in middleware)
+- `/api/deals/check-overdue` — daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
 
 ---
 
@@ -566,6 +614,7 @@ Atlas Bank's id is `NEXT_PUBLIC_DEV_BANK_ID` (ff1a209f-aa2a-471c-95c8-9d01018cde
 - **Never** install an ORM (Prisma, Drizzle) — Supabase JS client only
 - **Never** use `getSession()` in API routes — use `getUser()` (more secure)
 - **Never** create a `proxy.ts` — it was renamed to `middleware.ts` (T1.1); Next.js only auto-runs `middleware.ts`. Edit the existing `apps/web/middleware.ts`.
+- **Never** gate features on `organizations.status = 'active'` — use `org.network_visible && org.kyb_status !== 'not_started'` (the platform-unlock check). `status = 'active'` is only set post-approval, which is no longer required for feature access.
 - **Never** add new env vars without updating `.env.production.example`
 - **Don't** create Supabase clients inline in page files — import from `lib/supabase/`
 - **Don't** add Redux or Zustand — use React context (already set up)
@@ -589,9 +638,20 @@ cd apps/web && npx tsc --noEmit
 - app/(portal)/rooms/ — Strike Rooms (private deal rooms + public)
 - app/(portal)/passport/ — Strike Passport + peer reviews
 - app/(portal)/networks/ — Anchor Supplier Networks (list + [id] detail; role-aware: anchor vs supplier view)
+- app/(portal)/supply-graph/ — Supply Graph "Coming Soon" page (bank portal)
 - app/(portal)/admin/ — Strike admin (strike_admin role only)
 - app/(portal)/settings/agent/ — AI Agent preferences
 - app/(auth)/invite/[token]/ — Network invite landing page (public, no portal shell)
+
+### Ghost mode (Tier 0)
+
+An org is a ghost when `kyb_status = 'not_started'` AND `network_visible = false`. This is set at signup.
+
+- `components/ghost-gate.tsx` — `GhostGate` wraps all children in `(portal)/layout.tsx`. Detects ghost state via `useUser()` hook + `network_visible` flag; renders a lock screen for all portal pages.
+- `components/ghost-lock.tsx` — `GhostLock` renders the locked-state card with "Activate Passport →" CTA.
+- **Platform unlocks** when `kyb_status` changes to `'submitted'` (Passport submitted) — simultaneously sets `network_visible = true`. Users do NOT need to wait for approval.
+- Ghost orgs are excluded from all counterparty queries at the API layer: every listing/financing browse route adds `.eq('network_visible', true)` filter. Ghost orgs can READ public data but never appear TO others.
+- `kyb_status === 'not_started'` = locked (ghost). `kyb_status !== 'not_started'` = unlocked (all features). Approval (`'approved'`) is NOT required for feature access.
 
 ### New API routes
 All new API routes follow existing patterns (service role for writes,
@@ -672,6 +732,36 @@ Networks are anchor-owned closed groups. Visibility is enforced at the API layer
 - Banks are NEVER part of supplier networks — network visibility has no effect on bank-facing financing requests
 - `Networks` nav item added to BOTH anchor and supplier sidebars (position: after Financing, before Strike Rooms)
 - Supplier dashboard: pending network invitations widget shown when `status='invited'` memberships exist
+
+### Deal role determination — CRITICAL
+
+**Never use `organizations.type` to determine buyer/seller on a deal.**
+Always derive from `deals.buyer_org_id` / `deals.supplier_org_id`.
+
+- In API routes: `deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier'`
+- Canonical utility: `lib/deals/roles.ts` → `getDealRoles(deal, userOrgId)` and `getRolesFromListingType(listingType, listingOrgId, offerorOrgId)`
+
+When creating a deal from an accepted offer, derive buyer/seller from `listing_type` (NOT `org.type`):
+- `listing_type === 'po_request'` → poster = buyer, offeror = supplier
+- `listing_type === 'product_service'` → poster = supplier, offeror = buyer
+
+The `deals` table has `buyer_org_id` and `supplier_org_id` (NOT seller_org_id) — both NOT NULL with a CHECK(`buyer_org_id != supplier_org_id`). If roles are wrong, the INSERT fails.
+
+### Counter-offer turn logic
+
+Counter-offers are bidirectional. Turn is tracked via `offer_rounds[last].by_org_id`:
+- No rounds yet (initial offer): listing owner goes first
+- `lastRound.by_org_id === offerorOrgId` → listing owner's turn
+- `lastRound.by_org_id === listingOrgId` → offeror's turn
+
+Backend enforces this in `app/api/marketplace/offers/[id]/route.ts`.
+Frontend reflects it in `app/(portal)/marketplace/listings/[id]/page.tsx` (Counter button hidden when it's not your turn; Accept always shown).
+
+### Financing acceptance must NOT change deal status
+
+`app/api/marketplace/financing/[id]/accept/route.ts` must NOT update `deals.status`. The deal flow continues normally. `financing_payment_active` is set to `true` only when the bank disburses.
+
+The deal GET route (`app/api/deals/[id]/route.ts`) fetches the linked transaction when `financingRequest?.status === 'accepted'` (not only when `financing_payment_active`), so the transaction card appears immediately after bank offer acceptance.
 
 ### Key design decisions
 - deal_source: 'marketplace' | 'imported' | 'direct' on deals table
