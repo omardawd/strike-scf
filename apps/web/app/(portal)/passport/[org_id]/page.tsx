@@ -346,17 +346,6 @@ export default function PublicPassportPage() {
                       </div>
                     )}
                   </div>
-                  {/* Connect button — UI only, no functionality yet */}
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    style={{ flexShrink: 0 }}
-                    onClick={() => {
-                      /* placeholder — connect flow TBD */
-                    }}
-                  >
-                    Connect
-                  </button>
                 </div>
               </div>
 

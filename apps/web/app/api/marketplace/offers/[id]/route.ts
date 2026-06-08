@@ -191,11 +191,11 @@ export async function PATCH(
 
   // ── COUNTER ───────────────────────────────────────────────
   if (action === 'counter') {
-    if (userData.org_id !== listingOrgId) {
-      return NextResponse.json({ error: 'Only the listing owner can counter' }, { status: 403 })
-    }
-    if (offer.status !== 'pending') {
-      return NextResponse.json({ error: 'Can only counter a pending offer' }, { status: 409 })
+    // Bidirectional: listing owner counters a pending offer; offeror counters a countered offer
+    const isListingOwnerCounter = userData.org_id === listingOrgId && offer.status === 'pending'
+    const isOfferorCounter = userData.org_id === offerorOrgId && offer.status === 'countered'
+    if (!isListingOwnerCounter && !isOfferorCounter) {
+      return NextResponse.json({ error: 'Cannot counter in the current state' }, { status: 409 })
     }
     if (typeof offered_price !== 'number') {
       return NextResponse.json({ error: 'offered_price is required for counter' }, { status: 400 })
@@ -270,11 +270,11 @@ export async function PATCH(
       }).eq('id', offerId)
 
       // Post system message
-      const { data: listingOrg } = await adminClient
-        .from('organizations').select('legal_name').eq('id', listingOrgId).single()
+      const { data: counteringOrg } = await adminClient
+        .from('organizations').select('legal_name').eq('id', userData.org_id).single()
       await adminClient.from('room_messages').insert({
         room_id: roomId,
-        content: `Negotiation started — Round ${newRound}. ${listingOrg?.legal_name ?? 'Listing owner'} has countered your offer.`,
+        content: `Round ${newRound} — ${counteringOrg?.legal_name ?? 'A party'} has countered at ${offered_price} ${listing.currency}.`,
         message_type: 'system',
         status: 'visible',
       })
@@ -282,14 +282,15 @@ export async function PATCH(
       // non-fatal
     }
 
-    // Notify offeror
-    const { data: offerorUsers } = await adminClient.from('users').select('id').eq('org_id', offerorOrgId)
-    if (offerorUsers?.length) {
+    // Notify the other party
+    const notifyOrgId = userData.org_id === listingOrgId ? offerorOrgId : listingOrgId
+    const { data: notifyUsers } = await adminClient.from('users').select('id').eq('org_id', notifyOrgId)
+    if (notifyUsers?.length) {
       await adminClient.from('notifications').insert(
-        offerorUsers.map((u: { id: string }) => ({
+        notifyUsers.map((u: { id: string }) => ({
           user_id: u.id, event: 'offer_countered',
-          title: 'Offer countered',
-          body: `Your offer on "${listing.title}" has been countered at ${offered_price} ${listing.currency}.`,
+          title: 'Counter offer received',
+          body: `A counter offer on "${listing.title}" has been submitted at ${offered_price} ${listing.currency}.`,
           deep_link: roomId ? `/rooms/${roomId}` : `/marketplace/listings/${listing.id}`,
           read: false,
         }))

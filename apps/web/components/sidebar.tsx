@@ -72,7 +72,7 @@ const BANK_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard',          href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Financing Requests', href: '/marketplace/financing', icon: 'deals' },
+      { label: 'Strike Place',        href: '/marketplace/financing', icon: 'marketplace' },
     ],
   },
   {

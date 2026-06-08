@@ -659,10 +659,6 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
             )}
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <div className="listing-detail-item">
-                <span className="listing-detail-label">Tenor Pref.</span>
-                <span className="listing-detail-value">{item.preferred_tenor_days ? `${item.preferred_tenor_days}d` : '—'}</span>
-              </div>
-              <div className="listing-detail-item">
                 <span className="listing-detail-label">Max Rate</span>
                 <span className="listing-detail-value">{item.preferred_rate_max ? `${item.preferred_rate_max}%` : '—'}</span>
               </div>

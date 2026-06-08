@@ -51,6 +51,22 @@ const EMPTY_MESSAGES: Record<DealTab, { title: string; sub: string }> = {
   completed:    { title: 'No completed deals',     sub: 'Deals that have reached delivery and payment will show here.' },
 }
 
+const DEAL_STATUS_LABEL: Record<string, string> = {
+  negotiating:         'Negotiating',
+  agreed:              'Agreed',
+  documents_pending:   'Upload Documents',
+  active:              'Active',
+  financing_requested: 'Financing Requested',
+  financing_active:    'Financing Active',
+  completed:           'Completed',
+  disputed:            'Disputed',
+  cancelled:           'Cancelled',
+}
+
+function statusLabel(s: string): string {
+  return DEAL_STATUS_LABEL[s] ?? s.replace(/_/g, ' ')
+}
+
 function statusBadgeClass(s: string): string {
   switch (s) {
     case 'negotiating':         return 'badge badge-draft'
@@ -81,7 +97,7 @@ function financingBadgeClass(s: string): string {
 
 // deal_source enum → human label.
 const SOURCE_LABEL: Record<string, string> = {
-  marketplace: 'Marketplace',
+  marketplace: 'Strike Place',
   imported:    'Imported',
   direct:      'Direct',
 }
@@ -249,7 +265,7 @@ export default function DealsPage() {
                             className="btn btn-ghost btn-sm"
                             onClick={() => router.push('/marketplace')}
                           >
-                            Browse Marketplace
+                            Browse Strike Place
                           </button>
                           <button
                             className="btn btn-blue btn-sm"
@@ -296,7 +312,7 @@ export default function DealsPage() {
                       </td>
                       <td>
                         <span className={statusBadgeClass(deal.status)}>
-                          {deal.status.replace(/_/g, ' ')}
+                          {statusLabel(deal.status)}
                         </span>
                       </td>
                       <td>

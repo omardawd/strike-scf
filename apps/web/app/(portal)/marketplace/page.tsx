@@ -1,8 +1,9 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { useUser } from '@/lib/user-context'
+import { createClient } from '@/lib/supabase/client'
 import { useGhost } from '@/lib/use-ghost'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import type { ListingWithPassport } from '@strike-scf/types'
@@ -259,6 +260,22 @@ export default function MarketplacePage() {
     }
   }, [fetchListings, mainTab])
 
+  // Realtime: refresh listings when new listings are created or statuses change
+  const realtimeRef = useRef<ReturnType<typeof createClient> | null>(null)
+  useEffect(() => {
+    const supabase = createClient()
+    realtimeRef.current = supabase
+    const channel = supabase
+      .channel('marketplace-listings-list')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'marketplace_listings',
+      }, () => { fetchListings() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchListings])
+
   useEffect(() => {
     if (mainTab !== 'my_listings') return
     setMyListingsLoading(true)
@@ -306,7 +323,7 @@ export default function MarketplacePage() {
             className={`mp-tab${mainTab === 'marketplace' ? ' mp-tab-active' : ''}`}
             onClick={() => setMainTab('marketplace')}
           >
-            Marketplace
+            Strike Place
           </button>
           <button
             className={`mp-tab${mainTab === 'my_listings' ? ' mp-tab-active' : ''}`}

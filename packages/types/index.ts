@@ -332,6 +332,7 @@ export interface MarketplaceOffer {
   offer_rounds: OfferRound[]
   ai_analysis: string | null
   ai_recommendation: string | null
+  metadata: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }

@@ -1,9 +1,10 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
+import { createClient } from '@/lib/supabase/client'
 import type { MarketplaceListing, MarketplaceOffer } from '@strike-scf/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -15,7 +16,9 @@ function fmtPrice(n: number | null | undefined, currency = 'USD'): string {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  // Date-only strings (YYYY-MM-DD) are UTC midnight by spec; use local noon to avoid off-by-one
+  const dt = d.includes('T') ? new Date(d) : new Date(`${d}T12:00:00`)
+  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 function timeAgo(d: string): string {
@@ -266,12 +269,15 @@ function OfferCard({
   actionSubmitting: boolean
   actionError: string | null
 }) {
+  const router = useRouter()
   const { offer, offeror_org, ai_analysis, ai_recommendation } = item
+  const isInactive = ['withdrawn', 'rejected', 'expired'].includes(offer.status)
   const showActions = (isListingOwner || isMyOffer) && ['pending', 'countered'].includes(offer.status)
   const isCounting = counteringOfferId === offer.id
+  const roomId = (offer.metadata?.room_id as string | undefined) ?? null
 
   return (
-    <div className="mp-offer-card">
+    <div className="mp-offer-card" style={isInactive ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
       <div className="mp-offer-card-status">
         <span className={`badge ${OFFER_STATUS_CLASS[offer.status] ?? 'badge-draft'}`}>{offer.status}</span>
       </div>
@@ -351,6 +357,16 @@ function OfferCard({
           {timeAgo(offer.created_at)}
         </span>
 
+        {roomId && (
+          <button
+            className="btn btn-sm btn-ghost"
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => router.push(`/rooms/${roomId}`)}
+          >
+            Open Strike Room
+          </button>
+        )}
+
         {showActions && (
           <div className="mp-offer-actions">
             {isListingOwner && offer.status === 'pending' && (
@@ -371,13 +387,19 @@ function OfferCard({
                 Accept Counter
               </button>
             )}
-            {isMyOffer && ['pending', 'countered'].includes(offer.status) && (
+            {isMyOffer && offer.status === 'pending' && (
+              <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>
+                Withdraw
+              </button>
+            )}
+            {isMyOffer && offer.status === 'countered' && (
               <>
-                {offer.status === 'countered' && (
-                  <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
-                    Accept Counter
-                  </button>
-                )}
+                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
+                  Counter
+                </button>
+                <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
+                  Accept Counter
+                </button>
                 <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>
                   Withdraw
                 </button>
@@ -412,6 +434,7 @@ interface ListingDetailData {
     ai_analysis: string | null
     ai_recommendation: string | null
   }>
+  offer_count: number | null
   viewer_org_id: string | null
 }
 
@@ -447,6 +470,23 @@ export default function ListingDetailPage() {
   }, [id])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Realtime: re-fetch when offers change on this listing
+  const realtimeRef = useRef<ReturnType<typeof createClient> | null>(null)
+  useEffect(() => {
+    const supabase = createClient()
+    realtimeRef.current = supabase
+    const channel = supabase
+      .channel(`listing-offers:${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'marketplace_offers',
+        filter: `listing_id=eq.${id}`,
+      }, () => { fetchData() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [id, fetchData])
 
   async function handleSubmitOffer(form: OfferFormState) {
     if (!data) return
@@ -544,7 +584,7 @@ export default function ListingDetailPage() {
     )
   }
 
-  const { listing, poster_org, offers, viewer_org_id } = data
+  const { listing, poster_org, offers, offer_count, viewer_org_id } = data
   const isListingOwner = viewer_org_id === listing.org_id
 
   const deliveryPast = listing.delivery_deadline != null
@@ -605,7 +645,7 @@ export default function ListingDetailPage() {
                       ? listing.target_price.toLocaleString()
                       : '—'}&nbsp;
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gray)', letterSpacing: '0.08em' }}>
-                      {listing.currency}
+                      {listing.currency}{listing.unit ? ` / ${listing.unit}` : ''}
                     </span>
                   </span>
                 </div>
@@ -655,12 +695,6 @@ export default function ListingDetailPage() {
                     <span className="v plain">{listing.payment_terms}</span>
                   </div>
                 )}
-                {listing.origin_country && (
-                  <div className="kv-row">
-                    <span className="k">Origin</span>
-                    <span className="v plain">{listing.origin_country}</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -686,48 +720,79 @@ export default function ListingDetailPage() {
               </div>
             )}
 
-            {/* Offers section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                  Offers Received
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>
-                  {listing.offer_count ?? offers.length}
-                </span>
-              </div>
-
-              {offers.length === 0 && (
-                <div className="mp-empty-state">
-                  <p className="mp-empty-title">No offers yet</p>
-                  <p className="mp-empty-sub">Be the first to make an offer on this listing.</p>
+            {/* Offers section — listing owner sees all; others see only their own */}
+            {isListingOwner ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                    Offers Received
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>
+                    {offer_count ?? offers.length}
+                  </span>
                 </div>
-              )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {offers.map(item => (
-                  <OfferCard
-                    key={item.offer.id}
-                    item={item}
-                    listing={listing}
-                    isListingOwner={isListingOwner}
-                    isMyOffer={item.offer.from_org_id === viewer_org_id}
-                    onAccept={id => handleAction(id, 'accept')}
-                    onReject={id => handleAction(id, 'reject')}
-                    onWithdraw={id => handleAction(id, 'withdraw')}
-                    onCounterStart={id => {
-                      setCounteringOfferId(prev => prev === id ? null : id)
-                      setActionError(null)
-                    }}
-                    counteringOfferId={counteringOfferId}
-                    onCounterSubmit={(offerId, form) => handleAction(offerId, 'counter', form)}
-                    onCounterCancel={() => setCounteringOfferId(null)}
-                    actionSubmitting={actionSubmitting}
-                    actionError={actionError}
-                  />
-                ))}
+                {offers.length === 0 && (
+                  <div className="mp-empty-state">
+                    <p className="mp-empty-title">No offers yet</p>
+                    <p className="mp-empty-sub">Offers from network participants will appear here.</p>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {offers.map(item => (
+                    <OfferCard
+                      key={item.offer.id}
+                      item={item}
+                      listing={listing}
+                      isListingOwner={isListingOwner}
+                      isMyOffer={item.offer.from_org_id === viewer_org_id}
+                      onAccept={id => handleAction(id, 'accept')}
+                      onReject={id => handleAction(id, 'reject')}
+                      onWithdraw={id => handleAction(id, 'withdraw')}
+                      onCounterStart={id => {
+                        setCounteringOfferId(prev => prev === id ? null : id)
+                        setActionError(null)
+                      }}
+                      counteringOfferId={counteringOfferId}
+                      onCounterSubmit={(offerId, form) => handleAction(offerId, 'counter', form)}
+                      onCounterCancel={() => setCounteringOfferId(null)}
+                      actionSubmitting={actionSubmitting}
+                      actionError={actionError}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : offers.length > 0 ? (
+              <div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
+                  Your Offer
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {offers.map(item => (
+                    <OfferCard
+                      key={item.offer.id}
+                      item={item}
+                      listing={listing}
+                      isListingOwner={false}
+                      isMyOffer={true}
+                      onAccept={id => handleAction(id, 'accept')}
+                      onReject={id => handleAction(id, 'reject')}
+                      onWithdraw={id => handleAction(id, 'withdraw')}
+                      onCounterStart={id => {
+                        setCounteringOfferId(prev => prev === id ? null : id)
+                        setActionError(null)
+                      }}
+                      counteringOfferId={counteringOfferId}
+                      onCounterSubmit={(offerId, form) => handleAction(offerId, 'counter', form)}
+                      onCounterCancel={() => setCounteringOfferId(null)}
+                      actionSubmitting={actionSubmitting}
+                      actionError={actionError}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Submit offer form — only if viewer can offer */}
             {canSubmitOffer && (
@@ -829,25 +894,6 @@ export default function ListingDetailPage() {
               </div>
             </div>
 
-            {/* AI Market Context */}
-            <div style={{ borderLeft: '3px solid var(--teal)', background: 'var(--teal-dim)', border: '1px solid var(--teal)', padding: '12px 14px' }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)', marginBottom: 4 }}>
-                AI Market Context
-              </div>
-              {priceBenchmark ? (
-                <div style={{ fontSize: 12.5, color: 'var(--teal)', lineHeight: 1.55 }}>
-                  Market median for this category: <strong>{fmtPrice(priceBenchmark.median, listing.currency)}</strong>
-                  {' '}(range: {fmtPrice(priceBenchmark.range_low, listing.currency)} – {fmtPrice(priceBenchmark.range_high, listing.currency)}).
-                  Target price is {listing.target_price != null && priceBenchmark.median > 0
-                    ? listing.target_price > priceBenchmark.median ? 'above' : 'at or below'
-                    : 'near'} the market median.
-                </div>
-              ) : (
-                <div style={{ fontSize: 12.5, color: 'var(--teal)', lineHeight: 1.55 }}>
-                  Price benchmarking data will appear here once market signals are available for this category.
-                </div>
-              )}
-            </div>
           </aside>
         </div>
       </div>

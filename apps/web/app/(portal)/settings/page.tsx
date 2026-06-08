@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
-type TabKey = 'profile' | 'org' | 'team' | 'agent'
+type TabKey = 'profile' | 'org' | 'team'
 
 interface Alert { kind: 'info' | 'error'; msg: string }
 
@@ -376,15 +376,6 @@ export default function SettingsPage() {
               onClick={() => setTab('team')}
             >
               Team
-            </button>
-          )}
-          {!isBankUser && user?.org_id && (
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              onClick={() => router.push('/settings/agent')}
-            >
-              AI Agent
             </button>
           )}
         </div>

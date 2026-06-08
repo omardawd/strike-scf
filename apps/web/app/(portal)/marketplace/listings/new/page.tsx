@@ -36,7 +36,6 @@ interface FormState {
   title: string
   description: string
   category: string
-  origin_country: string
   quantity: string
   unit: string
   target_price: string
@@ -52,7 +51,6 @@ const DEFAULT_FORM: FormState = {
   title: '',
   description: '',
   category: '',
-  origin_country: '',
   quantity: '',
   unit: 'MT',
   target_price: '',
@@ -82,7 +80,6 @@ export default function NewListingPage() {
     title: form.title.trim(),
     description: form.description.trim() || undefined,
     category: form.category || undefined,
-    origin_country: form.origin_country.trim() || undefined,
     quantity: form.quantity ? parseFloat(form.quantity) : undefined,
     unit: form.unit || undefined,
     target_price: form.target_price ? parseFloat(form.target_price) : undefined,
@@ -158,7 +155,7 @@ export default function NewListingPage() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
             Create a Listing
           </h1>
-          <p className="subtitle">Post a purchase request or offer a product to the Strike Place marketplace.</p>
+          <p className="subtitle">Post a purchase request or offer a product to Strike Place.</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
@@ -229,30 +226,17 @@ export default function NewListingPage() {
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div className="form-field">
-                      <label className="field-label">Category</label>
-                      <select
-                        name="category"
-                        className="input form-select"
-                        value={form.category}
-                        onChange={handleChange}
-                      >
-                        <option value="">Select category</option>
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-field">
-                      <label className="field-label">Country of Origin / Destination</label>
-                      <input
-                        type="text"
-                        name="origin_country"
-                        className="input"
-                        value={form.origin_country}
-                        onChange={handleChange}
-                        placeholder="e.g. CN → AE"
-                      />
-                    </div>
+                  <div className="form-field">
+                    <label className="field-label">Category</label>
+                    <select
+                      name="category"
+                      className="input form-select"
+                      value={form.category}
+                      onChange={handleChange}
+                    >
+                      <option value="">Select category</option>
+                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
 
                 </div>

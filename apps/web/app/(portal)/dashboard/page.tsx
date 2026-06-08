@@ -765,8 +765,8 @@ function BankDashboard() {
             ) : financing.length === 0 ? (
               <div style={{ padding: '36px 24px', textAlign: 'center' }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>No open financing requests right now</div>
-                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>Check back soon or browse the full marketplace.</div>
-                <a href="/marketplace/financing" className="btn btn-sm btn-ghost">Browse marketplace →</a>
+                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>Check back soon or browse Strike Place.</div>
+                <a href="/marketplace/financing" className="btn btn-sm btn-ghost">Browse Strike Place →</a>
               </div>
             ) : (
               <div>
@@ -930,7 +930,7 @@ function AnchorDashboard() {
     { label: 'Active Deals',         value: loading ? '—' : String(activeDeals.length) },
     { label: 'Trade Volume',         value: loading ? '—' : fmtCurrency(completedVolume), sub: 'Completed deals', valueColor: completedVolume > 0 ? 'var(--color-green)' : undefined },
     { label: 'Financing Active',     value: loading ? '—' : fmtCurrency(financingActiveAmt), valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined },
-    { label: 'Marketplace Listings', value: loading ? '—' : String(listings.length) },
+    { label: 'Strike Place Listings', value: loading ? '—' : String(listings.length) },
   ]
 
   return (
@@ -1051,7 +1051,7 @@ function AnchorDashboard() {
         <AIInsight
           title="Trade Intelligence"
           collapsed={true}
-          prompt={`This buyer has ${activeDeals.length} active deals worth $${completedVolume.toFixed(0)} total. They have ${listings.length} marketplace listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
+          prompt={`This buyer has ${activeDeals.length} active deals worth $${completedVolume.toFixed(0)} total. They have ${listings.length} Strike Place listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
           context={{
             active_deals: activeDeals.length,
             completed_deal_volume: completedVolume,

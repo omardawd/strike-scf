@@ -46,12 +46,13 @@ const AI_DOC_LABELS: Record<string, string> = {
 }
 
 const DEAL_STATUSES: { key: string; label: string }[] = [
-  { key: 'negotiating',         label: 'Negotiating' },
+  { key: 'negotiating',         label: 'Negotiate' },
   { key: 'agreed',              label: 'Agreed' },
-  { key: 'documents_pending',   label: 'Documents Pending' },
+  { key: 'documents_pending',   label: 'Upload Docs' },
   { key: 'active',              label: 'Active' },
-  { key: 'financing_requested', label: 'Financing Requested' },
-  { key: 'financing_active',    label: 'Financing Active' },
+  { key: 'financing_requested', label: 'Fin. Requested' },
+  { key: 'financing_active',    label: 'Financed' },
+  { key: 'delivery_confirmed',  label: 'Delivered' },
   { key: 'completed',           label: 'Completed' },
 ]
 
@@ -63,6 +64,7 @@ function statusBadgeClass(status: string): string {
     case 'active':              return 'badge badge-active'
     case 'financing_requested': return 'badge badge-offer'
     case 'financing_active':    return 'badge badge-funded'
+    case 'delivery_confirmed':  return 'badge badge-active'
     case 'completed':           return 'badge badge-completed'
     case 'disputed':            return 'badge badge-overdue'
     case 'cancelled':           return 'badge badge-rejected'
@@ -94,36 +96,33 @@ function shortId(id: string): string {
 
 function DealTimeline({ status }: { status: string }) {
   const currentIdx = DEAL_STATUSES.findIndex(s => s.key === status)
+  const effectiveIdx = currentIdx === -1 ? 0 : currentIdx
   return (
-    <div className="deal-timeline">
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
       {DEAL_STATUSES.map((s, i) => {
-        const isPast    = i < currentIdx
-        const isCurrent = i === currentIdx
-        const isFuture  = i > currentIdx
+        const isPast    = i < effectiveIdx
+        const isCurrent = i === effectiveIdx
+        const isLast    = i === DEAL_STATUSES.length - 1
+        const dotColor  = isCurrent ? 'var(--blue)' : isPast ? 'var(--color-green)' : 'var(--border-strong)'
+        const labelColor = isCurrent ? 'var(--ink)' : isPast ? 'var(--color-green)' : 'var(--gray-soft)'
         return (
-          <div key={s.key} className="deal-tl-item">
-            <div className="deal-tl-rail">
-              <div
-                className={
-                  isCurrent ? 'deal-tl-dot deal-tl-dot-current' :
-                  isPast    ? 'deal-tl-dot deal-tl-dot-green' :
-                              'deal-tl-dot deal-tl-dot-gray'
-                }
-              />
-              <div className="deal-tl-line" />
+          <div key={s.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: isLast ? '0 0 auto' : 1, minWidth: 60 }}>
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+              {!isLast && <div style={{ flex: 1, height: 2, background: isPast ? 'var(--color-green)' : 'var(--border)' }} />}
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                background: dotColor,
+                boxShadow: isCurrent ? `0 0 0 3px var(--blue-light)` : 'none',
+                margin: '0 4px',
+              }} />
+              {!isLast && <div style={{ flex: 1, height: 2, background: isPast ? 'var(--color-green)' : 'var(--border)' }} />}
             </div>
-            <div className="deal-tl-body">
-              <div
-                className="deal-tl-event"
-                style={{ color: isFuture ? 'var(--gray-soft)' : 'var(--ink)', fontWeight: isCurrent ? 500 : 400 }}
-              >
-                {s.label}
-              </div>
-              {isCurrent && (
-                <div className="deal-tl-actor" style={{ color: 'var(--color-green)', fontSize: 11 }}>
-                  Current status
-                </div>
-              )}
+            <div style={{
+              fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
+              color: labelColor, fontWeight: isCurrent ? 600 : 400,
+              marginTop: 6, textAlign: 'center', whiteSpace: 'nowrap',
+            }}>
+              {s.label}
             </div>
           </div>
         )
@@ -253,7 +252,6 @@ export default function DealDetailPage() {
   const [finStructure,       setFinStructure]        = useState<FinancingStructure>('open')
   const [finType,            setFinType]             = useState<FinancingType | ''>('')
   const [finAmount,          setFinAmount]           = useState('')
-  const [finTenor,           setFinTenor]            = useState('90')
   const [finRateMax,         setFinRateMax]          = useState('')
   const [finSubmitting,      setFinSubmitting]       = useState(false)
   const [finError,           setFinError]            = useState<string | null>(null)
@@ -377,7 +375,6 @@ export default function DealDetailPage() {
           structure_type:      finStructure,
           financing_type:      finType || undefined,
           amount_requested:    parseFloat(finAmount),
-          preferred_tenor_days: finTenor ? parseInt(finTenor) : undefined,
           preferred_rate_max:  finRateMax ? parseFloat(finRateMax) : undefined,
           currency:            data.deal.agreed_currency ?? 'USD',
         }),
@@ -692,28 +689,16 @@ export default function DealDetailPage() {
                         </select>
                       </div>
                     </div>
-                    <div className="form-row-2">
-                      <div className="form-field">
-                        <label className="field-label">Amount Requested ({currency})</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min="0"
-                          required
-                          value={finAmount}
-                          onChange={e => setFinAmount(e.target.value)}
-                        />
-                      </div>
-                      <div className="form-field">
-                        <label className="field-label">Preferred Tenor (days)</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min="1"
-                          value={finTenor}
-                          onChange={e => setFinTenor(e.target.value)}
-                        />
-                      </div>
+                    <div className="form-field" style={{ maxWidth: 260 }}>
+                      <label className="field-label">Amount Requested ({currency})</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        required
+                        value={finAmount}
+                        onChange={e => setFinAmount(e.target.value)}
+                      />
                     </div>
                     <div className="form-field" style={{ maxWidth: 200 }}>
                       <label className="field-label">Max Rate APR % (optional)</label>
@@ -733,7 +718,7 @@ export default function DealDetailPage() {
                         disabled={finSubmitting || !finAmount}
                         onClick={submitFinancingRequest}
                       >
-                        {finSubmitting ? 'Posting to Marketplace…' : 'Post to Marketplace'}
+                        {finSubmitting ? 'Submitting…' : 'Submit Financing Request'}
                       </button>
                       <button
                         className="btn btn-ghost btn-sm"
@@ -749,7 +734,7 @@ export default function DealDetailPage() {
                 <div className="card-body">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>
-                      Ready to unlock early payment? Post this deal to the financing marketplace and receive competitive offers from banks.
+                      Ready to unlock early payment? Submit this deal to Strike Place and receive competitive financing offers from banks.
                     </div>
                     <button
                       className="btn btn-blue btn-sm"

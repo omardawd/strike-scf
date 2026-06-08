@@ -50,13 +50,22 @@ export async function GET(
     .eq('id', listing.org_id)
     .single()
 
-  // Fetch active offers sorted by offered_price DESC
-  const { data: rawOffers } = await adminClient
+  const isListingOwner = me.org_id != null && me.org_id === listing.org_id
+
+  // Listing owner sees all offers; others see only their own
+  const offersQuery = adminClient
     .from('marketplace_offers')
     .select('*')
     .eq('listing_id', id)
-    .in('status', ['pending', 'accepted', 'countered'])
     .order('offered_price', { ascending: false })
+
+  const { data: rawOffers } = isListingOwner
+    ? await offersQuery
+    : me.org_id
+      ? await offersQuery.eq('from_org_id', me.org_id)
+      : await offersQuery.eq('from_org_id', '')
+
+  const offerCount = isListingOwner ? (rawOffers ?? []).length : null
 
   // Batch-fetch offeror orgs
   const offerorOrgIds = [...new Set((rawOffers ?? []).map((o: any) => o.from_org_id as string))]
@@ -79,7 +88,7 @@ export async function GET(
     ai_recommendation: offer.ai_recommendation ?? null,
   }))
 
-  return NextResponse.json({ listing, poster_org: poster_org ?? null, offers, viewer_org_id: me.org_id ?? null })
+  return NextResponse.json({ listing, poster_org: poster_org ?? null, offers, offer_count: offerCount, viewer_org_id: me.org_id ?? null })
 }
 
 export async function PATCH(

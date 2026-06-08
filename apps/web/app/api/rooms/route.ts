@@ -22,12 +22,12 @@ export async function POST(req: Request) {
 
   const { data: org } = await adminClient
     .from('organizations')
-    .select('id, status')
+    .select('id, status, kyb_status, network_visible')
     .eq('id', userData.org_id)
     .single()
 
-  if (!org || org.status !== 'active') {
-    return NextResponse.json({ error: 'Organization must be active to create rooms' }, { status: 403 })
+  if (!org || !org.network_visible || org.kyb_status === 'not_started') {
+    return NextResponse.json({ error: 'Activate your Passport to create rooms' }, { status: 403 })
   }
 
   const body = await req.json()

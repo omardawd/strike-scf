@@ -33,14 +33,12 @@ export async function GET() {
 
     if (membersError) return NextResponse.json({ error: 'Failed to fetch team' }, { status: 500 })
 
-    const { data: invitations, error: invError } = await adminClient
+    const { data: invitations } = await adminClient
       .from('invitations')
       .select('id, email, role, created_at, expires_at, status')
       .eq('bank_id', userData.bank_id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-
-    if (invError) return NextResponse.json({ error: 'Failed to fetch invitations' }, { status: 500 })
 
     return NextResponse.json({ users: members ?? [], pending_invitations: invitations ?? [] })
   }
@@ -57,14 +55,12 @@ export async function GET() {
 
   if (membersError) return NextResponse.json({ error: 'Failed to fetch team' }, { status: 500 })
 
-  const { data: invitations, error: invError } = await adminClient
+  const { data: invitations } = await adminClient
     .from('invitations')
     .select('id, email, role, created_at, expires_at, status')
     .eq('anchor_org_id', userData.org_id)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
-
-  if (invError) return NextResponse.json({ error: 'Failed to fetch invitations' }, { status: 500 })
 
   return NextResponse.json({ users: members ?? [], pending_invitations: invitations ?? [] })
 }

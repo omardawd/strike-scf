@@ -89,8 +89,10 @@ export async function POST(request: Request) {
 
   const newUserId = authData.user.id
 
-  // The DB trigger creates the public.users row; patch in org/bank assignment now
-  const patch: Record<string, unknown> = { is_active: true }
+  // The DB trigger creates the public.users row; patch in role + org/bank assignment explicitly
+  // Role must be set directly — the trigger may not copy it from user_metadata
+  const patch: Record<string, unknown> = { is_active: true, role: memberRole }
+  if (fullName) patch.full_name = fullName
   if (isBank) {
     patch.bank_id = adminUser.bank_id
   } else {
@@ -99,8 +101,7 @@ export async function POST(request: Request) {
 
   const { error: patchError } = await adminClient
     .from('users')
-    .update(patch)
-    .eq('id', newUserId)
+    .upsert({ id: newUserId, email, ...patch }, { onConflict: 'id' })
 
   if (patchError) {
     console.error('Patch user org/bank error:', patchError)

@@ -734,10 +734,6 @@ export default function FinancingDetailPage() {
                   <span className="v">{fmt(request.amount_requested, currency)}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Preferred Tenor</span>
-                  <span className="v">{request.preferred_tenor_days ? `${request.preferred_tenor_days}d` : '—'}</span>
-                </div>
-                <div className="kv-row">
                   <span className="k">Max Rate</span>
                   <span className="v">{request.preferred_rate_max ? `${request.preferred_rate_max}%` : '—'}</span>
                 </div>
