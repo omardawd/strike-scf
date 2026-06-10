@@ -1442,6 +1442,32 @@ export default function OnboardingWizard() {
           </button>
         )}
       </div>
+
+      {/* Do later — enter as ghost */}
+      <div style={{ textAlign: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard')}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 12.5,
+            color: 'var(--gray)',
+            fontFamily: 'inherit',
+            padding: '4px 8px',
+            borderRadius: 6,
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--gray)')}
+        >
+          Do this later — explore as guest
+        </button>
+        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--gray-soft)', lineHeight: 1.5 }}>
+          You can activate your Passport from your dashboard at any time.
+        </p>
+      </div>
     </div>
   )
 }

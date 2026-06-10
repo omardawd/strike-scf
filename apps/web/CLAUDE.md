@@ -108,11 +108,13 @@ apps/web/
 └── reference/            ← Original design mockups (JSX/HTML) — design reference
 ```
 
-> Sidebar nav is **role-aware & flat** (`components/sidebar.tsx`). Collapses to icon-only mode (56px width); persisted in localStorage `strike_sidebar_collapsed`. All labels below are what users currently see — removed items (Settings, AI Agent, Strike AI, My Programs, Transactions, KYB Review) still have pages but no sidebar link.
+> Sidebar nav is **role-aware & flat** (`components/sidebar.tsx`). Collapses to icon-only mode (56px width); persisted in localStorage `strike_sidebar_collapsed`. All labels below are what users currently see — removed items (Settings, AI Agent, My Programs, Transactions, KYB Review) still have pages but no sidebar link.
 >
-> - **Anchor & Supplier** (identical): Dashboard · Strike Place (`/marketplace`) · My Deals (`/deals`) · Financing (`/marketplace/financing`) · Networks (`/networks`) · Strike Rooms (`/rooms`) · Strike Passport (`/passport`) · Analytics (`/reporting`)
-> - **Bank**: Dashboard · Strike Place (`/marketplace/financing`) · Programs (`/programs`) · Strike Passport (`/passport`) · Reporting (`/reporting`) · Supply Graph (`/supply-graph`)
-> - **Admin**: Dashboard · KYB Queue (`/admin`) · Platform Stats (`/admin`) · Room Reports (`/admin`) · Strike Passport (`/passport`)
+> **Strike AI** (`/ai`) is rendered as a special featured button at the **top** of the nav (above all other items) for all portals — blue→purple gradient pill with shimmer animation. It is NOT part of the `ANCHOR_NAV` / `SUPPLIER_NAV` / `BANK_NAV` / `ADMIN_NAV` arrays; it is hardcoded in the nav render above the `sections.map()` loop. Do not add it to the nav arrays.
+>
+> - **Anchor & Supplier** (identical): Strike AI (top) · Dashboard · Strike Place (`/marketplace`) · My Deals (`/deals`) · Financing (`/marketplace/financing`) · Networks (`/networks`) · Strike Rooms (`/rooms`) · Strike Passport (`/passport`) · Analytics (`/reporting`)
+> - **Bank**: Strike AI (top) · Dashboard · Strike Place (`/marketplace/financing`) · Programs (`/programs`) · Strike Passport (`/passport`) · Reporting (`/reporting`) · Supply Graph (`/supply-graph`)
+> - **Admin**: Strike AI (top) · Dashboard · KYB Queue (`/admin`) · Platform Stats (`/admin`) · Room Reports (`/admin`) · Strike Passport (`/passport`)
 
 ---
 
@@ -642,6 +644,19 @@ cd apps/web && npx tsc --noEmit
 - app/(portal)/admin/ — Strike admin (strike_admin role only)
 - app/(portal)/settings/agent/ — AI Agent preferences
 - app/(auth)/invite/[token]/ — Network invite landing page (public, no portal shell)
+
+### Signup flow (self-registration)
+
+Only **anchor (buyer)** and **supplier** orgs can self-register at `/signup`. Bank accounts are provisioned manually by Strike — the signup page shows a "contact us" note instead of a bank option. There is no "both" role.
+
+- `app/(auth)/signup/page.tsx` — collects role (anchor|supplier), full name, email, company name, country, password. On success, signs the user in and redirects to **`/onboarding`** (not `/dashboard`). Invite-token signups are the only exception: they redirect to `/dashboard` with a welcome message after auto-accepting the network membership.
+- The signup UI uses an AI-feel design: animated gradient orbs in the background, elevated white card (`--radius-card`, strong shadow), blue→purple gradient submit button with shimmer, 2-column role cards with gradient icon on selection.
+- `app/api/auth/register/route.ts` — accepts `org_type: 'anchor' | 'supplier'` only (rejects `'bank'` at the API layer too, as a backstop).
+
+### Onboarding wizard (`app/(onboarding)/`)
+
+- `layout.tsx` — left rail uses the actual `logo.png` image (not a placeholder "S" square). Provides `WizardContext` with the step tracker.
+- `onboarding/page.tsx` — 7-step KYB/Passport activation wizard. At the bottom of every step's footer there is a **"Do this later — explore as guest"** button that routes to `/dashboard`. Clicking it leaves the user in ghost mode (kyb_status remains `'not_started'`); they can activate their Passport from the dashboard at any time.
 
 ### Ghost mode (Tier 0)
 

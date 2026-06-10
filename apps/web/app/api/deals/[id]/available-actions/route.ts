@@ -69,7 +69,20 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const userRole = deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier'
+  const userRole: 'buyer' | 'supplier' = deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier'
+
+  // Fetch listing to determine scenario (A vs B).
+  // Use listing_type — the canonical signal — not org_id, since any org can
+  // post either type regardless of what "kind" of account they are.
+  let listingType: string | null = null
+  if (deal.listing_id) {
+    const { data: listing } = await adminClient
+      .from('marketplace_listings')
+      .select('listing_type')
+      .eq('id', deal.listing_id)
+      .maybeSingle()
+    listingType = listing?.listing_type ?? null
+  }
 
   // Fetch linked transaction
   let transaction: TransactionForContext | null = null
@@ -124,8 +137,24 @@ export async function GET(
   // ── Supplier actions ──────────────────────────────────────────────────────
 
   if (userRole === 'supplier') {
-    // Set payment instructions (agreed stage)
-    if (['agreed', 'documents_pending'].includes(status) && !deal.payment_instructions_set_at) {
+    // NEW FLOW: Scenario A — po_request listing (buyer posted a purchase request)
+    // The supplier fulfilling it confirms the PO.
+    if (status === 'agreed' && listingType === 'po_request') {
+      actions.push({
+        action: 'confirm_po',
+        label: 'Confirm Purchase Order',
+        description: 'Confirm the Purchase Order to begin fulfilling this deal. Upload the PO document if available.',
+        available: true,
+        requiredFields: [
+          { name: 'commercial_invoice_id', type: 'document', label: 'PO Document (optional)', required: false },
+        ],
+        confirmationMessage: 'Confirm the PO and advance the deal to preparation?',
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY: Set payment instructions (old documents_pending path, or direct/imported deals with no listing)
+    if (['agreed', 'documents_pending'].includes(status) && !deal.payment_instructions_set_at && !deal.po_confirmed_at && !deal.invoice_confirmed_at && (listingType === null || status === 'documents_pending')) {
       actions.push({
         action: 'upload_documents',
         label: 'Set Payment Instructions',
@@ -143,8 +172,8 @@ export async function GET(
       })
     }
 
-    // Start preparation (confirmed)
-    if (status === 'confirmed') {
+    // LEGACY: Start preparation (confirmed, old path)
+    if (status === 'confirmed' && !deal.po_confirmed_at && !deal.invoice_confirmed_at) {
       actions.push({
         action: 'begin_preparation',
         label: 'Start Preparation',
@@ -156,7 +185,28 @@ export async function GET(
       })
     }
 
-    // Mark shipped (in_preparation)
+    // NEW FLOW: Mark shipped directly from confirmed (both Scenario A and B)
+    if (status === 'confirmed' && (deal.po_confirmed_at || deal.invoice_confirmed_at)) {
+      actions.push({
+        action: 'mark_shipped',
+        label: 'Mark as Shipped',
+        description: 'Confirm goods have been shipped with tracking details and commercial invoice.',
+        available: true,
+        requiredFields: [
+          { name: 'shipment_tracking_ref', type: 'text', label: 'Tracking Reference', required: true },
+          { name: 'shipment_carrier', type: 'text', label: 'Carrier / Shipping Company', required: true },
+          { name: 'shipment_estimated_delivery', type: 'date', label: 'Estimated Delivery Date', required: false },
+          { name: 'commercial_invoice_id', type: 'document', label: 'Commercial Invoice', required: false },
+        ],
+        confirmationMessage: 'Confirm shipment and notify buyer?',
+        financingNote: fc.structure === 'po_financing'
+          ? 'Marking as shipped will convert PO Financing to repayment mode.'
+          : undefined,
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY: Mark shipped from in_preparation
     if (status === 'in_preparation') {
       actions.push({
         action: 'mark_shipped',
@@ -173,6 +223,27 @@ export async function GET(
         financingNote: fc.structure === 'po_financing'
           ? 'Marking as shipped will convert PO Financing to repayment mode.'
           : undefined,
+        isDestructive: false,
+      })
+    }
+
+    // NEW FLOW: Submit payment information (after buyer confirms delivery)
+    // Bank does this when financing is active; supplier does it otherwise
+    if (status === 'delivery_confirmed' && !fc.isActive) {
+      actions.push({
+        action: 'submit_payment_info',
+        label: 'Submit Payment Details',
+        description: 'Provide your bank account details so the buyer knows where to send payment.',
+        available: true,
+        requiredFields: [
+          { name: 'payment_bank_name', type: 'text', label: 'Bank Name', required: true },
+          { name: 'payment_account_name', type: 'text', label: 'Account Holder Name', required: true },
+          { name: 'payment_account_number', type: 'text', label: 'Account Number', required: false },
+          { name: 'payment_swift_iban', type: 'text', label: 'SWIFT / IBAN', required: false },
+          { name: 'payment_routing_number', type: 'text', label: 'Routing Number', required: false },
+          { name: 'payment_reference', type: 'text', label: 'Payment Reference', required: false },
+        ],
+        confirmationMessage: 'Submit your payment details to the buyer?',
         isDestructive: false,
       })
     }
@@ -197,7 +268,23 @@ export async function GET(
   // ── Buyer actions ─────────────────────────────────────────────────────────
 
   if (userRole === 'buyer') {
-    // Confirm deal (documents_pending, after seller set payment instructions)
+    // NEW FLOW: Scenario B — product_service listing (supplier posted an offer)
+    // The buyer purchasing it confirms the invoice.
+    if (status === 'agreed' && listingType === 'product_service') {
+      actions.push({
+        action: 'confirm_invoice',
+        label: 'Confirm Invoice',
+        description: 'Confirm the supplier\'s invoice to proceed with this deal. Upload the invoice document if available.',
+        available: true,
+        requiredFields: [
+          { name: 'commercial_invoice_id', type: 'document', label: 'Invoice Document (optional)', required: false },
+        ],
+        confirmationMessage: 'Confirm the invoice and advance this deal?',
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY: Confirm deal (documents_pending, after seller set payment instructions)
     if (status === 'documents_pending' && deal.payment_instructions_set_at) {
       actions.push({
         action: 'confirm',
@@ -210,15 +297,15 @@ export async function GET(
       })
     }
 
-    // Confirm delivery (shipped)
+    // NEW FLOW: Buyer confirms goods received (shipped → goods_received)
     if (status === 'shipped') {
       actions.push({
-        action: 'confirm_delivery',
-        label: 'Confirm Delivery',
-        description: 'Confirm that you have received the goods in acceptable condition.',
+        action: 'confirm_received',
+        label: 'Confirm Goods Received',
+        description: 'Confirm that the goods have been delivered to your location.',
         available: true,
         requiredFields: [],
-        confirmationMessage: 'Confirm delivery of goods?',
+        confirmationMessage: 'Confirm you have received the goods?',
         isDestructive: false,
       })
       actions.push({
@@ -235,12 +322,37 @@ export async function GET(
       })
     }
 
+    // NEW FLOW: Buyer confirms goods condition (goods_received → delivery_confirmed)
+    if (status === 'goods_received') {
+      actions.push({
+        action: 'confirm_goods',
+        label: 'Confirm Goods Condition',
+        description: 'Confirm that the goods match your order — correct quantity, quality, and description.',
+        available: true,
+        requiredFields: [],
+        confirmationMessage: 'Confirm goods are as expected and accept delivery?',
+        isDestructive: false,
+      })
+      actions.push({
+        action: 'raise_dispute',
+        label: 'Raise a Dispute',
+        description: 'Flag a condition issue with the received goods. Strike Admin will mediate.',
+        available: true,
+        requiredFields: [
+          { name: 'dispute_category', type: 'select', label: 'Category', required: true, options: ['non_delivery', 'wrong_goods', 'quality_issue', 'document_dispute', 'other'] },
+          { name: 'dispute_reason', type: 'text', label: 'Describe the Issue', required: true },
+        ],
+        confirmationMessage: 'Raise a dispute? Strike Admin will be notified.',
+        isDestructive: true,
+      })
+    }
+
     // Acknowledge NOA (Invoice Factoring only, before payment)
     if (
       fc.structure === 'invoice_factoring' &&
       fc.noaRequired &&
       !fc.noaAcknowledged &&
-      ['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status)
+      ['delivery_confirmed', 'payment_info_sent', 'payment_due', 'payment_overdue'].includes(status)
     ) {
       actions.push({
         action: 'acknowledge_noa',
@@ -260,15 +372,37 @@ export async function GET(
       })
     }
 
-    // Confirm payment sent (delivery_confirmed, payment_due, payment_overdue)
-    if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status)) {
-      // Block if IF financing active and NOA not acknowledged
+    // NEW FLOW: Buyer submits payment reference (payment_info_sent → payment_confirmed)
+    if (status === 'payment_info_sent') {
+      const noaBlocked = fc.structure === 'invoice_factoring' && fc.noaRequired && !fc.noaAcknowledged
+      const payLabel = fc.isActive && fc.structure !== 'dynamic_discounting'
+        ? `Confirm Repayment Sent to ${bankName}`
+        : 'Submit Payment Reference'
+      actions.push({
+        action: 'confirm_payment_sent',
+        label: payLabel,
+        description: 'Provide your bank transfer reference to confirm payment has been sent.',
+        available: !noaBlocked,
+        unavailableReason: noaBlocked ? 'You must acknowledge the Notice of Assignment before confirming payment.' : undefined,
+        requiredFields: [
+          { name: 'payment_external_reference', type: 'text', label: 'Bank Reference / Transaction ID', required: true },
+          { name: 'payment_amount', type: 'number', label: 'Amount Sent', required: false },
+        ],
+        confirmationMessage: 'Confirm that payment has been sent?',
+        financingNote: fc.paymentWarningMessage ?? undefined,
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY: Confirm payment sent (delivery_confirmed without new flow, payment_due, payment_overdue)
+    // Only show for old-flow deals (goods_confirmed_at is null = delivery not confirmed via new path)
+    if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status) && !deal.goods_confirmed_at) {
       const noaBlocked = fc.structure === 'invoice_factoring' && fc.noaRequired && !fc.noaAcknowledged
       const payLabel = fc.isActive && fc.structure !== 'dynamic_discounting'
         ? `Confirm Repayment Sent to ${bankName}`
         : 'Confirm Payment Sent'
 
-      const payAction: AvailableAction = {
+      actions.push({
         action: 'confirm_payment_sent',
         label: payLabel,
         description: 'Confirm that payment has been sent.',
@@ -281,12 +415,11 @@ export async function GET(
         confirmationMessage: 'Confirm that payment has been sent?',
         financingNote: fc.paymentWarningMessage ?? undefined,
         isDestructive: false,
-      }
-      actions.push(payAction)
+      })
     }
 
     // DD offer (anchor can present DD offer when delivery_confirmed and DD program exists)
-    if (status === 'delivery_confirmed' && buyerOrgData?.type === 'anchor') {
+    if (['delivery_confirmed', 'payment_info_sent'].includes(status) && buyerOrgData?.type === 'anchor') {
       actions.push({
         action: 'present_dd_offer',
         label: 'Offer Early Payment (Dynamic Discounting)',
@@ -305,7 +438,7 @@ export async function GET(
 
   // ── Cancellation (both parties, status-dependent) ─────────────────────────
 
-  const cancellableStatuses = ['agreed', 'documents_pending', 'confirmed', 'in_preparation']
+  const cancellableStatuses = ['agreed', 'documents_pending', 'confirmed', 'in_preparation', 'goods_received', 'payment_info_sent']
   if (cancellableStatuses.includes(status) && isParty) {
     const cancelAction: AvailableAction = {
       action: 'cancel',
@@ -324,16 +457,38 @@ export async function GET(
 
   // ── Bank actions ──────────────────────────────────────────────────────────
 
-  if (isBankUser && status === 'payment_confirmed') {
-    actions.push({
-      action: 'confirm_receipt',
-      label: 'Confirm Repayment Received',
-      description: 'Confirm that repayment has been received from the buyer.',
-      available: true,
-      requiredFields: [],
-      confirmationMessage: 'Confirm repayment received and complete this deal?',
-      isDestructive: false,
-    })
+  if (isBankUser) {
+    // Bank submits payment info when financing is active and delivery is confirmed
+    if (status === 'delivery_confirmed' && fc.isActive) {
+      actions.push({
+        action: 'submit_payment_info',
+        label: 'Submit Bank Payment Details',
+        description: 'Provide your bank account details for the buyer to repay the financing.',
+        available: true,
+        requiredFields: [
+          { name: 'payment_bank_name', type: 'text', label: 'Bank Name', required: true },
+          { name: 'payment_account_name', type: 'text', label: 'Account Name', required: true },
+          { name: 'payment_account_number', type: 'text', label: 'Account Number', required: false },
+          { name: 'payment_swift_iban', type: 'text', label: 'SWIFT / IBAN', required: false },
+          { name: 'payment_routing_number', type: 'text', label: 'Routing Number', required: false },
+          { name: 'payment_reference', type: 'text', label: 'Payment Reference', required: false },
+        ],
+        confirmationMessage: 'Submit your payment details to the buyer?',
+        isDestructive: false,
+      })
+    }
+
+    if (status === 'payment_confirmed') {
+      actions.push({
+        action: 'confirm_receipt',
+        label: 'Confirm Repayment Received',
+        description: 'Confirm that repayment has been received from the buyer.',
+        available: true,
+        requiredFields: [],
+        confirmationMessage: 'Confirm repayment received and complete this deal?',
+        isDestructive: false,
+      })
+    }
   }
 
   return NextResponse.json({

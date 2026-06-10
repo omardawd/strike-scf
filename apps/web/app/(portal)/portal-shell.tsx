@@ -2,7 +2,6 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
-import { AIOverlay } from '@/components/ai-overlay'
 import type { PortalType } from '@/lib/portal-context'
 
 // Ordered specific-before-general so derivePageName resolves the deepest match first.
@@ -36,7 +35,6 @@ function derivePageName(pathname: string): string {
 export function PortalShell({
   children,
   portal,
-  userName,
 }: {
   children: React.ReactNode
   portal: PortalType
@@ -44,7 +42,6 @@ export function PortalShell({
 }) {
   const pathname = usePathname()
   const page = derivePageName(pathname)
-  const showOverlay = !pathname.startsWith('/ai')
 
   return (
     <div className="app-shell" data-page-name={page}>
@@ -52,9 +49,6 @@ export function PortalShell({
       <main className="main">
         {children}
       </main>
-      {showOverlay && (
-        <AIOverlay portal={portal === 'admin' ? 'bank' : portal} userName={userName} />
-      )}
     </div>
   )
 }

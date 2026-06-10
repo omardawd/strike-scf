@@ -55,11 +55,19 @@ const EMPTY_MESSAGES: Record<DealTab, { title: string; sub: string }> = {
 const DEAL_STATUS_LABEL: Record<string, string> = {
   negotiating:         'Negotiating',
   agreed:              'Agreed',
-  documents_pending:   'Upload Documents',
+  documents_pending:   'Documents',
+  confirmed:           'Confirmed',
+  in_preparation:      'In Preparation',
+  shipped:             'Shipped',
+  goods_received:      'Goods Received',
+  delivery_confirmed:  'Delivery Confirmed',
+  payment_info_sent:   'Payment Info Sent',
+  payment_confirmed:   'Payment Confirmed',
   active:              'Active',
   financing_requested: 'Financing Requested',
   financing_active:    'Financing Active',
   completed:           'Completed',
+  in_dispute:          'In Dispute',
   disputed:            'Disputed',
   cancelled:           'Cancelled',
 }
@@ -73,10 +81,18 @@ function statusBadgeClass(s: string): string {
     case 'negotiating':         return 'badge badge-draft'
     case 'agreed':              return 'badge badge-signing'
     case 'documents_pending':   return 'badge badge-pending'
+    case 'confirmed':
+    case 'in_preparation':
     case 'active':              return 'badge badge-active'
+    case 'shipped':
+    case 'goods_received':
+    case 'delivery_confirmed':  return 'badge badge-active'
+    case 'payment_info_sent':   return 'badge badge-offer'
+    case 'payment_confirmed':   return 'badge badge-funded'
     case 'financing_requested': return 'badge badge-offer'
     case 'financing_active':    return 'badge badge-funded'
     case 'completed':           return 'badge badge-completed'
+    case 'in_dispute':
     case 'disputed':            return 'badge badge-overdue'
     case 'cancelled':           return 'badge badge-rejected'
     default:                    return 'badge badge-draft'
@@ -159,9 +175,10 @@ export default function DealsPage() {
       .then(data => {
         const all: DealRow[] = data.deals ?? []
         setDeals(all)
+        const ACTIVE_STATUSES = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
         setCounts({
           all:         all.length,
-          active:      all.filter(d => d.status === 'active' || d.status === 'financing_requested' || d.status === 'financing_active').length,
+          active:      all.filter(d => ACTIVE_STATUSES.includes(d.status)).length,
           negotiating: all.filter(d => d.status === 'negotiating' || d.status === 'agreed').length,
           completed:   all.filter(d => d.status === 'completed').length,
         })
@@ -170,9 +187,10 @@ export default function DealsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const ACTIVE_STATUSES_FILTER = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
   const filtered = deals.filter(d => {
     if (activeTab === 'all') return true
-    if (activeTab === 'active') return ['active', 'financing_requested', 'financing_active'].includes(d.status)
+    if (activeTab === 'active') return ACTIVE_STATUSES_FILTER.includes(d.status)
     if (activeTab === 'negotiating') return ['negotiating', 'agreed'].includes(d.status)
     if (activeTab === 'completed') return d.status === 'completed'
     return true

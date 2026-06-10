@@ -8,20 +8,15 @@ sidebar directly. The sidebar owner applies them and moves them to "APPLIED".
 
 ## OPEN (awaiting application)
 
-### Wave 3
-- **Track C → sidebar owner (TC.1):** In `BANK_NAV`, rename the "Financing Requests"
-  nav item label to **"Strike Place"** (keep its `href` — the route stays
-  `/marketplace/financing`; no alias needed, deep links unaffected). Swap its icon to
-  the exchange / columns-building "marketplace" icon already used for the org
-  "Strike Place" item (the `NAV_ICONS` entry the org nav references for Strike Place —
-  reuse that same icon key for the bank item so both portals match). No other
-  `BANK_NAV` items change. The page header, breadcrumbs, and bank dashboard widget
-  were already renamed to "Strike Place" in TC.1/TC.2/TC.6 commits; only the sidebar
-  label + icon remain (owned by Track A).
+_No open items._
 
 ---
 
 ## APPLIED
+
+### Wave 3
+- **Track C → sidebar owner (TC.1):** Rename `BANK_NAV` "Financing Requests" → "Strike Place" + swap icon.
+  **APPLIED** (confirmed: `BANK_NAV` in sidebar.tsx already has `label: 'Strike Place'`, `icon: 'marketplace'`). ✅
 
 ### Wave 2
 - **Track B → sidebar owner (TB.1/TB.2):** removed the "Transactions" and "My Programs"

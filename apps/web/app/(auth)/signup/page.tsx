@@ -5,10 +5,8 @@ import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-type RoleChoice = 'anchor' | 'supplier' | 'both' | 'bank'
+type RoleChoice = 'anchor' | 'supplier'
 
-// Top countries (codes match the onboarding wizard list). Country is the 5th
-// signup field; the activation wizard later collects full incorporation detail.
 const COUNTRIES: { code: string; name: string }[] = [
   { code: 'US', name: 'United States' },
   { code: 'CA', name: 'Canada' },
@@ -32,54 +30,49 @@ const COUNTRIES: { code: string; name: string }[] = [
   { code: 'BR', name: 'Brazil' },
 ]
 
-// ─── icons ───────────────────────────────────────────────────────────────────
-function Icon({ name, size = 16 }: { name: string; size?: number }) {
-  const paths: Record<string, React.ReactNode> = {
-    check:    <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
-    doc:      <><rect x="4" y="2" width="8" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 6 L10 6 M6 9 L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></>,
-    building: <><rect x="3" y="5" width="10" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M6 14 L6 10 L10 10 L10 14" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 5 L8 2 L13 5" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
-    bank:     <><rect x="2" y="7" width="12" height="7" rx="1" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M2 7 L8 3 L14 7" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M5 10 L5 14 M8 10 L8 14 M11 10 L11 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
-    eye:      <><path d="M2 8 C4 4 12 4 14 8 C12 12 4 12 2 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" fill="none" /></>,
-    eyeOff:   <><path d="M2 8 C4 4 12 4 14 8" stroke="currentColor" strokeWidth="1.4" fill="none" /><path d="M3 13 L13 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
-  }
+function EyeIcon({ off }: { off?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-      {paths[name] ?? null}
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      {off ? (
+        <>
+          <path d="M2 8C4 4 12 4 14 8" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+          <path d="M3 13L13 3" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <path d="M2 8C4 4 12 4 14 8C12 12 4 12 2 8" stroke="currentColor" strokeWidth={1.4} fill="none" />
+          <circle cx={8} cy={8} r={2} stroke="currentColor" strokeWidth={1.4} />
+        </>
+      )}
     </svg>
   )
 }
 
-const inputStyle: React.CSSProperties = {
-  height: 38, width: '100%', padding: '0 12px',
-  border: '1px solid var(--border)',
-  background: 'var(--white)',
-  fontSize: 13.5, color: 'var(--ink)',
-  fontFamily: 'inherit', outline: 'none',
-  boxSizing: 'border-box',
-  transition: 'border-color 120ms ease, box-shadow 120ms ease',
-}
-
-const labelStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  fontSize: 11, fontWeight: 400,
-  letterSpacing: '0.1em', textTransform: 'uppercase',
-  color: 'var(--gray)', marginBottom: 6, display: 'block',
-}
-
-const ROLE_CHOICES: { id: RoleChoice; icon: string; title: string; desc: string }[] = [
-  { id: 'anchor',   icon: 'building', title: 'Anchor / Buyer',              desc: 'Offer early payment to your suppliers.' },
-  { id: 'supplier', icon: 'doc',      title: 'Supplier',                    desc: 'Get paid early on your invoices.' },
-  { id: 'both',     icon: 'building', title: 'Both',                        desc: 'Buy from suppliers and sell to buyers.' },
-  { id: 'bank',     icon: 'bank',     title: 'Bank or Lender',              desc: 'Underwrite and fund financing.' },
+const ROLE_CHOICES: { id: RoleChoice; title: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    id: 'anchor',
+    title: 'Buyer / Anchor',
+    desc: 'Offer early payment to your suppliers.',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="6" width="14" height="10" rx="1.5" />
+        <path d="M3 6l7-3.5 7 3.5" />
+        <path d="M8 16v-4h4v4" />
+      </svg>
+    ),
+  },
+  {
+    id: 'supplier',
+    title: 'Supplier',
+    desc: 'Get paid early on your invoices.',
+    icon: (
+      <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5" y="3" width="10" height="14" rx="1.5" />
+        <path d="M7.5 7h5M7.5 10h5M7.5 13h3" />
+      </svg>
+    ),
+  },
 ]
-
-// org.type is a binary enum (anchor | supplier). "Both" registers as an anchor
-// org (buyer-side) — it can still transact as a supplier on the network.
-function roleToOrgType(role: RoleChoice): 'anchor' | 'supplier' | 'bank' {
-  if (role === 'bank') return 'bank'
-  if (role === 'supplier') return 'supplier'
-  return 'anchor' // 'anchor' or 'both'
-}
 
 function SignupPageInner() {
   const router = useRouter()
@@ -89,47 +82,40 @@ function SignupPageInner() {
   const prefillCompany = searchParams.get('company') ?? ''
   const prefillCountry = searchParams.get('country') ?? ''
 
-  const [role, setRole] = useState<RoleChoice>('supplier')
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState(prefillEmail)
-  const [password, setPassword] = useState('')
+  const [role, setRole]               = useState<RoleChoice>('supplier')
+  const [fullName, setFullName]       = useState('')
+  const [email, setEmail]             = useState(prefillEmail)
+  const [password, setPassword]       = useState('')
   const [companyName, setCompanyName] = useState(prefillCompany)
-  const [country, setCountry] = useState(prefillCountry)
-  const [showPwd, setShowPwd] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [bankDone, setBankDone] = useState(false)
+  const [country, setCountry]         = useState(prefillCountry)
+  const [showPwd, setShowPwd]         = useState(false)
+  const [error, setError]             = useState('')
+  const [loading, setLoading]         = useState(false)
 
-  // Pre-fill invite fields on mount
   useEffect(() => {
-    if (prefillEmail) setEmail(prefillEmail)
+    if (prefillEmail)   setEmail(prefillEmail)
     if (prefillCompany) setCompanyName(prefillCompany)
     if (prefillCountry) {
-      const found = COUNTRIES.find(c => c.name.toLowerCase() === prefillCountry.toLowerCase() || c.code.toLowerCase() === prefillCountry.toLowerCase())
+      const found = COUNTRIES.find(c =>
+        c.name.toLowerCase() === prefillCountry.toLowerCase() ||
+        c.code.toLowerCase() === prefillCountry.toLowerCase()
+      )
       if (found) setCountry(found.code)
     }
   }, [prefillEmail, prefillCompany, prefillCountry])
-
-  const isBank = role === 'bank'
 
   const pwdRules = [
     { label: '8+ characters',    ok: password.length >= 8 },
     { label: 'Uppercase letter', ok: /[A-Z]/.test(password) },
     { label: 'Number',           ok: /[0-9]/.test(password) },
   ]
-  const pwdOk = pwdRules.every(r => r.ok)
-  // Bank leads don't create an org, so company/country are optional for them.
-  const orgFieldsOk = isBank || (companyName.trim() && country)
-  const canSubmit = Boolean(fullName.trim() && email.trim() && pwdOk && orgFieldsOk) && !loading
+  const pwdOk      = pwdRules.every(r => r.ok)
+  const canSubmit  = Boolean(fullName.trim() && email.trim() && pwdOk && companyName.trim() && country) && !loading
 
   async function handleSubmit() {
     setError('')
-    if (!fullName.trim() || !email.trim()) {
+    if (!fullName.trim() || !email.trim() || !companyName.trim() || !country) {
       setError('Please fill in all fields.')
-      return
-    }
-    if (!isBank && (!companyName.trim() || !country)) {
-      setError('Company name and country are required.')
       return
     }
     if (!pwdOk) {
@@ -139,34 +125,24 @@ function SignupPageInner() {
     setLoading(true)
     try {
       const res = await fetch('/api/auth/register', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: fullName.trim(),
-          email: email.trim(),
+          full_name:    fullName.trim(),
+          email:        email.trim(),
           password,
-          org_type: roleToOrgType(role),
+          org_type:     role,
           company_name: companyName.trim(),
           country,
         }),
       })
-      const data = await res.json() as { ok?: boolean; account_type?: string; error?: string }
+      const data = await res.json() as { ok?: boolean; error?: string }
       if (!res.ok || !data.ok) {
         setError(data.error ?? 'Failed to create account.')
         setLoading(false)
         return
       }
 
-      // Bank lead — Strike sets up the account manually, no portal access yet.
-      if (data.account_type === 'bank') {
-        setBankDone(true)
-        setLoading(false)
-        return
-      }
-
-      // Org user — sign in and drop them straight into the dashboard in GHOST
-      // mode (Tier 0). Passport activation (KYB) is now a separate post-signup
-      // flow reached from the in-app locked states — NOT a hard gate here.
       const supabase = createClient()
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -177,7 +153,7 @@ function SignupPageInner() {
         return
       }
 
-      // If signed up via a network invite token, auto-accept the invitation
+      // Invite token — auto-accept and go to dashboard
       if (inviteToken) {
         try {
           const inviteRes = await fetch(`/api/invite/${inviteToken}/accept`, { method: 'POST' })
@@ -189,10 +165,10 @@ function SignupPageInner() {
             router.push(`/dashboard${msg}`)
             return
           }
-        } catch { /* non-fatal — fall through to dashboard */ }
+        } catch { /* non-fatal */ }
       }
 
-      router.push('/dashboard')
+      router.push('/onboarding')
     } catch {
       setError('Something went wrong. Please try again.')
       setLoading(false)
@@ -203,234 +179,357 @@ function SignupPageInner() {
     <div style={{
       minHeight: '100vh',
       background: 'var(--offwhite)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '40px 24px',
+      display:    'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding:    '40px 24px',
       fontFamily: 'var(--font-body)',
+      position:   'relative',
+      overflow:   'hidden',
     }}>
+      <style>{`
+        @keyframes su-orb-1 {
+          0%,100% { transform: translate(0,0) scale(1); }
+          40%     { transform: translate(40px,-30px) scale(1.05); }
+          70%     { transform: translate(-20px,25px) scale(0.97); }
+        }
+        @keyframes su-orb-2 {
+          0%,100% { transform: translate(0,0) scale(1); }
+          35%     { transform: translate(-35px,30px) scale(1.04); }
+          65%     { transform: translate(25px,-20px) scale(0.98); }
+        }
+        @keyframes su-orb-3 {
+          0%,100% { transform: translate(0,0) scale(1); }
+          50%     { transform: translate(20px,35px) scale(1.03); }
+        }
+        @keyframes su-shimmer {
+          0%   { transform: translateX(-120%); }
+          50%  { transform: translateX(120%); }
+          100% { transform: translateX(120%); }
+        }
+        .su-role-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 14px 16px;
+          border-radius: 14px;
+          border: 1.5px solid var(--border);
+          background: var(--white);
+          cursor: pointer;
+          text-align: left;
+          width: 100%;
+          font-family: inherit;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+        }
+        .su-role-card:hover {
+          border-color: rgba(20,40,204,0.35);
+          box-shadow: 0 2px 12px rgba(20,40,204,0.08);
+        }
+        .su-role-card.selected {
+          border-color: var(--blue);
+          background: var(--blue-light);
+          box-shadow: 0 2px 16px rgba(20,40,204,0.12);
+        }
+        .su-input {
+          height: 44px;
+          width: 100%;
+          padding: 0 14px;
+          border: 1.5px solid var(--border);
+          border-radius: var(--radius-input);
+          background: var(--white);
+          font-size: 13.5px;
+          color: var(--ink);
+          font-family: inherit;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .su-input:focus {
+          border-color: var(--blue);
+          box-shadow: 0 0 0 3px rgba(20,40,204,0.1);
+        }
+        .su-input[readonly] { background: var(--offwhite); }
+        .su-select { appearance: auto; }
+        .su-label {
+          font-family: var(--font-mono);
+          font-size: 10.5px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--gray);
+          margin-bottom: 7px;
+          display: block;
+        }
+        .su-submit {
+          position: relative;
+          width: 100%;
+          height: 46px;
+          border: none;
+          border-radius: var(--radius-button);
+          background: linear-gradient(135deg, #1428CC 0%, #7C3AED 100%);
+          color: #fff;
+          font-size: 14px;
+          font-weight: 650;
+          font-family: var(--font-display);
+          letter-spacing: 0.01em;
+          cursor: pointer;
+          overflow: hidden;
+          box-shadow: 0 4px 18px rgba(20,40,204,0.28);
+          transition: box-shadow 0.2s, opacity 0.15s;
+        }
+        .su-submit::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.16) 50%, transparent 75%);
+          transform: translateX(-120%);
+          animation: su-shimmer 3.5s ease-in-out infinite;
+          pointer-events: none;
+        }
+        .su-submit:hover:not(:disabled) { box-shadow: 0 6px 26px rgba(124,58,237,0.4); }
+        .su-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+      `}</style>
+
+      {/* Background gradient orbs */}
       <div style={{
-        width: '100%', maxWidth: 440,
-        background: 'var(--white)',
-        border: '1px solid var(--border)',
-        padding: 40,
+        position: 'absolute', width: 700, height: 700, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(20,40,204,0.055) 0%, transparent 70%)',
+        top: -280, left: -220, animation: 'su-orb-1 22s ease-in-out infinite',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute', width: 600, height: 600, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%)',
+        bottom: -250, right: -180, animation: 'su-orb-2 28s ease-in-out infinite',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute', width: 400, height: 400, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(20,40,204,0.04) 0%, transparent 70%)',
+        top: '40%', right: '15%', animation: 'su-orb-3 18s ease-in-out infinite',
+        pointerEvents: 'none',
+      }} />
+
+      {/* Card */}
+      <div style={{
+        position:     'relative',
+        width:        '100%',
+        maxWidth:     460,
+        background:   'var(--white)',
+        borderRadius: 'var(--radius-card)',
+        padding:      '44px 40px',
+        boxShadow:    '0 8px 40px rgba(0,0,0,0.07), 0 1px 0 rgba(0,0,0,0.04)',
+        zIndex:       1,
       }}>
         {/* Logo */}
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 28 }}>
           <Image
             src="/logo.png"
             alt="Strike SCF"
-            width={180}
-            height={54}
+            width={160}
+            height={48}
             style={{ objectFit: 'contain', objectPosition: 'left center', maxWidth: '100%', height: 'auto' }}
             priority
           />
         </div>
 
-        {bankDone ? (
-          /* ── Bank confirmation ───────────────────────────────────────── */
+        {/* Heading */}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{
+            fontFamily:    'var(--font-display)',
+            fontSize:      24,
+            fontWeight:    700,
+            letterSpacing: '-0.03em',
+            color:         'var(--ink)',
+            margin:        '0 0 6px',
+          }}>
+            Create your account
+          </h1>
+          <p style={{ fontSize: 13.5, color: 'var(--gray)', margin: 0, lineHeight: 1.55 }}>
+            Join Strike SCF — activate your Passport later to start transacting.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Role */}
           <div>
-            <div style={{
-              width: 48, height: 48, marginBottom: 16,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'var(--color-green-bg)', color: 'var(--color-green)',
-            }}>
-              <Icon name="check" size={22} />
-            </div>
-            <h1 style={{
-              fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
-              letterSpacing: '-0.03em', color: 'var(--ink)', margin: '0 0 8px',
-            }}>
-              Thanks for registering
-            </h1>
-            <p style={{ fontSize: 14, color: 'var(--gray)', lineHeight: 1.6, margin: '0 0 24px' }}>
-              We&apos;ll be in touch to set up your bank account. A member of the Strike team
-              will reach out to {email.trim()} shortly.
-            </p>
-            <a
-              href="/login"
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
-            >
-              Back to sign in
-            </a>
-          </div>
-        ) : (
-          /* ── Registration form ───────────────────────────────────────── */
-          <>
-            <h1 style={{
-              fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
-              letterSpacing: '-0.03em', color: 'var(--ink)', margin: '0 0 4px',
-            }}>
-              Create your account
-            </h1>
-            <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 24px' }}>
-              Get instant access — activate your Passport later to start transacting.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Role */}
-              <div>
-                <label style={labelStyle}>I am a…</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {ROLE_CHOICES.map(t => {
-                    const selected = role === t.id
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setRole(t.id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          padding: '12px 14px', textAlign: 'left', width: '100%',
-                          border: `1px solid ${selected ? 'var(--blue)' : 'var(--border)'}`,
-                          background: selected ? 'var(--color-accent-light)' : 'var(--white)',
-                          cursor: 'pointer', fontFamily: 'inherit',
-                          transition: 'border-color 0.12s, background 0.12s',
-                        }}
-                      >
-                        <div style={{
-                          width: 34, height: 34, flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: selected ? 'var(--blue)' : 'var(--offwhite)',
-                          color: selected ? 'var(--white)' : 'var(--color-ink-2)',
-                        }}>
-                          <Icon name={t.icon} size={16} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink)' }}>{t.title}</div>
-                          <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 1 }}>{t.desc}</div>
-                        </div>
-                        {selected && <span style={{ color: 'var(--blue)' }}><Icon name="check" size={16} /></span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Full name */}
-              <div>
-                <label style={labelStyle}>Full name</label>
-                <input
-                  style={inputStyle}
-                  type="text"
-                  placeholder="Priya Shah"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  autoComplete="name"
-                  required
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label style={labelStyle}>Work email</label>
-                <input
-                  style={{ ...inputStyle, background: inviteToken && prefillEmail ? 'var(--offwhite)' : undefined }}
-                  type="email"
-                  placeholder="priya@company.com"
-                  value={email}
-                  onChange={e => { if (!inviteToken || !prefillEmail) setEmail(e.target.value) }}
-                  readOnly={!!(inviteToken && prefillEmail)}
-                  autoComplete="email"
-                  required
-                />
-                {inviteToken && prefillEmail && (
-                  <p style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-                    Email is pre-filled from your invitation and cannot be changed.
-                  </p>
-                )}
-              </div>
-
-              {/* Company + country (org accounts only — banks are provisioned by Strike) */}
-              {!isBank && (
-                <>
-                  <div>
-                    <label style={labelStyle}>Company name</label>
-                    <input
-                      style={inputStyle}
-                      type="text"
-                      placeholder="Acme Corp"
-                      value={companyName}
-                      onChange={e => setCompanyName(e.target.value)}
-                      autoComplete="organization"
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Country</label>
-                    <select
-                      style={{ ...inputStyle, appearance: 'auto' }}
-                      value={country}
-                      onChange={e => setCountry(e.target.value)}
-                    >
-                      <option value="">Select country…</option>
-                      {COUNTRIES.map(c => (
-                        <option key={c.code} value={c.code}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
-
-              {/* Password */}
-              <div>
-                <label style={labelStyle}>Password</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    style={{ ...inputStyle, paddingRight: 40 }}
-                    type={showPwd ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
+            <span className="su-label">I am a…</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {ROLE_CHOICES.map(t => {
+                const sel = role === t.id
+                return (
                   <button
+                    key={t.id}
                     type="button"
-                    onClick={() => setShowPwd(v => !v)}
-                    style={{
-                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: 'var(--color-ink-3)', padding: 4, display: 'flex', alignItems: 'center',
-                    }}
-                    aria-label={showPwd ? 'Hide password' : 'Show password'}
+                    onClick={() => setRole(t.id)}
+                    className={`su-role-card${sel ? ' selected' : ''}`}
                   >
-                    <Icon name={showPwd ? 'eyeOff' : 'eye'} size={14} />
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 8 }}>
-                  {pwdRules.map((r, i) => (
-                    <span key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      fontSize: 11.5, color: r.ok ? 'var(--color-green)' : 'var(--color-ink-4)',
+                    <div style={{
+                      width: 38, height: 38, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 10,
+                      background: sel
+                        ? 'linear-gradient(135deg, #1428CC 0%, #7C3AED 100%)'
+                        : 'var(--offwhite)',
+                      color:      sel ? '#fff' : 'var(--gray)',
+                      transition: 'background 0.15s, color 0.15s',
                     }}>
-                      <span>{r.ok ? '✓' : '○'}</span>{r.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
+                      {t.icon}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>{t.title}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, lineHeight: 1.4 }}>{t.desc}</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-              {error && (
-                <div style={{ fontSize: 12.5, color: 'var(--color-red)' }}>{error}</div>
-              )}
+          {/* Full name */}
+          <div>
+            <label className="su-label">Full name</label>
+            <input
+              className="su-input"
+              type="text"
+              placeholder="Priya Shah"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              autoComplete="name"
+            />
+          </div>
 
+          {/* Work email */}
+          <div>
+            <label className="su-label">Work email</label>
+            <input
+              className="su-input"
+              type="email"
+              placeholder="priya@company.com"
+              value={email}
+              onChange={e => { if (!inviteToken || !prefillEmail) setEmail(e.target.value) }}
+              readOnly={!!(inviteToken && prefillEmail)}
+              autoComplete="email"
+            />
+            {inviteToken && prefillEmail && (
+              <p style={{ fontSize: 11, color: 'var(--gray)', marginTop: 5 }}>
+                Email is pre-filled from your invitation and cannot be changed.
+              </p>
+            )}
+          </div>
+
+          {/* Company + country */}
+          <div>
+            <label className="su-label">Company name</label>
+            <input
+              className="su-input"
+              type="text"
+              placeholder="Acme Corp"
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              autoComplete="organization"
+            />
+          </div>
+
+          <div>
+            <label className="su-label">Country</label>
+            <select
+              className="su-input su-select"
+              value={country}
+              onChange={e => setCountry(e.target.value)}
+            >
+              <option value="">Select country…</option>
+              {COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Password */}
+          <div>
+            <label className="su-label">Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="su-input"
+                type={showPwd ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete="new-password"
+                style={{ paddingRight: 44 }}
+              />
               <button
                 type="button"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', opacity: canSubmit ? 1 : 0.6, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+                onClick={() => setShowPwd(v => !v)}
+                style={{
+                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--gray)', padding: 4,
+                  display: 'flex', alignItems: 'center',
+                }}
+                aria-label={showPwd ? 'Hide password' : 'Show password'}
               >
-                {loading ? 'Creating account…' : 'Create account'}
+                <EyeIcon off={showPwd} />
               </button>
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 9 }}>
+              {pwdRules.map((r, i) => (
+                <span key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  fontSize: 11.5,
+                  color: r.ok ? 'var(--color-green)' : 'var(--gray-soft)',
+                  transition: 'color 0.15s',
+                }}>
+                  <span style={{ fontSize: 12 }}>{r.ok ? '✓' : '○'}</span>
+                  {r.label}
+                </span>
+              ))}
+            </div>
+          </div>
 
-            <p style={{ marginTop: 20, fontSize: 12.5, color: 'var(--color-ink-4)', textAlign: 'center' }}>
-              Already have an account?{' '}
-              <a href="/login" style={{ color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}>
-                Sign in
-              </a>
-            </p>
-          </>
-        )}
+          {error && (
+            <div style={{
+              fontSize: 12.5, color: 'var(--color-red)',
+              background: 'var(--color-red-bg, #FEE2E2)', borderRadius: 8,
+              padding: '10px 12px', lineHeight: 1.5,
+            }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="su-submit"
+          >
+            {loading ? 'Creating account…' : 'Create account →'}
+          </button>
+        </div>
+
+        <p style={{ marginTop: 22, fontSize: 12.5, color: 'var(--gray)', textAlign: 'center' }}>
+          Already have an account?{' '}
+          <a href="/login" style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
+            Sign in
+          </a>
+        </p>
+
+        {/* Divider + bank note */}
+        <div style={{
+          marginTop: 20,
+          paddingTop: 16,
+          borderTop: '1px solid var(--border)',
+          fontSize: 11.5,
+          color: 'var(--gray-soft)',
+          textAlign: 'center',
+          lineHeight: 1.5,
+        }}>
+          Are you a bank or lender?{' '}
+          <a href="mailto:banks@strikescf.com" style={{ color: 'var(--blue)', textDecoration: 'none' }}>
+            Contact us
+          </a>
+          {' '}to get set up.
+        </div>
       </div>
     </div>
   )

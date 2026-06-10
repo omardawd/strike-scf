@@ -10,8 +10,8 @@ const adminClient = createAdmin(
 )
 
 // G5.1 — cancellation rules
-const CANCELLABLE_STATUSES = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active']
-const REASON_REQUIRED_STATUSES = ['in_preparation']
+const CANCELLABLE_STATUSES = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active', 'goods_received', 'payment_info_sent']
+const REASON_REQUIRED_STATUSES = ['in_preparation', 'goods_received', 'payment_info_sent']
 const BLOCKED_STATUSES = ['shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue', 'payment_confirmed', 'completed', 'cancelled', 'in_dispute', 'disputed']
 
 export async function POST(

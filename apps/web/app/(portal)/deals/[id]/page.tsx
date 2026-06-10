@@ -86,9 +86,11 @@ function statusBadgeClass(status: string): string {
     case 'active':              return 'badge badge-active'
     case 'in_preparation':      return 'badge badge-offer'
     case 'shipped':             return 'badge badge-active'
+    case 'goods_received':      return 'badge badge-active'
     case 'delivery_confirmed':
     case 'payment_due':         return 'badge badge-active'
     case 'payment_overdue':     return 'badge badge-overdue'
+    case 'payment_info_sent':   return 'badge badge-offer'
     case 'payment_confirmed':   return 'badge badge-funded'
     case 'financing_requested': return 'badge badge-offer'
     case 'financing_active':    return 'badge badge-funded'
@@ -511,11 +513,12 @@ export default function DealDetailPage() {
   const isGenerating = deal.status === 'agreed' && !deal.documents_generated_at && docsLoading
   const hasAiDocs   = aiDocs.length > 0
   const hasUploaded = uploadedDocs.length > 0 || documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind)).length > 0
-  const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active']
+  const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active', 'goods_received', 'payment_info_sent']
   const canCancel   = CANCELLABLE.includes(deal.status) && !deal.financing_payment_active
-  const canFinance  = ['delivery_confirmed', 'shipped', 'confirmed', 'in_preparation'].includes(deal.status) && !deal.financing_requested && !deal.financing_payment_active
+  const canFinance  = ['delivery_confirmed', 'shipped', 'goods_received', 'confirmed', 'in_preparation'].includes(deal.status) && !deal.financing_requested && !deal.financing_payment_active
   const canAmend    = ['confirmed', 'in_preparation', 'active'].includes(deal.status) && !deal.financing_payment_active
   const isActive    = !['completed', 'cancelled', 'in_dispute', 'disputed'].includes(deal.status)
+  const hasPaymentInfo = !!(deal as any).payment_info_sent_at || !!deal.payment_bank_name
 
   // Compute financing context (G4.3)
   const txn = linked_transaction
@@ -701,6 +704,32 @@ export default function DealDetailPage() {
                   {deal.shipment_carrier && <div className="kv-row"><span className="k">Carrier</span><span className="v plain">{deal.shipment_carrier}</span></div>}
                   {deal.shipment_estimated_delivery && <div className="kv-row"><span className="k">Est. Delivery</span><span className="v">{fmtDate(deal.shipment_estimated_delivery)}</span></div>}
                   {deal.shipped_at && <div className="kv-row"><span className="k">Shipped</span><span className="v">{fmtDate(deal.shipped_at)}</span></div>}
+                </div>
+              </div>
+            )}
+
+            {/* Goods receipt info */}
+            {((deal as any).goods_received_at || (deal as any).goods_confirmed_at) && (
+              <div className="card">
+                <div className="card-head">Goods Receipt</div>
+                <div className="kv-list">
+                  {(deal as any).goods_received_at && <div className="kv-row"><span className="k">Received</span><span className="v">{fmtDate((deal as any).goods_received_at)}</span></div>}
+                  {(deal as any).goods_confirmed_at && <div className="kv-row"><span className="k">Accepted</span><span className="v">{fmtDate((deal as any).goods_confirmed_at)}</span></div>}
+                </div>
+              </div>
+            )}
+
+            {/* Payment details (shown after payment info submitted, to buyer and bank) */}
+            {hasPaymentInfo && !financingContext.isActive && (
+              <div className="card">
+                <div className="card-head">Payment Details</div>
+                <div className="kv-list">
+                  {deal.payment_bank_name && <div className="kv-row"><span className="k">Bank</span><span className="v plain">{deal.payment_bank_name}</span></div>}
+                  {deal.payment_account_name && <div className="kv-row"><span className="k">Account Name</span><span className="v plain">{deal.payment_account_name}</span></div>}
+                  {deal.payment_account_number && <div className="kv-row"><span className="k">Account</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>****{deal.payment_account_number.slice(-4)}</span></div>}
+                  {(deal.payment_swift_iban || deal.payment_routing_number) && <div className="kv-row"><span className="k">SWIFT / IBAN</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_swift_iban ?? deal.payment_routing_number}</span></div>}
+                  {deal.payment_reference && <div className="kv-row"><span className="k">Reference</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_reference}</span></div>}
+                  {(deal as any).payment_info_sent_at && <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate((deal as any).payment_info_sent_at)}</span></div>}
                 </div>
               </div>
             )}

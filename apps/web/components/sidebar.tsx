@@ -37,7 +37,6 @@ interface NavSection {
 // TA.4: "Settings" and "AI Agent" removed (pages stay; reachable via user button).
 // TB.1/TB.2: "My Programs" + "Transactions" removed and the now-empty "Programs"
 //            group dropped (pages stay; surfaced via /deals — TB.3).
-// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const ANCHOR_NAV: NavSection[] = [
   {
     items: [
@@ -70,7 +69,6 @@ const SUPPLIER_NAV: NavSection[] = [
 
 // TA.5: Transactions, KYB Review, Settings removed from bank nav (pages stay).
 // TA.6: Supply Graph kept but routed to /supply-graph (full-page "Coming Soon").
-// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const BANK_NAV: NavSection[] = [
   {
     items: [
@@ -84,7 +82,6 @@ const BANK_NAV: NavSection[] = [
   },
 ]
 
-// TF.3: "Strike AI" removed (page stays; reachable via the floating trigger — TF.2).
 const ADMIN_NAV: NavSection[] = [
   {
     items: [
@@ -356,8 +353,78 @@ export function Sidebar() {
     .flatMap(s => s.items)
     .reduce((max, item) => Math.max(max, matchLen(pathname, item.href)), -1)
 
+  const aiActive = pathname.startsWith('/ai')
+
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      <style>{`
+        .strike-ai-nav-pill {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          margin: 10px 0 6px;
+          background: linear-gradient(135deg, #1428CC 0%, #7C3AED 100%);
+          border-radius: var(--radius-nav);
+          text-decoration: none;
+          color: #fff;
+          position: relative;
+          overflow: hidden;
+          box-shadow: 0 2px 14px rgba(20,40,204,0.22);
+          transition: box-shadow 0.2s ease;
+          flex-shrink: 0;
+        }
+        .strike-ai-nav-pill.collapsed-pill {
+          justify-content: center;
+          padding: 10px;
+          margin: 10px auto 6px;
+          width: 40px;
+          height: 40px;
+        }
+        .strike-ai-nav-pill::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.14) 50%, transparent 75%);
+          transform: translateX(-120%);
+          animation: ai-pill-shimmer 3.5s ease-in-out infinite;
+          pointer-events: none;
+        }
+        @keyframes ai-pill-shimmer {
+          0%   { transform: translateX(-120%); }
+          50%  { transform: translateX(120%); }
+          100% { transform: translateX(120%); }
+        }
+        .strike-ai-nav-pill:hover {
+          box-shadow: 0 4px 24px rgba(124,58,237,0.45) !important;
+        }
+        .strike-ai-nav-pill.ai-pill-active {
+          box-shadow: 0 4px 24px rgba(124,58,237,0.5);
+          outline: 1.5px solid rgba(255,255,255,0.25);
+          outline-offset: 1px;
+        }
+        .strike-ai-pill-label {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+        }
+        .strike-ai-pill-title {
+          font-size: 13px;
+          font-weight: 700;
+          font-family: var(--font-display);
+          line-height: 1.15;
+          letter-spacing: 0.01em;
+        }
+        .strike-ai-pill-sub {
+          font-size: 10px;
+          opacity: 0.72;
+          line-height: 1.2;
+          letter-spacing: 0.03em;
+          font-weight: 500;
+        }
+      `}</style>
       {/* Logo + collapse toggle (TA.1 removed the portal label; TA.2 added the toggle) */}
       <div className="sidebar-head">
         {!collapsed && (
@@ -389,6 +456,22 @@ export function Sidebar() {
 
       {/* Unified navigation */}
       <nav className="nav-section" style={{ marginTop: 4 }}>
+        {/* Strike AI — special featured button at the top */}
+        <Link
+          href="/ai"
+          className={`strike-ai-nav-pill${collapsed ? ' collapsed-pill' : ''}${aiActive ? ' ai-pill-active' : ''}`}
+          title={collapsed ? 'Strike AI' : undefined}
+          aria-label="Strike AI"
+        >
+          <NavIcon name="ai" size={19} />
+          {!collapsed && (
+            <div className="strike-ai-pill-label">
+              <span className="strike-ai-pill-title">Strike AI</span>
+              <span className="strike-ai-pill-sub">Your AI co-pilot</span>
+            </div>
+          )}
+        </Link>
+
         {sections.map((section, si) => (
           <React.Fragment key={section.label ?? `top-${si}`}>
             {section.label && !collapsed && <div style={sectionLabelStyle}>{section.label}</div>}

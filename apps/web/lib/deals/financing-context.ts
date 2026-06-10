@@ -107,7 +107,7 @@ function mapStructure(txnType: string): DealFinancingStructure {
   }
 }
 
-const POST_SHIPMENT = ['shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue', 'payment_confirmed', 'completed']
+const POST_SHIPMENT = ['shipped', 'goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue', 'payment_info_sent', 'payment_confirmed', 'completed']
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
@@ -139,7 +139,7 @@ export function getFinancingContext(
   if (!isActive || !transaction || !structure) {
     const canRequest = [
       'agreed', 'documents_pending', 'confirmed', 'in_preparation',
-      'shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue',
+      'shipped', 'goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue',
     ].includes(deal.status)
 
     const supplierPayInstr: PaymentInstructions | null = deal.payment_bank_name
@@ -187,13 +187,21 @@ export function getFinancingContext(
   if (structure === 'reverse_factoring') {
     const amount = invoiceAmount
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
-    const canRequest = ['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
+    const canRequest = ['goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
+    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
+      bankName: deal.payment_bank_name,
+      accountName: deal.payment_account_name ?? '',
+      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
+      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
+      currency,
+      reference: deal.payment_reference ?? '',
+    } : null
     return {
       structure,
       isActive: true,
       paymentRecipient: 'bank',
       paymentRecipientName: bankName,
-      paymentInstructions: null,
+      paymentInstructions: bankPayInstr,
       paymentAmount: amount,
       paymentCurrency: currency,
       paymentDueDate: dueDate,
@@ -221,13 +229,21 @@ export function getFinancingContext(
     const amount = invoiceAmount
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
     const noaAcknowledged = !!deal.noa_acknowledged_at
-    const canRequest = ['shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
+    const canRequest = ['shipped', 'goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
+    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
+      bankName: deal.payment_bank_name,
+      accountName: deal.payment_account_name ?? '',
+      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
+      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
+      currency,
+      reference: deal.payment_reference ?? '',
+    } : null
     return {
       structure,
       isActive: true,
       paymentRecipient: 'bank',
       paymentRecipientName: bankName,
-      paymentInstructions: null,
+      paymentInstructions: bankPayInstr,
       paymentAmount: amount,
       paymentCurrency: currency,
       paymentDueDate: dueDate,
@@ -257,12 +273,20 @@ export function getFinancingContext(
     const amount = transaction.financing_amount_approved ?? invoiceAmount
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
     const canRequest = ['confirmed', 'in_preparation'].includes(deal.status)
+    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
+      bankName: deal.payment_bank_name,
+      accountName: deal.payment_account_name ?? '',
+      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
+      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
+      currency,
+      reference: deal.payment_reference ?? '',
+    } : null
     return {
       structure,
       isActive: true,
       paymentRecipient: 'bank',
       paymentRecipientName: bankName,
-      paymentInstructions: null,
+      paymentInstructions: bankPayInstr,
       paymentAmount: amount,
       paymentCurrency: currency,
       paymentDueDate: dueDate,

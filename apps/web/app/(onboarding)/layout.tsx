@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { WizardContext, WIZARD_STEPS, TOTAL_STEPS } from './wizard-context'
 
 function CheckMark() {
@@ -44,33 +45,15 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
             overflowY: 'auto',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 40 }}>
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                background: 'var(--blue)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 15,
-                fontFamily: 'var(--font-display)',
-              }}
-            >
-              S
-            </div>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                color: 'var(--color-ink-1)',
-              }}
-            >
-              Strike SCF
-            </span>
+          <div style={{ marginBottom: 40 }}>
+            <Image
+              src="/logo.png"
+              alt="Strike SCF"
+              width={140}
+              height={44}
+              style={{ objectFit: 'contain', objectPosition: 'left center', maxWidth: '100%', height: 'auto' }}
+              priority
+            />
           </div>
 
           <div className="stepper" style={{ padding: 0 }}>

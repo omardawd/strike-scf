@@ -430,9 +430,15 @@ export async function POST(
     supplierOrg
   )
 
-  // Get and validate the transition
+  // Get and validate the transition (with party context for allowedParty rules)
   const userRole = userData.role as UserRole
-  const rule = getPermittedTransition(deal.status, action, userRole, financingContext)
+  const dealContext = {
+    buyerOrgId: deal.buyer_org_id,
+    supplierOrgId: deal.supplier_org_id,
+    actorOrgId: userData.org_id ?? null,
+    isBankUser,
+  }
+  const rule = getPermittedTransition(deal.status, action, userRole, financingContext, dealContext)
   if (!rule) {
     return NextResponse.json(
       { error: `Action '${action}' is not permitted at status '${deal.status}' for role '${userRole}'` },
@@ -473,9 +479,19 @@ export async function POST(
     updates.payment_instructions_set_at = now
     updates.payment_instructions_set_by = userData.id
   }
-  if (rule.nextStatus === 'confirmed') updates.confirmed_at = now
+  if (rule.nextStatus === 'confirmed') {
+    updates.confirmed_at = now
+    if (action === 'confirm_po') updates.po_confirmed_at = now
+    if (action === 'confirm_invoice') updates.invoice_confirmed_at = now
+  }
   if (rule.nextStatus === 'in_preparation') updates.in_preparation_at = now
   if (rule.nextStatus === 'shipped') updates.shipped_at = now
+  if (rule.nextStatus === 'goods_received') updates.goods_received_at = now
+  if (rule.nextStatus === 'delivery_confirmed' && action === 'confirm_goods') updates.goods_confirmed_at = now
+  if (rule.nextStatus === 'payment_info_sent') {
+    updates.payment_info_sent_at = now
+    updates.payment_info_sent_by = userData.id
+  }
   if (rule.nextStatus === 'payment_confirmed') {
     updates.payment_confirmed_at = now
     updates.payment_confirmed_by = userData.id
