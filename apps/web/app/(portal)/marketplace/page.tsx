@@ -85,13 +85,15 @@ function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']
   )
 }
 
-function ListingCard({ item, isOwn = false }: { item: ListingWithPassport; isOwn?: boolean }) {
+function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { line_items_total?: number | null }; isOwn?: boolean }) {
   const router = useRouter()
   const { listing, poster_org } = item
 
-  const price = listing.target_price != null
-    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(listing.target_price)
+  const rawPrice = (item as any).line_items_total ?? listing.target_price
+  const price = rawPrice != null
+    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(rawPrice)
     : null
+  const isTotal = (item as any).line_items_total != null
   const deadline = formatDeadline(listing.delivery_deadline)
 
   return (
@@ -125,9 +127,10 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport; isOwn
           <div className="listing-price-row">
             <span className="listing-price">{price}</span>
             <span className="listing-price-currency">{listing.currency}</span>
-            {listing.unit && (
-              <span className="listing-price-unit">/ {listing.unit}</span>
-            )}
+            {isTotal
+              ? <span className="listing-price-unit">total</span>
+              : listing.unit && <span className="listing-price-unit">/ {listing.unit}</span>
+            }
           </div>
         )}
 

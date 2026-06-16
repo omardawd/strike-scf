@@ -137,9 +137,24 @@ export async function GET(
   // ── Supplier actions ──────────────────────────────────────────────────────
 
   if (userRole === 'supplier') {
-    // NEW FLOW: Scenario A — po_request listing (buyer posted a purchase request)
-    // The supplier fulfilling it confirms the PO.
-    if (status === 'agreed' && listingType === 'po_request') {
+    // V2 FLOW: Supplier signs contract (contract_pending → confirmed)
+    if (status === 'contract_pending') {
+      actions.push({
+        action: 'sign_contract',
+        label: 'Sign Contract',
+        description: 'Review the contract submitted by the buyer and sign with your full legal name to confirm the deal.',
+        available: true,
+        requiredFields: [
+          { name: 'contract_supplier_signature', type: 'text', label: 'Full Legal Name (typed signature)', required: true },
+        ],
+        confirmationMessage: 'Sign the contract and advance the deal to confirmed?',
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY FLOW: Scenario A — po_request listing (buyer posted a purchase request)
+    // Only for deals that haven't gone through the v2 contract flow.
+    if (status === 'agreed' && listingType === 'po_request' && !deal.contract_document_id && !deal.listing_id) {
       actions.push({
         action: 'confirm_po',
         label: 'Confirm Purchase Order',
@@ -172,8 +187,8 @@ export async function GET(
       })
     }
 
-    // LEGACY: Start preparation (confirmed, old path)
-    if (status === 'confirmed' && !deal.po_confirmed_at && !deal.invoice_confirmed_at) {
+    // LEGACY: Start preparation (confirmed, old path — not used for v2 marketplace deals)
+    if (status === 'confirmed' && !deal.po_confirmed_at && !deal.invoice_confirmed_at && !deal.listing_id) {
       actions.push({
         action: 'begin_preparation',
         label: 'Start Preparation',
@@ -185,8 +200,8 @@ export async function GET(
       })
     }
 
-    // NEW FLOW: Mark shipped directly from confirmed (both Scenario A and B)
-    if (status === 'confirmed' && (deal.po_confirmed_at || deal.invoice_confirmed_at)) {
+    // NEW FLOW: Mark shipped directly from confirmed (v2 marketplace deals, or legacy Scenario A/B)
+    if (status === 'confirmed' && (deal.po_confirmed_at || deal.invoice_confirmed_at || deal.listing_id)) {
       actions.push({
         action: 'mark_shipped',
         label: 'Mark as Shipped',
@@ -229,7 +244,7 @@ export async function GET(
 
     // NEW FLOW: Submit payment information (after buyer confirms delivery)
     // Bank does this when financing is active; supplier does it otherwise
-    if (status === 'delivery_confirmed' && !fc.isActive) {
+    if (status === 'delivery_confirmed' && !fc.isActive && !deal.receiving_bank_account_id) {
       actions.push({
         action: 'submit_payment_info',
         label: 'Submit Payment Details',
@@ -268,9 +283,25 @@ export async function GET(
   // ── Buyer actions ─────────────────────────────────────────────────────────
 
   if (userRole === 'buyer') {
-    // NEW FLOW: Scenario B — product_service listing (supplier posted an offer)
-    // The buyer purchasing it confirms the invoice.
-    if (status === 'agreed' && listingType === 'product_service') {
+    // V2 FLOW: Buyer submits contract (agreed → contract_pending)
+    // Primary path for all new marketplace deals.
+    if (status === 'agreed' && deal.listing_id) {
+      actions.push({
+        action: 'submit_contract',
+        label: 'Submit Contract',
+        description: 'Generate an AI-drafted contract or upload your own. The supplier will review and sign.',
+        available: true,
+        requiredFields: [
+          { name: 'generate_contract', type: 'checkbox', label: 'Auto-generate contract with AI', required: false },
+          { name: 'contract_document_id', type: 'document', label: 'Contract Document (if not auto-generating)', required: false },
+        ],
+        confirmationMessage: 'Submit the contract for supplier signature?',
+        isDestructive: false,
+      })
+    }
+
+    // LEGACY: Scenario B — product_service listing, old flow without contract step
+    if (status === 'agreed' && listingType === 'product_service' && !deal.listing_id) {
       actions.push({
         action: 'confirm_invoice',
         label: 'Confirm Invoice',
@@ -436,9 +467,30 @@ export async function GET(
     }
   }
 
+  // ── Bank contract signing (party action when bank has submitted a financing contract) ───
+
+  if (isParty && deal.bank_contract_document_id && !deal.bank_contract_signature) {
+    // Determine which party signs: buyer for RF/IF/PO, supplier for DD
+    const signerRole: 'buyer' | 'supplier' = fc.structure === 'dynamic_discounting' ? 'supplier' : 'buyer'
+    const isCorrectSigner = signerRole === userRole
+    if (isCorrectSigner) {
+      actions.push({
+        action: 'sign_bank_contract',
+        label: 'Sign Financing Contract',
+        description: 'Review and sign the financing contract submitted by the bank.',
+        available: true,
+        requiredFields: [
+          { name: 'bank_contract_signature', type: 'text', label: 'Full Legal Name (typed signature)', required: true },
+        ],
+        confirmationMessage: 'Sign the financing contract?',
+        isDestructive: false,
+      })
+    }
+  }
+
   // ── Cancellation (both parties, status-dependent) ─────────────────────────
 
-  const cancellableStatuses = ['agreed', 'documents_pending', 'confirmed', 'in_preparation', 'goods_received', 'payment_info_sent']
+  const cancellableStatuses = ['agreed', 'contract_pending', 'documents_pending', 'confirmed', 'in_preparation', 'goods_received', 'payment_info_sent']
   if (cancellableStatuses.includes(status) && isParty) {
     const cancelAction: AvailableAction = {
       action: 'cancel',
@@ -458,6 +510,21 @@ export async function GET(
   // ── Bank actions ──────────────────────────────────────────────────────────
 
   if (isBankUser) {
+    // Bank submits financing contract (after party accepts bank's offer, deal is confirmed/active)
+    if (['confirmed', 'shipped', 'goods_received', 'delivery_confirmed'].includes(status) && fc.isActive && !deal.bank_contract_document_id) {
+      actions.push({
+        action: 'submit_bank_contract',
+        label: 'Submit Financing Contract',
+        description: 'Submit the financing contract for the borrowing party to review and sign.',
+        available: true,
+        requiredFields: [
+          { name: 'bank_contract_document_id', type: 'document', label: 'Financing Contract Document', required: true },
+        ],
+        confirmationMessage: 'Submit the financing contract for signature?',
+        isDestructive: false,
+      })
+    }
+
     // Bank submits payment info when financing is active and delivery is confirmed
     if (status === 'delivery_confirmed' && fc.isActive) {
       actions.push({

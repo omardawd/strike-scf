@@ -683,6 +683,8 @@ export interface SubmitOfferPayload {
   proposed_incoterms?: string
   proposed_payment_terms?: string
   notes?: string
+  bank_account_id?: string
+  offer_items?: unknown[]
 }
 
 export interface CounterOfferPayload {

@@ -9,6 +9,7 @@ export const WIZARD_STEPS = [
   'Ownership & Compliance',
   'Financial & Trade',
   'Systems & Intent',
+  'Bank Accounts',
   'Documents',
   'Review & Submit',
 ] as const

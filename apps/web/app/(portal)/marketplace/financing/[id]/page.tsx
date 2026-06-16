@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { usePortal } from '@/lib/portal-context'
+import { FinancingManagementCard, type ManagementTransaction, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import type { FinancingRequest, FinancingRequestOffer, FinancingType } from '@strike-scf/types'
 
 interface OrgPassport {
@@ -22,6 +23,8 @@ interface DealContext {
   agreed_price: number
   agreed_currency: string
   goods_description: string | null
+  listing_title: string | null
+  listing_description: string | null
   agreed_delivery_date: string | null
   agreed_incoterms: string | null
   total_value: number | null
@@ -41,6 +44,9 @@ interface DetailData {
   offers:           OfferWithBank[]
   my_offer?:        FinancingRequestOffer | null
   all_offers_count: number
+  transaction:           ManagementTransaction | null
+  requester_bank_account: RequesterBankAccount | null
+  is_requester:           boolean
 }
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
@@ -637,7 +643,7 @@ export default function FinancingDetailPage() {
     )
   }
 
-  const { request, deal, buyer_passport, supplier_passport, offers, all_offers_count } = data
+  const { request, deal, buyer_passport, supplier_passport, offers, all_offers_count, transaction, requester_bank_account, is_requester } = data
   const myOffer   = isBank ? (data.my_offer ?? null) : null
   const days      = daysUntil(request.expires_at)
   const currency  = request.currency ?? 'USD'
@@ -677,9 +683,15 @@ export default function FinancingDetailPage() {
               <div className="card">
                 <div className="card-head">Deal Context</div>
                 <div className="kv-list">
+                  {deal.listing_title && (
+                    <div className="kv-row">
+                      <span className="k">Listing</span>
+                      <span className="v plain">{deal.listing_title}</span>
+                    </div>
+                  )}
                   <div className="kv-row">
                     <span className="k">Goods</span>
-                    <span className="v plain">{deal.goods_description ?? '—'}</span>
+                    <span className="v plain">{deal.goods_description ?? deal.listing_description ?? '—'}</span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Deal Value</span>
@@ -699,6 +711,19 @@ export default function FinancingDetailPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Financing management: contract → disbursement → confirm receipt */}
+            {deal && ['accepted', 'funded'].includes(request.status) && (
+              <FinancingManagementCard
+                requestId={id}
+                transaction={transaction}
+                requesterBankAccount={requester_bank_account}
+                isBank={isBank}
+                isRequester={is_requester}
+                isRequesterBuyer={deal.buyer_org_id === request.requesting_org_id}
+                onReload={load}
+              />
             )}
 
             {/* AI context block */}

@@ -126,6 +126,32 @@ const INTENT_OPTIONS = [
 ]
 
 // ─────────────────────────────────────────────────────────────
+// Bank account model (Step 6)
+// ─────────────────────────────────────────────────────────────
+interface BankAccount {
+  id: string            // temp client id — real UUID assigned by server
+  nickname: string
+  bank_name: string
+  account_holder_name: string
+  account_number: string
+  routing_number: string
+  swift_iban: string
+  account_type: 'checking' | 'savings'
+  is_primary: boolean
+}
+
+const EMPTY_BANK_ACCOUNT: Omit<BankAccount, 'id'> = {
+  nickname: '',
+  bank_name: '',
+  account_holder_name: '',
+  account_number: '',
+  routing_number: '',
+  swift_iban: '',
+  account_type: 'checking',
+  is_primary: false,
+}
+
+// ─────────────────────────────────────────────────────────────
 // Form model
 // ─────────────────────────────────────────────────────────────
 interface Form {
@@ -496,10 +522,10 @@ function DropZone({
               {uploading
                 ? 'Uploading…'
                 : done
-                  ? `${state.name} · ${formatBytes(state.size)}`
+                  ? `${state.name} - ${formatBytes(state.size)}`
                   : state.status === 'error'
                     ? 'Upload failed — click to retry'
-                    : 'Drag & drop or click to upload · PDF, max 20MB'}
+                    : 'Drag & drop or click to upload - PDF, max 20MB'}
             </div>
           </div>
         </div>
@@ -634,8 +660,102 @@ export default function OnboardingWizard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEin, setShowEin] = useState(false)
-  // Final attestation (Step 7) — gates submission per TD.3.
+  // Final attestation (Step 8) — gates submission per TD.3.
   const [attested, setAttested] = useState(false)
+
+  // ── Step 6 — Bank Accounts ───────────────────────────────────
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [addingAccount, setAddingAccount] = useState(false)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [accountDraft, setAccountDraft] = useState<Omit<BankAccount, 'id'>>(EMPTY_BANK_ACCOUNT)
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [showAccountNumber, setShowAccountNumber] = useState(false)
+
+  function startAddAccount() {
+    setAccountDraft(EMPTY_BANK_ACCOUNT)
+    setShowAccountNumber(false)
+    setEditingAccountId(null)
+    setAddingAccount(true)
+  }
+
+  function startEditAccount(acc: BankAccount) {
+    setAccountDraft({
+      nickname: acc.nickname,
+      bank_name: acc.bank_name,
+      account_holder_name: acc.account_holder_name,
+      account_number: acc.account_number,
+      routing_number: acc.routing_number,
+      swift_iban: acc.swift_iban,
+      account_type: acc.account_type,
+      is_primary: acc.is_primary,
+    })
+    setShowAccountNumber(false)
+    setEditingAccountId(acc.id)
+    setAddingAccount(true)
+  }
+
+  function cancelAccountForm() {
+    setAddingAccount(false)
+    setEditingAccountId(null)
+    setAccountDraft(EMPTY_BANK_ACCOUNT)
+  }
+
+  async function saveAccount() {
+    if (!accountDraft.bank_name.trim() || !accountDraft.account_number.trim() || !accountDraft.routing_number.trim()) {
+      setError('Bank name, account number, and routing number are required.')
+      return
+    }
+    setAccountSaving(true)
+    setError(null)
+    try {
+      const method = editingAccountId ? 'PATCH' : 'POST'
+      const url = editingAccountId
+        ? `/api/settings/bank-accounts/${editingAccountId}`
+        : '/api/settings/bank-accounts'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accountDraft),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save account')
+      if (editingAccountId) {
+        setBankAccounts(prev => prev.map(a => a.id === editingAccountId ? { ...data.account } : a))
+      } else {
+        setBankAccounts(prev => {
+          const updated = accountDraft.is_primary ? prev.map(a => ({ ...a, is_primary: false })) : prev
+          return [...updated, { ...data.account }]
+        })
+      }
+      cancelAccountForm()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save account')
+    } finally {
+      setAccountSaving(false)
+    }
+  }
+
+  async function deleteAccount(id: string) {
+    setAccountSaving(true)
+    try {
+      await fetch(`/api/settings/bank-accounts/${id}`, { method: 'DELETE' })
+      setBankAccounts(prev => prev.filter(a => a.id !== id))
+    } finally {
+      setAccountSaving(false)
+    }
+  }
+
+  function setPrimary(id: string) {
+    setBankAccounts(prev => prev.map(a => ({ ...a, is_primary: a.id === id })))
+    const acc = bankAccounts.find(a => a.id === id)
+    if (acc) {
+      fetch(`/api/settings/bank-accounts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...acc, is_primary: true }),
+      })
+    }
+  }
 
   // ── Supplemental KYB profile (Steps 3 & 5) ──────────────────────────────────
   // These TD.3 fields have no dedicated column on `organizations` (TD = existing
@@ -788,8 +908,12 @@ export default function OnboardingWizard() {
       if (!profile.erp_system) return 'Please select your ERP system (or None).'
       if (profile.intent.length === 0) return 'Select at least one thing you want to do on Strike.'
     }
-    // Step 6 — Documents
+    // Step 6 — Bank Accounts (at least one required)
     if (current === 6) {
+      if (bankAccounts.length === 0) return 'Add at least one bank account to continue.'
+    }
+    // Step 7 — Documents
+    if (current === 7) {
       const missing = docSpecs.filter((d) => d.required && docs[d.kind]?.status !== 'done')
       if (missing.length > 0) return `Please upload: ${missing.map((d) => d.label).join(', ')}.`
     }
@@ -809,7 +933,15 @@ export default function OnboardingWizard() {
       const ok = await saveProgress()
       if (!ok) return
     }
-    setStep(Math.min(step + 1, TOTAL_STEPS))
+    // Load existing bank accounts when entering step 6 for the first time
+    const nextStep = Math.min(step + 1, TOTAL_STEPS)
+    if (nextStep === 6 && bankAccounts.length === 0) {
+      fetch('/api/settings/bank-accounts')
+        .then(r => r.json())
+        .then(d => { if (d.accounts) setBankAccounts(d.accounts) })
+        .catch(() => {})
+    }
+    setStep(nextStep)
   }
 
   function back() {
@@ -1217,10 +1349,156 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 6 — Document upload ──────────────────────────── */}
+      {/* ── Step 6 — Bank Accounts ───────────────────────────── */}
       {step === 6 && (
         <>
-          <StepHeader step={6} title="Upload your documents" sub="We’ll save your progress — you can return to finish any time." />
+          <StepHeader step={6} title="Bank Accounts" sub="Add the bank accounts where you'll send and receive payments on Strike. You can add more later in Settings." />
+
+          {/* Account list */}
+          {bankAccounts.length > 0 && !addingAccount && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {bankAccounts.map((acc) => (
+                <div
+                  key={acc.id}
+                  className="card"
+                  style={{ padding: 0 }}
+                >
+                  <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div
+                      style={{
+                        width: 40, height: 40, flexShrink: 0, borderRadius: 'var(--radius-sm)',
+                        background: 'var(--blue-light)', color: 'var(--blue)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <rect x="2" y="8" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M6 8V6a4 4 0 018 0v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <path d="M8 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>
+                        {acc.nickname || acc.bank_name}
+                        {acc.is_primary && (
+                          <span className="badge" style={{ marginLeft: 8, color: 'var(--blue)', fontSize: 10 }}>Primary</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
+                        {acc.bank_name} - {acc.account_type === 'checking' ? 'Checking' : 'Savings'} - ****{acc.account_number.slice(-4)}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      {!acc.is_primary && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimary(acc.id)}>
+                          Set primary
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEditAccount(acc)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--color-red)' }}
+                        onClick={() => deleteAccount(acc.id)}
+                        disabled={accountSaving}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add / Edit form */}
+          {addingAccount ? (
+            <div className="card">
+              <div className="card-head">
+                <h3 className="t-card-head">{editingAccountId ? 'Edit account' : 'Add bank account'}</h3>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="form-row-2">
+                  <Field label="Account nickname" optional hint="e.g. Operating Account, USD Account">
+                    <input className="form-input" value={accountDraft.nickname} onChange={e => setAccountDraft(d => ({ ...d, nickname: e.target.value }))} placeholder="Operating Account" />
+                  </Field>
+                  <Field label="Bank name">
+                    <input className="form-input" value={accountDraft.bank_name} onChange={e => setAccountDraft(d => ({ ...d, bank_name: e.target.value }))} placeholder="Chase" />
+                  </Field>
+                </div>
+                <Field label="Account holder name">
+                  <input className="form-input" value={accountDraft.account_holder_name} onChange={e => setAccountDraft(d => ({ ...d, account_holder_name: e.target.value }))} placeholder="Acme Corp LLC" />
+                </Field>
+                <div className="form-row-2">
+                  <Field label="Account number">
+                    <div className="input-with-status">
+                      <input
+                        className="form-input mono"
+                        type={showAccountNumber ? 'text' : 'password'}
+                        value={accountDraft.account_number}
+                        onChange={e => setAccountDraft(d => ({ ...d, account_number: e.target.value }))}
+                        placeholder="**********"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountNumber(s => !s)}
+                        className="input-status"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)' }}
+                      >
+                        {showAccountNumber ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </Field>
+                  <Field label="Routing number">
+                    <input className="form-input mono" value={accountDraft.routing_number} onChange={e => setAccountDraft(d => ({ ...d, routing_number: e.target.value }))} placeholder="021000021" />
+                  </Field>
+                </div>
+                <div className="form-row-2">
+                  <Field label="Account type">
+                    <select className="form-input form-select" value={accountDraft.account_type} onChange={e => setAccountDraft(d => ({ ...d, account_type: e.target.value as 'checking' | 'savings' }))}>
+                      <option value="checking">Checking</option>
+                      <option value="savings">Savings</option>
+                    </select>
+                  </Field>
+                  <Field label="SWIFT / IBAN" optional hint="For international transfers">
+                    <input className="form-input mono" value={accountDraft.swift_iban} onChange={e => setAccountDraft(d => ({ ...d, swift_iban: e.target.value }))} placeholder="CHASUS33 / DE89…" />
+                  </Field>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                  <span
+                    onClick={() => setAccountDraft(d => ({ ...d, is_primary: !d.is_primary }))}
+                    style={{
+                      width: 38, height: 22, flexShrink: 0,
+                      background: accountDraft.is_primary ? 'var(--blue)' : 'var(--border)',
+                      borderRadius: '999px', position: 'relative', transition: 'background 0.15s',
+                    }}
+                  >
+                    <span style={{ position: 'absolute', top: 2, left: accountDraft.is_primary ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
+                  </span>
+                  <span style={{ fontSize: 13, color: 'var(--ink)' }}>Set as primary account</span>
+                </label>
+                <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+                  <button type="button" className="btn btn-blue" onClick={saveAccount} disabled={accountSaving}>
+                    {accountSaving ? 'Saving…' : editingAccountId ? 'Update account' : 'Add account'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={cancelAccountForm}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={startAddAccount}>
+              + Add bank account
+            </button>
+          )}
+        </>
+      )}
+
+      {/* ── Step 7 — Document upload ──────────────────────────── */}
+      {step === 7 && (
+        <>
+          <StepHeader step={7} title="Upload your documents" sub="We'll save your progress — you can return to finish any time." />
           <div className="info-box" style={{ margin: '0 0 16px' }}>
             <span>
               {docSpecs.filter((d) => d.required && docs[d.kind]?.status === 'done').length} of{' '}
@@ -1238,10 +1516,10 @@ export default function OnboardingWizard() {
         </>
       )}
 
-      {/* ── Step 7 — Review & Submit ─────────────────────────── */}
-      {step === 7 && (
+      {/* ── Step 8 — Review & Submit ─────────────────────────── */}
+      {step === 8 && (
         <>
-          <StepHeader step={7} title="Review & Submit" sub="Check everything looks right, then activate your Passport." />
+          <StepHeader step={8} title="Review & Submit" sub="Check everything looks right, then activate your Passport." />
 
           {/* Passport preview */}
           <div
@@ -1319,7 +1597,7 @@ export default function OnboardingWizard() {
 
           {/* Contact */}
           <ReviewSection label="Contact & address" onEdit={() => goTo(2)}>
-            <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' · ')} />
+            <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' - ')} />
             <ReviewRow k="Phone" v={form.primary_contact_phone} />
             <ReviewRow
               k="Address"
@@ -1364,8 +1642,25 @@ export default function OnboardingWizard() {
             <ReviewRow k="AI matching" v={profile.ai_matching ? 'Enabled' : 'Disabled'} />
           </ReviewSection>
 
+          {/* Bank Accounts */}
+          <ReviewSection label="Bank accounts" onEdit={() => goTo(6)}>
+            {bankAccounts.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--gray)', padding: '4px 0' }}>No accounts added</div>
+            ) : (
+              bankAccounts.map(acc => (
+                <div key={acc.id} className="kv-row" style={{ padding: '6px 0' }}>
+                  <span className="k">{acc.nickname || acc.bank_name}</span>
+                  <span className="v plain">
+                    {acc.bank_name} - {acc.account_type} - ****{acc.account_number.slice(-4)}
+                    {acc.is_primary ? ' - Primary' : ''}
+                  </span>
+                </div>
+              ))
+            )}
+          </ReviewSection>
+
           {/* Documents */}
-          <ReviewSection label="Documents" onEdit={() => goTo(6)}>
+          <ReviewSection label="Documents" onEdit={() => goTo(7)}>
             <div className="doc-list-inset">
               {docSpecs.map((spec) => {
                 const done = docs[spec.kind]?.status === 'done'

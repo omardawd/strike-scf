@@ -44,6 +44,12 @@ export async function POST(
   if (transaction.status !== 'financing_approved') {
     return NextResponse.json({ error: 'Transaction is not in financing_approved status' }, { status: 400 })
   }
+  // Marketplace-originated financing requires the contract to be fully signed
+  // before the bank can disburse. Legacy program-based transactions (no
+  // financing_request_id) skip this gate.
+  if (transaction.financing_request_id && !transaction.esign_completed_at) {
+    return NextResponse.json({ error: 'The financing contract must be signed before disbursement' }, { status: 400 })
+  }
 
   let body: Record<string, unknown> = {}
   try {
@@ -83,31 +89,52 @@ export async function POST(
     notes:          disbursementReference,
   })
 
-  // Notify supplier admin
-  const { data: supplierAdmin } = await adminClient
+  // Marketplace-originated financing: activate financing on the deal (buyer now
+  // repays the bank, not the supplier) and advance the financing request.
+  if (transaction.deal_id) {
+    await adminClient.from('deals').update({ financing_payment_active: true }).eq('id', transaction.deal_id)
+  }
+  if (transaction.financing_request_id) {
+    await adminClient.from('financing_requests').update({ status: 'funded' }).eq('id', transaction.financing_request_id)
+  }
+
+  // Notify the org that should receive the funds: the financing requester for
+  // marketplace flows, or the supplier for legacy program-based transactions.
+  let notifyOrgId = transaction.supplier_id
+  if (transaction.financing_request_id) {
+    const { data: financingReq } = await adminClient
+      .from('financing_requests')
+      .select('requesting_org_id')
+      .eq('id', transaction.financing_request_id)
+      .single()
+    if (financingReq) notifyOrgId = financingReq.requesting_org_id
+  }
+
+  const { data: notifyAdmin } = await adminClient
     .from('users')
     .select('id, email, full_name')
-    .eq('org_id', transaction.supplier_id)
+    .eq('org_id', notifyOrgId)
     .eq('role', 'org_admin')
     .limit(1)
     .maybeSingle()
 
-  if (supplierAdmin) {
+  if (notifyAdmin) {
     const invoiceRef = transaction.invoice_number ?? id
+    const deepLink = transaction.financing_request_id ? `/marketplace/financing/${transaction.financing_request_id}` : `/transactions/${id}`
     await adminClient.from('notifications').insert({
-      user_id:   supplierAdmin.id,
+      user_id:   notifyAdmin.id,
       event:     'transaction_funded',
       title:     'Payment disbursed',
       body:      `Your financing for invoice ${invoiceRef} has been disbursed`,
-      deep_link: `/transactions/${id}`,
+      deep_link: deepLink,
       read:      false,
     })
-    if (supplierAdmin.email) {
+    if (notifyAdmin.email) {
       await sendEmail({
-        to:      supplierAdmin.email,
+        to:      notifyAdmin.email,
         subject: `Payment disbursed: Invoice ${invoiceRef}`,
         html:    transactionStatusEmailHtml({
-          recipientName: supplierAdmin.full_name ?? 'Supplier Admin',
+          recipientName: notifyAdmin.full_name ?? 'Recipient',
           eventBody:     `Your financing for invoice ${invoiceRef} has been disbursed. The funds should be available shortly.`,
           transactionId: id,
         }),

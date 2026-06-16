@@ -469,12 +469,22 @@ export async function POST(
     'payment_account_number', 'payment_routing_number', 'payment_swift_iban',
     'payment_reference', 'payment_currency', 'payment_external_reference',
     'payment_amount', 'dispute_category', 'dispute_reason', 'cancellation_reason',
+    // Contract flow (v2)
+    'contract_document_id', 'contract_supplier_signature',
   ]
   for (const field of ALLOWED_PAYLOAD_FIELDS) {
     if (payload[field] !== undefined) updates[field] = payload[field]
   }
 
   // Status-specific timestamp fields
+  if (rule.nextStatus === 'contract_pending') {
+    updates.contract_submitted_at = now
+    updates.contract_submitted_by = userData.id
+  }
+  if (action === 'sign_contract' && rule.nextStatus === 'confirmed') {
+    updates.contract_signed_at = now
+    updates.confirmed_at = now
+  }
   if (rule.nextStatus === 'documents_pending') {
     updates.payment_instructions_set_at = now
     updates.payment_instructions_set_by = userData.id

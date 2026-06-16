@@ -128,6 +128,7 @@ export async function PATCH(
         bank_id:                    offer.bank_id,
         program_id:                 matchedProgramId,
         deal_id:                    deal.id,
+        financing_request_id:       financingReq.id,
         anchor_id:                  deal.buyer_org_id,
         supplier_id:                deal.supplier_org_id,
         source:                     'marketplace',

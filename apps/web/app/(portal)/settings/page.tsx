@@ -17,9 +17,24 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
-type TabKey = 'profile' | 'org' | 'team'
+type TabKey = 'profile' | 'org' | 'team' | 'bank-accounts'
 
 interface Alert { kind: 'info' | 'error'; msg: string }
+
+interface BankAccount {
+  id: string
+  entity_type: string
+  entity_id: string
+  nickname: string
+  bank_name: string
+  account_holder_name: string
+  account_number: string
+  routing_number: string
+  swift_iban: string | null
+  account_type: 'checking' | 'savings'
+  is_primary: boolean
+  created_at: string
+}
 
 interface TeamMember {
   id: string
@@ -234,6 +249,112 @@ export default function SettingsPage() {
 
   const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
 
+  // ── Bank Accounts tab ─────────────────────────────────────────────────────
+  const canWriteAccounts = ['bank_admin', 'org_admin'].includes(user?.role ?? '')
+  const [bankAccounts,    setBankAccounts]    = useState<BankAccount[]>([])
+  const [baLoading,       setBaLoading]       = useState(false)
+  const [baError,         setBaError]         = useState<string | null>(null)
+  const [baFormOpen,      setBaFormOpen]      = useState(false)
+  const [baEditId,        setBaEditId]        = useState<string | null>(null)
+  const [baSaving,        setBaSaving]        = useState(false)
+  const [baDeleteId,      setBaDeleteId]      = useState<string | null>(null)
+  const [baAlert,         setBaAlert]         = useState<Alert | null>(null)
+  const [baShowNum,       setBaShowNum]       = useState(false)
+  const [baDraft, setBaDraft] = useState({
+    nickname: '', bank_name: '', account_holder_name: '',
+    account_number: '', routing_number: '', swift_iban: '',
+    account_type: 'checking' as 'checking' | 'savings', is_primary: false,
+  })
+
+  const fetchBankAccounts = useCallback(async () => {
+    setBaLoading(true)
+    setBaError(null)
+    try {
+      const res  = await fetch('/api/settings/bank-accounts')
+      const data = await res.json() as { accounts?: BankAccount[]; error?: string }
+      if (!res.ok) { setBaError(data.error ?? 'Failed to load accounts'); return }
+      setBankAccounts(data.accounts ?? [])
+    } catch {
+      setBaError('Failed to load accounts')
+    } finally {
+      setBaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'bank-accounts' && bankAccounts.length === 0 && !baLoading) {
+      fetchBankAccounts()
+    }
+  }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function openAddForm() {
+    setBaDraft({ nickname: '', bank_name: '', account_holder_name: '', account_number: '', routing_number: '', swift_iban: '', account_type: 'checking', is_primary: false })
+    setBaShowNum(false)
+    setBaEditId(null)
+    setBaFormOpen(true)
+  }
+
+  function openEditForm(acc: BankAccount) {
+    setBaDraft({
+      nickname: acc.nickname,
+      bank_name: acc.bank_name,
+      account_holder_name: acc.account_holder_name,
+      account_number: acc.account_number,
+      routing_number: acc.routing_number,
+      swift_iban: acc.swift_iban ?? '',
+      account_type: acc.account_type,
+      is_primary: acc.is_primary,
+    })
+    setBaShowNum(false)
+    setBaEditId(acc.id)
+    setBaFormOpen(true)
+  }
+
+  function closeForm() { setBaFormOpen(false); setBaEditId(null) }
+
+  async function saveBankAccount() {
+    if (!baDraft.bank_name.trim() || !baDraft.account_number.trim() || !baDraft.routing_number.trim()) {
+      setBaAlert({ kind: 'error', msg: 'Bank name, account number and routing number are required.' })
+      return
+    }
+    setBaSaving(true)
+    setBaAlert(null)
+    try {
+      const method = baEditId ? 'PATCH' : 'POST'
+      const url    = baEditId ? `/api/settings/bank-accounts/${baEditId}` : '/api/settings/bank-accounts'
+      const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(baDraft) })
+      const data   = await res.json() as { account?: BankAccount; error?: string }
+      if (!res.ok) { setBaAlert({ kind: 'error', msg: data.error ?? 'Failed to save' }); return }
+      await fetchBankAccounts()
+      closeForm()
+      setBaAlert({ kind: 'info', msg: baEditId ? 'Account updated' : 'Account added' })
+      setTimeout(() => setBaAlert(null), 3000)
+    } catch {
+      setBaAlert({ kind: 'error', msg: 'Network error. Please try again.' })
+    } finally {
+      setBaSaving(false)
+    }
+  }
+
+  async function deleteBankAccount(id: string) {
+    setBaDeleteId(id)
+    try {
+      await fetch(`/api/settings/bank-accounts/${id}`, { method: 'DELETE' })
+      setBankAccounts(prev => prev.filter(a => a.id !== id))
+    } finally {
+      setBaDeleteId(null)
+    }
+  }
+
+  async function setPrimaryAccount(acc: BankAccount) {
+    await fetch(`/api/settings/bank-accounts/${acc.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...acc, is_primary: true }),
+    })
+    await fetchBankAccounts()
+  }
+
   const fetchTeam = useCallback(async () => {
     setTeamLoading(true)
     setTeamError(null)
@@ -378,6 +499,13 @@ export default function SettingsPage() {
               Team
             </button>
           )}
+          <button
+            type="button"
+            className={`btn btn-sm ${tab === 'bank-accounts' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTab('bank-accounts')}
+          >
+            Bank Accounts
+          </button>
         </div>
 
         {/* ── Tab: My Profile ── */}
@@ -492,7 +620,7 @@ export default function SettingsPage() {
                       >
                         {logoUploading ? 'Uploading…' : 'Upload logo'}
                       </button>
-                      <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>PNG, JPG, SVG · max 2 MB</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>PNG, JPG, SVG - max 2 MB</span>
                     </>
                   )}
                 </div>
@@ -805,6 +933,185 @@ export default function SettingsPage() {
                 </form>
               </div>
             </div>
+          </div>
+        )}
+        {/* ── Tab: Bank Accounts ── */}
+        {tab === 'bank-accounts' && (
+          <div>
+            {baAlert && <AlertBox alert={baAlert} />}
+
+            {baLoading && (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
+            )}
+
+            {baError && (
+              <div className="alert alert-error" style={{ marginBottom: 16 }}>
+                <div className="alert-body">{baError}</div>
+              </div>
+            )}
+
+            {/* Account cards */}
+            {!baLoading && !baFormOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                {bankAccounts.length === 0 && !baError && (
+                  <div className="card">
+                    <div className="card-body" style={{ textAlign: 'center', padding: '32px 24px', color: 'var(--gray)', fontSize: 13 }}>
+                      No bank accounts yet. Add one below.
+                    </div>
+                  </div>
+                )}
+                {bankAccounts.map(acc => (
+                  <div key={acc.id} className="card" style={{ padding: 0 }}>
+                    <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{
+                        width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-sm)',
+                        background: 'var(--blue-light)', color: 'var(--blue)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                          <rect x="2" y="8" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                          <path d="M6 8V6a4 4 0 018 0v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          <path d="M8 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {acc.nickname || acc.bank_name}
+                          {acc.is_primary && (
+                            <span className="badge" style={{ color: 'var(--blue)', fontSize: 10 }}>Primary</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 3 }}>
+                          {acc.bank_name} - {acc.account_type === 'checking' ? 'Checking' : 'Savings'} - ****{acc.account_number.slice(-4)}
+                          {acc.routing_number && ` - Routing: ****${acc.routing_number.slice(-4)}`}
+                        </div>
+                        {acc.account_holder_name && (
+                          <div style={{ fontSize: 12, color: 'var(--gray-soft)', marginTop: 2 }}>{acc.account_holder_name}</div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {canWriteAccounts && !acc.is_primary && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimaryAccount(acc)}>
+                            Set primary
+                          </button>
+                        )}
+                        {canWriteAccounts && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditForm(acc)}>
+                            Edit
+                          </button>
+                        )}
+                        {canWriteAccounts && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: 'var(--color-red)' }}
+                            disabled={baDeleteId === acc.id}
+                            onClick={() => deleteBankAccount(acc.id)}
+                          >
+                            {baDeleteId === acc.id ? '…' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add / Edit form */}
+            {baFormOpen ? (
+              <div className="card">
+                <div className="card-head">
+                  <h3 className="t-card-head">{baEditId ? 'Edit bank account' : 'Add bank account'}</h3>
+                </div>
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="form-field">
+                      <label className="form-label">Account nickname <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>Optional</span></label>
+                      <input className="form-input" value={baDraft.nickname} onChange={e => setBaDraft(d => ({ ...d, nickname: e.target.value }))} placeholder="Operating Account" />
+                    </div>
+                    <div className="form-field">
+                      <label className="form-label">Bank name</label>
+                      <input className="form-input" value={baDraft.bank_name} onChange={e => setBaDraft(d => ({ ...d, bank_name: e.target.value }))} placeholder="Chase" />
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">Account holder name</label>
+                    <input className="form-input" value={baDraft.account_holder_name} onChange={e => setBaDraft(d => ({ ...d, account_holder_name: e.target.value }))} placeholder="Acme Corp LLC" />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="form-field">
+                      <label className="form-label">Account number</label>
+                      <div className="input-with-status">
+                        <input
+                          className="form-input mono"
+                          type={baShowNum ? 'text' : 'password'}
+                          value={baDraft.account_number}
+                          onChange={e => setBaDraft(d => ({ ...d, account_number: e.target.value }))}
+                          placeholder="**********"
+                        />
+                        <button
+                          type="button"
+                          className="input-status"
+                          onClick={() => setBaShowNum(s => !s)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)' }}
+                        >
+                          {baShowNum ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="form-field">
+                      <label className="form-label">Routing number</label>
+                      <input className="form-input mono" value={baDraft.routing_number} onChange={e => setBaDraft(d => ({ ...d, routing_number: e.target.value }))} placeholder="021000021" />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="form-field">
+                      <label className="form-label">Account type</label>
+                      <select className="form-input form-select" value={baDraft.account_type} onChange={e => setBaDraft(d => ({ ...d, account_type: e.target.value as 'checking' | 'savings' }))}>
+                        <option value="checking">Checking</option>
+                        <option value="savings">Savings</option>
+                      </select>
+                    </div>
+                    <div className="form-field">
+                      <label className="form-label">SWIFT / IBAN <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>Optional</span></label>
+                      <input className="form-input mono" value={baDraft.swift_iban} onChange={e => setBaDraft(d => ({ ...d, swift_iban: e.target.value }))} placeholder="CHASUS33 / DE89…" />
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                    <span
+                      onClick={() => setBaDraft(d => ({ ...d, is_primary: !d.is_primary }))}
+                      style={{
+                        width: 38, height: 22, flexShrink: 0,
+                        background: baDraft.is_primary ? 'var(--blue)' : 'var(--border)',
+                        borderRadius: '999px', position: 'relative', transition: 'background 0.15s',
+                      }}
+                    >
+                      <span style={{ position: 'absolute', top: 2, left: baDraft.is_primary ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>Set as primary account</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn-primary" onClick={saveBankAccount} disabled={baSaving}>
+                      {baSaving ? 'Saving…' : baEditId ? 'Update account' : 'Add account'}
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={closeForm}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              canWriteAccounts && (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={openAddForm}>
+                  + Add bank account
+                </button>
+              )
+            )}
+
+            {!canWriteAccounts && bankAccounts.length === 0 && !baLoading && (
+              <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
+                Contact your admin to add bank accounts.
+              </div>
+            )}
           </div>
         )}
         </div>

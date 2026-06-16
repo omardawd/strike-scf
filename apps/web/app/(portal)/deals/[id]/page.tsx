@@ -7,6 +7,7 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
+import { FinancingManagementCard, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import { createClient } from '@/lib/supabase/client'
 import {
   getFinancingContext,
@@ -14,6 +15,7 @@ import {
   type TransactionForContext,
   type BankForContext,
   type OrgForContext,
+  type BankAccountForContext,
 } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
 import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@strike-scf/types'
@@ -38,6 +40,16 @@ interface LinkedTransaction {
   repayment_routing: string | null
   bank_id: string | null
   bank?: { id: string; display_name: string; legal_name: string } | null
+  financing_request_id: string | null
+  esign_document_id: string | null
+  bank_signed_at: string | null
+  anchor_signed_at: string | null
+  supplier_signed_at: string | null
+  esign_completed_at: string | null
+  disbursed_at: string | null
+  disbursed_by_user_id: string | null
+  disbursement_reference: string | null
+  supplier_paid_at: string | null
 }
 
 interface DealDetail {
@@ -55,6 +67,8 @@ interface DealDetail {
   room: { id: string; name: string } | null
   financing_request: FinancingRequest | null
   linked_transaction: LinkedTransaction | null
+  bank_bank_account: BankAccountForContext | null
+  requester_bank_account: RequesterBankAccount | null
   documents: DealDoc[]
   user_role: 'buyer' | 'supplier' | 'bank'
 }
@@ -256,11 +270,12 @@ function AiDocCard({ doc }: { doc: AiDoc }) {
     try { await navigator.clipboard.writeText(doc.content); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {}
   }
   return (
-    <div className="card" style={{ marginBottom: 12 }}>
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
       <div className="card-head" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setExpanded(e => !e)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
           <span>{label}</span>
-          <span className="badge badge-active" style={{ fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>AI Generated</span>
+          <span className="badge badge-active" style={{ fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, fontSize: 9 }}>AI</span>
           {doc.generated_at && <span style={{ fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, color: 'var(--gray)', fontSize: 11 }}>{fmtDate(doc.generated_at)}</span>}
         </div>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s' }}>
@@ -282,9 +297,25 @@ function AiDocCard({ doc }: { doc: AiDoc }) {
   )
 }
 
+// ─── Contract Document Link ───────────────────────────────────────────────────
+
+function ContractDocumentLink({ documentId }: { documentId: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    fetch(`/api/documents/${documentId}/url`).then(r => r.json()).then(d => { if (d.url) setUrl(d.url) }).catch(() => {})
+  }, [documentId])
+  if (!url) return <span style={{ fontSize: 12, color: 'var(--gray)' }}>Loading contract…</span>
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
+      View / Download Contract
+    </a>
+  )
+}
+
 // ─── Document Row ─────────────────────────────────────────────────────────────
 
-function DocumentRow({ doc }: { doc: DealDoc }) {
+function DocumentRow({ doc, onDelete }: { doc: DealDoc; onDelete?: (id: string) => void }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     fetch(`/api/documents/${doc.id}/url`).then(r => r.json()).then(d => { if (d.url) setUrl(d.url) }).catch(() => {})
@@ -295,6 +326,7 @@ function DocumentRow({ doc }: { doc: DealDoc }) {
       <span className="doc-name">{doc.name}</span>
       <span className="doc-date">{fmtDate(doc.created_at)}</span>
       {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+      {onDelete && <button onClick={() => onDelete(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>}
     </div>
   )
 }
@@ -312,7 +344,6 @@ export default function DealDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [aiDocs, setAiDocs] = useState<AiDoc[]>([])
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([])
-  const [docsLoading, setDocsLoading] = useState(false)
   const [availableActions, setAvailableActions] = useState<AvailableAction[]>([])
   const [showFinancingForm, setShowFinancingForm] = useState(false)
   const [finType, setFinType] = useState('')
@@ -325,9 +356,15 @@ export default function DealDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
+  const [listingLineItems, setListingLineItems] = useState<any[]>([])
+  const [listingDocs, setListingDocs] = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [revealBankAccount, setRevealBankAccount] = useState(false)
 
-  const generateTriggered = useRef(false)
-  const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [contractData, setContractData] = useState<Record<string, any> | null>(null)
+  const [receivingAccount, setReceivingAccount] = useState<BankAccountForContext | null>(null)
+
   const financeActionTriggered = useRef(false)
 
   const load = useCallback(() => {
@@ -353,6 +390,20 @@ export default function DealDetailPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Fetch contract metadata (+ receiving bank account) whenever deal status changes
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/deals/${id}/contract`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setContractData(d)
+          if (d.receiving_bank_account) setReceivingAccount(d.receiving_bank_account as BankAccountForContext)
+        }
+      })
+      .catch(() => {})
+  }, [id, data?.deal?.status])
+
   // Realtime: re-fetch when the deal row changes (financing acceptance, status update, etc.)
   useEffect(() => {
     const supabase = createClient()
@@ -374,7 +425,7 @@ export default function DealDetailPage() {
     const wantsFinance = new URLSearchParams(window.location.search).get('action') === 'finance'
     if (!wantsFinance) return
     const d = data.deal
-    if (['agreed', 'active', 'confirmed'].includes(d.status) && !d.financing_requested) {
+    if (['agreed', 'active', 'confirmed'].includes(d.status) && !data.financing_request) {
       financeActionTriggered.current = true
       setFinAmount(String(d.total_value ?? d.agreed_price ?? ''))
       setShowFinancingForm(true)
@@ -388,27 +439,20 @@ export default function DealDetailPage() {
 
   useEffect(() => {
     if (!data) return
-    const deal = data.deal
-    if (deal.status === 'agreed' && deal.documents_generated_at) { loadDocs(); return }
-    if (deal.status === 'agreed' && !deal.documents_generated_at) {
-      if (!generateTriggered.current) {
-        generateTriggered.current = true; setDocsLoading(true)
-        fetch(`/api/deals/${id}/generate-documents`, { method: 'POST' }).catch(() => {})
-      }
-      if (!pollInterval.current) {
-        pollInterval.current = setInterval(() => {
-          fetch(`/api/deals/${id}`).then(r => r.json()).then(d => {
-            if (d.deal?.documents_generated_at) {
-              clearInterval(pollInterval.current!); pollInterval.current = null; setDocsLoading(false); setData(d); loadDocs()
-            }
-          }).catch(() => {})
-        }, 3000)
-      }
-    } else if (aiDocs.length === 0 && uploadedDocs.length === 0) {
-      loadDocs()
-    }
-    return () => { if (pollInterval.current) { clearInterval(pollInterval.current); pollInterval.current = null } }
-  }, [data, id, loadDocs, aiDocs.length, uploadedDocs.length])
+    loadDocs()
+  }, [data?.deal?.id, loadDocs])
+
+  useEffect(() => {
+    const lid = (data?.deal as any)?.listing_id as string | undefined
+    if (!lid) return
+    Promise.all([
+      fetch(`/api/marketplace/listings/${lid}/line-items`).then(r => r.ok ? r.json() : null),
+      fetch(`/api/marketplace/listings/${lid}/document`).then(r => r.ok ? r.json() : null),
+    ]).then(([liData, docData]) => {
+      if (liData?.items) setListingLineItems(liData.items)
+      if (docData?.documents) setListingDocs(docData.documents)
+    }).catch(() => {})
+  }, [(data?.deal as any)?.listing_id])
 
   // ── Action router — maps action names to the right API endpoints ──────────
 
@@ -433,12 +477,29 @@ export default function DealDetailPage() {
       url = `/api/deals/${id}/cancel`
       body = { cancellation_reason: payload.cancellation_reason, confirmed: true }
     } else if (action === 'confirm') {
-      // Buyer confirms documents
       url = `/api/deals/${id}`
       method = 'PATCH'
       body = { status: 'confirmed' }
+    } else if (action === 'submit_contract') {
+      // Buyer submits contract — go to /contract endpoint
+      url = `/api/deals/${id}/contract`
+      body = { generate: payload.generate_contract, contract_document_id: payload.contract_document_id }
+    } else if (action === 'sign_contract') {
+      url = `/api/deals/${id}/contract`
+      method = 'PATCH'
+      body = { signature: payload.contract_supplier_signature, bank_account_id: payload.receiving_bank_account_id }
+    } else if (action === 'submit_bank_contract') {
+      url = `/api/deals/${id}/contract`
+      body = { action: 'bank', bank_contract_document_id: payload.bank_contract_document_id }
+    } else if (action === 'sign_bank_contract') {
+      url = `/api/deals/${id}/contract`
+      method = 'PATCH'
+      body = { action: 'bank_sign', signature: payload.bank_contract_signature }
+    } else if (action === 'upload_invoice' || action === 'replace_invoice') {
+      url = `/api/deals/${id}/contract`
+      method = 'PATCH'
+      body = { action: 'upload_invoice', invoice_document_id: payload.invoice_document_id }
     } else {
-      // All other actions go through the transition API
       url = `/api/deals/${id}/transition`
       body = { action, payload }
     }
@@ -484,6 +545,26 @@ export default function DealDetailPage() {
     } finally { setCancelLoading(false) }
   }
 
+  async function handleUploadDoc(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true); setUploadError(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch(`/api/deals/${id}/upload-document`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { setUploadError(json.error ?? 'Upload failed'); return }
+      if (json.warning) setUploadError(json.warning)
+      loadDocs()
+    } finally { setUploading(false); e.target.value = '' }
+  }
+
+  async function handleDeleteDoc(docId: string) {
+    if (!confirm('Remove this document?')) return
+    const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
+    if (res.ok) loadDocs()
+  }
+
   if (loading) {
     return (
       <>
@@ -506,16 +587,84 @@ export default function DealDetailPage() {
     )
   }
 
-  const { deal, buyer_org, supplier_org, room, financing_request, linked_transaction, documents, user_role } = data
+  const { deal, buyer_org, supplier_org, room, financing_request, linked_transaction, bank_bank_account, requester_bank_account, documents, user_role } = data
   const counterparty = user_role === 'buyer' ? supplier_org : buyer_org
   const dealValue = deal.total_value ?? deal.agreed_price ?? null
   const currency = deal.agreed_currency ?? 'USD'
-  const isGenerating = deal.status === 'agreed' && !deal.documents_generated_at && docsLoading
   const hasAiDocs   = aiDocs.length > 0
-  const hasUploaded = uploadedDocs.length > 0 || documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind)).length > 0
+  const uploadedFromDocs = documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind))
+  const hasUploaded = uploadedDocs.length > 0 || uploadedFromDocs.length > 0 || listingDocs.length > 0
+
+  function downloadTemplate(type: 'po' | 'invoice') {
+    const buyer = buyer_org?.legal_name ?? 'Buyer'
+    const supplier = supplier_org?.legal_name ?? 'Supplier'
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const ref = `STR-${type.toUpperCase()}-${shortId(id)}`
+    const lineRows = listingLineItems.length > 0
+      ? listingLineItems.map((item: any, i: number) =>
+          `  ${String(i + 1).padStart(2)}. ${(item.name ?? item.description ?? 'Item').padEnd(30)}  Qty: ${String(item.quantity ?? '—').padEnd(8)} ${item.unit ?? ''}`
+        ).join('\n')
+      : `  1. ${deal.goods_description ?? 'Goods'}  Qty: ${deal.agreed_quantity ?? '—'} ${(deal as any).agreed_unit ?? ''}`
+    const total = `${fmt(deal.agreed_price, currency)} ${currency}`
+    const lines = type === 'po' ? [
+      'PURCHASE ORDER',
+      '─'.repeat(60),
+      `PO Number:    ${ref}`,
+      `Date:         ${dateStr}`,
+      '',
+      'BUYER',
+      `  ${buyer}`,
+      '',
+      'SUPPLIER',
+      `  ${supplier}`,
+      '',
+      'ITEMS',
+      '─'.repeat(60),
+      lineRows,
+      '─'.repeat(60),
+      `Total:        ${total}`,
+      '',
+      'TERMS',
+      `  Delivery Date:  ${fmtDate(deal.agreed_delivery_date)}`,
+      `  Incoterms:      ${deal.agreed_incoterms ?? '—'}`,
+      `  Payment Terms:  ${deal.agreed_payment_terms ?? '—'}`,
+      '',
+      'Generated by Strike Platform',
+    ] : [
+      'COMMERCIAL INVOICE',
+      '─'.repeat(60),
+      `Invoice No:   ${ref}`,
+      `Date:         ${dateStr}`,
+      '',
+      'SELLER (SUPPLIER)',
+      `  ${supplier}`,
+      '',
+      'BUYER',
+      `  ${buyer}`,
+      '',
+      'DESCRIPTION OF GOODS',
+      '─'.repeat(60),
+      lineRows,
+      '─'.repeat(60),
+      `Total Amount: ${total}`,
+      '',
+      'PAYMENT TERMS',
+      `  ${deal.agreed_payment_terms ?? '—'}`,
+      '',
+      'SHIPPING',
+      `  Delivery Date:  ${fmtDate(deal.agreed_delivery_date)}`,
+      `  Incoterms:      ${deal.agreed_incoterms ?? '—'}`,
+      '',
+      'Generated by Strike Platform',
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url2 = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url2; a.download = `${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${shortId(id)}.txt`; a.click(); URL.revokeObjectURL(url2)
+  }
   const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active', 'goods_received', 'payment_info_sent']
   const canCancel   = CANCELLABLE.includes(deal.status) && !deal.financing_payment_active
-  const canFinance  = ['delivery_confirmed', 'shipped', 'goods_received', 'confirmed', 'in_preparation'].includes(deal.status) && !deal.financing_requested && !deal.financing_payment_active
+  const canFinance  = user_role !== 'bank' && ['delivery_confirmed', 'shipped', 'goods_received', 'confirmed', 'in_preparation'].includes(deal.status) && !financing_request && !deal.financing_payment_active
   const canAmend    = ['confirmed', 'in_preparation', 'active'].includes(deal.status) && !deal.financing_payment_active
   const isActive    = !['completed', 'cancelled', 'in_dispute', 'disputed'].includes(deal.status)
   const hasPaymentInfo = !!(deal as any).payment_info_sent_at || !!deal.payment_bank_name
@@ -552,6 +701,7 @@ export default function DealDetailPage() {
     agreed_price: deal.agreed_price,
     agreed_currency: deal.agreed_currency,
     payment_due_date: deal.payment_due_date,
+    receiving_bank_account: receivingAccount ?? undefined,
     payment_bank_name: deal.payment_bank_name,
     payment_account_number: deal.payment_account_number,
     payment_account_name: deal.payment_account_name,
@@ -562,7 +712,12 @@ export default function DealDetailPage() {
     noa_document_id: deal.noa_document_id ?? null,
   }
 
-  const financingContext = getFinancingContext(dealForCtx, txnForCtx, null, bankOrgForCtx, supplierOrgForCtx)
+  const financingContext = getFinancingContext(dealForCtx, txnForCtx, null, bankOrgForCtx, supplierOrgForCtx, bank_bank_account)
+
+  // Once financing is active, the buyer owes the bank, not the supplier — show
+  // whichever account actually receives the payment.
+  const payingBank = financingContext.isActive && financingContext.paymentRecipient === 'bank'
+  const displayedAccount = payingBank ? bank_bank_account : receivingAccount
 
   const hasDDOffer = !!(deal.dd_offer_presented_at && !deal.dd_offer_accepted_at && !deal.dd_offer_declined_at)
 
@@ -622,6 +777,17 @@ export default function DealDetailPage() {
               <div className="card" style={{ border: '1.5px solid var(--blue-light)' }}>
                 <div className="card-head" style={{ color: 'var(--blue)' }}>Action Required</div>
                 <div className="card-body">
+                  {(deal.status as string) === 'contract_pending' && contractData?.contract?.document_id && (
+                    <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
+                        <ContractDocumentLink documentId={contractData.contract.document_id} />
+                      </div>
+                      {contractData.contract.generated_at && (
+                        <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>AI Generated</span>
+                      )}
+                    </div>
+                  )}
                   <ActionPanel
                     dealId={deal.id}
                     availableActions={availableActions}
@@ -635,6 +801,109 @@ export default function DealDetailPage() {
               </div>
             )}
 
+            {/* Contract Panel — v2 procurement flow */}
+            {contractData?.contract?.submitted_at && (
+              <div className="card">
+                <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  Trade Contract
+                  {contractData.contract.supplier_signed_at
+                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>Signed</span>
+                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>Awaiting Signature</span>}
+                  {contractData.contract.generated_at && <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>}
+                </div>
+                <div className="kv-list">
+                  <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate(contractData.contract.submitted_at)}</span></div>
+                  {contractData.contract.supplier_signed_at && (
+                    <>
+                      <div className="kv-row"><span className="k">Signed</span><span className="v">{fmtDate(contractData.contract.supplier_signed_at)}</span></div>
+                      <div className="kv-row"><span className="k">Signature</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.contract.supplier_signature}</span></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Invoice Panel — shown after confirmed */}
+            {contractData?.invoice?.generated_at && (
+              <div className="card">
+                <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  Commercial Invoice
+                  <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>
+                </div>
+                <div className="kv-list">
+                  {contractData.invoice.number && <div className="kv-row"><span className="k">Invoice No.</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{contractData.invoice.number}</span></div>}
+                  <div className="kv-row"><span className="k">Generated</span><span className="v">{fmtDate(contractData.invoice.generated_at)}</span></div>
+                </div>
+              </div>
+            )}
+
+            {/* Bank Contract Panel */}
+            {contractData?.bank_contract?.submitted_at && (
+              <div className="card" style={{ border: '1px solid var(--blue-light)' }}>
+                <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--blue)' }}>
+                  Financing Contract
+                  {contractData.bank_contract.signed_at
+                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>Signed</span>
+                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>Awaiting Signature</span>}
+                </div>
+                <div className="kv-list">
+                  <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate(contractData.bank_contract.submitted_at)}</span></div>
+                  {contractData.bank_contract.signed_at && (
+                    <>
+                      <div className="kv-row"><span className="k">Signed</span><span className="v">{fmtDate(contractData.bank_contract.signed_at)}</span></div>
+                      <div className="kv-row"><span className="k">Signature</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.bank_contract.signature}</span></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Receiving Bank Account (shown after confirmed) */}
+            {displayedAccount && ['confirmed', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'completed'].includes(deal.status) && (
+              <div className="card">
+                <div className="card-head">
+                  Payment Receiving Account{payingBank ? ' (Bank)' : ''}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setRevealBankAccount(r => !r)}
+                  >
+                    {revealBankAccount ? 'Hide' : 'Reveal'}
+                  </button>
+                </div>
+                <div className="kv-list">
+                  {displayedAccount.nickname && <div className="kv-row"><span className="k">Account Name</span><span className="v plain">{displayedAccount.nickname}</span></div>}
+                  <div className="kv-row"><span className="k">Bank</span><span className="v plain">{displayedAccount.bank_name}</span></div>
+                  <div className="kv-row"><span className="k">Account Holder</span><span className="v plain">{displayedAccount.account_holder_name}</span></div>
+                  {displayedAccount.account_number && (
+                    <div className="kv-row">
+                      <span className="k">Account</span>
+                      <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
+                        {revealBankAccount ? displayedAccount.account_number : `****${displayedAccount.account_number.slice(-4)}`}
+                      </span>
+                    </div>
+                  )}
+                  {displayedAccount.routing_number && (
+                    <div className="kv-row">
+                      <span className="k">Routing</span>
+                      <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
+                        {displayedAccount.routing_number}
+                      </span>
+                    </div>
+                  )}
+                  {displayedAccount.swift_iban && (
+                    <div className="kv-row">
+                      <span className="k">SWIFT / IBAN</span>
+                      <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
+                        {displayedAccount.swift_iban}
+                      </span>
+                    </div>
+                  )}
+                  <div className="kv-row"><span className="k">Type</span><span className="v plain">{displayedAccount.account_type}</span></div>
+                </div>
+              </div>
+            )}
+
             {/* Dispute evidence */}
             <DisputeEvidencePanel deal={deal} onRefresh={load} />
 
@@ -642,19 +911,49 @@ export default function DealDetailPage() {
             <div className="card">
               <div className="card-head">
                 Agreed Terms
-                {canAmend && <ProposeAmendmentForm deal={deal} onRefresh={load} />}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {canAmend && <ProposeAmendmentForm deal={deal} onRefresh={load} />}
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadTemplate('po')}>Download PO</button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadTemplate('invoice')}>Download Invoice</button>
+                </div>
               </div>
               <div className="kv-list">
-                <div className="kv-row"><span className="k">Goods</span><span className="v plain">{deal.goods_description ?? '—'}</span></div>
-                {deal.agreed_quantity != null && <div className="kv-row"><span className="k">Quantity</span><span className="v">{deal.agreed_quantity} {deal.agreed_unit ?? ''}</span></div>}
-                <div className="kv-row"><span className="k">Price</span><span className="v">{fmt(deal.agreed_price, currency)}</span></div>
-                <div className="kv-row"><span className="k">Currency</span><span className="v">{currency}</span></div>
                 <div className="kv-row"><span className="k">Delivery Date</span><span className="v">{fmtDate(deal.agreed_delivery_date)}</span></div>
                 <div className="kv-row"><span className="k">Incoterms</span><span className="v">{deal.agreed_incoterms ?? '—'}</span></div>
                 <div className="kv-row"><span className="k">Payment Terms</span><span className="v plain">{deal.agreed_payment_terms ?? '—'}</span></div>
                 {deal.payment_due_date && <div className="kv-row"><span className="k">Payment Due</span><span className="v">{fmtDate(deal.payment_due_date)}</span></div>}
                 {deal.import_notes && <div className="kv-row"><span className="k">Notes</span><span className="v plain" style={{ fontSize: 12 }}>{deal.import_notes}</span></div>}
               </div>
+              {listingLineItems.length > 0 ? (
+                <div style={{ padding: '0 24px 20px' }}>
+                  <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>Item Breakdown</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '6px 16px', fontSize: 12 }}>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Qty</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Unit</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Unit Price</span>
+                    {listingLineItems.map((item: any) => (
+                      <React.Fragment key={item.id}>
+                        <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{item.name ?? item.description ?? '—'}</span>
+                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{item.quantity ?? '—'}</span>
+                        <span style={{ color: 'var(--gray)' }}>{item.unit ?? ''}</span>
+                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: item.unit_price ? 'var(--ink)' : 'var(--gray)' }}>{item.unit_price ? fmt(item.unit_price, item.currency ?? currency) : '—'}</span>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--gray)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Agreed</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: '#C9A84C' }}>{fmt(deal.agreed_price, currency)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '0 24px 16px' }}>
+                  <div className="kv-row"><span className="k">Goods</span><span className="v plain">{deal.goods_description ?? '—'}</span></div>
+                  {deal.agreed_quantity != null && <div className="kv-row"><span className="k">Quantity</span><span className="v">{deal.agreed_quantity} {(deal as any).agreed_unit ?? ''}</span></div>}
+                  <div className="kv-row"><span className="k">Price</span><span className="v">{fmt(deal.agreed_price, currency)}</span></div>
+                  <div className="kv-row"><span className="k">Currency</span><span className="v">{currency}</span></div>
+                </div>
+              )}
             </div>
 
             {/* Financing context details (replaces old inline financing info) */}
@@ -746,40 +1045,63 @@ export default function DealDetailPage() {
               </div>
             )}
 
-            {/* Documents */}
-            <div>
-              <div className="card">
-                <div className="card-head">
-                  Documents
-                  {hasAiDocs && <span style={{ color: 'var(--color-green)', fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>{aiDocs.length} AI doc{aiDocs.length !== 1 ? 's' : ''}</span>}
+            {/* Documents — combined AI + uploaded in one card */}
+            <div className="card">
+              <div className="card-head">
+                Documents
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {hasAiDocs && <span style={{ color: 'var(--color-green)', fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>{aiDocs.length} AI</span>}
+                  <label htmlFor="deal-doc-upload" className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', fontSize: 11 }}>
+                    {uploading ? 'Uploading…' : '+ Upload'}
+                  </label>
+                  <input id="deal-doc-upload" type="file" style={{ display: 'none' }} onChange={handleUploadDoc} disabled={uploading} />
                 </div>
-                {isGenerating ? (
-                  <div style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid var(--blue)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-                    <span style={{ fontSize: 13, color: 'var(--gray)' }}>Strike AI is drafting your documents…</span>
-                  </div>
-                ) : !hasAiDocs && !hasUploaded ? (
-                  <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>No documents attached yet.</div>
-                ) : null}
               </div>
-              {hasAiDocs && <div style={{ marginTop: 12 }}>{aiDocs.map(doc => <AiDocCard key={doc.kind} doc={doc} />)}</div>}
-              {hasUploaded && (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <div className="card-head">Uploaded Documents</div>
+              {uploadError && <div style={{ padding: '8px 24px', fontSize: 12, color: 'var(--color-orange)', background: 'rgba(251,146,60,0.08)', borderBottom: '1px solid var(--border)' }}>{uploadError}</div>}
+              {!hasAiDocs && !hasUploaded ? (
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>No documents attached yet.</div>
+              ) : (
+                <>
+                  {hasAiDocs && aiDocs.map(doc => <AiDocCard key={doc.kind} doc={doc} />)}
+                  {listingDocs.map((doc: any) => (
+                    <div key={doc.id} className="doc-row">
+                      <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
+                      <span className="doc-name">{doc.name}</span>
+                      <span className="doc-date">{fmtDate(doc.created_at)}</span>
+                      <span className="badge badge-draft" style={{ fontSize: 9, marginRight: 4 }}>Listing</span>
+                      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+                    </div>
+                  ))}
                   {uploadedDocs.map(doc => (
                     <div key={doc.id} className="doc-row">
                       <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
                       <span className="doc-name">{doc.name}</span>
                       <span className="doc-date">{fmtDate(doc.created_at)}</span>
                       {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+                      <button onClick={() => handleDeleteDoc(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>
                     </div>
                   ))}
-                  {documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind)).map(doc => <DocumentRow key={doc.id} doc={doc} />)}
-                </div>
+                  {uploadedFromDocs.map(doc => <DocumentRow key={doc.id} doc={doc} onDelete={handleDeleteDoc} />)}
+                </>
               )}
             </div>
 
-            {/* Financing request panel */}
+            {/* Financing management: bank views the full contract → disbursement →
+                confirm-receipt lifecycle inline, scoped to their own transaction. */}
+            {user_role === 'bank' && financing_request && linked_transaction && (
+              <FinancingManagementCard
+                requestId={financing_request.id}
+                transaction={linked_transaction}
+                requesterBankAccount={requester_bank_account}
+                isBank
+                isRequester={false}
+                isRequesterBuyer={deal.buyer_org_id === financing_request.requesting_org_id}
+                onReload={load}
+              />
+            )}
+
+            {/* Financing request panel (org parties) */}
+            {user_role !== 'bank' && (
             <div className="card">
               <div className="card-head">Financing</div>
               {financing_request ? (
@@ -837,6 +1159,7 @@ export default function DealDetailPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* ── Aside panel ── */}

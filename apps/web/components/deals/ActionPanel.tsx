@@ -320,6 +320,169 @@ function GenericActionForm({ action, onSubmit, loading, error }: {
   )
 }
 
+// ── Contract Submit Form ──────────────────────────────────────────────────────
+
+function ContractSubmitForm({ dealId, onSubmit, loading }: {
+  dealId: string
+  onSubmit: (payload: Record<string, unknown>) => Promise<void>
+  loading: boolean
+}) {
+  const [mode, setMode] = useState<'ai' | 'upload'>('ai')
+  const [file, setFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit() {
+    setError(null)
+    if (mode === 'ai') {
+      await onSubmit({ generate_contract: true })
+    } else {
+      if (!file) { setError('Please select a contract document'); return }
+      setUploading(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('document_kind', 'trade_contract')
+        const res = await fetch(`/api/deals/${dealId}/upload-document`, { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok) { setError(json.error ?? 'Upload failed'); return }
+        await onSubmit({ generate_contract: false, contract_document_id: json.document.id })
+      } catch {
+        setError('Upload failed')
+      } finally {
+        setUploading(false)
+      }
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Submit Contract</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${mode === 'ai' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setMode('ai')}
+        >
+          AI Generate
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${mode === 'upload' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setMode('upload')}
+        >
+          Upload Document
+        </button>
+      </div>
+      {mode === 'ai' ? (
+        <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--gray)' }}>
+          Strike AI will draft a trade agreement from your deal terms. The supplier will receive it to review and sign.
+        </div>
+      ) : (
+        <div className="form-field">
+          <label className="field-label">Contract Document *</label>
+          <input
+            className="input"
+            type="file"
+            accept=".pdf,.doc,.docx,.txt"
+            style={{ paddingTop: 6 }}
+            onChange={e => setFile(e.target.files?.[0] ?? null)}
+          />
+          {file && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{file.name}</div>}
+        </div>
+      )}
+      <button
+        className="btn btn-primary btn-sm"
+        disabled={loading || uploading || (mode === 'upload' && !file)}
+        onClick={handleSubmit}
+      >
+        {uploading ? 'Uploading…' : loading ? 'Submitting…' : 'Submit Contract'}
+      </button>
+    </div>
+  )
+}
+
+// ── Contract Sign Form ────────────────────────────────────────────────────────
+
+function ContractSignForm({ onSubmit, loading }: {
+  onSubmit: (payload: Record<string, unknown>) => Promise<void>
+  loading: boolean
+}) {
+  const [signature, setSignature] = useState('')
+  const [bankAccounts, setBankAccounts] = useState<any[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  React.useEffect(() => {
+    fetch('/api/settings/bank-accounts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.accounts) {
+          setBankAccounts(d.accounts)
+          const primary = d.accounts.find((a: any) => a.is_primary)
+          if (primary) setSelectedAccountId(primary.id)
+          else if (d.accounts.length > 0) setSelectedAccountId(d.accounts[0].id)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAccounts(false))
+  }, [])
+
+  async function handleSubmit() {
+    if (!signature.trim()) { setError('Signature is required'); return }
+    if (!selectedAccountId) { setError('Please select a bank account to receive payment'); return }
+    setError(null)
+    await onSubmit({ contract_supplier_signature: signature.trim(), receiving_bank_account_id: selectedAccountId })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Sign Contract</div>
+      <div className="form-field">
+        <label className="field-label">Receiving Bank Account *</label>
+        {loadingAccounts ? (
+          <div style={{ fontSize: 12, color: 'var(--gray)' }}>Loading accounts…</div>
+        ) : bankAccounts.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--color-orange)', padding: '8px 12px', background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.2)', borderRadius: 8 }}>
+            No bank accounts found. <a href="/settings" style={{ color: 'var(--blue)' }}>Add one in Settings</a> before signing.
+          </div>
+        ) : (
+          <select className="input form-select" value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}>
+            <option value="">Select account…</option>
+            {bankAccounts.map((acct: any) => (
+              <option key={acct.id} value={acct.id}>
+                {acct.nickname || acct.bank_name} — {acct.account_holder_name} ****{acct.account_number?.slice(-4) ?? ''}
+                {acct.is_primary ? ' (Primary)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <div className="form-field">
+        <label className="field-label">Typed Signature (Full Legal Name) *</label>
+        <input
+          className="input"
+          type="text"
+          value={signature}
+          onChange={e => setSignature(e.target.value)}
+          placeholder="Enter your full legal name"
+        />
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>By typing your name you electronically sign this contract.</div>
+      </div>
+      <button
+        className="btn btn-primary btn-sm"
+        disabled={loading || !signature.trim() || !selectedAccountId || loadingAccounts || bankAccounts.length === 0}
+        onClick={handleSubmit}
+      >
+        {loading ? 'Signing…' : 'Sign Contract'}
+      </button>
+    </div>
+  )
+}
+
 // ── Main ActionPanel ──────────────────────────────────────────────────────────
 
 export interface ActionPanelProps {
@@ -393,6 +556,8 @@ export function ActionPanel({
         const isExpanded = expandedAction === action.action
         const isDDPresent = action.action === 'present_dd_offer'
         const isNOA = action.action === 'acknowledge_noa'
+        const isContractSubmit = action.action === 'submit_contract'
+        const isContractSign = action.action === 'sign_contract'
         const hasFields = action.requiredFields.length > 0
 
         return (
@@ -402,7 +567,7 @@ export function ActionPanel({
                 <button
                   className={`btn btn-sm ${action.isDestructive ? 'btn-danger' : 'btn-primary'}`}
                   onClick={() => {
-                    if (hasFields || isDDPresent || isNOA) {
+                    if (hasFields || isDDPresent || isNOA || isContractSubmit || isContractSign) {
                       setExpandedAction(action.action)
                     } else {
                       handleSubmit(action.action, {})
@@ -431,6 +596,17 @@ export function ActionPanel({
                 ) : isNOA ? (
                   <NOAAcknowledgmentForm
                     fc={fc}
+                    onSubmit={p => handleSubmit(action.action, p)}
+                    loading={loading}
+                  />
+                ) : isContractSubmit ? (
+                  <ContractSubmitForm
+                    dealId={dealId}
+                    onSubmit={p => handleSubmit(action.action, p)}
+                    loading={loading}
+                  />
+                ) : isContractSign ? (
+                  <ContractSignForm
                     onSubmit={p => handleSubmit(action.action, p)}
                     loading={loading}
                   />

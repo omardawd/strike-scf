@@ -81,14 +81,26 @@ export async function GET(
 
   const { data: deal } = await adminClient
     .from('deals')
-    .select('id, buyer_org_id, supplier_org_id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, agreed_incoterms, total_value')
+    .select('id, buyer_org_id, supplier_org_id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, agreed_incoterms, total_value, listing_id')
     .eq('id', request.deal_id)
     .single()
 
   let buyer_passport = null
   let supplier_passport = null
+  let listingTitle: string | null = null
+  let listingDescription: string | null = null
 
   if (deal) {
+    if (deal.listing_id) {
+      const { data: listing } = await adminClient
+        .from('marketplace_listings')
+        .select('title, description')
+        .eq('id', deal.listing_id)
+        .maybeSingle()
+      listingTitle = listing?.title ?? null
+      listingDescription = listing?.description ?? null
+    }
+
     const [{ data: buyer }, { data: supplier }] = await Promise.all([
       adminClient.from('organizations')
         .select('id, legal_name, passport_score, risk_tier, trade_count_total, avg_payment_days, dispute_rate_network')
@@ -140,6 +152,33 @@ export async function GET(
 
   const all_offers_count = (allOffers ?? []).length
 
+  // Management state (contract, disbursement) — only relevant once a bank's
+  // offer has been accepted. Scoped to this financing_request's own transaction
+  // so two concurrent requests on the same deal never collide.
+  let managementTransaction: any = null
+  let requesterBankAccount: any = null
+  if (['accepted', 'funded'].includes(request.status)) {
+    const { data: txn } = await adminClient
+      .from('transactions')
+      .select('id, status, bank_id, esign_document_id, bank_signed_at, anchor_signed_at, supplier_signed_at, esign_completed_at, disbursed_at, disbursed_by_user_id, disbursement_reference, supplier_paid_at')
+      .eq('financing_request_id', id)
+      .maybeSingle()
+    managementTransaction = txn ?? null
+
+    // The bank automatically sees the requester's own bank account — no manual entry.
+    if (isBank) {
+      const { data: acct } = await adminClient
+        .from('bank_accounts')
+        .select('nickname, bank_name, account_holder_name, account_number, routing_number, swift_iban, account_type')
+        .eq('entity_type', 'organization')
+        .eq('entity_id', request.requesting_org_id)
+        .order('is_primary', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      requesterBankAccount = acct ?? null
+    }
+  }
+
   return NextResponse.json({
     request,
     deal: deal
@@ -147,7 +186,9 @@ export async function GET(
           id:                  deal.id,
           agreed_price:        deal.agreed_price,
           agreed_currency:     deal.agreed_currency,
-          goods_description:   deal.goods_description,
+          goods_description:   deal.goods_description ?? null,
+          listing_title:       listingTitle,
+          listing_description: listingDescription,
           agreed_delivery_date: deal.agreed_delivery_date,
           agreed_incoterms:    deal.agreed_incoterms,
           total_value:         deal.total_value,
@@ -160,5 +201,8 @@ export async function GET(
     offers:            offersForCaller,
     my_offer:          isBank ? my_offer : undefined,
     all_offers_count,
+    transaction:           managementTransaction,
+    requester_bank_account: requesterBankAccount,
+    is_requester:           isOrg && request.requesting_org_id === me.org_id,
   })
 }

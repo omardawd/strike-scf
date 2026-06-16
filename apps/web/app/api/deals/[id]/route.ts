@@ -68,39 +68,131 @@ export async function GET(
     room = r
   }
 
-  let financingRequest = null
-  if (deal.financing_request_id) {
-    const { data: fr } = await adminClient
-      .from('financing_requests')
-      .select('id, status, amount_requested, structure_type, financing_type, currency, offer_count, created_at')
-      .eq('id', deal.financing_request_id)
-      .single()
-    financingRequest = fr
-  }
+  const FINANCING_REQUEST_FIELDS = 'id, status, amount_requested, structure_type, financing_type, currency, offer_count, created_at, requesting_org_id'
+  const TRANSACTION_FIELDS = 'id, type, status, financing_amount_approved, repayment_due_date, bank_id, tenor_days, financing_rate_apr, discount_rate, discount_amount, early_payment_date, repayment_routing, financing_request_id, esign_document_id, bank_signed_at, anchor_signed_at, supplier_signed_at, esign_completed_at, disbursed_at, disbursed_by_user_id, disbursement_reference, supplier_paid_at'
+  const BANK_ACCOUNT_FIELDS = 'nickname, bank_name, account_holder_name, account_number, routing_number, swift_iban, account_type'
 
-  // Fetch linked transaction when financing is active, accepted, or a DD offer is pending
+  let financingRequest = null
   let linkedTransaction = null
-  const needsTxn = deal.financing_payment_active
-    || financingRequest?.status === 'accepted'
-    || financingRequest?.status === 'funded'
-    || deal.dd_offer_presented_at != null
-  if (needsTxn) {
+  let bankBankAccount = null
+  let requesterBankAccount = null
+
+  if (isBankUser) {
+    // Banks don't have an org-scoped financing request — derive it from their own
+    // transaction on this deal (already confirmed to exist via the txCheck gate above).
     const { data: txn } = await adminClient
       .from('transactions')
-      .select('id, type, status, financing_amount_approved, repayment_due_date, bank_id, tenor_days, financing_rate_apr, discount_rate, discount_amount, early_payment_date, repayment_routing')
+      .select(TRANSACTION_FIELDS)
       .eq('deal_id', id)
+      .eq('bank_id', userData.bank_id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+
     if (txn) {
-      linkedTransaction = txn
-      if (txn.bank_id) {
-        const { data: bank } = await adminClient
-          .from('banks')
-          .select('id, display_name, legal_name')
-          .eq('id', txn.bank_id)
+      const { data: bank } = await adminClient
+        .from('banks')
+        .select('id, display_name, legal_name')
+        .eq('id', txn.bank_id)
+        .single()
+      linkedTransaction = { ...txn, bank }
+
+      // Once financing is active, the buyer repays the bank — surface the bank's
+      // own receiving account instead of the supplier's.
+      const { data: acct } = await adminClient
+        .from('bank_accounts')
+        .select(BANK_ACCOUNT_FIELDS)
+        .eq('entity_type', 'bank')
+        .eq('entity_id', txn.bank_id)
+        .order('is_primary', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      bankBankAccount = acct
+
+      if (txn.financing_request_id) {
+        const { data: fr } = await adminClient
+          .from('financing_requests')
+          .select(FINANCING_REQUEST_FIELDS)
+          .eq('id', txn.financing_request_id)
           .single()
-        linkedTransaction = { ...txn, bank }
+        financingRequest = fr
+
+        // The bank automatically sees the requester's own bank account for disbursement.
+        if (fr && ['accepted', 'funded'].includes(fr.status)) {
+          const { data: reqAcct } = await adminClient
+            .from('bank_accounts')
+            .select(BANK_ACCOUNT_FIELDS)
+            .eq('entity_type', 'organization')
+            .eq('entity_id', fr.requesting_org_id)
+            .order('is_primary', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          requesterBankAccount = reqAcct
+        }
+      }
+    }
+  } else {
+    // Each party has its own financing request on a deal — look up by the caller's
+    // org, not a single FK, so buyer and supplier each see their own request.
+    if (userData.org_id) {
+      const { data: fr } = await adminClient
+        .from('financing_requests')
+        .select(FINANCING_REQUEST_FIELDS)
+        .eq('deal_id', id)
+        .eq('requesting_org_id', userData.org_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      financingRequest = fr
+    }
+
+    // Fetch linked transaction when financing is active, any party's request was
+    // accepted/funded, or a DD offer is pending.
+    let anyAcceptedOrFunded = financingRequest ? ['accepted', 'funded'].includes(financingRequest.status) : false
+    if (!anyAcceptedOrFunded) {
+      const { data: acceptedFr } = await adminClient
+        .from('financing_requests')
+        .select('id')
+        .eq('deal_id', id)
+        .in('status', ['accepted', 'funded'])
+        .limit(1)
+        .maybeSingle()
+      anyAcceptedOrFunded = !!acceptedFr
+    }
+
+    const needsTxn = deal.financing_payment_active
+      || anyAcceptedOrFunded
+      || deal.dd_offer_presented_at != null
+    if (needsTxn) {
+      const { data: txn } = await adminClient
+        .from('transactions')
+        .select(TRANSACTION_FIELDS)
+        .eq('deal_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (txn) {
+        linkedTransaction = txn
+        if (txn.bank_id) {
+          const { data: bank } = await adminClient
+            .from('banks')
+            .select('id, display_name, legal_name')
+            .eq('id', txn.bank_id)
+            .single()
+          linkedTransaction = { ...txn, bank }
+
+          // Once financing is active, the buyer repays the bank — surface the bank's
+          // own receiving account instead of the supplier's.
+          const { data: acct } = await adminClient
+            .from('bank_accounts')
+            .select(BANK_ACCOUNT_FIELDS)
+            .eq('entity_type', 'bank')
+            .eq('entity_id', txn.bank_id)
+            .order('is_primary', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          bankBankAccount = acct
+        }
       }
     }
   }
@@ -112,6 +204,8 @@ export async function GET(
     room,
     financing_request: financingRequest,
     linked_transaction: linkedTransaction,
+    bank_bank_account: bankBankAccount,
+    requester_bank_account: requesterBankAccount,
     documents: documentsRes.data ?? [],
     user_role: isBankUser ? 'bank' : deal.buyer_org_id === userData.org_id ? 'buyer' : 'supplier',
   })

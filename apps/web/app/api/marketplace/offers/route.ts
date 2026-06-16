@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   const { listing_id, offered_price, offered_quantity, proposed_delivery_date,
-    proposed_incoterms, proposed_payment_terms, notes } = body
+    proposed_incoterms, proposed_payment_terms, notes, bank_account_id, offer_items } = body
 
   if (!listing_id || typeof offered_price !== 'number') {
     return NextResponse.json({ error: 'listing_id and offered_price are required' }, { status: 400 })
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   // Fetch listing and verify it's active
   const { data: listing } = await adminClient
     .from('marketplace_listings')
-    .select('id, status, org_id, title, target_price, currency')
+    .select('id, status, org_id, title, target_price, currency, listing_type')
     .eq('id', listing_id)
     .single()
   if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
@@ -61,6 +61,23 @@ export async function POST(request: Request) {
   }
   if (listing.org_id === userData.org_id) {
     return NextResponse.json({ error: 'Cannot offer on your own listing' }, { status: 403 })
+  }
+
+  // For po_request listings the offeror is the supplier (payment receiver) — require bank account
+  const offerorIsPaymentReceiver = listing.listing_type === 'po_request'
+  if (offerorIsPaymentReceiver) {
+    if (!bank_account_id) {
+      return NextResponse.json({ error: 'bank_account_id is required — select the bank account to receive payment' }, { status: 400 })
+    }
+    // Verify account belongs to offeror org
+    const { data: acct } = await adminClient
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bank_account_id)
+      .eq('entity_type', 'organization')
+      .eq('entity_id', userData.org_id)
+      .single()
+    if (!acct) return NextResponse.json({ error: 'Bank account not found or does not belong to your organization' }, { status: 400 })
   }
 
   // Check for existing non-withdrawn/rejected offer from this org
@@ -84,6 +101,7 @@ export async function POST(request: Request) {
     proposed_incoterms: proposed_incoterms ?? null,
     proposed_payment_terms: proposed_payment_terms ?? null,
     notes: notes ?? null,
+    offer_items: Array.isArray(offer_items) ? offer_items : null,
     by_org_id: userData.org_id,
     at: now,
   }
@@ -102,6 +120,7 @@ export async function POST(request: Request) {
       status: 'pending',
       current_round: 1,
       offer_rounds: [firstRound],
+      bank_account_id: bank_account_id ?? null,
     })
     .select()
     .single()

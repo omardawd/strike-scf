@@ -58,10 +58,28 @@ export async function GET() {
     if (dealIds.length > 0) {
       const { data: deals } = await adminClient
         .from('deals')
-        .select('id, buyer_org_id, supplier_org_id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, agreed_incoterms, total_value')
+        .select('id, buyer_org_id, supplier_org_id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, agreed_incoterms, total_value, listing_id')
         .in('id', dealIds)
 
       for (const d of deals ?? []) dealsMap[d.id] = d
+
+      // Marketplace-originated deals carry the listing title/description separately
+      // from the deal's own goods_description — surface both, never substitute one for the other.
+      const listingIds = [...new Set((deals ?? []).filter((d: any) => d.listing_id).map((d: any) => d.listing_id as string))]
+      if (listingIds.length > 0) {
+        const { data: listings } = await adminClient
+          .from('marketplace_listings')
+          .select('id, title, description')
+          .in('id', listingIds)
+        const listingMap: Record<string, { title: string; description: string | null }> = {}
+        for (const l of listings ?? []) listingMap[l.id] = { title: l.title, description: l.description ?? null }
+        for (const d of deals ?? []) {
+          const listing = d.listing_id ? listingMap[d.listing_id] : undefined
+          if (listing) {
+            dealsMap[d.id] = { ...d, listing_title: listing.title, listing_description: listing.description }
+          }
+        }
+      }
 
       const buyerIds   = [...new Set((deals ?? []).map((d: any) => d.buyer_org_id as string))]
       const supplierIds = [...new Set((deals ?? []).map((d: any) => d.supplier_org_id as string))]
@@ -113,6 +131,8 @@ export async function GET() {
           agreed_price: deal.agreed_price,
           agreed_currency: deal.agreed_currency,
           goods_description: deal.goods_description,
+          listing_title: deal.listing_title ?? null,
+          listing_description: deal.listing_description ?? null,
           agreed_delivery_date: deal.agreed_delivery_date,
           agreed_incoterms: deal.agreed_incoterms,
         } : null,
@@ -153,9 +173,25 @@ export async function GET() {
     if (dealIds.length > 0) {
       const { data: deals } = await adminClient
         .from('deals')
-        .select('id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, total_value')
+        .select('id, agreed_price, agreed_currency, goods_description, agreed_delivery_date, total_value, listing_id')
         .in('id', dealIds)
       for (const d of deals ?? []) dealsMap[d.id] = d
+
+      const listingIds = [...new Set((deals ?? []).filter((d: any) => d.listing_id).map((d: any) => d.listing_id as string))]
+      if (listingIds.length > 0) {
+        const { data: listings } = await adminClient
+          .from('marketplace_listings')
+          .select('id, title, description')
+          .in('id', listingIds)
+        const listingMap: Record<string, { title: string; description: string | null }> = {}
+        for (const l of listings ?? []) listingMap[l.id] = { title: l.title, description: l.description ?? null }
+        for (const d of deals ?? []) {
+          const listing = d.listing_id ? listingMap[d.listing_id] : undefined
+          if (listing) {
+            dealsMap[d.id] = { ...d, listing_title: listing.title, listing_description: listing.description }
+          }
+        }
+      }
     }
 
     const results = (requests ?? []).map((req: any) => ({
@@ -203,17 +239,29 @@ export async function POST(request: Request) {
     .single()
 
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
-  if (deal.financing_requested) {
-    return NextResponse.json({ error: 'Financing already requested for this deal' }, { status: 400 })
-  }
   if (deal.buyer_org_id !== me.org_id && deal.supplier_org_id !== me.org_id) {
     return NextResponse.json({ error: 'You must be a party to this deal' }, { status: 403 })
+  }
+
+  // Each party can independently request financing on the same deal — gate per-org,
+  // not deal-wide (deal.financing_requested is informational only, not a hard block).
+  const { data: existingOwnRequest } = await adminClient
+    .from('financing_requests')
+    .select('id')
+    .eq('deal_id', body.deal_id)
+    .eq('requesting_org_id', me.org_id)
+    .limit(1)
+    .maybeSingle()
+  if (existingOwnRequest) {
+    return NextResponse.json({ error: 'You already have a financing request for this deal' }, { status: 400 })
   }
 
   // G3.1 — G3.2: Financing structure gates
   const financingType = body.financing_type ?? null
   const VALID_POST_SHIPMENT = ['shipped', 'delivery_confirmed', 'payment_due', 'payment_overdue']
-  const VALID_ALL_STAGES = ['agreed', 'active', 'confirmed', 'in_preparation', ...VALID_POST_SHIPMENT]
+  // 'financing_requested' included for backward compat with deals whose status was
+  // overwritten by a prior version of this route before a second party's request.
+  const VALID_ALL_STAGES = ['agreed', 'contract_pending', 'financing_requested', 'active', 'confirmed', 'in_preparation', ...VALID_POST_SHIPMENT]
 
   if (!VALID_ALL_STAGES.includes(deal.status)) {
     return NextResponse.json({ error: 'Deal must be active to request financing' }, { status: 400 })
@@ -318,13 +366,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create financing request' }, { status: 500 })
   }
 
+  // Note: deal.status is intentionally left unchanged — financing is a parallel
+  // lens over the deal, not a replacement for its lifecycle stage. Each party's
+  // own request is looked up by deal_id + requesting_org_id, not a single FK.
   await adminClient
     .from('deals')
     .update({
       financing_requested:    true,
       financing_requested_at: new Date().toISOString(),
-      financing_request_id:   financingRequest.id,
-      status:                 'financing_requested',
     })
     .eq('id', body.deal_id)
 

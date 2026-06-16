@@ -6,6 +6,7 @@ import type { FinancingContext } from './financing-context'
 export type DealStatus =
   | 'negotiating'
   | 'agreed'
+  | 'contract_pending'
   | 'documents_pending'
   | 'confirmed'
   | 'in_preparation'
@@ -61,6 +62,31 @@ const ORG_ROLES: UserRole[] = ['org_admin', 'org_member']
 const ALL_ROLES: UserRole[] = ['bank_admin', 'bank_credit_officer', 'org_admin', 'org_member', 'strike_admin']
 
 export const PERMITTED_TRANSITIONS: Record<string, TransitionRule> = {
+  // ── Contract flow (new procurement v2) ───────────────────────────────────────
+  // Buyer submits contract (AI-generated or uploaded) → awaiting supplier signature
+  'agreed:submit_contract': {
+    nextStatus: 'contract_pending',
+    allowedRoles: ORG_ROLES,
+    allowedParty: 'buyer',
+    requiredFields: ['contract_document_id'],
+    sideEffects: ['notify_counterparty', 'create_deal_event', 'send_email'],
+  },
+  // Supplier signs contract → deal confirmed (in business)
+  'contract_pending:sign_contract': {
+    nextStatus: 'confirmed',
+    allowedRoles: ORG_ROLES,
+    allowedParty: 'supplier',
+    requiredFields: ['contract_supplier_signature'],
+    sideEffects: ['notify_counterparty', 'create_deal_event', 'send_email'],
+  },
+  'contract_pending:cancel': {
+    nextStatus: 'cancelled',
+    allowedRoles: ORG_ROLES,
+    blockedWhenFinancingActive: true,
+    requiredFields: ['cancellation_reason'],
+    sideEffects: ['notify_counterparty', 'create_deal_event', 'send_email'],
+  },
+
   'agreed:upload_documents': {
     nextStatus: 'documents_pending',
     allowedRoles: ORG_ROLES,

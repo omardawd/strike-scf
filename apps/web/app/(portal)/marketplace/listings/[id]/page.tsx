@@ -44,78 +44,165 @@ const PAYMENT_TERMS = ['Net 30','Net 60','Net 90','LC at sight','30% advance + 7
 
 // ── Offer form ────────────────────────────────────────────────────────────────
 
+interface BankAccount {
+  id: string
+  nickname: string
+  bank_name: string
+  account_holder_name: string
+  account_number: string
+  is_primary: boolean
+}
+
+interface OfferItem {
+  listing_item_id: string
+  name: string
+  description: string
+  unit: string
+  quantity: string
+  unit_price: string
+}
+
 interface OfferFormState {
-  offered_price: string
-  offered_quantity: string
+  offer_items: OfferItem[]
   proposed_delivery_date: string
   proposed_incoterms: string
   proposed_payment_terms: string
   notes: string
+  bank_account_id?: string
+}
+
+function computeOfferTotal(items: OfferItem[]): number {
+  return items.reduce((sum, item) => {
+    const qty = parseFloat(item.quantity)
+    const price = parseFloat(item.unit_price)
+    return sum + (isNaN(qty) || isNaN(price) ? 0 : qty * price)
+  }, 0)
+}
+
+function initOfferItemsFromListing(listingLineItems: any[]): OfferItem[] {
+  return listingLineItems.map(li => ({
+    listing_item_id: li.id,
+    name: li.name ?? '',
+    description: li.description ?? '',
+    unit: li.unit ?? 'MT',
+    quantity: li.quantity != null ? String(li.quantity) : '',
+    unit_price: '',
+  }))
+}
+
+function ItemPricingTable({
+  items,
+  currency,
+  onChange,
+}: {
+  items: OfferItem[]
+  currency: string
+  onChange: (items: OfferItem[]) => void
+}) {
+  const total = computeOfferTotal(items)
+  const updateItem = (idx: number, field: 'quantity' | 'unit_price', val: string) => {
+    const next = items.map((it, i) => i === idx ? { ...it, [field]: val } : it)
+    onChange(next)
+  }
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '6px 0', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+        <span>Item</span><span>Qty</span><span>Unit</span><span>Price / Unit</span>
+      </div>
+      {items.map((item, idx) => (
+        <div key={item.listing_item_id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '8px 0', borderBottom: '1px solid var(--border-light)' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{item.name}</div>
+            {item.description && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{item.description}</div>}
+          </div>
+          <input
+            type="number" className="input" min="0"
+            style={{ fontSize: 13, padding: '5px 8px' }}
+            placeholder="0"
+            value={item.quantity}
+            onChange={e => updateItem(idx, 'quantity', e.target.value)}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: 'var(--gray)', padding: '5px 0' }}>{item.unit}</div>
+          <input
+            type="number" className="input" min="0" step="0.01"
+            style={{ fontSize: 13, padding: '5px 8px' }}
+            placeholder="0.00"
+            value={item.unit_price}
+            onChange={e => updateItem(idx, 'unit_price', e.target.value)}
+          />
+        </div>
+      ))}
+      {total > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 0 0', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ fontSize: 12, color: 'var(--gray)' }}>Total Offer</span>
+          <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>
+            {total.toLocaleString()}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>{currency}</span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function OfferForm({
   listing,
+  listingLineItems,
   onSubmit,
   submitting,
   error,
+  bankAccounts,
 }: {
   listing: MarketplaceListing
+  listingLineItems: any[]
   onSubmit: (f: OfferFormState) => void
   submitting: boolean
   error: string | null
+  bankAccounts: BankAccount[]
 }) {
+  const isPORequest = listing.listing_type === 'po_request'
+  const primaryAcct = bankAccounts.find(a => a.is_primary) ?? bankAccounts[0]
+  const hasItems = listingLineItems.length > 0
+
   const [form, setForm] = useState<OfferFormState>({
-    offered_price: listing.target_price?.toString() ?? '',
-    offered_quantity: listing.quantity?.toString() ?? '',
+    offer_items: initOfferItemsFromListing(listingLineItems),
     proposed_delivery_date: listing.delivery_deadline ?? '',
     proposed_incoterms: listing.incoterms ?? '',
     proposed_payment_terms: listing.payment_terms ?? '',
     notes: '',
+    bank_account_id: primaryAcct?.id ?? '',
   })
 
-  function set(k: keyof OfferFormState, v: string) {
-    setForm(prev => ({ ...prev, [k]: v }))
-  }
+  const total = computeOfferTotal(form.offer_items)
+  const canSubmit = (!hasItems || total > 0) && (!isPORequest || !!form.bank_account_id)
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <div className="card-head">Submit Your Offer</div>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="form-row-2">
+
+        {/* Per-item pricing table */}
+        {hasItems && (
           <div className="form-field">
-            <label className="field-label">Offered Price ({listing.currency})</label>
-            <input
-              type="number" className="input" placeholder="0.00"
-              value={form.offered_price}
-              onChange={e => set('offered_price', e.target.value)}
+            <label className="field-label">Your Pricing per Item</label>
+            <ItemPricingTable
+              items={form.offer_items}
+              currency={listing.currency ?? 'USD'}
+              onChange={items => setForm(prev => ({ ...prev, offer_items: items }))}
             />
           </div>
-          <div className="form-field">
-            <label className="field-label">Quantity {listing.unit ? `(${listing.unit})` : ''}</label>
-            <input
-              type="number" className="input" placeholder={listing.quantity?.toString() ?? ''}
-              value={form.offered_quantity}
-              onChange={e => set('offered_quantity', e.target.value)}
-            />
-          </div>
-        </div>
+        )}
 
         <div className="form-row-2">
           <div className="form-field">
             <label className="field-label">Proposed Delivery Date</label>
-            <input
-              type="date" className="input"
-              value={form.proposed_delivery_date}
-              onChange={e => set('proposed_delivery_date', e.target.value)}
-            />
+            <input type="date" className="input" value={form.proposed_delivery_date}
+              onChange={e => setForm(p => ({ ...p, proposed_delivery_date: e.target.value }))} />
           </div>
           <div className="form-field">
             <label className="field-label">Incoterms</label>
-            <select
-              className="input form-select"
-              value={form.proposed_incoterms}
-              onChange={e => set('proposed_incoterms', e.target.value)}
-            >
+            <select className="input form-select" value={form.proposed_incoterms}
+              onChange={e => setForm(p => ({ ...p, proposed_incoterms: e.target.value }))}>
               <option value="">Select Incoterms</option>
               {INCOTERMS.map(t => <option key={t}>{t}</option>)}
             </select>
@@ -124,34 +211,52 @@ function OfferForm({
 
         <div className="form-field">
           <label className="field-label">Payment Terms</label>
-          <select
-            className="input form-select"
-            value={form.proposed_payment_terms}
-            onChange={e => set('proposed_payment_terms', e.target.value)}
-          >
+          <select className="input form-select" value={form.proposed_payment_terms}
+            onChange={e => setForm(p => ({ ...p, proposed_payment_terms: e.target.value }))}>
             <option value="">Select Payment Terms</option>
             {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
           </select>
         </div>
 
+        {isPORequest && (
+          <div className="form-field">
+            <label className="field-label">
+              Payment Receiving Account
+              <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
+            </label>
+            {bankAccounts.length === 0 ? (
+              <div style={{ padding: '10px 12px', background: 'rgba(245,158,11,0.08)', borderRadius: 8, border: '1px solid rgba(245,158,11,0.25)', fontSize: 13, color: '#92400e' }}>
+                You have no bank accounts set up.{' '}
+                <a href="/settings#bank-accounts" target="_blank" style={{ color: 'var(--blue)', fontWeight: 600 }}>Add one in Settings</a>{' '}before submitting.
+              </div>
+            ) : (
+              <select className="input form-select" value={form.bank_account_id}
+                onChange={e => setForm(p => ({ ...p, bank_account_id: e.target.value }))}>
+                <option value="">Select bank account to receive payment</option>
+                {bankAccounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.nickname || a.bank_name} — {a.account_holder_name} (...{a.account_number.slice(-4)})
+                    {a.is_primary ? ' (Primary)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>
+              The buyer will pay to this account after delivery confirmation.
+            </p>
+          </div>
+        )}
+
         <div className="form-field">
           <label className="field-label">Notes (optional)</label>
-          <textarea
-            className="input" rows={3}
-            placeholder="Add any context, conditions, or details..."
-            value={form.notes}
-            onChange={e => set('notes', e.target.value)}
-          />
+          <textarea className="input" rows={3} placeholder="Add any context, conditions, or details..."
+            value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
         </div>
 
         {error && <p className="field-error">{error}</p>}
 
-        <button
-          className="btn btn-blue"
-          disabled={submitting || !form.offered_price}
-          onClick={() => onSubmit(form)}
-        >
-          {submitting ? 'Submitting…' : 'Submit Offer'}
+        <button className="btn btn-blue" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
+          {submitting ? 'Submitting…' : `Submit Offer${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
         </button>
       </div>
     </div>
@@ -163,6 +268,7 @@ function OfferForm({
 function CounterForm({
   offer,
   listing,
+  listingLineItems,
   onSubmit,
   onCancel,
   submitting,
@@ -170,47 +276,70 @@ function CounterForm({
 }: {
   offer: MarketplaceOffer
   listing: MarketplaceListing
+  listingLineItems: any[]
   onSubmit: (f: OfferFormState) => void
   onCancel: () => void
   submitting: boolean
   error: string | null
 }) {
+  const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
+  const lastRound = rounds.length > 0 ? (rounds[rounds.length - 1] as any) : null
+  const prevItems: any[] = lastRound?.offer_items ?? []
+
+  // Build initial offer_items: use previous round's items if available, else listing items
+  const initItems: OfferItem[] = listingLineItems.length > 0
+    ? listingLineItems.map(li => {
+        const prev = prevItems.find((p: any) => p.listing_item_id === li.id)
+        return {
+          listing_item_id: li.id,
+          name: li.name ?? '',
+          description: li.description ?? '',
+          unit: li.unit ?? 'MT',
+          quantity: prev?.quantity != null ? String(prev.quantity) : (li.quantity != null ? String(li.quantity) : ''),
+          unit_price: prev?.unit_price != null ? String(prev.unit_price) : '',
+        }
+      })
+    : []
+
   const [form, setForm] = useState<OfferFormState>({
-    offered_price: offer.offered_price?.toString() ?? '',
-    offered_quantity: offer.offered_quantity?.toString() ?? '',
+    offer_items: initItems,
     proposed_delivery_date: offer.proposed_delivery_date ?? '',
     proposed_incoterms: offer.proposed_incoterms ?? '',
     proposed_payment_terms: offer.proposed_payment_terms ?? '',
     notes: '',
   })
 
-  function set(k: keyof OfferFormState, v: string) {
-    setForm(prev => ({ ...prev, [k]: v }))
-  }
+  const total = computeOfferTotal(form.offer_items)
+  const hasItems = listingLineItems.length > 0
+  const canSubmit = !hasItems || total > 0
 
   return (
-    <div style={{ margin: '0 20px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', padding: 16 }}>
+    <div style={{ margin: '0 20px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
       <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
         Counter Offer — Round {(offer.current_round ?? 1) + 1}
       </p>
-      <div className="form-row-2" style={{ marginBottom: 10 }}>
-        <div className="form-field">
-          <label className="field-label">Counter Price ({listing.currency})</label>
-          <input type="number" className="input" value={form.offered_price} onChange={e => set('offered_price', e.target.value)} />
+
+      {hasItems && (
+        <div className="form-field" style={{ marginBottom: 10 }}>
+          <label className="field-label">Your Counter Pricing</label>
+          <ItemPricingTable
+            items={form.offer_items}
+            currency={listing.currency ?? 'USD'}
+            onChange={items => setForm(p => ({ ...p, offer_items: items }))}
+          />
         </div>
-        <div className="form-field">
-          <label className="field-label">Quantity</label>
-          <input type="number" className="input" value={form.offered_quantity} onChange={e => set('offered_quantity', e.target.value)} />
-        </div>
-      </div>
+      )}
+
       <div className="form-row-2" style={{ marginBottom: 10 }}>
         <div className="form-field">
           <label className="field-label">Delivery Date</label>
-          <input type="date" className="input" value={form.proposed_delivery_date} onChange={e => set('proposed_delivery_date', e.target.value)} />
+          <input type="date" className="input" value={form.proposed_delivery_date}
+            onChange={e => setForm(p => ({ ...p, proposed_delivery_date: e.target.value }))} />
         </div>
         <div className="form-field">
           <label className="field-label">Incoterms</label>
-          <select className="input form-select" value={form.proposed_incoterms} onChange={e => set('proposed_incoterms', e.target.value)}>
+          <select className="input form-select" value={form.proposed_incoterms}
+            onChange={e => setForm(p => ({ ...p, proposed_incoterms: e.target.value }))}>
             <option value="">Select</option>
             {INCOTERMS.map(t => <option key={t}>{t}</option>)}
           </select>
@@ -218,19 +347,21 @@ function CounterForm({
       </div>
       <div className="form-field" style={{ marginBottom: 10 }}>
         <label className="field-label">Payment Terms</label>
-        <select className="input form-select" value={form.proposed_payment_terms} onChange={e => set('proposed_payment_terms', e.target.value)}>
+        <select className="input form-select" value={form.proposed_payment_terms}
+          onChange={e => setForm(p => ({ ...p, proposed_payment_terms: e.target.value }))}>
           <option value="">Select</option>
           {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
         </select>
       </div>
       <div className="form-field" style={{ marginBottom: 12 }}>
         <label className="field-label">Notes</label>
-        <textarea className="input" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+        <textarea className="input" rows={2} value={form.notes}
+          onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
       </div>
       {error && <p className="field-error" style={{ marginBottom: 8 }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-blue btn-sm" disabled={submitting || !form.offered_price} onClick={() => onSubmit(form)}>
-          {submitting ? 'Sending…' : 'Send Counter'}
+        <button className="btn btn-blue btn-sm" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
+          {submitting ? 'Sending…' : `Send Counter${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
       </div>
@@ -243,6 +374,7 @@ function CounterForm({
 function OfferCard({
   item,
   listing,
+  listingLineItems,
   isListingOwner,
   isMyOffer,
   onAccept,
@@ -252,11 +384,13 @@ function OfferCard({
   counteringOfferId,
   onCounterSubmit,
   onCounterCancel,
+  onOpenRoom,
   actionSubmitting,
   actionError,
 }: {
   item: { offer: MarketplaceOffer; offeror_org: Record<string, unknown> | null; ai_analysis: string | null; ai_recommendation: string | null }
   listing: MarketplaceListing
+  listingLineItems: any[]
   isListingOwner: boolean
   isMyOffer: boolean
   onAccept: (id: string) => void
@@ -266,87 +400,194 @@ function OfferCard({
   counteringOfferId: string | null
   onCounterSubmit: (id: string, f: OfferFormState) => void
   onCounterCancel: () => void
+  onOpenRoom: (offerId: string) => void
   actionSubmitting: boolean
   actionError: string | null
 }) {
   const router = useRouter()
   const { offer, offeror_org, ai_analysis, ai_recommendation } = item
   const isInactive = ['withdrawn', 'rejected', 'expired'].includes(offer.status)
-  const showActions = (isListingOwner || isMyOffer) && ['pending', 'countered'].includes(offer.status)
+  const isActive = ['pending', 'countered'].includes(offer.status)
   const isCounting = counteringOfferId === offer.id
   const roomId = (offer.metadata?.room_id as string | undefined) ?? null
 
   // Turn-based counter logic: whoever received the last counter gets to respond.
   const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
   const lastRound = rounds.length > 0 ? rounds[rounds.length - 1] : null
+  // isListingOwnerTurn: no rounds yet (fresh offer) OR last round submitted by offeror
   const isListingOwnerTurn = !lastRound || (lastRound as any).by_org_id === offer.from_org_id
+  // isOfferorTurn: a round exists AND last round was submitted by listing org
   const isOfferorTurn = lastRound != null && (lastRound as any).by_org_id !== offer.from_org_id
+
+  // Whether this user just sent a counter and is waiting for the other party
+  const iWaitingForOther = offer.status === 'countered' && (
+    (isListingOwner && !isListingOwnerTurn) ||
+    (isMyOffer && !isOfferorTurn)
+  )
+
+  // Extract offer_items from the last round
+  const lastRoundItems: any[] = (lastRound as any)?.offer_items ?? []
+  const offerTotal = lastRoundItems.length > 0
+    ? lastRoundItems.reduce((sum: number, it: any) => {
+        const qty = Number(it.quantity) || 0
+        const price = Number(it.unit_price) || 0
+        return sum + qty * price
+      }, 0)
+    : null
+
+  const score = (offeror_org?.passport_score as number | null) ?? null
+  const scoreColor = score == null ? 'var(--gray)' : score >= 70 ? 'var(--color-green)' : score >= 45 ? 'var(--color-amber)' : 'var(--color-red)'
 
   return (
     <div className="mp-offer-card" style={isInactive ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
+
+      {/* ── Status + round ── */}
       <div className="mp-offer-card-status">
         <span className={`badge ${OFFER_STATUS_CLASS[offer.status] ?? 'badge-draft'}`}>{offer.status}</span>
-      </div>
-
-      <div className="mp-offer-card-head">
-        <div className="mp-offer-price-block">
-          <span className="mp-offer-price-label">Offer Price</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span className="mp-offer-price">{offer.offered_price?.toLocaleString() ?? '—'}</span>
-            <span className="mp-offer-price-currency">{listing.currency}</span>
-          </div>
-          {offer.current_round > 1 && (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.08em' }}>
-              Round {offer.current_round}
-            </span>
-          )}
-        </div>
-
-        {offeror_org && (
-          <div className="passport-mini" style={{ flex: 1, marginLeft: 'auto' }}>
-            <div className="passport-mini-ring">
-              <div className="passport-mini-ring-track" />
-              <div className="passport-mini-ring-fill" />
-              <span className="passport-mini-score">{(offeror_org.passport_score as number | null) ?? '—'}</span>
-            </div>
-            <div className="passport-mini-info">
-              <div className="passport-mini-org">
-                <button
-                  className="passport-mini-org-name"
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--gray-soft)', textUnderlineOffset: 2 }}
-                  onClick={() => router.push(`/passport/${offeror_org.id as string}`)}
-                >
-                  {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || 'Unknown'}
-                </button>
-                <span className="passport-mini-type">{offeror_org.type as string}</span>
-              </div>
-              <div className="passport-mini-stats">
-                <div className="passport-mini-stat">
-                  <span className="passport-mini-stat-label">Trades</span>
-                  <span className="passport-mini-stat-value">{(offeror_org.trade_count_total as number | null) ?? '—'}</span>
-                </div>
-                <div className="passport-mini-sep" />
-                <div className="passport-mini-stat">
-                  <span className="passport-mini-stat-label">Avg Pay</span>
-                  <span className="passport-mini-stat-value">
-                    {(offeror_org.avg_payment_days as number | null) != null ? `${offeror_org.avg_payment_days}d` : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+        {offer.current_round > 1 && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+            Round {offer.current_round}
+          </span>
         )}
       </div>
 
-      {/* Trade terms pills */}
+      {/* ── Total price ── */}
+      <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>
+          Total Offer
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ink)', lineHeight: 1 }}>
+            {(offerTotal ?? offer.offered_price)?.toLocaleString() ?? '—'}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+            {listing.currency}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Offered by ── */}
+      {offeror_org && (
+        <div style={{ padding: '14px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
+            Offered By
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+            {/* Score ring */}
+            <div style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
+              <svg width="56" height="56" viewBox="0 0 56 56" style={{ position: 'absolute', inset: 0 }}>
+                <circle cx="28" cy="28" r="24" fill="none" stroke="var(--border-strong)" strokeWidth="3.5" />
+                {score != null && (
+                  <circle
+                    cx="28" cy="28" r="24"
+                    fill="none"
+                    stroke={scoreColor}
+                    strokeWidth="3.5"
+                    strokeDasharray={`${(score / 100) * 150.8} 150.8`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 28 28)"
+                    style={{ transition: 'stroke-dasharray 0.6s ease' }}
+                  />
+                )}
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 0 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', lineHeight: 1 }}>
+                  {score ?? '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || 'Unknown'}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', border: '1px solid var(--border-strong)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                  {offeror_org.type as string}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Trades</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                    {(offeror_org.trade_count_total as number | null) ?? '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Avg Pay</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                    {(offeror_org.avg_payment_days as number | null) != null ? `${offeror_org.avg_payment_days}d` : '—'}
+                  </div>
+                </div>
+                {(offeror_org.dispute_rate_network as number | null) != null && (
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Disputes</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                      {((offeror_org.dispute_rate_network as number) * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => router.push(`/passport/${offeror_org.id as string}`)}
+              >
+                View Passport →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Per-item breakdown ── */}
+      {lastRoundItems.length > 0 && (
+        <div style={{ padding: '14px 20px 4px', borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+            Item Breakdown
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 90px 90px', gap: 6, paddingBottom: 6, borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
+            <span>Item</span><span>Qty</span><span>Unit</span><span>Unit Price</span><span style={{ textAlign: 'right' }}>Total</span>
+          </div>
+          {lastRoundItems.map((it: any, idx: number) => {
+            const qty = Number(it.quantity) || 0
+            const price = Number(it.unit_price) || 0
+            const lineTotal = qty * price
+            return (
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 90px 90px', gap: 6, padding: '8px 0', borderBottom: '1px solid var(--border-light)', alignItems: 'start' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{it.name}</div>
+                  {it.description && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{it.description}</div>}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', paddingTop: 2 }}>{it.quantity ?? '—'}</div>
+                <div style={{ fontSize: 12, color: 'var(--gray)', paddingTop: 2 }}>{it.unit ?? '—'}</div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', paddingTop: 2 }}>{price > 0 ? price.toLocaleString() : '—'}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', paddingTop: 2, textAlign: 'right' }}>
+                  {lineTotal > 0 ? lineTotal.toLocaleString() : '—'}
+                </div>
+              </div>
+            )
+          })}
+          {offerTotal != null && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 8, padding: '10px 0 6px' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)' }}>Total</span>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{offerTotal.toLocaleString()}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>{listing.currency}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Trade terms pills ── */}
       <div className="mp-offer-terms-row">
-        {offer.offered_quantity && <span className="mp-offer-term-pill">Qty: {offer.offered_quantity} {listing.unit ?? ''}</span>}
         {offer.proposed_incoterms && <span className="mp-offer-term-pill">{offer.proposed_incoterms}</span>}
         {offer.proposed_payment_terms && <span className="mp-offer-term-pill">{offer.proposed_payment_terms}</span>}
         {offer.proposed_delivery_date && <span className="mp-offer-term-pill">Delivery: {fmtDate(offer.proposed_delivery_date)}</span>}
       </div>
 
-      {/* AI analysis strip */}
+      {/* ── AI analysis strip ── */}
       {(ai_analysis || ai_recommendation) && (
         <div className="mp-offer-ai-strip">
           <div className="mp-offer-ai-label">Strike AI</div>
@@ -367,75 +608,66 @@ function OfferCard({
           {timeAgo(offer.created_at)}
         </span>
 
-        {roomId && (
-          <button
-            className="btn btn-sm btn-ghost"
-            style={{ pointerEvents: 'auto' }}
-            onClick={() => router.push(`/rooms/${roomId}`)}
-          >
-            Open Strike Room
-          </button>
+        {/* Room button — always visible for active offers parties are involved in */}
+        {(isListingOwner || isMyOffer) && isActive && (
+          roomId ? (
+            <button className="btn btn-sm btn-ghost" onClick={() => router.push(`/rooms/${roomId}`)}>
+              Go to Strike Room →
+            </button>
+          ) : (
+            <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onOpenRoom(offer.id)}>
+              Open Strike Room
+            </button>
+          )
         )}
 
         {offer.status === 'accepted' && offer.deal_id && (
-          <button
-            className="btn btn-sm btn-blue"
-            style={{ pointerEvents: 'auto' }}
-            onClick={() => router.push(`/deals/${offer.deal_id}`)}
-          >
+          <button className="btn btn-sm btn-blue" onClick={() => router.push(`/deals/${offer.deal_id}`)}>
             View Deal →
           </button>
         )}
 
-        {showActions && (
+        {/* Negotiation actions — only shown when it's your turn */}
+        {(isListingOwner || isMyOffer) && isActive && (
           <div className="mp-offer-actions">
-            {isListingOwner && offer.status === 'pending' && (
+            {iWaitingForOther ? (
+              <span style={{ fontSize: 12, color: 'var(--gray)', fontStyle: 'italic', padding: '0 4px' }}>
+                Counter submitted — awaiting their response
+              </span>
+            ) : (
               <>
-                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
-                  Counter
-                </button>
-                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>
-                  Reject
-                </button>
-                <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
-                  Accept
-                </button>
-              </>
-            )}
-            {isListingOwner && offer.status === 'countered' && (
-              <>
-                {isListingOwnerTurn && (
-                  <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
-                    Counter
-                  </button>
+                {/* Listing owner actions */}
+                {isListingOwner && offer.status === 'pending' && (
+                  <>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>Reject</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept</button>
+                  </>
                 )}
-                <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>
-                  Reject
-                </button>
-                <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
-                  Accept Counter
-                </button>
-              </>
-            )}
-            {isMyOffer && offer.status === 'pending' && (
-              <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>
-                Withdraw
-              </button>
-            )}
-            {isMyOffer && offer.status === 'countered' && (
-              <>
-                {isOfferorTurn && (
-                  <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>
-                    Counter
-                  </button>
+                {isListingOwner && offer.status === 'countered' && isListingOwnerTurn && (
+                  <>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>Reject</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept Counter</button>
+                  </>
                 )}
-                <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>
-                  Accept Counter
-                </button>
-                <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>
-                  Withdraw
-                </button>
+
+                {/* Offeror actions */}
+                {isMyOffer && offer.status === 'pending' && (
+                  <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
+                )}
+                {isMyOffer && offer.status === 'countered' && isOfferorTurn && (
+                  <>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept Counter</button>
+                    <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
+                  </>
+                )}
               </>
+            )}
+            {/* Offeror can always withdraw even while waiting */}
+            {isMyOffer && iWaitingForOther && (
+              <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
             )}
           </div>
         )}
@@ -445,6 +677,7 @@ function OfferCard({
         <CounterForm
           offer={offer}
           listing={listing}
+          listingLineItems={listingLineItems}
           onSubmit={f => onCounterSubmit(offer.id, f)}
           onCancel={onCounterCancel}
           submitting={actionSubmitting}
@@ -479,6 +712,10 @@ export default function ListingDetailPage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
+  const [lineItems, setLineItems] = useState<any[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [documents, setDocuments] = useState<any[]>([])
+
   const [offerSubmitting, setOfferSubmitting] = useState(false)
   const [offerError, setOfferError] = useState<string | null>(null)
 
@@ -503,6 +740,25 @@ export default function ListingDetailPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Fetch line items and bank accounts in parallel when listing loads
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/marketplace/listings/${id}/line-items`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLineItems(d.items ?? []) })
+      .catch(() => {})
+    // Fetch current user's bank accounts for offer form
+    fetch('/api/settings/bank-accounts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setBankAccounts(d.accounts ?? []) })
+      .catch(() => {})
+    // Fetch listing documents
+    fetch(`/api/marketplace/listings/${id}/document`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setDocuments(d.documents ?? []) })
+      .catch(() => {})
+  }, [id])
+
   // Realtime: re-fetch when offers change on this listing
   const realtimeRef = useRef<ReturnType<typeof createClient> | null>(null)
   useEffect(() => {
@@ -520,22 +776,46 @@ export default function ListingDetailPage() {
     return () => { supabase.removeChannel(channel) }
   }, [id, fetchData])
 
+  async function handleOpenRoom(offerId: string) {
+    setActionSubmitting(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/marketplace/offers/${offerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_room' }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to create room')
+      if (json.room_id) {
+        await fetchData()
+        router.push(`/rooms/${json.room_id}`)
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Error creating room')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
   async function handleSubmitOffer(form: OfferFormState) {
     if (!data) return
     setOfferSubmitting(true)
     setOfferError(null)
     try {
+      const total = computeOfferTotal(form.offer_items)
       const res = await fetch('/api/marketplace/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           listing_id: id,
-          offered_price: parseFloat(form.offered_price),
-          offered_quantity: form.offered_quantity ? parseFloat(form.offered_quantity) : undefined,
+          offered_price: total > 0 ? total : 0,
           proposed_delivery_date: form.proposed_delivery_date || undefined,
           proposed_incoterms: form.proposed_incoterms || undefined,
           proposed_payment_terms: form.proposed_payment_terms || undefined,
           notes: form.notes || undefined,
+          bank_account_id: form.bank_account_id || undefined,
+          offer_items: form.offer_items.length > 0 ? form.offer_items : undefined,
         }),
       })
       const json = await res.json()
@@ -553,8 +833,10 @@ export default function ListingDetailPage() {
     setActionError(null)
     try {
       const body: Record<string, unknown> = { action }
-      if (extra?.offered_price) body.offered_price = parseFloat(extra.offered_price)
-      if (extra?.offered_quantity) body.offered_quantity = parseFloat(extra.offered_quantity)
+      if (extra?.offer_items && extra.offer_items.length > 0) {
+        body.offered_price = computeOfferTotal(extra.offer_items)
+        body.offer_items = extra.offer_items
+      }
       if (extra?.proposed_delivery_date) body.proposed_delivery_date = extra.proposed_delivery_date
       if (extra?.proposed_incoterms) body.proposed_incoterms = extra.proposed_incoterms
       if (extra?.proposed_payment_terms) body.proposed_payment_terms = extra.proposed_payment_terms
@@ -667,17 +949,26 @@ export default function ListingDetailPage() {
             </h1>
 
             {/* Trade terms card */}
+            {(() => {
+              const lineItemsTotal = lineItems.reduce((sum: number, item: any) => {
+                const qty = Number(item.quantity) || 0
+                const price = Number(item.unit_price) || 0
+                return sum + (qty > 0 && price > 0 ? qty * price : 0)
+              }, 0)
+              const displayPrice = lineItemsTotal > 0 ? lineItemsTotal : listing.target_price
+              const isTotal = lineItemsTotal > 0
+              return (
             <div className="card">
               <div className="card-head">Trade Terms</div>
               <div style={{ padding: '8px 0' }}>
                 <div className="kv-row">
-                  <span className="k">Target Price</span>
+                  <span className="k">{isTotal ? 'Total Value' : 'Target Price'}</span>
                   <span className="v" style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
-                    {listing.target_price != null
-                      ? listing.target_price.toLocaleString()
+                    {displayPrice != null
+                      ? displayPrice.toLocaleString()
                       : '—'}&nbsp;
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gray)', letterSpacing: '0.08em' }}>
-                      {listing.currency}{listing.unit ? ` / ${listing.unit}` : ''}
+                      {listing.currency}{!isTotal && listing.unit ? ` / ${listing.unit}` : ''}
                     </span>
                   </span>
                 </div>
@@ -729,6 +1020,8 @@ export default function ListingDetailPage() {
                 )}
               </div>
             </div>
+              )
+            })()}
 
             {/* Description */}
             {listing.description && (
@@ -736,6 +1029,36 @@ export default function ListingDetailPage() {
                 <div className="card-head">Description</div>
                 <div className="card-body" style={{ fontSize: 14, color: 'var(--color-ink-2)', lineHeight: 1.65 }}>
                   {listing.description}
+                </div>
+              </div>
+            )}
+
+            {/* Line Items */}
+            {lineItems.length > 0 && (
+              <div className="card">
+                <div className="card-head">Line Items</div>
+                <div style={{ padding: '0 0 8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+                    <span>Item</span>
+                    <span>Qty</span>
+                    <span>Unit</span>
+                    <span>Price/Unit</span>
+                  </div>
+                  {lineItems.map((item: any) => (
+                    <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '10px 20px', alignItems: 'start', borderBottom: '1px solid var(--border-light)' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{item.name}</div>
+                        {item.description && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>{item.description}</div>}
+                      </div>
+                      <div style={{ fontSize: 13 }}>{item.quantity ?? '—'}</div>
+                      <div style={{ fontSize: 13 }}>{item.unit ?? '—'}</div>
+                      <div style={{ fontSize: 13 }}>
+                        {item.unit_price != null
+                          ? `${item.unit_price.toLocaleString()} ${item.currency ?? listing.currency ?? 'USD'}`
+                          : '—'}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -777,6 +1100,7 @@ export default function ListingDetailPage() {
                       key={item.offer.id}
                       item={item}
                       listing={listing}
+                      listingLineItems={lineItems}
                       isListingOwner={isListingOwner}
                       isMyOffer={item.offer.from_org_id === viewer_org_id}
                       onAccept={id => handleAction(id, 'accept')}
@@ -789,6 +1113,7 @@ export default function ListingDetailPage() {
                       counteringOfferId={counteringOfferId}
                       onCounterSubmit={(offerId, form) => handleAction(offerId, 'counter', form)}
                       onCounterCancel={() => setCounteringOfferId(null)}
+                      onOpenRoom={handleOpenRoom}
                       actionSubmitting={actionSubmitting}
                       actionError={actionError}
                     />
@@ -806,6 +1131,7 @@ export default function ListingDetailPage() {
                       key={item.offer.id}
                       item={item}
                       listing={listing}
+                      listingLineItems={lineItems}
                       isListingOwner={false}
                       isMyOffer={true}
                       onAccept={id => handleAction(id, 'accept')}
@@ -818,6 +1144,7 @@ export default function ListingDetailPage() {
                       counteringOfferId={counteringOfferId}
                       onCounterSubmit={(offerId, form) => handleAction(offerId, 'counter', form)}
                       onCounterCancel={() => setCounteringOfferId(null)}
+                      onOpenRoom={handleOpenRoom}
                       actionSubmitting={actionSubmitting}
                       actionError={actionError}
                     />
@@ -830,9 +1157,11 @@ export default function ListingDetailPage() {
             {canSubmitOffer && (
               <OfferForm
                 listing={listing}
+                listingLineItems={lineItems}
                 onSubmit={handleSubmitOffer}
                 submitting={offerSubmitting}
                 error={offerError}
+                bankAccounts={bankAccounts}
               />
             )}
 
@@ -898,6 +1227,15 @@ export default function ListingDetailPage() {
                     </div>
                   )}
                 </div>
+                <div style={{ padding: '0 20px 16px' }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ width: '100%' }}
+                    onClick={() => router.push(`/passport/${poster_org.id as string}`)}
+                  >
+                    View Passport →
+                  </button>
+                </div>
               </div>
             )}
 
@@ -925,6 +1263,43 @@ export default function ListingDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* Documents */}
+            {documents.length > 0 && (
+              <div className="card">
+                <div className="card-head">Documents</div>
+                <div style={{ padding: '4px 0 8px' }}>
+                  {documents.map((doc: any) => (
+                    <a
+                      key={doc.id}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 20px',
+                        borderBottom: '1px solid var(--border-light)',
+                        textDecoration: 'none',
+                        color: 'var(--ink)',
+                      }}
+                    >
+                      <span style={{ fontSize: 18 }}>📄</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {doc.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>
+                          {fmtDate(doc.created_at)}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600, flexShrink: 0 }}>↗</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </aside>
         </div>

@@ -54,6 +54,16 @@ export interface FinancingContext {
   aiContextSummary: string
 }
 
+export interface BankAccountForContext {
+  bank_name: string
+  account_holder_name: string
+  account_number: string
+  routing_number?: string | null
+  swift_iban?: string | null
+  nickname?: string | null
+  account_type?: string | null
+}
+
 // Minimal deal shape needed by this function
 export interface DealForContext {
   status: string
@@ -62,6 +72,9 @@ export interface DealForContext {
   agreed_price?: number | null
   agreed_currency?: string | null
   payment_due_date?: string | null
+  // v2: structured bank account record (preferred)
+  receiving_bank_account?: BankAccountForContext | null
+  // legacy manual fields (fallback for older deals)
   payment_bank_name?: string | null
   payment_account_number?: string | null
   payment_account_name?: string | null
@@ -96,6 +109,55 @@ export interface BankForContext {
   display_name?: string | null
 }
 
+function buildPaymentInstructions(deal: DealForContext, currency: string): PaymentInstructions | null {
+  const acc = deal.receiving_bank_account
+  if (acc) {
+    return {
+      bankName: acc.bank_name,
+      accountName: acc.account_holder_name,
+      accountNumberMasked: acc.account_number.length > 4
+        ? `****${acc.account_number.slice(-4)}`
+        : acc.account_number,
+      routingSwiftIban: acc.swift_iban ?? acc.routing_number ?? '',
+      currency,
+      reference: deal.payment_reference ?? '',
+    }
+  }
+  // Legacy fallback
+  if (!deal.payment_bank_name) return null
+  return {
+    bankName: deal.payment_bank_name,
+    accountName: deal.payment_account_name ?? '',
+    accountNumberMasked: deal.payment_account_number
+      ? `****${deal.payment_account_number.slice(-4)}`
+      : '',
+    routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
+    currency,
+    reference: deal.payment_reference ?? '',
+  }
+}
+
+// When financing is active, the buyer repays the bank, not the supplier — build
+// payment instructions from the bank's own bank_accounts record. No legacy fallback
+// here: legacy payment_* fields on the deal always represent the supplier's account.
+function buildBankPaymentInstructions(
+  acc: BankAccountForContext | null | undefined,
+  reference: string | null | undefined,
+  currency: string
+): PaymentInstructions | null {
+  if (!acc) return null
+  return {
+    bankName: acc.bank_name,
+    accountName: acc.account_holder_name,
+    accountNumberMasked: acc.account_number.length > 4
+      ? `****${acc.account_number.slice(-4)}`
+      : acc.account_number,
+    routingSwiftIban: acc.swift_iban ?? acc.routing_number ?? '',
+    currency,
+    reference: reference ?? '',
+  }
+}
+
 function mapStructure(txnType: string): DealFinancingStructure {
   switch (txnType) {
     case 'reverse_factoring':   return 'reverse_factoring'
@@ -124,7 +186,8 @@ export function getFinancingContext(
   transaction: TransactionForContext | null,
   _program: unknown | null,
   bankOrg: BankForContext | null,
-  supplierOrg: OrgForContext
+  supplierOrg: OrgForContext,
+  bankBankAccount?: BankAccountForContext | null
 ): FinancingContext {
   const invoiceAmount = deal.total_value ?? deal.agreed_price ?? 0
   const currency = deal.agreed_currency ?? 'USD'
@@ -142,18 +205,7 @@ export function getFinancingContext(
       'shipped', 'goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue',
     ].includes(deal.status)
 
-    const supplierPayInstr: PaymentInstructions | null = deal.payment_bank_name
-      ? {
-          bankName: deal.payment_bank_name,
-          accountName: deal.payment_account_name ?? '',
-          accountNumberMasked: deal.payment_account_number
-            ? `****${deal.payment_account_number.slice(-4)}`
-            : '',
-          routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
-          currency,
-          reference: deal.payment_reference ?? '',
-        }
-      : null
+    const supplierPayInstr = buildPaymentInstructions(deal, currency)
 
     return {
       structure: null,
@@ -188,14 +240,7 @@ export function getFinancingContext(
     const amount = invoiceAmount
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
     const canRequest = ['goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
-    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
-      bankName: deal.payment_bank_name,
-      accountName: deal.payment_account_name ?? '',
-      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
-      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
-      currency,
-      reference: deal.payment_reference ?? '',
-    } : null
+    const bankPayInstr = buildBankPaymentInstructions(bankBankAccount, deal.payment_reference, currency)
     return {
       structure,
       isActive: true,
@@ -230,14 +275,7 @@ export function getFinancingContext(
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
     const noaAcknowledged = !!deal.noa_acknowledged_at
     const canRequest = ['shipped', 'goods_received', 'delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)
-    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
-      bankName: deal.payment_bank_name,
-      accountName: deal.payment_account_name ?? '',
-      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
-      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
-      currency,
-      reference: deal.payment_reference ?? '',
-    } : null
+    const bankPayInstr = buildBankPaymentInstructions(bankBankAccount, deal.payment_reference, currency)
     return {
       structure,
       isActive: true,
@@ -273,14 +311,7 @@ export function getFinancingContext(
     const amount = transaction.financing_amount_approved ?? invoiceAmount
     const dueDate = transaction.repayment_due_date ?? deal.payment_due_date ?? null
     const canRequest = ['confirmed', 'in_preparation'].includes(deal.status)
-    const bankPayInstr: PaymentInstructions | null = deal.payment_bank_name ? {
-      bankName: deal.payment_bank_name,
-      accountName: deal.payment_account_name ?? '',
-      accountNumberMasked: deal.payment_account_number ? `****${deal.payment_account_number.slice(-4)}` : '',
-      routingSwiftIban: deal.payment_swift_iban ?? deal.payment_routing_number ?? '',
-      currency,
-      reference: deal.payment_reference ?? '',
-    } : null
+    const bankPayInstr = buildBankPaymentInstructions(bankBankAccount, deal.payment_reference, currency)
     return {
       structure,
       isActive: true,

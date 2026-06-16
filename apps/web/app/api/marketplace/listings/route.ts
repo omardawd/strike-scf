@@ -125,10 +125,28 @@ export async function GET(request: Request) {
     ? (listings ?? [])
     : (listings ?? []).filter((l: any) => orgsMap[l.org_id]?.network_visible === true)
 
+  // Batch-fetch line item totals so cards can show aggregate price
+  const listingIds = visibleListings.map((l: any) => l.id as string)
+  const itemTotalsMap: Record<string, number> = {}
+  if (listingIds.length > 0) {
+    const { data: lineItems } = await adminClient
+      .from('listing_line_items')
+      .select('listing_id, quantity, unit_price')
+      .in('listing_id', listingIds)
+    for (const item of lineItems ?? []) {
+      const qty = Number(item.quantity) || 0
+      const price = Number(item.unit_price) || 0
+      if (qty > 0 && price > 0) {
+        itemTotalsMap[item.listing_id] = (itemTotalsMap[item.listing_id] ?? 0) + qty * price
+      }
+    }
+  }
+
   const result = visibleListings.map((listing: any) => ({
     listing,
     poster_org: orgsMap[listing.org_id] ?? null,
     poster_passport_narrative: null,
+    line_items_total: itemTotalsMap[listing.id] ?? null,
   }))
 
   return NextResponse.json({

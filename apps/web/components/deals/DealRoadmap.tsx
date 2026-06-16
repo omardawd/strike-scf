@@ -6,11 +6,11 @@ import type { FinancingContext } from '@/lib/deals/financing-context'
 
 const ROADMAP_STEPS = [
   { key: 'agreed',             label: 'Agreed' },
-  { key: 'confirmed',          label: 'Confirmed' },
+  { key: 'contract_pending',   label: 'Contract' },
+  { key: 'confirmed',          label: 'In Business' },
   { key: 'shipped',            label: 'Shipped' },
   { key: 'goods_received',     label: 'Received' },
   { key: 'delivery_confirmed', label: 'Accepted' },
-  { key: 'payment_info_sent',  label: 'Pay Info' },
   { key: 'payment_confirmed',  label: 'Paid' },
   { key: 'completed',          label: 'Completed' },
 ]
@@ -20,14 +20,15 @@ function statusToStepIndex(status: string): number {
     case 'negotiating':         return -1
     case 'agreed':              return 0
     case 'documents_pending':   return 0  // legacy: show at agreed step
+    case 'contract_pending':    return 1
     case 'confirmed':
     case 'active':
-    case 'in_preparation':      return 1  // legacy in_preparation maps to confirmed step
-    case 'shipped':             return 2
-    case 'goods_received':      return 3
+    case 'in_preparation':      return 2  // confirmed + legacy in_preparation
+    case 'shipped':             return 3
+    case 'goods_received':      return 4
     case 'delivery_confirmed':
     case 'payment_due':
-    case 'payment_overdue':     return 4
+    case 'payment_overdue':
     case 'payment_info_sent':   return 5
     case 'payment_confirmed':   return 6
     case 'completed':           return 7

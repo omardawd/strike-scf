@@ -8,7 +8,7 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-type Action = 'counter' | 'accept' | 'reject' | 'withdraw'
+type Action = 'counter' | 'accept' | 'reject' | 'withdraw' | 'create_room'
 
 interface ActionBody {
   action: Action
@@ -18,6 +18,7 @@ interface ActionBody {
   proposed_incoterms?: string
   proposed_payment_terms?: string
   notes?: string
+  offer_items?: unknown[]
 }
 
 async function ensureRoom(
@@ -108,9 +109,9 @@ export async function PATCH(
   }
 
   const { action, offered_price, offered_quantity, proposed_delivery_date,
-    proposed_incoterms, proposed_payment_terms, notes } = body
+    proposed_incoterms, proposed_payment_terms, notes, offer_items } = body
 
-  if (!['counter', 'accept', 'reject', 'withdraw'].includes(action)) {
+  if (!['counter', 'accept', 'reject', 'withdraw', 'create_room'].includes(action)) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   }
 
@@ -136,6 +137,19 @@ export async function PATCH(
   }
 
   const now = new Date().toISOString()
+
+  // ── CREATE_ROOM ───────────────────────────────────────────
+  if (action === 'create_room') {
+    try {
+      const roomId = await ensureRoom(listing.id, listingOrgId, offerorOrgId, listing.title, offerId)
+      await adminClient.from('marketplace_offers').update({
+        metadata: { ...(offer.metadata ?? {}), room_id: roomId },
+      }).eq('id', offerId)
+      return NextResponse.json({ room_id: roomId })
+    } catch {
+      return NextResponse.json({ error: 'Failed to create room' }, { status: 500 })
+    }
+  }
 
   // ── WITHDRAW ───────────────────────────────────────────────
   if (action === 'withdraw') {
@@ -219,6 +233,7 @@ export async function PATCH(
       proposed_incoterms: proposed_incoterms ?? null,
       proposed_payment_terms: proposed_payment_terms ?? null,
       notes: notes ?? null,
+      offer_items: Array.isArray(offer_items) ? offer_items : null,
       by_org_id: userData.org_id,
       at: now,
     }
@@ -334,6 +349,21 @@ export async function PATCH(
 
     const totalValue = offer.offered_price * (offer.offered_quantity ?? 1)
 
+    // Determine receiving_bank_account_id:
+    // - po_request: offeror is supplier → bank_account_id comes from the offer
+    // - product_service: listing org is supplier → look up their primary bank account
+    let receivingBankAccountId: string | null = offer.bank_account_id ?? null
+    if (!receivingBankAccountId && listing.listing_type === 'product_service') {
+      const { data: primaryAcct } = await adminClient
+        .from('bank_accounts')
+        .select('id')
+        .eq('entity_type', 'organization')
+        .eq('entity_id', listingOrgId)
+        .eq('is_primary', true)
+        .maybeSingle()
+      receivingBankAccountId = primaryAcct?.id ?? null
+    }
+
     // Create deal
     const { data: deal, error: dealErr } = await adminClient
       .from('deals')
@@ -353,6 +383,7 @@ export async function PATCH(
         total_value: totalValue,
         deal_source: 'marketplace',
         financing_requested: false,
+        receiving_bank_account_id: receivingBankAccountId,
       })
       .select()
       .single()
