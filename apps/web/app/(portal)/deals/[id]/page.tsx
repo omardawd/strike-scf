@@ -772,31 +772,50 @@ export default function DealDetailPage() {
               </div>
             </div>
 
-            {/* Action Required — G4.2 */}
-            {isActive && (
+            {/* Action Required — G4.2. For the bank, this section is replaced by the
+                financing management lifecycle (contract → disbursement → confirm receipt)
+                scoped to their own transaction, instead of the buyer/supplier action panel. */}
+            {(user_role === 'bank' ? !!(financing_request && linked_transaction) : isActive) && (
               <div className="card" style={{ border: '1.5px solid var(--blue-light)' }}>
-                <div className="card-head" style={{ color: 'var(--blue)' }}>Action Required</div>
+                <div className="card-head" style={{ color: 'var(--blue)' }}>
+                  {user_role === 'bank' ? 'Financing Management' : 'Action Required'}
+                </div>
                 <div className="card-body">
-                  {(deal.status as string) === 'contract_pending' && contractData?.contract?.document_id && (
-                    <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
-                        <ContractDocumentLink documentId={contractData.contract.document_id} />
-                      </div>
-                      {contractData.contract.generated_at && (
-                        <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>AI Generated</span>
+                  {user_role === 'bank' ? (
+                    <FinancingManagementCard
+                      requestId={financing_request!.id}
+                      transaction={linked_transaction}
+                      requesterBankAccount={requester_bank_account}
+                      isBank
+                      isRequester={false}
+                      isRequesterBuyer={deal.buyer_org_id === financing_request!.requesting_org_id}
+                      onReload={load}
+                      embedded
+                    />
+                  ) : (
+                    <>
+                      {(deal.status as string) === 'contract_pending' && contractData?.contract?.document_id && (
+                        <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
+                            <ContractDocumentLink documentId={contractData.contract.document_id} />
+                          </div>
+                          {contractData.contract.generated_at && (
+                            <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>AI Generated</span>
+                          )}
+                        </div>
                       )}
-                    </div>
+                      <ActionPanel
+                        dealId={deal.id}
+                        availableActions={availableActions}
+                        financingContext={financingContext}
+                        currentUserRole={user_role}
+                        hasDDOffer={hasDDOffer}
+                        onActionSubmit={handleTransition}
+                        onRefresh={load}
+                      />
+                    </>
                   )}
-                  <ActionPanel
-                    dealId={deal.id}
-                    availableActions={availableActions}
-                    financingContext={financingContext}
-                    currentUserRole={user_role}
-                    hasDDOffer={hasDDOffer}
-                    onActionSubmit={handleTransition}
-                    onRefresh={load}
-                  />
                 </div>
               </div>
             )}
@@ -1085,20 +1104,6 @@ export default function DealDetailPage() {
                 </>
               )}
             </div>
-
-            {/* Financing management: bank views the full contract → disbursement →
-                confirm-receipt lifecycle inline, scoped to their own transaction. */}
-            {user_role === 'bank' && financing_request && linked_transaction && (
-              <FinancingManagementCard
-                requestId={financing_request.id}
-                transaction={linked_transaction}
-                requesterBankAccount={requester_bank_account}
-                isBank
-                isRequester={false}
-                isRequesterBuyer={deal.buyer_org_id === financing_request.requesting_org_id}
-                onReload={load}
-              />
-            )}
 
             {/* Financing request panel (org parties) */}
             {user_role !== 'bank' && (

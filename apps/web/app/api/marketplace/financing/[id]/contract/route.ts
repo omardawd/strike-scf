@@ -68,19 +68,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let generatedContent: string | null = null
 
   if (body.generate) {
-    const [requesterRes, bankRes] = await Promise.all([
-      adminClient.from('organizations').select('legal_name').eq('id', financingReq.requesting_org_id).single(),
-      adminClient.from('banks').select('display_name, legal_name').eq('id', actor.bank_id).single(),
-    ])
-    const currency = financingReq.currency ?? deal.agreed_currency ?? 'USD'
-    const shortId = requestId.slice(0, 8).toUpperCase()
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    try {
+      const [requesterRes, bankRes] = await Promise.all([
+        adminClient.from('organizations').select('legal_name').eq('id', financingReq.requesting_org_id).single(),
+        adminClient.from('banks').select('display_name, legal_name').eq('id', actor.bank_id).single(),
+      ])
+      const currency = financingReq.currency ?? deal.agreed_currency ?? 'USD'
+      const shortId = requestId.slice(0, 8).toUpperCase()
+      const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-    const result = await callClaude({
-      system: 'You are a trade finance legal drafting assistant. Generate a concise, professional financing contract. Use plain English with standard legal formatting.',
-      messages: [{
-        role: 'user',
-        content: `Generate a financing agreement for Financing Request #${shortId} dated ${today}.
+      const result = await callClaude({
+        system: 'You are a trade finance legal drafting assistant. Generate a concise, professional financing contract. Use plain English with standard legal formatting.',
+        messages: [{
+          role: 'user',
+          content: `Generate a financing agreement for Financing Request #${shortId} dated ${today}.
 Bank: ${bankRes.data?.display_name ?? bankRes.data?.legal_name ?? 'Bank'}
 Borrower: ${requesterRes.data?.legal_name ?? 'Borrower'}
 Financing amount: ${currency} ${financingReq.amount_requested}
@@ -88,22 +89,25 @@ Structure: ${financingReq.financing_type ?? financingReq.structure_type}
 Tenor: ${financingReq.preferred_tenor_days ?? 90} days
 
 Include: parties, financing terms, obligations, payment routing, governing law. Keep under 600 words.`,
-      }],
-      max_tokens: 1024,
-    })
-    generatedContent = result.text
+        }],
+        max_tokens: 1024,
+      })
+      generatedContent = result.text
 
-    const { data: doc } = await adminClient.from('documents').insert({
-      name: `Financing Agreement - Request #${shortId}`,
-      storage_path: `financing_requests/${requestId}/contract.txt`,
-      mime_type: 'text/plain',
-      size_bytes: generatedContent.length,
-      uploaded_by_user_id: user.id,
-      entity_type: 'financing_request',
-      entity_id: requestId,
-      document_kind: 'financing_contract',
-    }).select().single()
-    if (doc) docId = doc.id
+      const { data: doc } = await adminClient.from('documents').insert({
+        name: `Financing Agreement - Request #${shortId}`,
+        storage_path: `financing_requests/${requestId}/contract.txt`,
+        mime_type: 'text/plain',
+        file_size_bytes: generatedContent.length,
+        entity_type: 'financing_request',
+        entity_id: requestId,
+        document_kind: 'financing_contract',
+      }).select().single()
+      if (doc) docId = doc.id
+    } catch (err) {
+      console.error('[financing/contract] AI generation failed:', err)
+      return NextResponse.json({ error: 'Failed to generate the financing contract. Please try again.' }, { status: 502 })
+    }
   }
 
   if (!docId) {

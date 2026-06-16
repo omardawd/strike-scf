@@ -32,7 +32,7 @@ export async function GET(
 
   const { data: docs } = await adminClient
     .from('documents')
-    .select('id, name, storage_path, mime_type, size_bytes, document_kind, created_at')
+    .select('id, name, storage_path, mime_type, file_size_bytes, document_kind, created_at')
     .eq('entity_type', 'listing')
     .eq('entity_id', id)
     .order('created_at', { ascending: false })
@@ -90,8 +90,7 @@ export async function POST(
       name: file.name,
       storage_path: storagePath,
       mime_type: file.type || 'application/octet-stream',
-      size_bytes: file.size,
-      uploaded_by_user_id: user.id,
+      file_size_bytes: file.size,
       entity_type: 'listing',
       entity_id: id,
       document_kind: 'listing_document',
