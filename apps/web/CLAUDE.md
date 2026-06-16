@@ -87,7 +87,8 @@ apps/web/
 │   ├── ghost-gate.tsx            ← GhostGate: wraps all portal children in (portal)/layout.tsx; locks ghost orgs
 │   ├── ghost-lock.tsx            ← GhostLock: the locked-state card shown inside ghost-gated pages
 │   ├── deals/ActionPanel.tsx     ← Deal action buttons (receives FinancingContext as props)
-│   ├── deals/DealRoadmap.tsx     ← Deal timeline/roadmap (receives FinancingContext as props)
+│   ├── deals/DealRoadmap.tsx     ← Deal timeline/roadmap (receives FinancingContext as props; steps: Agreed → Contract → In Business → Shipped → Received → Accepted → Paid → Completed)
+│   ├── deals/FinancingManagementCard.tsx ← Financing-request lifecycle UI (contract sign → disbursement → confirm receipt); prop-driven, no internal fetching; shared by marketplace/financing/[id] (requester view) and deals/[id] (bank view)
 │   ├── ai-overlay.tsx            ← Global AI overlay (hover-pill + draggable cluster); mounted on every page except /ai
 │   ├── ai-insight-card.tsx       ← Contextual AI insight banner/compact/floating → /api/ai/insight
 │   ├── ai-insight.tsx            ← Inline collapsible AI insight widget → /api/ai/chat
@@ -194,6 +195,10 @@ transactions
   esign_document_id, esign_document_url,
   bank_signed_at, anchor_signed_at, supplier_signed_at, esign_completed_at,
   created_at, updated_at
+  -- financing_request_id (FK → financing_requests) links a marketplace financing acceptance
+  -- to its transaction row. The esign_* and disbursed_*/supplier_paid_at columns above are
+  -- dual-purposed: legacy SCF program flow AND the marketplace financing-request contract/
+  -- disbursement lifecycle (see "Two separate contract flows" below) — same columns, two callers.
 
 transaction_events
   id, transaction_id, event_type, from_status, to_status,
@@ -313,12 +318,24 @@ deals
   --     noa_acknowledged_at, noa_acknowledged_by — Invoice Factoring NOA
   --   po_financing_converted_at — PO Financing converts on shipment
   --   dd_offer_presented_at, dd_offer_accepted_at, dd_offer_declined_at — Dynamic Discounting
+  -- Procurement-flow-v2 columns added by migration 00000000000011 (deal-level trade contract,
+  -- distinct from the financing-request contract — see "Two separate contract flows" below):
+  --   receiving_bank_account_id — FK → bank_accounts; supplier-selected on contract signature
+  --   contract_document_id/generated_at/submitted_at/submitted_by — buyer-submitted trade contract
+  --   contract_supplier_signature, contract_supplier_signed_at — supplier's e-signature
+  --   deal_invoice_document_id/number/generated_at — AI commercial invoice, auto-generated on contract sign
+  --   bank_contract_document_id/submitted_at/submitted_by — bank-submitted financing contract (deal-level)
+  --   bank_contract_signature/signed_by/signed_at — either deal party signs the bank contract
 
 deal_status enum values (all live):
-  negotiating | agreed | documents_pending | confirmed | in_preparation
+  negotiating | agreed | contract_pending | documents_pending | confirmed | in_preparation
   shipped | delivery_confirmed | in_dispute | payment_due | payment_overdue
   payment_confirmed | completed | cancelled
   active | financing_requested | financing_active | disputed   ← legacy aliases, keep for compat
+  -- contract_pending added by migration 011, positioned AFTER 'agreed': buyer submits trade
+  -- contract while 'agreed' → 'contract_pending'; supplier signs → 'confirmed'.
+  -- Deal roadmap UI (DealRoadmap.tsx) step order: Agreed → Contract → In Business (='confirmed')
+  -- → Shipped → Received → Accepted → Paid → Completed (old standalone "Pay Info" step removed).
 
 deal_events                 -- audit log for deal lifecycle events (created by migration 007)
   id, deal_id, event_type, actor_user_id, actor_org_id, description, metadata, created_at
@@ -326,7 +343,12 @@ deal_events                 -- audit log for deal lifecycle events (created by m
 
 marketplace_listings        -- Strike Place product/PO listings
                             -- visibility (public|network_only), network_id FK → anchor_networks
+listing_line_items          -- per-listing goods line items (added by migration 011); AI-extracted
+                            -- via /api/marketplace/listings/extract (Haiku; PDF/image/DOCX/DOC/TXT/CSV)
+                            -- or entered manually; CRUD via /api/marketplace/listings/[id]/line-items[/[itemId]]
 marketplace_offers          -- offers on listings (realtime-subscribed)
+                            -- bank_account_id, offer_items (jsonb) added by migration 011 — lets an
+                            -- offering bank attach its own receiving account + itemized pricing
 financing_requests          -- marketplace financing requests (preset|custom|open)
                             -- visibility (public|network_only), network_id FK → anchor_networks
 financing_request_offers    -- bank offers on financing requests (realtime-subscribed)
@@ -358,6 +380,17 @@ ai_negotiation_state        -- per-deal: deal_id(unique), current_round, last_of
 > NOT yet in the live schema (planned for Track 2): `erp_connections`,
 > `erp_sync_data`, `ai_signals`, `ai_signal_resolutions`.
 
+bank_accounts
+  id, entity_type (bank|organization), entity_id (FK → banks.id or organizations.id),
+  nickname, bank_name, account_holder_name,
+  account_number (stored full; display last 4 only),
+  routing_number, swift_iban (optional),
+  account_type (checking|savings), is_primary (bool),
+  created_at, updated_at
+  RLS: org_admin/org_member read own org; org_admin write; bank_admin/credit_officer read own bank; bank_admin write; strike_admin read-all
+  API: GET/POST /api/settings/bank-accounts, PATCH/DELETE /api/settings/bank-accounts/[id]
+  UI: Settings → Bank Accounts tab (all portals); Onboarding step 6 (supplier + anchor only)
+
 **Migrations in `supabase/migrations/`** (applied in order):
 - `00000000000000_baseline_schema.sql` — 29 enums, 32 tables, 136 constraints, 44 indexes, functions, triggers
 - `00000000000001_baseline_rls.sql` — RLS enabled + 19 policies
@@ -368,6 +401,9 @@ ai_negotiation_state        -- per-deal: deal_id(unique), current_round, last_of
 - `00000000000006_deal_status_new_values.sql` — adds new deal_status enum values
 - `00000000000007_deal_flow_columns.sql` — shipment, payment, financing, dispute, overdue, amendment columns on `deals`; `deal_events` table
 - `00000000000008_anchor_networks.sql` — `anchor_networks`, `anchor_network_members`, `network_invite_tokens` tables + RLS
+- `00000000000009_deal_flow_update.sql` — deal flow update
+- `00000000000010_bank_accounts.sql` — `bank_accounts` table + RLS (entity_type: bank|organization)
+- `00000000000011_procurement_flow_v2.sql` — `listing_line_items` table; `bank_account_id` + `offer_items` on `marketplace_offers`; `deal_status` enum value `contract_pending`; deal columns for contract/invoice/bank-contract lifecycle (see below)
 
 ---
 
@@ -656,7 +692,7 @@ Only **anchor (buyer)** and **supplier** orgs can self-register at `/signup`. Ba
 ### Onboarding wizard (`app/(onboarding)/`)
 
 - `layout.tsx` — left rail uses the actual `logo.png` image (not a placeholder "S" square). Provides `WizardContext` with the step tracker.
-- `onboarding/page.tsx` — 7-step KYB/Passport activation wizard. At the bottom of every step's footer there is a **"Do this later — explore as guest"** button that routes to `/dashboard`. Clicking it leaves the user in ghost mode (kyb_status remains `'not_started'`); they can activate their Passport from the dashboard at any time.
+- `onboarding/page.tsx` — 8-step KYB/Passport activation wizard. Steps: 1 Identity & Legal, 2 Address & Contact, 3 Ownership & Compliance, 4 Financial & Trade, 5 Systems & Intent, 6 Bank Accounts (new — supplier+anchor only; saves to `bank_accounts` via `/api/settings/bank-accounts`), 7 Documents, 8 Review & Submit. At the bottom of every step's footer there is a **"Do this later — explore as guest"** button that routes to `/dashboard`. Clicking it leaves the user in ghost mode (kyb_status remains `'not_started'`); they can activate their Passport from the dashboard at any time.
 
 ### Ghost mode (Tier 0)
 
@@ -778,6 +814,32 @@ Frontend reflects it in `app/(portal)/marketplace/listings/[id]/page.tsx` (Count
 
 The deal GET route (`app/api/deals/[id]/route.ts`) fetches the linked transaction when `financingRequest?.status === 'accepted'` (not only when `financing_payment_active`), so the transaction card appears immediately after bank offer acceptance.
 
+**Bank-user lookup on the deal GET route**: bank users have no `org_id`, so `financing_request` cannot be looked up by `requesting_org_id = userData.org_id` the way org parties do. Instead, the route derives it from the bank's own `transactions` row on the deal via `transactions.financing_request_id`. The route also returns `bank_bank_account` (the bank's own receiving account, surfaced once financing is active — see Task 2 below) and `requester_bank_account` (the financing requester's own account, looked up by `entity_type:'organization', entity_id: financingRequest.requesting_org_id`, gated on `financingRequest.status` being `accepted`/`funded`) so the bank automatically sees where to disburse without the requester re-entering it.
+
+### Two separate "contract" flows — do not conflate
+
+There are two independent contract-signature features on a deal. They use different tables/columns, different API routes, and different participants:
+
+1. **Deal-level trade contract** (`app/api/deals/[id]/contract/route.ts`) — between the buyer and supplier on the deal itself, independent of financing. Buyer submits (AI-generated via `callClaude`, or uploads) while `deal.status === 'agreed'` → deal advances to `contract_pending`, stored in `documents` (`document_kind:'trade_contract'`), columns `deals.contract_document_id/generated_at/submitted_at/submitted_by`. Supplier signs (`contract_supplier_signature/signed_at`) → deal advances to `confirmed`, optionally attaching `receiving_bank_account_id`; this auto-generates an AI commercial invoice (`document_kind:'commercial_invoice'`, `deals.deal_invoice_document_id/number/generated_at`, format `INV-${shortId}`). The same route also has an `action==='bank'`/`action==='bank_sign'` branch for a bank-submitted financing contract tied to `deal.financing_payment_active` (`deals.bank_contract_document_id/submitted_at/submitted_by`, `bank_contract_signature/signed_by/signed_at`) — this is deal-level, NOT the same row as #2 below.
+2. **Financing-request contract** (`app/api/marketplace/financing/[id]/contract/route.ts`) — between the bank and the party that requested financing (buyer or supplier), scoped to the `financing_request`'s own `transactions` row (`esign_document_id`, `bank_signed_at`, `anchor_signed_at`/`supplier_signed_at` depending on `isRequesterBuyer`, `esign_completed_at`). This is the contract step in the **financing management lifecycle** (see below) and is rendered by `FinancingManagementCard.tsx`, not by the deal-level contract UI.
+
+### Financing management lifecycle (Task 3/4 — this session)
+
+Once a financing offer is accepted, the requesting party manages the rest of the lifecycle from the financing detail page (`app/(portal)/marketplace/financing/[id]/page.tsx`); the bank manages the same lifecycle from the deal detail page (`app/(portal)/deals/[id]/page.tsx`, `user_role === 'bank'` branch). Both render the shared `components/deals/FinancingManagementCard.tsx` (prop-driven, no internal fetching) against the same `financing_request`/`transactions` row, in three steps:
+
+1. **Contract** — bank submits/generates a contract (`POST /api/marketplace/financing/[id]/contract`, sets `transactions.esign_document_id`/`bank_signed_at`); requester signs (`PATCH` same route, sets `anchor_signed_at` or `supplier_signed_at` depending on `isRequesterBuyer`, and `esign_completed_at` once both sides have signed).
+2. **Disbursement** — once `esign_completed_at` is set, the bank sends a payment reference (`POST /api/transactions/[id]/disburse`, sets `disbursed_at`/`disbursed_by_user_id`/`disbursement_reference`). The bank automatically sees the requester's own bank account here (no manual entry) — see `requester_bank_account` above.
+3. **Confirm receipt** — the requester confirms funds arrived (`POST /api/marketplace/financing/[id]/confirm-received`, sets `transactions.supplier_paid_at`).
+
+On the deals page, `canFinance` (the "Request Financing" CTA gate) requires `user_role !== 'bank'` — banks never request financing on a deal, only manage it.
+
+### Listing line items + AI extraction (procurement-flow-v2)
+
+- `listing_line_items` rows can be entered manually or AI-extracted from an uploaded document via `POST /api/marketplace/listings/extract` (Haiku; accepts PDF/image/DOCX/DOC/TXT/CSV).
+- CRUD: `GET/POST /api/marketplace/listings/[id]/line-items`, `PATCH/DELETE /api/marketplace/listings/[id]/line-items/[itemId]`.
+- Document attach/replace for a listing: `app/api/marketplace/listings/[id]/document/route.ts`.
+- The financing page's goods row shows BOTH the listing title and the actual goods/line-item description — previously only the title was shown, which was ambiguous when the listing title didn't match the underlying goods.
+
 ### Key design decisions
 - deal_source: 'marketplace' | 'imported' | 'direct' on deals table
 - Supabase Realtime on: room_messages, notifications,
@@ -788,9 +850,10 @@ The deal GET route (`app/api/deals/[id]/route.ts`) fetches the linked transactio
 - AI document generation fires on deal status → 'agreed'
 - Financing acceptance creates a transaction row in the SCF engine
   (source='marketplace') — bridges marketplace to existing SCF flow
-- Deal flow status machine: negotiating→agreed→documents_pending→confirmed→
+- Deal flow status machine: negotiating→agreed→contract_pending→documents_pending→confirmed→
   in_preparation→shipped→delivery_confirmed→[payment_due/overdue]→
   payment_confirmed→completed; financing_payment_active=true forks payment to bank
+  (contract_pending is optional — only entered if the buyer submits a trade contract at 'agreed')
 - financing_payment_active: bool on deals — set true when bank advance disbursed;
   blocks amendments, cancellation, and changes buyer's payment target to the bank
 - payment_due_date: calculated from agreed_payment_terms (Net\d+ regex) on delivery confirmation
