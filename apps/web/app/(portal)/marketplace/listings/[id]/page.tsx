@@ -6,6 +6,7 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 import type { MarketplaceListing, MarketplaceOffer } from '@strike-scf/types'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ interface OfferFormState {
   proposed_delivery_date: string
   proposed_incoterms: string
   proposed_payment_terms: string
+  shipping_cost: string
   notes: string
   bank_account_id?: string
 }
@@ -169,12 +171,17 @@ function OfferForm({
     proposed_delivery_date: listing.delivery_deadline ?? '',
     proposed_incoterms: listing.incoterms ?? '',
     proposed_payment_terms: listing.payment_terms ?? '',
+    shipping_cost: listing.shipping_cost != null ? String(listing.shipping_cost) : '',
     notes: '',
     bank_account_id: primaryAcct?.id ?? '',
   })
 
+  // po_request: the offeror IS the supplier — they must specify shipping cost
+  // when the proposed incoterm puts main carriage on the seller.
+  const shippingCostRequired = isPORequest && isShippingCostRequired(form.proposed_incoterms)
+
   const total = computeOfferTotal(form.offer_items)
-  const canSubmit = (!hasItems || total > 0) && (!isPORequest || !!form.bank_account_id)
+  const canSubmit = (!hasItems || total > 0) && (!isPORequest || !!form.bank_account_id) && (!shippingCostRequired || !!form.shipping_cost)
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -208,6 +215,20 @@ function OfferForm({
             </select>
           </div>
         </div>
+
+        {shippingCostRequired && (
+          <div className="form-field">
+            <label className="field-label">
+              Shipping Cost ({listing.currency ?? 'USD'})
+              <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
+            </label>
+            <input type="number" className="input" min="0" step="0.01" value={form.shipping_cost}
+              onChange={e => setForm(p => ({ ...p, shipping_cost: e.target.value }))} placeholder="0.00" />
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+              Required for {form.proposed_incoterms} — you arrange and pay for shipping under this incoterm.
+            </div>
+          </div>
+        )}
 
         <div className="form-field">
           <label className="field-label">Payment Terms</label>
@@ -269,6 +290,7 @@ function CounterForm({
   offer,
   listing,
   listingLineItems,
+  showShippingCost,
   onSubmit,
   onCancel,
   submitting,
@@ -277,6 +299,7 @@ function CounterForm({
   offer: MarketplaceOffer
   listing: MarketplaceListing
   listingLineItems: any[]
+  showShippingCost: boolean
   onSubmit: (f: OfferFormState) => void
   onCancel: () => void
   submitting: boolean
@@ -306,12 +329,14 @@ function CounterForm({
     proposed_delivery_date: offer.proposed_delivery_date ?? '',
     proposed_incoterms: offer.proposed_incoterms ?? '',
     proposed_payment_terms: offer.proposed_payment_terms ?? '',
+    shipping_cost: offer.shipping_cost != null ? String(offer.shipping_cost) : '',
     notes: '',
   })
 
   const total = computeOfferTotal(form.offer_items)
   const hasItems = listingLineItems.length > 0
-  const canSubmit = !hasItems || total > 0
+  const shippingCostRequired = showShippingCost && isShippingCostRequired(form.proposed_incoterms)
+  const canSubmit = (!hasItems || total > 0) && (!shippingCostRequired || !!form.shipping_cost)
 
   return (
     <div style={{ margin: '0 20px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -345,6 +370,16 @@ function CounterForm({
           </select>
         </div>
       </div>
+      {shippingCostRequired && (
+        <div className="form-field" style={{ marginBottom: 10 }}>
+          <label className="field-label">
+            Shipping Cost ({listing.currency ?? 'USD'})
+            <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
+          </label>
+          <input type="number" className="input" min="0" step="0.01" value={form.shipping_cost}
+            onChange={e => setForm(p => ({ ...p, shipping_cost: e.target.value }))} placeholder="0.00" />
+        </div>
+      )}
       <div className="form-field" style={{ marginBottom: 10 }}>
         <label className="field-label">Payment Terms</label>
         <select className="input form-select" value={form.proposed_payment_terms}
@@ -585,6 +620,7 @@ function OfferCard({
         {offer.proposed_incoterms && <span className="mp-offer-term-pill">{offer.proposed_incoterms}</span>}
         {offer.proposed_payment_terms && <span className="mp-offer-term-pill">{offer.proposed_payment_terms}</span>}
         {offer.proposed_delivery_date && <span className="mp-offer-term-pill">Delivery: {fmtDate(offer.proposed_delivery_date)}</span>}
+        {offer.shipping_cost != null && <span className="mp-offer-term-pill">Shipping: {offer.shipping_cost.toLocaleString()} {listing.currency}</span>}
       </div>
 
       {/* ── AI analysis strip ── */}
@@ -678,6 +714,7 @@ function OfferCard({
           offer={offer}
           listing={listing}
           listingLineItems={listingLineItems}
+          showShippingCost={(isMyOffer && listing.listing_type === 'po_request') || (isListingOwner && listing.listing_type === 'product_service')}
           onSubmit={f => onCounterSubmit(offer.id, f)}
           onCancel={onCounterCancel}
           submitting={actionSubmitting}
@@ -813,6 +850,7 @@ export default function ListingDetailPage() {
           proposed_delivery_date: form.proposed_delivery_date || undefined,
           proposed_incoterms: form.proposed_incoterms || undefined,
           proposed_payment_terms: form.proposed_payment_terms || undefined,
+          shipping_cost: form.shipping_cost ? parseFloat(form.shipping_cost) : undefined,
           notes: form.notes || undefined,
           bank_account_id: form.bank_account_id || undefined,
           offer_items: form.offer_items.length > 0 ? form.offer_items : undefined,
@@ -840,6 +878,7 @@ export default function ListingDetailPage() {
       if (extra?.proposed_delivery_date) body.proposed_delivery_date = extra.proposed_delivery_date
       if (extra?.proposed_incoterms) body.proposed_incoterms = extra.proposed_incoterms
       if (extra?.proposed_payment_terms) body.proposed_payment_terms = extra.proposed_payment_terms
+      if (extra?.shipping_cost) body.shipping_cost = parseFloat(extra.shipping_cost)
       if (extra?.notes) body.notes = extra.notes
 
       const res = await fetch(`/api/marketplace/offers/${offerId}`, {
@@ -982,6 +1021,12 @@ export default function ListingDetailPage() {
                   <div className="kv-row">
                     <span className="k">Incoterms</span>
                     <span className="v">{listing.incoterms}</span>
+                  </div>
+                )}
+                {listing.shipping_cost != null && (
+                  <div className="kv-row">
+                    <span className="k">Shipping Cost</span>
+                    <span className="v">{listing.shipping_cost.toLocaleString()} {listing.currency}</span>
                   </div>
                 )}
                 {listing.delivery_location && (

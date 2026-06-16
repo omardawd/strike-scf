@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import type { ListingType } from '@strike-scf/types'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 interface LineItem {
   id: string
@@ -57,6 +58,7 @@ interface FormState {
   category: string
   currency: string
   incoterms: string
+  shipping_cost: string
   delivery_location: string
   delivery_deadline: string
   expires_at: string
@@ -69,6 +71,7 @@ const DEFAULT_FORM: FormState = {
   category: '',
   currency: 'USD',
   incoterms: '',
+  shipping_cost: '',
   delivery_location: '',
   delivery_deadline: '',
   expires_at: '',
@@ -182,6 +185,8 @@ function NewListingPageInner() {
     return total > 0 ? total : undefined
   })()
 
+  const shippingCostRequired = listingType === 'product_service' && isShippingCostRequired(form.incoterms)
+
   const buildPayload = (status?: 'draft') => ({
     listing_type: listingType,
     title: form.title.trim(),
@@ -190,6 +195,7 @@ function NewListingPageInner() {
     target_price: computedTargetPrice,
     currency: form.currency || 'USD',
     incoterms: form.incoterms || undefined,
+    shipping_cost: shippingCostRequired && form.shipping_cost ? parseFloat(form.shipping_cost) : undefined,
     delivery_location: form.delivery_location.trim() || undefined,
     delivery_deadline: form.delivery_deadline || undefined,
     expires_at: form.expires_at || undefined,
@@ -206,6 +212,10 @@ function NewListingPageInner() {
     }
     if (!asDraft && visibility === 'network_only' && !networkId) {
       setError('Please select a network for this private listing.')
+      return
+    }
+    if (!asDraft && shippingCostRequired && !form.shipping_cost) {
+      setError(`Shipping cost is required for ${form.incoterms} — you arrange and pay for shipping under this incoterm.`)
       return
     }
     setError(null)
@@ -590,6 +600,28 @@ function NewListingPageInner() {
                       />
                     </div>
                   </div>
+
+                  {shippingCostRequired && (
+                    <div className="form-field">
+                      <label className="field-label">
+                        Shipping Cost ({form.currency})
+                        <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="shipping_cost"
+                        className="input"
+                        value={form.shipping_cost}
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                      />
+                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+                        Required for {form.incoterms} — you (the supplier) arrange and pay for shipping under this incoterm.
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">

@@ -2,11 +2,18 @@
 // Financing management — contract signature → disbursement → confirm receipt.
 // Shared between the financing detail page and the deal detail page (bank view).
 import React, { useState, useEffect } from 'react'
+import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
+
+function fmtAmt(n: number | null | undefined, currency = 'USD'): string {
+  if (n == null) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
+}
 
 export interface ManagementTransaction {
   id: string
   status: string
   bank_id: string | null
+  financing_amount_approved?: number | null
   esign_document_id: string | null
   bank_signed_at: string | null
   anchor_signed_at: string | null
@@ -64,6 +71,8 @@ export function FinancingManagementCard({
   isRequesterBuyer,
   onReload,
   embedded,
+  financingAmount = null,
+  currency = 'USD',
 }: {
   requestId: string
   transaction: ManagementTransaction | null
@@ -73,7 +82,11 @@ export function FinancingManagementCard({
   isRequesterBuyer: boolean
   onReload: () => void
   embedded?: boolean
+  financingAmount?: number | null
+  currency?: string
 }) {
+  const { requesterFee, bankFee } = calcFinancingFees(financingAmount)
+  const netDisbursement = calcNetDisbursement(financingAmount, requesterFee)
   const [generating, setGenerating] = useState(false)
   const [contractMode, setContractMode] = useState<'ai' | 'upload'>('ai')
   const [contractFile, setContractFile] = useState<File | null>(null)
@@ -186,6 +199,17 @@ export function FinancingManagementCard({
   const content = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+
+        {financingAmount != null && (
+          <div className="kv-list">
+            <div className="kv-row"><span className="k">Financed Amount</span><span className="v">{fmtAmt(financingAmount, currency)}</span></div>
+            <div className="kv-row">
+              <span className="k">Strike Service Fee (0.15%) — {isBank ? 'You (bank)' : 'You'}</span>
+              <span className="v">{fmtAmt(isBank ? bankFee : requesterFee, currency)}</span>
+            </div>
+            {!isBank && <div className="kv-row"><span className="k">Net You'll Receive</span><span className="v" style={{ fontWeight: 700 }}>{fmtAmt(netDisbursement, currency)}</span></div>}
+          </div>
+        )}
 
         {/* Step 1: Contract */}
         <div>
@@ -307,6 +331,9 @@ export function FinancingManagementCard({
                       </div>
                       {(requesterBankAccount.swift_iban || requesterBankAccount.routing_number) && (
                         <div className="kv-row"><span className="k">Routing / SWIFT</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{requesterBankAccount.swift_iban ?? requesterBankAccount.routing_number}</span></div>
+                      )}
+                      {netDisbursement != null && (
+                        <div className="kv-row"><span className="k">Net Amount to Wire</span><span className="v" style={{ fontWeight: 700 }}>{fmtAmt(netDisbursement, currency)}</span></div>
                       )}
                     </div>
                   ) : (

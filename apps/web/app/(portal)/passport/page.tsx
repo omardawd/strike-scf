@@ -10,6 +10,7 @@ import {
   type PassportOrg,
   type PassportPerformance,
   type PassportReview,
+  type PassportDoc,
 } from '@/components/passport-sections'
 
 type OwnOrg = PassportOrg & {
@@ -203,6 +204,12 @@ export default function MyPassportPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [docs, setDocs] = useState<PassportDoc[]>([])
+  const [certs, setCerts] = useState<PassportDoc[]>([])
+  const [uploadingDocs, setUploadingDocs] = useState(false)
+  const [uploadingCerts, setUploadingCerts] = useState(false)
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     if (!orgId) {
       setLoading(false)
@@ -226,7 +233,47 @@ export default function MyPassportPage() {
     }
   }, [orgId])
 
+  const loadDocs = useCallback(async () => {
+    if (!orgId) return
+    try {
+      const res = await fetch(`/api/passport/${orgId}/documents`)
+      if (!res.ok) return
+      const json = await res.json()
+      setDocs(json.documents ?? [])
+      setCerts(json.certifications ?? [])
+    } catch {
+      // non-fatal
+    }
+  }, [orgId])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadDocs() }, [loadDocs])
+
+  async function uploadPassportFile(file: File, kind: 'document' | 'certification') {
+    if (!orgId) return
+    const setUploading = kind === 'document' ? setUploadingDocs : setUploadingCerts
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', kind)
+      await fetch(`/api/passport/${orgId}/documents`, { method: 'POST', body: fd })
+      await loadDocs()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function deletePassportDoc(docId: string) {
+    if (!confirm('Remove this document?')) return
+    setDeletingDocId(docId)
+    try {
+      await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
+      await loadDocs()
+    } finally {
+      setDeletingDocId(null)
+    }
+  }
 
   const org = data?.organization ?? null
   const dba =
@@ -297,6 +344,15 @@ export default function MyPassportPage() {
                 reviews={data.peer_reviews}
                 avgRating={data.avg_rating}
                 showEin
+                documents={docs}
+                certifications={certs}
+                isOwnPassport
+                uploadingDocs={uploadingDocs}
+                uploadingCerts={uploadingCerts}
+                deletingDocId={deletingDocId}
+                onUploadDocument={file => uploadPassportFile(file, 'document')}
+                onUploadCertification={file => uploadPassportFile(file, 'certification')}
+                onDeleteDocument={deletePassportDoc}
               />
             </div>
 

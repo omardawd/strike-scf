@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { SubmitOfferPayload } from '@strike-scf/types'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   const { listing_id, offered_price, offered_quantity, proposed_delivery_date,
-    proposed_incoterms, proposed_payment_terms, notes, bank_account_id, offer_items } = body
+    proposed_incoterms, proposed_payment_terms, shipping_cost, notes, bank_account_id, offer_items } = body
 
   if (!listing_id || typeof offered_price !== 'number') {
     return NextResponse.json({ error: 'listing_id and offered_price are required' }, { status: 400 })
@@ -68,6 +69,11 @@ export async function POST(request: Request) {
   if (offerorIsPaymentReceiver) {
     if (!bank_account_id) {
       return NextResponse.json({ error: 'bank_account_id is required — select the bank account to receive payment' }, { status: 400 })
+    }
+    // The offeror is the supplier here — they must specify shipping cost when the
+    // proposed incoterm puts main carriage on the seller.
+    if (isShippingCostRequired(proposed_incoterms ?? null) && typeof shipping_cost !== 'number') {
+      return NextResponse.json({ error: `shipping_cost is required for incoterm ${proposed_incoterms}` }, { status: 400 })
     }
     // Verify account belongs to offeror org
     const { data: acct } = await adminClient
@@ -100,6 +106,7 @@ export async function POST(request: Request) {
     proposed_delivery_date: proposed_delivery_date ?? null,
     proposed_incoterms: proposed_incoterms ?? null,
     proposed_payment_terms: proposed_payment_terms ?? null,
+    shipping_cost: shipping_cost ?? null,
     notes: notes ?? null,
     offer_items: Array.isArray(offer_items) ? offer_items : null,
     by_org_id: userData.org_id,
@@ -116,6 +123,7 @@ export async function POST(request: Request) {
       proposed_delivery_date: proposed_delivery_date ?? null,
       proposed_incoterms: proposed_incoterms ?? null,
       proposed_payment_terms: proposed_payment_terms ?? null,
+      shipping_cost: shipping_cost ?? null,
       notes: notes ?? null,
       status: 'pending',
       current_round: 1,

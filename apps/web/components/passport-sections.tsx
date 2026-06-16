@@ -52,6 +52,15 @@ export interface PassportReview {
   reviewer_name: string
 }
 
+export interface PassportDoc {
+  id: string
+  name: string
+  mime_type: string | null
+  document_kind: string
+  created_at: string
+  url: string | null
+}
+
 // ── Small formatting helpers ────────────────────────────────────────────────
 
 function fmtDate(d: string | null | undefined): string {
@@ -136,6 +145,71 @@ function KV({ k, children }: { k: string; children: React.ReactNode }) {
   )
 }
 
+function DocRow({ doc, isOwn, onDelete, deleting }: { doc: PassportDoc; isOwn: boolean; onDelete?: (id: string) => void; deleting?: boolean }) {
+  return (
+    <div className="doc-row">
+      <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
+      <span className="doc-name">{doc.name}</span>
+      <span className="doc-date">{fmtDate(doc.created_at)}</span>
+      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+      {isOwn && onDelete && (
+        <button onClick={() => onDelete(doc.id)} disabled={deleting} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>
+      )}
+    </div>
+  )
+}
+
+function PassportDocsCard({
+  title,
+  hint,
+  docs,
+  isOwn,
+  uploading,
+  onUpload,
+  onDelete,
+  deletingId,
+}: {
+  title: string
+  hint: string
+  docs: PassportDoc[]
+  isOwn: boolean
+  uploading?: boolean
+  onUpload?: (file: File) => void
+  onDelete?: (id: string) => void
+  deletingId?: string | null
+}) {
+  return (
+    <div className="card">
+      <div className="card-head">
+        {title}
+        {isOwn && onUpload && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label htmlFor={`passport-doc-upload-${title}`} className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', fontSize: 11 }}>
+              {uploading ? 'Uploading…' : '+ Upload'}
+            </label>
+            <input
+              id={`passport-doc-upload-${title}`}
+              type="file"
+              style={{ display: 'none' }}
+              disabled={uploading}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) onUpload(file)
+                e.target.value = ''
+              }}
+            />
+          </div>
+        )}
+      </div>
+      {docs.length === 0 ? (
+        <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>{hint}</div>
+      ) : (
+        docs.map(doc => <DocRow key={doc.id} doc={doc} isOwn={isOwn} onDelete={onDelete} deleting={deletingId === doc.id} />)
+      )}
+    </div>
+  )
+}
+
 // ── The shared passport body (sections b–h) ─────────────────────────────────
 export function PassportSections({
   org,
@@ -143,12 +217,30 @@ export function PassportSections({
   reviews,
   avgRating,
   showEin = false,
+  documents = [],
+  certifications = [],
+  isOwnPassport = false,
+  uploadingDocs = false,
+  uploadingCerts = false,
+  deletingDocId = null,
+  onUploadDocument,
+  onUploadCertification,
+  onDeleteDocument,
 }: {
   org: PassportOrg
   performance: PassportPerformance | null
   reviews: PassportReview[]
   avgRating: number | null
   showEin?: boolean
+  documents?: PassportDoc[]
+  certifications?: PassportDoc[]
+  isOwnPassport?: boolean
+  uploadingDocs?: boolean
+  uploadingCerts?: boolean
+  deletingDocId?: string | null
+  onUploadDocument?: (file: File) => void
+  onUploadCertification?: (file: File) => void
+  onDeleteDocument?: (id: string) => void
 }) {
   const flags = org.risk_flags ?? []
   const sourcing = org.sourcing_countries ?? []
@@ -273,6 +365,28 @@ export function PassportSections({
           </div>
         </div>
       </div>
+
+      {/* Documents & Certifications — quality/ISO/compliance docs, distinct from onboarding/KYB documents */}
+      <PassportDocsCard
+        title="Documents"
+        hint="Quality, compliance, and trade documents appear here."
+        docs={documents}
+        isOwn={isOwnPassport}
+        uploading={uploadingDocs}
+        onUpload={onUploadDocument}
+        onDelete={onDeleteDocument}
+        deletingId={deletingDocId}
+      />
+      <PassportDocsCard
+        title="Certifications"
+        hint="ISO certificates and other quality credentials appear here."
+        docs={certifications}
+        isOwn={isOwnPassport}
+        uploading={uploadingCerts}
+        onUpload={onUploadCertification}
+        onDelete={onDeleteDocument}
+        deletingId={deletingDocId}
+      />
 
       {/* (f) Financial Snapshot */}
       <div className="card">

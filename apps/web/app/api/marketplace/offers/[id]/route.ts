@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,6 +18,7 @@ interface ActionBody {
   proposed_delivery_date?: string
   proposed_incoterms?: string
   proposed_payment_terms?: string
+  shipping_cost?: number
   notes?: string
   offer_items?: unknown[]
 }
@@ -109,7 +111,7 @@ export async function PATCH(
   }
 
   const { action, offered_price, offered_quantity, proposed_delivery_date,
-    proposed_incoterms, proposed_payment_terms, notes, offer_items } = body
+    proposed_incoterms, proposed_payment_terms, shipping_cost, notes, offer_items } = body
 
   if (!['counter', 'accept', 'reject', 'withdraw', 'create_room'].includes(action)) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
@@ -118,7 +120,7 @@ export async function PATCH(
   // Fetch offer with listing data
   const { data: offer } = await adminClient
     .from('marketplace_offers')
-    .select('*, marketplace_listings(id, status, org_id, title, target_price, currency, offer_count, listing_type)')
+    .select('*, marketplace_listings(id, status, org_id, title, target_price, currency, offer_count, listing_type, shipping_cost)')
     .eq('id', offerId)
     .single()
 
@@ -126,7 +128,7 @@ export async function PATCH(
 
   const listing = offer.marketplace_listings as {
     id: string; status: string; org_id: string; title: string;
-    target_price: number | null; currency: string; offer_count: number; listing_type: string
+    target_price: number | null; currency: string; offer_count: number; listing_type: string; shipping_cost: number | null
   }
   const listingOrgId: string = listing.org_id
   const offerorOrgId: string = offer.from_org_id
@@ -224,6 +226,16 @@ export async function PATCH(
       return NextResponse.json({ error: 'offered_price is required for counter' }, { status: 400 })
     }
 
+    // Whoever is countering as the supplier in this listing_type must specify
+    // shipping cost when the effective incoterm puts main carriage on the seller.
+    const counterorIsSupplier = (userData.org_id === offerorOrgId && listing.listing_type === 'po_request')
+      || (userData.org_id === listingOrgId && listing.listing_type === 'product_service')
+    const effectiveIncoterms = proposed_incoterms ?? offer.proposed_incoterms
+    const effectiveShippingCost = shipping_cost ?? offer.shipping_cost
+    if (counterorIsSupplier && isShippingCostRequired(effectiveIncoterms) && typeof effectiveShippingCost !== 'number') {
+      return NextResponse.json({ error: `shipping_cost is required for incoterm ${effectiveIncoterms}` }, { status: 400 })
+    }
+
     const newRound = (offer.current_round ?? 1) + 1
     const counterRound = {
       round: newRound,
@@ -232,6 +244,7 @@ export async function PATCH(
       proposed_delivery_date: proposed_delivery_date ?? null,
       proposed_incoterms: proposed_incoterms ?? null,
       proposed_payment_terms: proposed_payment_terms ?? null,
+      shipping_cost: shipping_cost ?? null,
       notes: notes ?? null,
       offer_items: Array.isArray(offer_items) ? offer_items : null,
       by_org_id: userData.org_id,
@@ -277,6 +290,7 @@ export async function PATCH(
       proposed_delivery_date: proposed_delivery_date ?? offer.proposed_delivery_date,
       proposed_incoterms: proposed_incoterms ?? offer.proposed_incoterms,
       proposed_payment_terms: proposed_payment_terms ?? offer.proposed_payment_terms,
+      shipping_cost: shipping_cost ?? offer.shipping_cost,
       ai_analysis,
       ai_recommendation,
       updated_at: now,
@@ -349,6 +363,12 @@ export async function PATCH(
 
     const totalValue = offer.offered_price * (offer.offered_quantity ?? 1)
 
+    // Shipping cost: supplier always specifies it — on the listing when they're the
+    // poster (product_service), on the offer when they're the offeror (po_request).
+    const shippingCost: number | null = listing.listing_type === 'po_request'
+      ? (offer.shipping_cost ?? null)
+      : (listing.shipping_cost ?? null)
+
     // Determine receiving_bank_account_id:
     // - po_request: offeror is supplier → bank_account_id comes from the offer
     // - product_service: listing org is supplier → look up their primary bank account
@@ -381,6 +401,7 @@ export async function PATCH(
         status: 'agreed',
         agreed_at: now,
         total_value: totalValue,
+        shipping_cost: shippingCost,
         deal_source: 'marketplace',
         financing_requested: false,
         receiving_bank_account_id: receivingBankAccountId,

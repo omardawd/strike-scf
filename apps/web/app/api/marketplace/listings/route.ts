@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateListingPayload } from '@strike-scf/types'
 import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -212,6 +213,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'network_id is required when visibility is network_only' }, { status: 400 })
   }
 
+  // product_service: the listing org IS the supplier — they must specify shipping
+  // cost up front when the incoterm puts main carriage on the seller.
+  if (!isDraft && body.listing_type === 'product_service' && isShippingCostRequired(body.incoterms ?? null) && typeof body.shipping_cost !== 'number') {
+    return NextResponse.json({ error: `shipping_cost is required for incoterm ${body.incoterms}` }, { status: 400 })
+  }
+
   const { data: listing, error: insertError } = await adminClient
     .from('marketplace_listings')
     .insert({
@@ -227,6 +234,7 @@ export async function POST(request: Request) {
       target_price: body.target_price ?? null,
       currency: body.currency ?? 'USD',
       incoterms: body.incoterms ?? null,
+      shipping_cost: body.shipping_cost ?? null,
       delivery_location: body.delivery_location ?? null,
       delivery_deadline: body.delivery_deadline ?? null,
       payment_terms: body.payment_terms ?? null,

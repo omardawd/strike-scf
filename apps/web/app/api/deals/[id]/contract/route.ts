@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { callClaude } from '@/lib/ai'
+import { calcProcurementFees, calcBuyerTotalDue } from '@/lib/deals/fees'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -271,8 +272,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     ])
     const shortId = id.slice(0, 8).toUpperCase()
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    const totalValue = deal.total_value ?? deal.agreed_price ?? 0
+    const goodsValue = deal.total_value ?? deal.agreed_price ?? 0
     const currency = deal.agreed_currency ?? 'USD'
+    const shippingCost: number | null = deal.shipping_cost ?? null
+    const { buyerFee } = calcProcurementFees(goodsValue)
+    const buyerTotalDue = calcBuyerTotalDue(goodsValue, shippingCost, buyerFee) ?? goodsValue
 
     const invoiceResult = await callClaude({
       system: 'You are a trade document assistant. Generate professional commercial invoices.',
@@ -281,10 +285,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         content: `Generate a commercial invoice for Deal #${shortId} dated ${today}.
 Seller: ${supplierRes.data?.legal_name ?? 'Supplier'}
 Buyer: ${buyerRes.data?.legal_name ?? 'Buyer'}
-Invoice amount: ${currency} ${totalValue}
+Goods value: ${currency} ${goodsValue}
+${shippingCost != null ? `Shipping cost: ${currency} ${shippingCost}\n` : ''}Strike Service Fee (0.3%): ${currency} ${buyerFee?.toFixed(2) ?? '0.00'}
+Invoice amount (total payable by buyer): ${currency} ${buyerTotalDue.toFixed(2)}
 Payment terms: ${deal.payment_terms ?? 'Net 30'}
 
-Include: invoice number (INV-${shortId}), date, seller/buyer details, line items from deal, total, payment instructions placeholder. Professional format.`,
+Include: invoice number (INV-${shortId}), date, seller/buyer details, line items from deal, an itemized breakdown of goods value / shipping cost (if any) / Strike Service Fee, the total payable, payment instructions placeholder. Professional format.`,
       }],
       max_tokens: 800,
     })

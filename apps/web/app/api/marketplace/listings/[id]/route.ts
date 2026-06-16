@@ -8,7 +8,7 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ALLOWED_PATCH_FIELDS = ['title', 'description', 'target_price', 'expires_at', 'status'] as const
+const ALLOWED_PATCH_FIELDS = ['title', 'description', 'target_price', 'shipping_cost', 'expires_at', 'status'] as const
 const ALLOWED_STATUS_VALUES = ['closed', 'cancelled']
 
 export async function GET(

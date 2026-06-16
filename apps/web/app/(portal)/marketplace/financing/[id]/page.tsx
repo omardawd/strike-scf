@@ -7,6 +7,7 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { usePortal } from '@/lib/portal-context'
 import { FinancingManagementCard, type ManagementTransaction, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import type { FinancingRequest, FinancingRequestOffer, FinancingType } from '@strike-scf/types'
+import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 
 interface OrgPassport {
   id: string
@@ -723,6 +724,8 @@ export default function FinancingDetailPage() {
                 isRequester={is_requester}
                 isRequesterBuyer={deal.buyer_org_id === request.requesting_org_id}
                 onReload={load}
+                financingAmount={transaction?.financing_amount_approved ?? request.amount_requested}
+                currency={currency}
               />
             )}
 
@@ -866,6 +869,28 @@ export default function FinancingDetailPage() {
                     </span>
                   </div>
                 )}
+                {(() => {
+                  const financedAmount = transaction?.financing_amount_approved ?? request.amount_requested
+                  const { requesterFee, bankFee } = calcFinancingFees(financedAmount)
+                  const net = calcNetDisbursement(financedAmount, requesterFee)
+                  if (requesterFee == null) return null
+                  return (
+                    <>
+                      <div className="kv-row">
+                        <span className="k">Strike Service Fee — Requester (0.15%)</span>
+                        <span className="v">{fmt(requesterFee, currency)}</span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="k">Strike Service Fee — Bank (0.15%)</span>
+                        <span className="v">{fmt(bankFee, currency)}</span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="k">Net Disbursement</span>
+                        <span className="v" style={{ fontWeight: 700 }}>{fmt(net, currency)}</span>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           </div>

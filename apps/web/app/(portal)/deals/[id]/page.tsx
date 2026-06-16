@@ -19,6 +19,7 @@ import {
 } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
 import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@strike-scf/types'
+import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -591,6 +592,10 @@ export default function DealDetailPage() {
   const counterparty = user_role === 'buyer' ? supplier_org : buyer_org
   const dealValue = deal.total_value ?? deal.agreed_price ?? null
   const currency = deal.agreed_currency ?? 'USD'
+  const shippingCost = deal.shipping_cost ?? null
+  const { buyerFee, supplierFee } = calcProcurementFees(dealValue)
+  const buyerTotalDue = calcBuyerTotalDue(dealValue, shippingCost, buyerFee)
+  const supplierNetReceivable = calcSupplierNetReceivable(dealValue, shippingCost, supplierFee)
   const hasAiDocs   = aiDocs.length > 0
   const uploadedFromDocs = documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind))
   const hasUploaded = uploadedDocs.length > 0 || uploadedFromDocs.length > 0 || listingDocs.length > 0
@@ -791,6 +796,8 @@ export default function DealDetailPage() {
                       isRequesterBuyer={deal.buyer_org_id === financing_request!.requesting_org_id}
                       onReload={load}
                       embedded
+                      financingAmount={linked_transaction?.financing_amount_approved ?? financing_request?.amount_requested ?? null}
+                      currency={financing_request?.currency ?? currency}
                     />
                   ) : (
                     <>
@@ -1121,6 +1128,16 @@ export default function DealDetailPage() {
                       <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>Offers</div><div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 500 }}>{financing_request.offer_count}</div></div>
                     </div>
                   </div>
+                  {(() => {
+                    const financedAmount = linked_transaction?.financing_amount_approved ?? financing_request.amount_requested
+                    const { requesterFee } = calcFinancingFees(financedAmount)
+                    const net = calcNetDisbursement(financedAmount, requesterFee)
+                    return requesterFee != null ? (
+                      <div style={{ marginTop: 10, fontSize: 11, color: 'var(--gray)' }}>
+                        Strike Service Fee (0.15%): {fmt(requesterFee, financing_request.currency)} · You'll net {fmt(net, financing_request.currency)}
+                      </div>
+                    ) : null
+                  })()}
                   <div style={{ marginTop: 16 }}><Link href={`/marketplace/financing/${financing_request.id}`} className="btn btn-ghost btn-sm">View Financing Request →</Link></div>
                 </div>
               ) : showFinancingForm ? (
@@ -1193,13 +1210,36 @@ export default function DealDetailPage() {
             {/* Deal value */}
             <div className="card">
               <div className="card-head">Deal Value</div>
-              <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px' }}>
+              <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px 8px' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>{fmt(dealValue, currency)}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency}</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · Goods Value</div>
                 {financingContext.isActive && financingContext.structure !== 'dynamic_discounting' && (
                   <div style={{ marginTop: 8, fontSize: 11, color: 'var(--blue)' }}>
                     Repayment: {fmt(financingContext.paymentAmount, currency)} to {financingContext.paymentRecipientName}
                   </div>
+                )}
+              </div>
+              <div className="kv-list">
+                {shippingCost != null && (
+                  <div className="kv-row"><span className="k">Shipping Cost</span><span className="v">{fmt(shippingCost, currency)}</span></div>
+                )}
+                {user_role === 'bank' ? (
+                  <>
+                    <div className="kv-row"><span className="k">Strike Service Fee — Buyer (0.3%)</span><span className="v">{fmt(buyerFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">Buyer Total Payable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
+                    <div className="kv-row"><span className="k">Strike Service Fee — Supplier (0.3%)</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">Supplier Net Receivable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
+                  </>
+                ) : user_role === 'buyer' ? (
+                  <>
+                    <div className="kv-row"><span className="k">Strike Service Fee (0.3%)</span><span className="v">{fmt(buyerFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">Total Payable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="kv-row"><span className="k">Strike Service Fee (0.3%)</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">Net Receivable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
+                  </>
                 )}
               </div>
             </div>

@@ -292,6 +292,7 @@ export interface MarketplaceListing {
   target_price: number | null
   currency: string
   incoterms: string | null
+  shipping_cost: number | null
   delivery_location: string | null
   delivery_deadline: string | null
   payment_terms: string | null
@@ -320,6 +321,7 @@ export interface OfferRound {
   proposed_delivery_date: string | null
   proposed_incoterms: string | null
   proposed_payment_terms: string | null
+  shipping_cost: number | null
   notes: string | null
   by_org_id: string
   at: string
@@ -335,6 +337,7 @@ export interface MarketplaceOffer {
   proposed_delivery_date: string | null
   proposed_incoterms: string | null
   proposed_payment_terms: string | null
+  shipping_cost: number | null
   notes: string | null
   status: OfferStatus
   current_round: number
@@ -359,6 +362,7 @@ export interface Deal {
   agreed_delivery_date: string | null
   agreed_incoterms: string | null
   agreed_payment_terms: string | null
+  shipping_cost: number | null
   goods_description: string | null
   status: DealStatus
   room_id: string | null
@@ -668,6 +672,7 @@ export interface CreateListingPayload {
   target_price?: number
   currency?: string
   incoterms?: string
+  shipping_cost?: number
   delivery_location?: string
   delivery_deadline?: string
   payment_terms?: string
@@ -682,6 +687,7 @@ export interface SubmitOfferPayload {
   proposed_delivery_date?: string
   proposed_incoterms?: string
   proposed_payment_terms?: string
+  shipping_cost?: number
   notes?: string
   bank_account_id?: string
   offer_items?: unknown[]
@@ -694,6 +700,7 @@ export interface CounterOfferPayload {
   proposed_delivery_date?: string
   proposed_incoterms?: string
   proposed_payment_terms?: string
+  shipping_cost?: number
   notes?: string
 }
 

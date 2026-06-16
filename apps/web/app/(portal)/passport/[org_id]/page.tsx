@@ -8,6 +8,7 @@ import {
   type PassportOrg,
   type PassportPerformance,
   type PassportReview,
+  type PassportDoc,
 } from '@/components/passport-sections'
 
 type PublicOrg = PassportOrg & {
@@ -212,6 +213,8 @@ export default function PublicPassportPage() {
   const [loading, setLoading] = useState(true)
   const [narrativeLoading, setNarrativeLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [docs, setDocs] = useState<PassportDoc[]>([])
+  const [certs, setCerts] = useState<PassportDoc[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -260,9 +263,22 @@ export default function PublicPassportPage() {
     }
   }, [orgId])
 
+  const loadDocs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/passport/${orgId}/documents`)
+      if (!res.ok) return
+      const json = await res.json()
+      setDocs(json.documents ?? [])
+      setCerts(json.certifications ?? [])
+    } catch {
+      /* non-fatal */
+    }
+  }, [orgId])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadDocs()
+  }, [load, loadDocs])
 
   useEffect(() => {
     if (data && !data.is_own) {
@@ -355,6 +371,8 @@ export default function PublicPassportPage() {
                 reviews={data.peer_reviews}
                 avgRating={data.avg_rating}
                 showEin={false}
+                documents={docs}
+                certifications={certs}
               />
             </div>
 
