@@ -730,9 +730,14 @@ export default function DealDetailPage() {
   const recentActions = availableActions.filter(a => a.available).slice(0, 3).map(a => `- ${a.action}: ${a.description}`).join('\n')
   const aiContext = [
     `Deal #${shortId(deal.id)} | Status: ${deal.status} | Role: ${user_role}`,
+    `Buyer: ${buyer_org?.legal_name ?? '—'} | Supplier: ${supplier_org?.legal_name ?? '—'}`,
+    dealValue ? `Deal amount: ${fmt(dealValue, currency)} ${currency}` : '',
     `Financing: ${financingContext.aiContextSummary}`,
+    canFinance
+      ? `Can request financing: YES — use the "Request Financing" button on this page to submit a financing request to banks on Strike Place. Financing types available: Reverse Factoring (buyer requests bank to pay supplier early, buyer repays bank), Invoice Factoring (supplier sells receivable to bank), PO Financing (pre-shipment working capital), Dynamic Discounting (anchor pays early for a discount).`
+      : `Can request financing: NO (deal status or financing already active)`,
     recentActions ? `Available actions:\n${recentActions}` : 'No actions available for this user.',
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 
   return (
     <>
