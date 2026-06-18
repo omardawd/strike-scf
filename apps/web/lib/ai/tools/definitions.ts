@@ -249,6 +249,23 @@ const GET_PASSPORT_ADVICE = {
   },
 }
 
+const SEARCH_MARKETPLACE_LISTINGS = {
+  name: 'search_marketplace_listings',
+  description: 'Search active public listings on Strike Place. Use this when the user asks about available deals, listings, PO requests, or products on the marketplace. Supports keyword search across title, description, category, and line items.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Keyword to search for (e.g. "steel", "electronics"). Use "all" to list recent listings.' },
+      listing_type: { type: 'string', enum: ['po_request', 'product_service', 'all'], default: 'all', description: 'po_request = buyers looking to procure; product_service = suppliers offering goods/services' },
+      category: { type: 'string', description: 'Filter by category (optional)' },
+      max_budget: { type: 'number', description: 'Max target price filter (optional)' },
+      delivery_location: { type: 'string', description: 'Filter by delivery location keyword (optional)' },
+      limit: { type: 'number', default: 10 },
+    },
+    required: ['query'],
+  },
+}
+
 const PROACTIVE_PORTFOLIO_ALERTS = {
   name: 'proactive_portfolio_alerts',
   description: 'Scan a bank\'s portfolio for issues: overdue payments, stuck deals, deteriorating performance, concentration risk, upcoming maturities. Bank users only.',
@@ -273,6 +290,7 @@ const PROACTIVE_PORTFOLIO_ALERTS = {
 // Fewer tools = fewer input tokens on every request.
 const SUPPLIER_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_MARKETPLACE_LISTINGS,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
@@ -288,6 +306,7 @@ const SUPPLIER_TOOLS = [
 
 const ANCHOR_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_MARKETPLACE_LISTINGS,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
@@ -303,6 +322,7 @@ const ANCHOR_TOOLS = [
 
 const BANK_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_MARKETPLACE_LISTINGS,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   PROACTIVE_PORTFOLIO_ALERTS,
@@ -317,6 +337,7 @@ const BANK_TOOLS = [
 // Full set used as fallback and for type inference in execute.ts.
 export const STRIKE_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_MARKETPLACE_LISTINGS,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   EVALUATE_SUPPLIER_PASSPORT,

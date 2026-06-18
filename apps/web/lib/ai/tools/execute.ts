@@ -16,6 +16,7 @@ import { lookupEntities, type LookupEntitiesInput } from './handlers/lookup-enti
 import { evaluateListingOffers, type EvaluateListingOffersInput } from './handlers/evaluate-listing-offers'
 import { getPassportAdvice, type GetPassportAdviceInput } from './handlers/get-passport-advice'
 import { getActiveDeals, type GetActiveDealsInput } from './handlers/get-active-deals'
+import { searchMarketplaceListings, type SearchMarketplaceListingsInput } from './handlers/search-marketplace-listings'
 
 export type ToolName =
   | 'create_marketplace_listing'
@@ -32,6 +33,7 @@ export type ToolName =
   | 'evaluate_listing_offers'
   | 'get_passport_advice'
   | 'get_active_deals'
+  | 'search_marketplace_listings'
 
 export async function executeTool(
   toolName: ToolName,
@@ -66,6 +68,8 @@ export async function executeTool(
       return getPassportAdvice(toolInput as unknown as GetPassportAdviceInput)
     case 'get_active_deals':
       return getActiveDeals(toolInput as unknown as GetActiveDealsInput)
+    case 'search_marketplace_listings':
+      return searchMarketplaceListings(toolInput as unknown as SearchMarketplaceListingsInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
