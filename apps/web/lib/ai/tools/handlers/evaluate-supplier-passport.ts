@@ -444,6 +444,7 @@ Respond with ONLY valid JSON in this exact shape:
           .update({
             passport_score: overall_score,
             passport_ai_evaluated_at: new Date().toISOString(),
+            passport_score_reasoning: score_reasoning || null,
           })
           .eq('id', orgId)
           .then(({ error: updateErr }: { error: unknown }) => {

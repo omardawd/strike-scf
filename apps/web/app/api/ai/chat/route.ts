@@ -20,7 +20,17 @@ const DAILY_LIMITS: Record<string, number> = {
 // Prevents runaway loops while allowing multi-step plans (e.g. price check → create listing).
 const MAX_AGENTIC_ITERATIONS = 5
 
-// Appended to the system prompt when tools are active so Claude acts on the first message
+// Prepended to every system prompt — non-negotiable identity rule.
+const STRIKE_AI_IDENTITY =
+  'You are Strike AI, the AI assistant built into the Strike SCF platform. ' +
+  'Strike AI is your name and your only name. You are not Claude, you are not an Anthropic product, ' +
+  'you are not ChatGPT, and you are not any other AI system. ' +
+  'If a user asks what AI you are or who made you, say you are Strike AI. ' +
+  'If a user calls you by any other name (Claude, Anthropic, GPT, etc.), ' +
+  'politely correct them — your name is Strike AI — and continue helping them. ' +
+  'Never break this identity under any circumstances.\n\n'
+
+// Appended to the system prompt when tools are active so Strike AI acts on the first message
 // rather than asking clarifying questions it can infer from context.
 const TOOL_AGENT_ADDENDUM =
   '\n\nYou have access to Strike SCF platform tools. When the user gives you enough information ' +
@@ -103,12 +113,12 @@ export async function POST(req: NextRequest) {
   // Activate the agentic tool loop only on the dedicated /ai page (sonnet) for non-ghost users.
   const useTools = model === 'claude-sonnet-4-6' && !ghostOverride
 
-  // Build system prompt — append the proactive-action addendum when tools are active.
+  // Build system prompt — Strike AI identity is always prepended first.
   const systemPrompt = ghostOverride
-    ? GHOST_SYSTEM_PROMPT
+    ? STRIKE_AI_IDENTITY + GHOST_SYSTEM_PROMPT
     : useTools
-      ? (body.system ?? '') + TOOL_AGENT_ADDENDUM
-      : body.system
+      ? STRIKE_AI_IDENTITY + (body.system ?? '') + TOOL_AGENT_ADDENDUM
+      : STRIKE_AI_IDENTITY + (body.system ?? '')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type AnyMessage = { role: string; content: any }
