@@ -969,7 +969,16 @@ export default function ListingDetailPage() {
     offer_count,
     is_owner: isListingOwner,
     can_submit_offer: canSubmitOffer,
-    my_offer_status: myOffer?.offer?.status ?? null,
+    my_offer: myOffer ? {
+      status: myOffer.offer.status,
+      offered_price: myOffer.offer.offered_price,
+      offered_quantity: myOffer.offer.offered_quantity,
+      proposed_delivery_date: myOffer.offer.proposed_delivery_date,
+      proposed_incoterms: myOffer.offer.proposed_incoterms,
+      proposed_payment_terms: myOffer.offer.proposed_payment_terms,
+      notes: myOffer.offer.notes,
+      current_round: myOffer.offer.current_round,
+    } : null,
     line_items: lineItems.map((li: any) => ({
       name: li.name, qty: li.quantity, unit: li.unit, unit_price: li.unit_price,
     })),
