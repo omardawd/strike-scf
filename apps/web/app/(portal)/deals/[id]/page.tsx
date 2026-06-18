@@ -258,15 +258,40 @@ function DisputeEvidencePanel({ deal, onRefresh }: { deal: Deal; onRefresh: () =
 
 // ─── AI Doc Card ──────────────────────────────────────────────────────────────
 
-function AiDocCard({ doc }: { doc: AiDoc }) {
+function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied]     = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const label = AI_DOC_LABELS[doc.kind] ?? doc.kind.toUpperCase()
-  function downloadTxt() {
-    const blob = new Blob([doc.content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `${label.toLowerCase().replace(/ /g, '-')}.txt`; a.click(); URL.revokeObjectURL(url)
+  const apiType: 'po' | 'invoice' | null = doc.kind === 'ai_po' ? 'po' : doc.kind === 'ai_invoice' ? 'invoice' : null
+
+  async function downloadDoc() {
+    if (apiType) {
+      setDownloading(true)
+      try {
+        const res = await fetch(`/api/deals/${dealId}/download-document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: apiType }),
+        })
+        if (!res.ok) { alert('Failed to generate document'); return }
+        const html = await res.text()
+        const blob = new Blob([html], { type: 'text/html' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${apiType === 'po' ? 'purchase-order' : 'commercial-invoice'}-${dealId.slice(0, 8).toUpperCase()}.html`
+        a.click()
+        URL.revokeObjectURL(url)
+      } finally { setDownloading(false) }
+    } else {
+      // Contract: keep as plain text download
+      const blob = new Blob([doc.content], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = `${label.toLowerCase().replace(/ /g, '-')}.txt`; a.click(); URL.revokeObjectURL(url)
+    }
   }
+
   async function copyText() {
     try { await navigator.clipboard.writeText(doc.content); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {}
   }
@@ -289,7 +314,9 @@ function AiDocCard({ doc }: { doc: AiDoc }) {
             <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', margin: '16px 0', background: 'var(--offwhite)', border: '1px solid var(--border)', padding: '16px' }}>{doc.content}</pre>
           </div>
           <div style={{ padding: '0 24px 16px', display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost btn-sm" onClick={downloadTxt}>Download .txt</button>
+            <button className="btn btn-blue btn-sm" disabled={downloading} onClick={downloadDoc}>
+              {downloading ? '✦ Generating…' : apiType ? '✦ Download (Strike AI)' : 'Download .txt'}
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={copyText}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
           </div>
         </>
@@ -362,6 +389,7 @@ export default function DealDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [revealBankAccount, setRevealBankAccount] = useState(false)
+  const [downloadingDoc, setDownloadingDoc] = useState<'po' | 'invoice' | null>(null)
 
   const [contractData, setContractData] = useState<Record<string, any> | null>(null)
   const [receivingAccount, setReceivingAccount] = useState<BankAccountForContext | null>(null)
@@ -600,72 +628,30 @@ export default function DealDetailPage() {
   const uploadedFromDocs = documents.filter(d => !['ai_po','ai_invoice','ai_contract'].includes(d.document_kind))
   const hasUploaded = uploadedDocs.length > 0 || uploadedFromDocs.length > 0 || listingDocs.length > 0
 
-  function downloadTemplate(type: 'po' | 'invoice') {
-    const buyer = buyer_org?.legal_name ?? 'Buyer'
-    const supplier = supplier_org?.legal_name ?? 'Supplier'
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    const ref = `STR-${type.toUpperCase()}-${shortId(id)}`
-    const lineRows = listingLineItems.length > 0
-      ? listingLineItems.map((item: any, i: number) =>
-          `  ${String(i + 1).padStart(2)}. ${(item.name ?? item.description ?? 'Item').padEnd(30)}  Qty: ${String(item.quantity ?? '—').padEnd(8)} ${item.unit ?? ''}`
-        ).join('\n')
-      : `  1. ${deal.goods_description ?? 'Goods'}  Qty: ${deal.agreed_quantity ?? '—'} ${(deal as any).agreed_unit ?? ''}`
-    const total = `${fmt(deal.agreed_price, currency)} ${currency}`
-    const lines = type === 'po' ? [
-      'PURCHASE ORDER',
-      '─'.repeat(60),
-      `PO Number:    ${ref}`,
-      `Date:         ${dateStr}`,
-      '',
-      'BUYER',
-      `  ${buyer}`,
-      '',
-      'SUPPLIER',
-      `  ${supplier}`,
-      '',
-      'ITEMS',
-      '─'.repeat(60),
-      lineRows,
-      '─'.repeat(60),
-      `Total:        ${total}`,
-      '',
-      'TERMS',
-      `  Delivery Date:  ${fmtDate(deal.agreed_delivery_date)}`,
-      `  Incoterms:      ${deal.agreed_incoterms ?? '—'}`,
-      `  Payment Terms:  ${deal.agreed_payment_terms ?? '—'}`,
-      '',
-      'Generated by Strike Platform',
-    ] : [
-      'COMMERCIAL INVOICE',
-      '─'.repeat(60),
-      `Invoice No:   ${ref}`,
-      `Date:         ${dateStr}`,
-      '',
-      'SELLER (SUPPLIER)',
-      `  ${supplier}`,
-      '',
-      'BUYER',
-      `  ${buyer}`,
-      '',
-      'DESCRIPTION OF GOODS',
-      '─'.repeat(60),
-      lineRows,
-      '─'.repeat(60),
-      `Total Amount: ${total}`,
-      '',
-      'PAYMENT TERMS',
-      `  ${deal.agreed_payment_terms ?? '—'}`,
-      '',
-      'SHIPPING',
-      `  Delivery Date:  ${fmtDate(deal.agreed_delivery_date)}`,
-      `  Incoterms:      ${deal.agreed_incoterms ?? '—'}`,
-      '',
-      'Generated by Strike Platform',
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-    const url2 = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url2; a.download = `${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${shortId(id)}.txt`; a.click(); URL.revokeObjectURL(url2)
+  async function downloadDocument(type: 'po' | 'invoice') {
+    setDownloadingDoc(type)
+    try {
+      const res = await fetch(`/api/deals/${id}/download-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        alert(j.error ?? 'Failed to generate document')
+        return
+      }
+      const html = await res.text()
+      const blob = new Blob([html], { type: 'text/html' })
+      const url2 = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url2
+      a.download = `${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${shortId(id)}.html`
+      a.click()
+      URL.revokeObjectURL(url2)
+    } finally {
+      setDownloadingDoc(null)
+    }
   }
   const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active', 'goods_received', 'payment_info_sent']
   const canCancel   = CANCELLABLE.includes(deal.status) && !deal.financing_payment_active
@@ -963,8 +949,12 @@ export default function DealDetailPage() {
                 Agreed Terms
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {canAmend && <ProposeAmendmentForm deal={deal} onRefresh={load} />}
-                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadTemplate('po')}>Download PO</button>
-                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadTemplate('invoice')}>Download Invoice</button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={downloadingDoc !== null} onClick={() => downloadDocument('po')}>
+                    {downloadingDoc === 'po' ? '✦ Generating…' : 'Download PO'}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={downloadingDoc !== null} onClick={() => downloadDocument('invoice')}>
+                    {downloadingDoc === 'invoice' ? '✦ Generating…' : 'Download Invoice'}
+                  </button>
                 </div>
               </div>
               <div className="kv-list">
@@ -1140,7 +1130,7 @@ export default function DealDetailPage() {
                 <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>No documents attached yet.</div>
               ) : (
                 <>
-                  {hasAiDocs && aiDocs.map(doc => <AiDocCard key={doc.kind} doc={doc} />)}
+                  {hasAiDocs && aiDocs.map(doc => <AiDocCard key={doc.kind} doc={doc} dealId={id} />)}
                   {listingDocs.map((doc: any) => (
                     <div key={doc.id} className="doc-row">
                       <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
