@@ -111,8 +111,9 @@ export async function POST(req: NextRequest) {
     ? 'claude-sonnet-4-6'
     : 'claude-haiku-4-5-20251001'
 
-  // Activate the agentic tool loop only on the dedicated /ai page (sonnet) for non-ghost users.
-  const useTools = model === 'claude-sonnet-4-6' && !ghostOverride
+  // Activate the agentic tool loop on the dedicated /ai page (sonnet) OR for overlay calls
+  // (overlay only gets OVERLAY_TOOLS = [search_web], so it's cheap and safe on Haiku).
+  const useTools = (model === 'claude-sonnet-4-6' || !!body.overlay) && !ghostOverride
 
   // Build system prompt — Strike AI identity is always prepended first.
   const systemPrompt = ghostOverride
