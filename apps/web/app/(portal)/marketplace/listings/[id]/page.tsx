@@ -591,7 +591,7 @@ function OfferCard({
 
       {/* ── Negotiation history (shown when 2+ rounds have happened) ── */}
       {rounds.length >= 2 && (
-        <div style={{ padding: '14px 20px 4px', borderBottom: '1px solid var(--border-light)' }}>
+        <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border-light)' }}>
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Negotiation History
           </div>
@@ -604,64 +604,99 @@ function OfferCard({
               const prev = idx > 0 ? roundTotal(rounds[idx - 1]) : null
               const delta = total != null && prev != null ? total - prev : null
               const isCurrent = idx === rounds.length - 1
+              const items: any[] = r.offer_items ?? []
+              const prevItems: any[] = idx > 0 ? ((rounds[idx - 1] as any).offer_items ?? []) : []
 
               return (
                 <div key={idx} style={{
-                  display: 'grid',
-                  gridTemplateColumns: '22px 1fr auto auto',
-                  gap: '0 10px',
-                  padding: '8px 0',
                   borderBottom: idx < rounds.length - 1 ? '1px solid var(--border-light)' : 'none',
-                  alignItems: 'center',
-                  opacity: isCurrent ? 1 : 0.65,
+                  paddingBottom: 12,
+                  marginBottom: idx < rounds.length - 1 ? 12 : 0,
+                  opacity: isCurrent ? 1 : 0.7,
                 }}>
-                  {/* Round indicator */}
+                  {/* Round header row */}
                   <div style={{
-                    width: 20, height: 20, borderRadius: '50%',
-                    background: isCurrent ? 'var(--blue)' : 'var(--border-strong)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, color: isCurrent ? '#fff' : 'var(--gray)', flexShrink: 0,
+                    display: 'grid',
+                    gridTemplateColumns: '22px 1fr auto auto',
+                    gap: '0 10px',
+                    alignItems: 'center',
+                    marginBottom: items.length > 0 ? 8 : 0,
                   }}>
-                    {idx + 1}
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%',
+                      background: isCurrent ? 'var(--blue)' : 'var(--border-strong)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700, color: isCurrent ? '#fff' : 'var(--gray)', flexShrink: 0,
+                    }}>
+                      {idx + 1}
+                    </div>
+
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{senderName}</span>
+                      {isMe && (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 6px', marginLeft: 6, letterSpacing: '0.04em' }}>
+                          You
+                        </span>
+                      )}
+                      {isCurrent && (
+                        <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 6 }}>· Current</span>
+                      )}
+                    </div>
+
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
+                      {delta != null ? (
+                        <span style={{ color: delta < 0 ? 'var(--color-green)' : 'var(--color-red)' }}>
+                          {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toLocaleString()}
+                        </span>
+                      ) : idx === 0 ? (
+                        <span style={{ color: 'var(--gray)', fontSize: 10 }}>Initial</span>
+                      ) : null}
+                    </div>
+
+                    <div style={{ textAlign: 'right', minWidth: 80 }}>
+                      {total != null ? (
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                          {total.toLocaleString()} <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--gray)' }}>{listing.currency}</span>
+                        </span>
+                      ) : <span style={{ fontSize: 12, color: 'var(--gray)' }}>—</span>}
+                    </div>
                   </div>
 
-                  {/* Sender */}
-                  <div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>
-                      {senderName}
-                    </span>
-                    {isMe && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 6px', marginLeft: 6, letterSpacing: '0.04em' }}>
-                        You
-                      </span>
-                    )}
-                    {isCurrent && (
-                      <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 6 }}>· Current</span>
-                    )}
-                  </div>
-
-                  {/* Delta */}
-                  <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
-                    {delta != null && (
-                      <span style={{ color: delta < 0 ? 'var(--color-green)' : 'var(--color-red)' }}>
-                        {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toLocaleString()}
-                      </span>
-                    )}
-                    {delta == null && idx === 0 && (
-                      <span style={{ color: 'var(--gray)', fontSize: 10 }}>Initial</span>
-                    )}
-                  </div>
-
-                  {/* Total */}
-                  <div style={{ textAlign: 'right', minWidth: 80 }}>
-                    {total != null ? (
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
-                        {total.toLocaleString()} <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--gray)' }}>{listing.currency}</span>
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: 'var(--gray)' }}>—</span>
-                    )}
-                  </div>
+                  {/* Per-item breakdown for this round */}
+                  {items.length > 0 && (
+                    <div style={{ marginLeft: 30 }}>
+                      {/* Header */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 80px 80px', gap: '0 6px', padding: '0 0 4px', borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
+                        <span>Item</span><span>Qty</span><span>Unit</span><span>Unit Price</span><span style={{ textAlign: 'right' }}>Total</span>
+                      </div>
+                      {items.map((it: any, iIdx: number) => {
+                        const qty = Number(it.quantity) || 0
+                        const price = Number(it.unit_price) || 0
+                        const lineTotal = qty * price
+                        const prevItem = prevItems.find((p: any) => p.listing_item_id === it.listing_item_id || p.name === it.name)
+                        const prevPrice = prevItem ? Number(prevItem.unit_price) || 0 : null
+                        const priceDelta = prevPrice != null && price > 0 ? price - prevPrice : null
+                        return (
+                          <div key={iIdx} style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 80px 80px', gap: '0 6px', padding: '5px 0', borderBottom: '1px solid var(--border-light)', alignItems: 'start' }}>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{it.name || '—'}</div>
+                            <div style={{ fontSize: 12, color: 'var(--ink)' }}>{it.quantity ?? '—'}</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)' }}>{it.unit ?? '—'}</div>
+                            <div style={{ fontSize: 12, color: 'var(--ink)' }}>
+                              {price > 0 ? price.toLocaleString() : '—'}
+                              {priceDelta != null && priceDelta !== 0 && (
+                                <div style={{ fontSize: 10, fontWeight: 600, color: priceDelta < 0 ? 'var(--color-green)' : 'var(--color-red)', marginTop: 1 }}>
+                                  {priceDelta < 0 ? '▼' : '▲'}{Math.abs(priceDelta).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', textAlign: 'right' }}>
+                              {lineTotal > 0 ? lineTotal.toLocaleString() : '—'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -1052,8 +1087,8 @@ export default function ListingDetailPage() {
     return offerRounds.map((r: any, idx: number) => {
       const sentByOwner = r.by_org_id !== offerItem.offer.from_org_id
       const items: any[] = r.offer_items ?? []
-      const total = items.length > 0 ? items.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) : null
       const prevItems: any[] = idx > 0 ? (offerRounds[idx - 1]?.offer_items ?? []) : []
+      const total = items.length > 0 ? items.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) : null
       const prevTotal = prevItems.length > 0 ? prevItems.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) : null
       return {
         round: idx + 1,
@@ -1065,6 +1100,22 @@ export default function ListingDetailPage() {
         payment_terms: r.proposed_payment_terms ?? null,
         delivery_date: r.proposed_delivery_date ?? null,
         notes: r.notes ?? null,
+        items: items.map((it: any) => {
+          const prevItem = prevItems.find((p: any) => p.listing_item_id === it.listing_item_id || p.name === it.name)
+          const price = Number(it.unit_price) || 0
+          const prevPrice = prevItem ? Number(prevItem.unit_price) || 0 : null
+          const qty = Number(it.quantity) || 0
+          const prevQty = prevItem ? Number(prevItem.quantity) || 0 : null
+          return {
+            name: it.name,
+            quantity: qty,
+            unit: it.unit ?? null,
+            unit_price: price > 0 ? price : null,
+            line_total: qty > 0 && price > 0 ? qty * price : null,
+            unit_price_delta: prevPrice != null && price > 0 ? price - prevPrice : null,
+            quantity_delta: prevQty != null && qty > 0 ? qty - prevQty : null,
+          }
+        }),
       }
     })
   }
