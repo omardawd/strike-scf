@@ -334,6 +334,7 @@ export default function AIWorkspacePage() {
         body: JSON.stringify({
           feature: 'chat',
           model: 'sonnet',
+          portal,
           system: buildSystemPrompt(portal, 'ai', userName, user?.org_id ?? undefined, user?.bank_id ?? undefined),
           messages: convoMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,

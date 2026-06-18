@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { STRIKE_TOOLS } from '@/lib/ai/tools/definitions'
+import { getToolsForPortal } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 
 const adminClient = createAdmin(
@@ -146,11 +146,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (useTools) {
-      // Cache the tool definitions on the last entry — they are static and shared
-      // across every user/request. Anthropic caches all tools up to the marked entry,
-      // so subsequent calls within 5 min pay ~10× less for the tool schema tokens.
-      const toolsWithCache = STRIKE_TOOLS.map((t, i) =>
-        i === STRIKE_TOOLS.length - 1
+      // Select only the tools relevant to this portal — fewer tools = fewer tokens
+      // on every request regardless of caching. Cache the last entry so repeated
+      // calls within the same agentic loop (iter 2, 3) get a ~10× read discount.
+      const portalTools = getToolsForPortal(body.portal as string | undefined)
+      const toolsWithCache = portalTools.map((t, i) =>
+        i === portalTools.length - 1
           ? { ...t, cache_control: { type: 'ephemeral' } }
           : t
       )
