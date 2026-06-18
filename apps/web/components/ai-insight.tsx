@@ -1,5 +1,121 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={i}>{part.slice(1, -1)}</em>
+    return part
+  })
+}
+
+function MarkdownContent({ text }: { text: string }) {
+  if (!text) return null
+
+  const paragraphs = text.split(/\n{2,}/)
+  const nodes: React.ReactNode[] = []
+
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const para = paragraphs[pi]!.trim()
+    if (!para) continue
+
+    const lines = para.split('\n')
+    const isListBlock = lines.every(l => /^[-•*]\s/.test(l.trim()) || l.trim() === '')
+
+    if (isListBlock) {
+      nodes.push(
+        <ul key={pi} style={{ margin: '6px 0 6px 0', paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {lines.filter(l => l.trim()).map((l, li) => (
+            <li key={li} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ color: 'var(--blue)', fontSize: 10, marginTop: 3, flexShrink: 0 }}>▸</span>
+              <span style={{ lineHeight: 1.55 }}>{renderInline(l.replace(/^[-•*]\s*/, ''))}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    } else {
+      // Check for "Recommended action:" pattern — make it stand out
+      if (/^\*?\*?recommended action:?\*?\*?/i.test(para)) {
+        const actionText = para.replace(/^\*?\*?recommended action:?\*?\*?\s*/i, '')
+        nodes.push(
+          <div key={pi} style={{
+            marginTop: 8, padding: '8px 12px',
+            background: 'rgba(20,40,204,0.04)',
+            border: '1px solid rgba(20,40,204,0.15)',
+            borderLeft: '3px solid var(--blue)',
+            fontSize: 12.5,
+            lineHeight: 1.55,
+          }}>
+            <span style={{ fontWeight: 700, color: 'var(--blue)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>
+              Recommended Action
+            </span>
+            <span style={{ color: 'var(--ink)' }}>{renderInline(actionText)}</span>
+          </div>
+        )
+      } else {
+        nodes.push(
+          <p key={pi} style={{ margin: '0 0 6px', lineHeight: 1.6 }}>
+            {renderInline(para)}
+          </p>
+        )
+      }
+    }
+  }
+
+  return <>{nodes}</>
+}
+
+// ── Cycling loading messages ──────────────────────────────────────────────────
+
+const LOADING_STEPS = [
+  'Reading context data…',
+  'Analyzing key metrics…',
+  'Cross-referencing indicators…',
+  'Synthesizing insight…',
+  'Finalizing response…',
+]
+
+function LoadingState() {
+  const [step, setStep] = useState(0)
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    ref.current = setInterval(() => {
+      setStep(s => (s + 1) % LOADING_STEPS.length)
+    }, 1600)
+    return () => { if (ref.current) clearInterval(ref.current) }
+  }, [])
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0' }}>
+      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: 'var(--blue)',
+              opacity: 0.3 + (step % 3 === i ? 0.7 : 0),
+              transition: 'opacity 0.3s ease',
+            }}
+          />
+        ))}
+      </div>
+      <span style={{
+        fontFamily: 'var(--font-body)', fontSize: 12,
+        color: 'var(--blue)', letterSpacing: '0.01em',
+        transition: 'opacity 0.3s ease',
+      }}>
+        {LOADING_STEPS[step]}
+      </span>
+    </div>
+  )
+}
+
+// ── AIInsight ─────────────────────────────────────────────────────────────────
 
 interface AIInsightProps {
   prompt: string
@@ -18,7 +134,7 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
     if (expanded && !fetched && !insight) {
       fetchInsight()
     }
-  }, [expanded])
+  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchInsight() {
     setLoading(true)
@@ -26,26 +142,23 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           feature: 'insight',
-          system: `You are Strike AI, an analytical assistant for Strike SCF. You provide brief, data-driven insights.
+          system: `You are Strike AI, an expert analytical assistant for Strike SCF. Provide clear, data-driven insights.
 
-CRITICAL RULES:
-1. Base ALL analysis on the context data provided. Never invent numbers, names, or facts.
-2. Be concise — maximum 3 sentences.
-3. End with one specific recommended action.
-4. Use exact figures from the context data.
-5. If context data is empty or null, say "Insufficient data for analysis."
-
-Format: [Assessment]. [Supporting data point]. [Recommended action].`,
+RULES:
+1. Base ALL analysis on the context data provided. Never invent numbers or facts.
+2. Keep it concise — 2–4 sentences, then one specific recommended action.
+3. Use exact figures from the context data.
+4. If data is empty or null, say what's missing and why it matters.
+5. Structure your response with a clear insight, then a "Recommended action:" on a new line.
+6. Use **bold** for key numbers or critical findings.`,
           messages: [{
             role: 'user',
             content: `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`,
           }],
-          max_tokens: 256,
+          max_tokens: 320,
         }),
       })
       if (res.status === 429) {
@@ -63,7 +176,7 @@ Format: [Assessment]. [Supporting data point]. [Recommended action].`,
 
   return (
     <div style={{
-      border: '1px solid rgba(20,40,204,0.22)',
+      border: '1px solid rgba(20,40,204,0.2)',
       background: 'rgba(20,40,204,0.02)',
       borderRadius: 'var(--radius-card)',
       overflow: 'hidden',
@@ -72,67 +185,33 @@ Format: [Assessment]. [Supporting data point]. [Recommended action].`,
       <button
         onClick={() => setExpanded(v => !v)}
         style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '10px 14px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left',
         }}
       >
         <div style={{
-          width: 5, height: 5,
-          borderRadius: '50%',
-          background: 'var(--blue)',
-          animation: 'badge-pulse 2.4s infinite',
-          flexShrink: 0,
+          width: 5, height: 5, borderRadius: '50%',
+          background: 'var(--blue)', animation: 'badge-pulse 2.4s infinite', flexShrink: 0,
         }} />
         <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: 'var(--blue)',
-          flex: 1,
+          fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600,
+          letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--blue)', flex: 1,
         }}>
-          {title ?? 'AI Insight'}
+          Strike AI · {title ?? 'Insight'}
         </span>
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          color: 'var(--blue)',
-        }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--blue)' }}>
           {expanded ? '▲' : '▼'}
         </span>
       </button>
 
       {expanded && (
-        <div style={{
-          padding: '0 14px 12px',
-          borderTop: '1px solid rgba(20,40,204,0.1)',
-        }}>
+        <div style={{ padding: '0 14px 14px', borderTop: '1px solid rgba(20,40,204,0.1)' }}>
           {loading ? (
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--blue)',
-              letterSpacing: '0.1em',
-              padding: '8px 0',
-            }}>
-              Analyzing...
-            </div>
+            <LoadingState />
           ) : (
-            <div style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: 13,
-              color: 'var(--ink)',
-              lineHeight: 1.6,
-              paddingTop: 10,
-            }}>
-              {insight}
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink)', paddingTop: 10 }}>
+              <MarkdownContent text={insight} />
             </div>
           )}
         </div>
