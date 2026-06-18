@@ -13,10 +13,40 @@ import {
   type PassportDoc,
 } from '@/components/passport-sections'
 
+// ── Expert Analysis types (mirrors lib/passport.ts ExpertAnalysis) ────────────
+interface ComponentScore {
+  score: number
+  reasoning: string
+  flags?: string[]
+  document_findings?: string[]
+  missing_docs?: string[]
+  key_metrics?: Record<string, string | null>
+}
+
+interface ExpertAnalysis {
+  scores: {
+    kyb_compliance: ComponentScore
+    financial_health: ComponentScore & { key_metrics: Record<string, string | null> }
+    trade_reliability: ComponentScore
+    network_reputation: ComponentScore
+  }
+  total_score: number
+  risk_tier: 'green' | 'amber' | 'red'
+  executive_summary: string
+  key_strengths: string[]
+  risk_flags: string[]
+  improvement_actions: string[]
+  document_quality: 'complete' | 'partial' | 'missing_critical'
+  analyst_confidence: 'high' | 'medium' | 'low'
+  analyst_notes: string
+  documents_analyzed: string[]
+}
+
 type OwnOrg = PassportOrg & {
   network_visible: boolean
   doing_business_as: string | null
   passport_narrative: string | null
+  passport_expert_analysis: string | null
 }
 
 interface PassportResponse {
@@ -111,6 +141,256 @@ function NarrativePanel({ narrative }: { narrative: string | null }) {
           <p style={{ fontSize: 11, color: 'var(--gray-soft)', marginTop: 12, lineHeight: 1.4 }}>
             Complete your KYB submission to unlock your Passport narrative.
           </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Expert Analysis Panel ─────────────────────────────────────────────────────
+
+const DIMENSION_LABELS: Record<keyof ExpertAnalysis['scores'], string> = {
+  kyb_compliance: 'KYB & Compliance',
+  financial_health: 'Financial Health',
+  trade_reliability: 'Trade Reliability',
+  network_reputation: 'Network Reputation',
+}
+
+const DIMENSION_ICONS: Record<keyof ExpertAnalysis['scores'], string> = {
+  kyb_compliance: '🛡',
+  financial_health: '📊',
+  trade_reliability: '🤝',
+  network_reputation: '🌐',
+}
+
+function ScoreBar({ score, max = 25, color }: { score: number; max?: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, (score / max) * 100))
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: 1, height: 7, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999, transition: 'width 0.6s ease' }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 36, textAlign: 'right', fontFamily: 'var(--font-display)' }}>
+        {score}/{max}
+      </span>
+    </div>
+  )
+}
+
+function dimensionColor(score: number): string {
+  const pct = score / 25
+  if (pct >= 0.75) return 'var(--color-green, #10B981)'
+  if (pct >= 0.45) return 'var(--color-amber, #F59E0B)'
+  return 'var(--color-red, #EF4444)'
+}
+
+function ConfidenceBadge({ confidence }: { confidence: 'high' | 'medium' | 'low' }) {
+  const map = {
+    high:   { bg: 'var(--color-green-bg, #EDFAF4)', color: 'var(--color-green, #10B981)', label: 'High Confidence' },
+    medium: { bg: 'var(--color-amber-bg, #FEF3C7)', color: 'var(--color-amber, #F59E0B)', label: 'Medium Confidence' },
+    low:    { bg: 'var(--color-red-bg, #FEE2E2)',   color: 'var(--color-red, #EF4444)',   label: 'Low Confidence' },
+  }
+  const s = map[confidence]
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: s.bg, color: s.color, letterSpacing: '0.04em' }}>
+      {s.label}
+    </span>
+  )
+}
+
+function DocQualityBadge({ quality }: { quality: 'complete' | 'partial' | 'missing_critical' }) {
+  const map = {
+    complete:         { bg: 'var(--color-green-bg, #EDFAF4)', color: 'var(--color-green, #10B981)', label: 'Complete Docs' },
+    partial:          { bg: 'var(--color-amber-bg, #FEF3C7)', color: 'var(--color-amber, #F59E0B)', label: 'Partial Docs' },
+    missing_critical: { bg: 'var(--color-red-bg, #FEE2E2)',   color: 'var(--color-red, #EF4444)',   label: 'Missing Critical Docs' },
+  }
+  const s = map[quality]
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: s.bg, color: s.color, letterSpacing: '0.04em' }}>
+      {s.label}
+    </span>
+  )
+}
+
+function ExpertAnalysisPanel({ analysis }: { analysis: ExpertAnalysis }) {
+  const [openDim, setOpenDim] = useState<string | null>(null)
+  const dims = Object.entries(analysis.scores) as [keyof ExpertAnalysis['scores'], ComponentScore][]
+
+  return (
+    <div style={{ border: '1px solid var(--border-strong)', background: 'var(--white)' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--border)',
+        background: 'linear-gradient(135deg, rgba(20,40,204,0.03) 0%, rgba(124,58,237,0.03) 100%)',
+      }}>
+        <div style={{ width: 5, height: 5, background: 'var(--blue)', animation: 'badge-pulse 2.4s infinite', flexShrink: 0 }} />
+        <span style={{ flex: 1, fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--blue)' }}>
+          Strike AI · Expert Passport Analysis
+        </span>
+        <ConfidenceBadge confidence={analysis.analyst_confidence} />
+      </div>
+
+      {/* Total score */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ textAlign: 'center', minWidth: 56 }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700,
+            color: analysis.total_score >= 70 ? 'var(--color-green)' : analysis.total_score >= 45 ? 'var(--color-amber)' : 'var(--color-red)',
+            lineHeight: 1,
+          }}>
+            {analysis.total_score}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>/ 100</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{
+            height: 10, background: 'var(--border)', borderRadius: 999, overflow: 'hidden', marginBottom: 6,
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${analysis.total_score}%`,
+              background: analysis.total_score >= 70
+                ? 'var(--color-green)'
+                : analysis.total_score >= 45
+                ? 'var(--color-amber)'
+                : 'var(--color-red)',
+              borderRadius: 999,
+              transition: 'width 0.6s ease',
+            }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <DocQualityBadge quality={analysis.document_quality} />
+            {analysis.documents_analyzed.length > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--gray)', padding: '3px 9px', borderRadius: 999, background: 'var(--offwhite)', border: '1px solid var(--border)' }}>
+                {analysis.documents_analyzed.length} doc{analysis.documents_analyzed.length !== 1 ? 's' : ''} analyzed
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 4 dimension score bars */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {dims.map(([key, dim]) => {
+          const color = dimensionColor(dim.score)
+          const isOpen = openDim === key
+          return (
+            <div key={key}>
+              <button
+                type="button"
+                onClick={() => setOpenDim(isOpen ? null : key)}
+                style={{
+                  width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 14 }}>{DIMENSION_ICONS[key]}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{DIMENSION_LABELS[key]}</span>
+                  <span style={{ fontSize: 11, color: 'var(--gray)' }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                <ScoreBar score={dim.score} color={color} />
+              </button>
+              {isOpen && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <p style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.6, margin: 0 }}>{dim.reasoning}</p>
+                  {dim.document_findings && dim.document_findings.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>Document findings</div>
+                      {dim.document_findings.map((f, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', marginBottom: 3 }}>
+                          <div style={{ width: 4, height: 4, background: color, borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
+                          <span style={{ fontSize: 12, color: 'var(--ink)', lineHeight: 1.5 }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {dim.missing_docs && dim.missing_docs.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-amber)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>Missing documents</div>
+                      {dim.missing_docs.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', marginBottom: 3 }}>
+                          <div style={{ width: 4, height: 4, background: 'var(--color-amber)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
+                          <span style={{ fontSize: 12, color: 'var(--ink)', lineHeight: 1.5 }}>{d}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {dim.key_metrics && Object.keys(dim.key_metrics).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {Object.entries(dim.key_metrics).filter(([, v]) => v !== null).map(([k, v]) => (
+                        <div key={k} style={{ fontSize: 11, padding: '4px 8px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                          <span style={{ color: 'var(--gray)' }}>{k.replace(/_/g, ' ')}: </span>
+                          <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Key strengths */}
+      {analysis.key_strengths.length > 0 && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-green)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+            Key Strengths
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {analysis.key_strengths.map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ width: 4, height: 4, background: 'var(--color-green)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
+                <span style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.55 }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Risk flags */}
+      {analysis.risk_flags.length > 0 && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-red)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+            Risk Flags
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {analysis.risk_flags.map((f, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ width: 4, height: 4, background: 'var(--color-red)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
+                <span style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.55 }}>{f}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Improvement actions */}
+      {analysis.improvement_actions.length > 0 && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--blue)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+            How to Improve
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {analysis.improvement_actions.map((a, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', minWidth: 16, flexShrink: 0 }}>{i + 1}.</span>
+                <span style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.55 }}>{a}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Analyst notes */}
+      {analysis.analyst_notes && (
+        <div style={{ padding: '10px 16px', background: 'var(--offwhite)' }}>
+          <span style={{ fontSize: 11, color: 'var(--gray)', fontStyle: 'italic', lineHeight: 1.5 }}>
+            Analyst note: {analysis.analyst_notes}
+          </span>
         </div>
       )}
     </div>
@@ -281,6 +561,16 @@ export default function MyPassportPage() {
       ? org.doing_business_as
       : null
 
+  // Parse passport_expert_analysis (stored as JSON string)
+  const expertAnalysis: ExpertAnalysis | null = (() => {
+    if (!org?.passport_expert_analysis) return null
+    try {
+      return JSON.parse(org.passport_expert_analysis) as ExpertAnalysis
+    } catch {
+      return null
+    }
+  })()
+
   // Passport page states (TE.2):
   //  - ghost  (kyb_status = 'not_started') → activation prompt, never a locked card
   //  - review (submitted / under_review / more_info_requested / in_progress) →
@@ -359,6 +649,10 @@ export default function MyPassportPage() {
             {/* RIGHT — sticky AI panel */}
             <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <NarrativePanel narrative={org.passport_narrative} />
+
+              {expertAnalysis && (
+                <ExpertAnalysisPanel analysis={expertAnalysis} />
+              )}
 
               <AIInsight
                 title="Passport Health"
