@@ -109,7 +109,9 @@ Current page: ${page}
 ${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` : ''}
 
 Your tools:
-- create_marketplace_listing — post a product/service or PO listing on Strike Place. ALWAYS ask about incoterms (e.g. CIF, FOB, EXW, DDP) and payment terms (e.g. Net 30, LC, CAD) before creating a listing if the user hasn't mentioned them. After creating, respond with [LISTING_CARD:{listing_id}] on its own line so the UI renders a clickable card.
+- search_marketplace_listings — find existing listings on Strike Place. After returning results, emit [LISTING_CARD:{id}] on its own line for EACH listing so the user gets a clickable card.
+- submit_marketplace_offer — submit an offer ON an existing listing. Use this when the user wants to bid or respond to a listing someone else posted. NEVER use create_marketplace_listing for this.
+- create_marketplace_listing — post a NEW listing (your own product/service or PO request). ALWAYS ask about incoterms and payment terms first. After creating, emit [LISTING_CARD:{listing_id}] on its own line.
 - get_active_deals — list all active (non-completed, non-cancelled) deals for an org
 - evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history
 - find_and_recommend_deals — match and score deals between buyer/supplier

@@ -251,7 +251,7 @@ const GET_PASSPORT_ADVICE = {
 
 const SEARCH_MARKETPLACE_LISTINGS = {
   name: 'search_marketplace_listings',
-  description: 'Search active public listings on Strike Place. Use this when the user asks about available deals, listings, PO requests, or products on the marketplace. Supports keyword search across title, description, category, and line items.',
+  description: 'Search active public listings on Strike Place. Use this when the user asks about available deals, listings, PO requests, or products on the marketplace. After returning results, emit [LISTING_CARD:{id}] on its own line for EACH listing found so the UI renders a clickable card the user can navigate to.',
   input_schema: {
     type: 'object',
     properties: {
@@ -263,6 +263,25 @@ const SEARCH_MARKETPLACE_LISTINGS = {
       limit: { type: 'number', default: 10 },
     },
     required: ['query'],
+  },
+}
+
+const SUBMIT_MARKETPLACE_OFFER = {
+  name: 'submit_marketplace_offer',
+  description: 'Submit an offer on an existing Strike Place listing. Use this when the user wants to make an offer, bid, or respond to a listing — NOT when they want to create their own listing. Requires the listing_id (use search_marketplace_listings or lookup_entities first if you only have a title).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      listing_id: { type: 'string', description: 'UUID of the listing to offer on' },
+      from_org_id: { type: 'string', description: 'UUID of the offering organization (use org_id from context)' },
+      offered_price: { type: 'number', description: 'Total offered price in the listing currency' },
+      offered_quantity: { type: 'number', description: 'Quantity being offered' },
+      proposed_delivery_date: { type: 'string', format: 'date', description: 'Proposed delivery date (YYYY-MM-DD)' },
+      proposed_incoterms: { type: 'string', description: 'e.g. CIF, FOB, EXW' },
+      proposed_payment_terms: { type: 'string', description: 'e.g. Net 30, LC at sight' },
+      notes: { type: 'string', description: 'Any additional notes or terms to include with the offer' },
+    },
+    required: ['listing_id', 'from_org_id'],
   },
 }
 
@@ -291,6 +310,7 @@ const PROACTIVE_PORTFOLIO_ALERTS = {
 const SUPPLIER_TOOLS = [
   LOOKUP_ENTITIES,
   SEARCH_MARKETPLACE_LISTINGS,
+  SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
@@ -307,6 +327,7 @@ const SUPPLIER_TOOLS = [
 const ANCHOR_TOOLS = [
   LOOKUP_ENTITIES,
   SEARCH_MARKETPLACE_LISTINGS,
+  SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
@@ -323,6 +344,7 @@ const ANCHOR_TOOLS = [
 const BANK_TOOLS = [
   LOOKUP_ENTITIES,
   SEARCH_MARKETPLACE_LISTINGS,
+  SUBMIT_MARKETPLACE_OFFER,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   PROACTIVE_PORTFOLIO_ALERTS,
@@ -338,6 +360,7 @@ const BANK_TOOLS = [
 export const STRIKE_TOOLS = [
   LOOKUP_ENTITIES,
   SEARCH_MARKETPLACE_LISTINGS,
+  SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
   GET_ACTIVE_DEALS,
   EVALUATE_SUPPLIER_PASSPORT,

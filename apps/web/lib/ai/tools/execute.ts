@@ -17,6 +17,7 @@ import { evaluateListingOffers, type EvaluateListingOffersInput } from './handle
 import { getPassportAdvice, type GetPassportAdviceInput } from './handlers/get-passport-advice'
 import { getActiveDeals, type GetActiveDealsInput } from './handlers/get-active-deals'
 import { searchMarketplaceListings, type SearchMarketplaceListingsInput } from './handlers/search-marketplace-listings'
+import { submitMarketplaceOffer, type SubmitMarketplaceOfferInput } from './handlers/submit-marketplace-offer'
 
 export type ToolName =
   | 'create_marketplace_listing'
@@ -34,6 +35,7 @@ export type ToolName =
   | 'get_passport_advice'
   | 'get_active_deals'
   | 'search_marketplace_listings'
+  | 'submit_marketplace_offer'
 
 export async function executeTool(
   toolName: ToolName,
@@ -70,6 +72,8 @@ export async function executeTool(
       return getActiveDeals(toolInput as unknown as GetActiveDealsInput)
     case 'search_marketplace_listings':
       return searchMarketplaceListings(toolInput as unknown as SearchMarketplaceListingsInput)
+    case 'submit_marketplace_offer':
+      return submitMarketplaceOffer(toolInput as unknown as SubmitMarketplaceOfferInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
