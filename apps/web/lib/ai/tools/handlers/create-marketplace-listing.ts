@@ -19,6 +19,8 @@ export interface CreateMarketplaceListingInput {
   currency?: string
   delivery_deadline?: string
   delivery_location?: string
+  incoterms?: string
+  payment_terms?: string
   expires_at?: string
   min_passport_score?: number
   tags?: string[]
@@ -41,6 +43,8 @@ export async function createMarketplaceListing(input: CreateMarketplaceListingIn
       currency,
       delivery_deadline: input.delivery_deadline ?? null,
       delivery_location: input.delivery_location ?? null,
+      incoterms: input.incoterms ?? null,
+      payment_terms: input.payment_terms ?? null,
       expires_at: input.expires_at ?? null,
       min_passport_score: input.min_passport_score ?? null,
       tags: input.tags ?? [],

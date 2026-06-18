@@ -52,9 +52,11 @@ export const STRIKE_TOOLS = [
         description: { type: 'string', description: 'Detailed listing description' },
         category: { type: 'string', description: 'Product/service category (e.g. "Steel", "Electronics", "Logistics")' },
         currency: { type: 'string', default: 'USD' },
-        delivery_deadline: { type: 'string', format: 'date', description: 'Required delivery date (YYYY-MM-DD)' },
+        delivery_deadline: { type: 'string', format: 'date', description: 'Required delivery date (YYYY-MM-DD). Always use the current year unless the user specifies otherwise.' },
         delivery_location: { type: 'string', description: 'Delivery city, state/country (e.g. "NYC Port, New York, USA")' },
-        expires_at: { type: 'string', format: 'date-time', description: 'When the listing expires (ISO 8601). Use end-of-day for date-only inputs, e.g. "2025-07-31T23:59:59Z"' },
+        incoterms: { type: 'string', description: 'Trade term governing risk/cost transfer (e.g. "CIF", "FOB", "EXW", "DDP", "DAP", "CFR"). ALWAYS ask the user before creating if not provided.' },
+        payment_terms: { type: 'string', description: 'Payment terms (e.g. "Net 30", "Net 60", "LC at sight", "CAD", "50% advance 50% on delivery"). ALWAYS ask the user before creating if not provided.' },
+        expires_at: { type: 'string', format: 'date-time', description: 'When the listing expires (ISO 8601). Use end-of-day for date-only inputs, e.g. "2026-07-31T23:59:59Z"' },
         min_passport_score: { type: 'number', description: 'Minimum PassportScore required to submit an offer (0-100). Offers from orgs below this score are blocked.' },
         tags: { type: 'array', items: { type: 'string' } },
         visibility: {

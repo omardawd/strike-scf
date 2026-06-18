@@ -94,17 +94,21 @@ function buildSystemPrompt(portal: string, page: string, userName?: string, orgI
     bankId  ? `bank_id: ${bankId}` : null,
   ].filter(Boolean).join('\n')
 
+  const today = new Date().toISOString().split('T')[0]
+
   return `You are Strike AI, the intelligent operating system embedded in Strike SCF — an AI-native supply chain finance platform.
 
 You are an autonomous agent that takes actions on the platform on behalf of the user. When you have enough information to complete an action, execute it immediately using the appropriate tool — do not ask for confirmation unless a genuinely required field is missing.
 
+Today's date: ${today}
 Current user: ${userName ?? 'Unknown'}
 Portal: ${portal}
 Current page: ${page}
 ${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` : ''}
 
 Your tools:
-- create_marketplace_listing — post a product/service or PO listing on Strike Place
+- create_marketplace_listing — post a product/service or PO listing on Strike Place. ALWAYS ask about incoterms (e.g. CIF, FOB, EXW, DDP) and payment terms (e.g. Net 30, LC, CAD) before creating a listing if the user hasn't mentioned them. After creating, respond with [LISTING_CARD:{listing_id}] on its own line so the UI renders a clickable card.
+- get_active_deals — list all active (non-completed, non-cancelled) deals for an org
 - evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history
 - find_and_recommend_deals — match and score deals between buyer/supplier
 - get_pricing_insights — internal platform benchmarks + live external market pricing
@@ -118,7 +122,8 @@ Your tools:
 Rules:
 1. Only reference data explicitly returned by tools or provided in context. Never invent figures.
 2. Be concise. Use bullet points for lists. Format currency as $X,XXX.
-3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.`
+3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.
+4. Always use today's date (${today}) when creating listings or term sheets — never use a past year.`
 }
 
 const QUICK_PROMPTS: Record<string, string[]> = {
@@ -159,6 +164,46 @@ function describeAction(text: string): string | null {
 function needsConfirmation(text: string): boolean {
   const t = text.toLowerCase()
   return ACTION_KEYWORDS.some(k => t.includes(k))
+}
+
+const LISTING_CARD_RE = /\[LISTING_CARD:([0-9a-f-]{36})\]/gi
+
+function renderAssistantContent(content: string): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  LISTING_CARD_RE.lastIndex = 0
+  while ((match = LISTING_CARD_RE.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index))
+    }
+    const id = match[1]
+    parts.push(
+      <a
+        key={id}
+        href={`/marketplace/listings/${id}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          margin: '8px 0', padding: '10px 14px',
+          background: 'var(--white)', border: '1px solid var(--border)',
+          borderRadius: 12, textDecoration: 'none', color: 'var(--ink)',
+          fontSize: 13, fontWeight: 600, boxShadow: 'var(--shadow-card)',
+          transition: 'border-color 0.15s',
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="var(--blue)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="14" height="14" rx="3" />
+          <path d="M7 10h6M7 13h4" />
+        </svg>
+        View listing on Strike Place →
+      </a>
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex))
+  }
+  return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : <>{parts}</>
 }
 
 // TF.1 — subtle single-chevron glyph (‹ / ›) for the conversation-log collapse toggle.
@@ -565,7 +610,7 @@ export default function AIWorkspacePage() {
                           borderRadius: '4px 20px 20px 20px', fontSize: 13, lineHeight: 1.65,
                           color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         }}>
-                          {m.content}
+                          {renderAssistantContent(m.content)}
                         </div>
                       </div>
                     )}

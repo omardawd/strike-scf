@@ -928,19 +928,24 @@ function AnchorDashboard() {
           <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
         </div>
 
-        {/* AI Overview */}
-        <div style={{ marginBottom: 20 }}>
-          <AIInsightCard
-            variant="banner"
-            portal="anchor"
-            page="dashboard"
-            context={{
-              org_name: dashData?.org_name,
-              active_deals: deals?.length ?? 0,
-              pending_financing: financing?.length ?? 0,
-            }}
-          />
-        </div>
+        {/* AI Overview — only mount after data loads so context is populated */}
+        {!loading && (
+          <div style={{ marginBottom: 20 }}>
+            <AIInsightCard
+              variant="banner"
+              portal="anchor"
+              page="dashboard"
+              context={{
+                org_name: dashData?.org_name,
+                active_deals: activeDeals.length,
+                deals_needing_action: dealsNeedingAction,
+                listings_with_offers: listingsWithOffers,
+                pending_financing: financing?.length ?? 0,
+                completed_deal_volume: completedVolume,
+              }}
+            />
+          </div>
+        )}
 
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="md" />
@@ -1149,21 +1154,25 @@ function SupplierDashboard() {
           <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
         </div>
 
-        {/* AI Overview */}
-        <div style={{ marginBottom: 20 }}>
-          <AIInsightCard
-            variant="banner"
-            portal="supplier"
-            page="dashboard"
-            context={{
-              org_name: dashData?.org_name,
-              active_deals: activeDeals?.length ?? 0,
-              pending_financing: financing?.length ?? 0,
-              on_time_rate: dashData?.on_time_rate,
-              passport_score: passport?.organization?.passport_score ?? null,
-            }}
-          />
-        </div>
+        {/* AI Overview — only mount after data loads so context is populated */}
+        {!loading && (
+          <div style={{ marginBottom: 20 }}>
+            <AIInsightCard
+              variant="banner"
+              portal="supplier"
+              page="dashboard"
+              context={{
+                org_name: dashData?.org_name,
+                active_deals: activeDeals.length,
+                deals_needing_action: dealsNeedingAction,
+                pending_financing: financing?.length ?? 0,
+                total_financed: totalFinanced,
+                completed_deals: completedDeals,
+                passport_score: passport?.organization?.passport_score ?? null,
+              }}
+            />
+          </div>
+        )}
 
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="lg" extras={passportExtras} />
