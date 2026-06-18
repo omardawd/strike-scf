@@ -681,6 +681,8 @@ export default function DealDetailPage() {
         type: txn.type,
         status: txn.status,
         financing_amount_approved: txn.financing_amount_approved,
+        financing_rate_apr: txn.financing_rate_apr,
+        tenor_days: txn.tenor_days,
         repayment_due_date: txn.repayment_due_date,
         discount_rate: txn.discount_rate,
         discount_amount: txn.discount_amount,
@@ -736,6 +738,13 @@ export default function DealDetailPage() {
     supplier: supplier_org?.legal_name ?? null,
     deal_amount: dealValue ? `${fmt(dealValue, currency)} ${currency}` : null,
     financing_summary: financingContext.aiContextSummary,
+    financing_terms: txn ? {
+      structure: txn.type,
+      rate_apr: txn.financing_rate_apr ?? null,
+      tenor_days: txn.tenor_days ?? null,
+      amount_approved: txn.financing_amount_approved ?? null,
+      txn_status: txn.status,
+    } : null,
     can_request_financing: canFinance,
     financing_how_to: canFinance
       ? 'Use the "Request Financing" button on this page to submit a financing request to banks on Strike Place.'
@@ -996,6 +1005,34 @@ export default function DealDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Approved financing — accepted but not yet disbursed */}
+            {!financingContext.isActive && txn && ['financing_approved', 'financing_approved_pending_collateral', 'funded'].includes(txn.status) && (
+              <div className="card">
+                <div className="card-head" style={{ color: 'var(--blue)' }}>
+                  Financing Approved
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 8 }}>
+                    {txn.type.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="kv-list">
+                  <div className="kv-row"><span className="k">Structure</span><span className="v plain">{txn.type.replace(/_/g, ' ')}</span></div>
+                  {txn.financing_rate_apr != null && (
+                    <div className="kv-row"><span className="k">Rate APR</span><span className="v" style={{ fontWeight: 700, color: 'var(--color-green)' }}>{txn.financing_rate_apr}%</span></div>
+                  )}
+                  {txn.tenor_days != null && (
+                    <div className="kv-row"><span className="k">Tenor</span><span className="v">{txn.tenor_days}d</span></div>
+                  )}
+                  {txn.financing_amount_approved != null && (
+                    <div className="kv-row"><span className="k">Financed Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(txn.financing_amount_approved, currency)}</span></div>
+                  )}
+                  <div className="kv-row">
+                    <span className="k">Status</span>
+                    <span className="badge badge-active" style={{ fontSize: 10 }}>Contract &amp; Disbursement Pending</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Financing context details (replaces old inline financing info) */}
             {financingContext.isActive && (

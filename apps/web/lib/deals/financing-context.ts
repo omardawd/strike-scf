@@ -89,6 +89,8 @@ export interface TransactionForContext {
   type: string
   status: string
   financing_amount_approved?: number | null
+  financing_rate_apr?: number | null
+  tenor_days?: number | null
   repayment_due_date?: string | null
   discount_rate?: number | null
   discount_amount?: number | null
@@ -231,9 +233,22 @@ export function getFinancingContext(
       paymentStepLabel: `Pay ${supplierName}`,
       paymentWarningMessage: null,
       financingBadgeLabel: null,
-      aiContextSummary: deal.status === 'financing_active'
-        ? `Financing was active on this deal (legacy status: financing_active). Bank SCF advance was involved. Transaction details are unavailable — this deal predates the current transaction tracking system. The buyer's repayment obligation may have already been fulfilled or may require direct bank coordination.`
-        : 'No financing active. Direct payment to supplier applies.',
+      aiContextSummary: (() => {
+        if (transaction !== null) {
+          const PRE_DISBURSE = ['financing_approved', 'financing_approved_pending_collateral', 'funded', 'pending_anchor_approval', 'pending_bank_review']
+          if (PRE_DISBURSE.includes(transaction.status)) {
+            const struct = mapStructure(transaction.type)?.replace(/_/g, ' ') ?? transaction.type
+            const amt = fmt(transaction.financing_amount_approved ?? invoiceAmount, currency)
+            const rate = transaction.financing_rate_apr != null ? ` at ${transaction.financing_rate_apr}% APR` : ''
+            const tenor = transaction.tenor_days != null ? ` / ${transaction.tenor_days}d tenor` : ''
+            return `Financing APPROVED (pre-disbursement) — ${struct}${rate}${tenor}. Financed amount: ${amt}. Transaction status: ${transaction.status}. Bank offer accepted; contract and disbursement in progress. Once disbursed, payment routes to the bank instead of the supplier.`
+          }
+        }
+        if (deal.status === 'financing_active') {
+          return `Financing was active on this deal (legacy status: financing_active). Bank SCF advance was involved. Transaction details are unavailable — this deal predates the current transaction tracking system.`
+        }
+        return 'No financing active. Direct payment to supplier applies.'
+      })(),
     }
   }
 
