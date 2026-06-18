@@ -311,7 +311,7 @@ export default function PublicPassportPage() {
         ]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div className="page" data-page-name="Passport" data-ai-context={JSON.stringify({ org_name: org?.legal_name ?? null, org_type: org?.type ?? null, org_id: orgId, review_count: data?.review_count ?? null, avg_rating: data?.avg_rating ?? null, recent_deals: data?.recent_deals ?? null, bank_views_30d: data?.bank_view_count_30d ?? null })}>
         {loading ? (
           <div className="card">
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>

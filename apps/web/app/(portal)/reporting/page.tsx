@@ -157,7 +157,7 @@ export default function ReportingPage() {
         actions={<NotifBell />}
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Reporting" data-ai-context={JSON.stringify({ role: (user as any)?.role, has_data: !!data, ...(data ? { summary: data } : {}) })}>
         <div className="page-header">
           <h1 className="t-page-title">Reporting</h1>
         </div>

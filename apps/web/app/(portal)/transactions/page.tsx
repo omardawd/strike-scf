@@ -132,7 +132,7 @@ export default function TransactionsPage() {
         }
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Transactions" data-ai-context={JSON.stringify({ role: portal, total: txns.length, pending: txns.filter(t => matchesFilter(t.status, 'pending')).length, approved: txns.filter(t => matchesFilter(t.status, 'approved')).length, funded: txns.filter(t => matchesFilter(t.status, 'funded')).length, rejected: txns.filter(t => matchesFilter(t.status, 'rejected')).length, active_filter: filter })}>
         <div className="page-header">
           <h1 className="t-page-title">Transactions</h1>
           {!loading && !error && (

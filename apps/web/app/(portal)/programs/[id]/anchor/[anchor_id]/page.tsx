@@ -488,7 +488,7 @@ export default function AnchorDetailPage() {
             </>
           }
         />
-        <div className="page">
+        <div className="page" data-page-name="Anchor Detail" data-ai-context={JSON.stringify({ role: 'bank', anchor_name: orgName, anchor_id: anchorId, program_id: programId, supplier_count: suppliers.length, credit_score: (creditScore as any)?.total_score ?? null, has_analytics: !!analytics })}>
           {error && (
             <div className="alert alert-error" style={{ marginBottom: 20 }}>
               <Icon name="error" size={16} className="alert-icon" />
@@ -963,7 +963,7 @@ export default function AnchorDetailPage() {
         ]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div className="page" data-page-name="Anchor Detail" data-ai-context={JSON.stringify({ role: 'supplier', anchor_name: orgName, anchor_id: anchorId, program_id: programId, has_analytics: !!analytics })}>
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 20 }}>
             <Icon name="error" size={16} className="alert-icon" />

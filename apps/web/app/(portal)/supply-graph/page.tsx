@@ -18,6 +18,7 @@ export default function SupplyGraphComingSoon() {
       <Topbar crumbs={[{ label: 'Supply Graph' }]} />
       <div
         data-page-name="Supply Graph"
+        data-ai-context={JSON.stringify({ page: 'supply_graph', role: 'bank', status: 'coming_soon' })}
         style={{
           flex: 1,
           display: 'flex',

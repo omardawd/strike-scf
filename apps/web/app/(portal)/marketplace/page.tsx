@@ -320,7 +320,7 @@ export default function MarketplacePage() {
         }
       />
 
-      <div className="mp-page page">
+      <div className="mp-page page" data-page-name="Marketplace" data-ai-context={JSON.stringify({ role: (user as any)?.role, total_listings: total, active_tab: mainTab, type_filter: typeFilter, category, sort, search: committedSearch, my_listings_count: myListings.length })}>
         <div className="mp-tabs">
           <button
             className={`mp-tab${mainTab === 'marketplace' ? ' mp-tab-active' : ''}`}

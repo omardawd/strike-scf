@@ -185,7 +185,7 @@ export default function ProgramsPage() {
         }
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Programs" data-ai-context={JSON.stringify({ role: portal, total_programs: programs.length, active_programs: programs.filter((p: any) => p.status === 'active').length, inactive_programs: programs.filter((p: any) => p.status !== 'active').length })}>
         <div className="page-header">
           <h1 className="t-page-title">My Programs</h1>
           {!loading && !error && programs.length > 0 && (

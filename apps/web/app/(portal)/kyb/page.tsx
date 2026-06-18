@@ -118,7 +118,7 @@ export default function KYBQueuePage() {
         crumbs={[{ label: 'KYB Review' }]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div className="page" data-page-name="KYB Review Queue" data-ai-context={JSON.stringify({ role: (user as any)?.role, total_applications: orgs.length, status_filter: statusFilter || 'all', pending: orgs.filter(o => o.kyb_status === 'submitted' || o.kyb_status === 'under_review').length })}>
         <div className="page-header">
           <h1 className="page-id-title">KYB Review Queue</h1>
           <div className="subtitle">Review and approve business verification applications</div>

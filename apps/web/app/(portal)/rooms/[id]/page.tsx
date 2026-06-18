@@ -526,7 +526,7 @@ export default function RoomPage() {
   const onlineCount = participants.filter(p => onlineUsers.has(p.user_id)).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }} data-page-name="Room" data-ai-context={JSON.stringify({ room_name: room.name, room_type: room.room_type, status: room.status, participant_count: participants.length, message_count: messages.length, has_deal: !!deal, deal_id: deal?.id ?? null })}>
       <Topbar crumbs={crumbs} actions={topbarActions} />
 
       {/* Clean room header (TG.2): name bold · member count · View Members */}

@@ -208,7 +208,7 @@ export default function CollateralPage() {
         }
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Collateral" data-ai-context={JSON.stringify({ role: (user as any)?.role, total: collateral.length, pending: collateral.filter(c => c.status === 'pending').length, submitted: collateral.filter(c => c.status === 'submitted').length, accepted: collateral.filter(c => c.status === 'accepted').length, active_filter: filter })}>
         <div className="page-header">
           <h1 className="t-page-title">Collateral</h1>
           <div className="subtitle">Track collateral requirements across transactions and onboarding</div>

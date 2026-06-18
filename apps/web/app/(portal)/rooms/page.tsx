@@ -63,7 +63,7 @@ export default function RoomsPage() {
     <>
       <Topbar crumbs={[{ label: 'Strike Rooms' }]} />
 
-      <div className="page" style={{ maxWidth: 1100, overflowY: 'auto' }}>
+      <div className="page" style={{ maxWidth: 1100, overflowY: 'auto' }} data-page-name="Rooms" data-ai-context={JSON.stringify({ total_rooms: publicRooms.length, active_category: activeCategory, visible_count: filteredPublic.length })}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
             Discover Rooms

@@ -835,7 +835,7 @@ export default function FinancingMarketplacePage() {
         { label: 'Strike Place', onClick: () => router.push('/marketplace') },
         { label: 'My Financing Requests' },
       ]} />
-      <div className="mp-page page">
+      <div className="mp-page page" data-page-name="My Financing Requests" data-ai-context={JSON.stringify({ role: portal, total_requests: items.length, pending: items.filter((i: any) => i.status === 'pending_bank_review' || i.status === 'pending_anchor_approval').length, approved: items.filter((i: any) => i.status === 'financing_approved').length, funded: items.filter((i: any) => i.status === 'funded' || i.status === 'completed').length })}>
         <div className="page-header" style={{ marginBottom: 20 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             My Financing Requests

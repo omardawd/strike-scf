@@ -586,7 +586,7 @@ export default function ProgramDetailPage() {
         }
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Program Detail" data-ai-context={JSON.stringify({ role: portal, program_id: id, program_name: program?.name ?? null, program_status: (program as any)?.status ?? null, anchor_count: anchorList.length, supplier_count: suppliers.length, has_analytics: !!analytics })}>
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 20 }}>
             <Icon name="error" size={16} className="alert-icon" />

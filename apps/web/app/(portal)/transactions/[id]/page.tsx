@@ -2413,7 +2413,7 @@ export default function TransactionDetailPage() {
         ]}
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Transaction Detail" data-ai-context={JSON.stringify({ role: portal, transaction_id: txn?.id ?? null, status: txn?.status ?? null, financing_type: txn?.financing_type ?? null, invoice_amount: txn?.invoice_amount ?? null, financing_amount_requested: txn?.financing_amount_requested ?? null, financing_amount_approved: txn?.financing_amount_approved ?? null, rate_apr: txn?.financing_rate_apr ?? txn?.apr ?? null, tenor_days: txn?.tenor_days ?? null, supplier: txn?.supplier_name ?? null, anchor: txn?.anchor_name ?? null, bank: txn?.bank_name ?? null, program: txn?.program_name ?? null })}>
         {loading ? (
           <div className="page-header">
             <div style={{ height: 28, width: 240, background: 'var(--border)', borderRadius: 6 }} />

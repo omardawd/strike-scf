@@ -277,7 +277,7 @@ export default function KYBDetailPage() {
         crumbs={[{ label: 'KYB Review', onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
         actions={<NotifBell />}
       />
-    <div className="page">
+    <div className="page" data-page-name="KYB Detail" data-ai-context={JSON.stringify({ role: (user as any)?.role, org_name: org?.legal_name ?? null, org_type: org?.type ?? null, kyb_status: org?.kyb_status ?? null, credit_score: creditScore?.total_score ?? null, risk_tier: creditScore?.risk_tier ?? null, document_count: documents.length, latest_decision: latestDecision?.decision ?? null })}>
       <div className="page-header">
         <button
           className="back-btn"

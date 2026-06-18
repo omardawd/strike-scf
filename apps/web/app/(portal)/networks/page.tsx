@@ -162,7 +162,7 @@ function AnchorNetworksPage() {
 
   return (
     <>
-      <div style={{ padding: '32px 32px 0' }}>
+      <div style={{ padding: '32px 32px 0' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'anchor', total_networks: networks.length, loading })}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800 }}>My Networks</h1>
           <button onClick={() => setShowCreate(true)} style={{
@@ -300,7 +300,7 @@ function SupplierNetworksPage() {
   const others  = data.filter(d => !['invited', 'active'].includes(d.membership?.status))
 
   return (
-    <div style={{ padding: '32px' }}>
+    <div style={{ padding: '32px' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'supplier', total: data.length, pending: pending.length, active: active.length, others: others.length })}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>My Networks</h1>
         <p style={{ color: 'var(--gray)', fontSize: 14 }}>

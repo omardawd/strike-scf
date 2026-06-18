@@ -467,7 +467,7 @@ export default function SettingsPage() {
         actions={<NotifBell />}
       />
 
-      <div className="page">
+      <div className="page" data-page-name="Settings" data-ai-context={JSON.stringify({ role: (user as any)?.role, portal, active_tab: tab, team_member_count: members.length, bank_account_count: bankAccounts.length, is_admin: isAdmin })}>
         <div className="page-header">
           <h1 className="t-page-title">Settings</h1>
           <div className="subtitle">Manage your profile and organization details</div>

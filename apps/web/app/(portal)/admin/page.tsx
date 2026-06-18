@@ -143,7 +143,8 @@ export default function AdminPage() {
     <>
       <Topbar crumbs={[{ label: 'Admin' }, { label: 'Dashboard' }]} />
 
-      <div className="page" style={{ maxWidth: 1400 }}>
+      <div className="page" style={{ maxWidth: 1400 }} data-page-name="Admin Dashboard" data-ai-context={JSON.stringify({ role: 'strike_admin', kyb_pending: kybOrgs.length, room_reports: reports.length, total_orgs: stats?.total_orgs ?? null, active_orgs: stats?.active_orgs ?? null, open_financing: stats?.open_financing_requests ?? null, deals_this_month: stats?.deals_this_month ?? null })}>
+
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', margin: 0 }}>

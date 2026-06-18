@@ -391,7 +391,7 @@ export default function NetworkDetailPage() {
 
   return (
     <>
-      <div style={{ padding: '32px 32px 0' }}>
+      <div style={{ padding: '32px 32px 0' }} data-page-name="Network Detail" data-ai-context={JSON.stringify({ role: 'anchor', network_name: network.name, network_id: network.id, member_count: members.length, active_tab: tab, visibility: (network as any).default_visibility })}>
         <button onClick={() => router.push('/networks')} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16,
