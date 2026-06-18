@@ -102,9 +102,9 @@ export async function GET(
           .maybeSingle(),
         adminClient
           .from('listing_line_items')
-          .select('id, name, description, quantity, unit, unit_price, total_price, hs_code, currency')
+          .select('id, name, description, quantity, unit, unit_price, currency, sort_order')
           .eq('listing_id', deal.listing_id)
-          .order('created_at'),
+          .order('sort_order', { ascending: true }),
       ])
       listingTitle = listingRes.data?.title ?? null
       listingDescription = listingRes.data?.description ?? null

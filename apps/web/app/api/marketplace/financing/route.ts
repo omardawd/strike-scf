@@ -103,9 +103,9 @@ export async function GET() {
       if (allListingIds.length > 0) {
         const { data: allLineItems } = await adminClient
           .from('listing_line_items')
-          .select('id, listing_id, name, description, quantity, unit, unit_price, total_price, hs_code, currency')
+          .select('id, listing_id, name, description, quantity, unit, unit_price, currency, sort_order')
           .in('listing_id', allListingIds)
-          .order('created_at')
+          .order('sort_order', { ascending: true })
         for (const li of allLineItems ?? []) {
           const lid = (li as any).listing_id as string
           if (!lineItemsMap[lid]) lineItemsMap[lid] = []

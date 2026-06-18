@@ -29,8 +29,6 @@ interface LineItem {
   quantity: number | null
   unit: string | null
   unit_price: number | null
-  total_price: number | null
-  hs_code: string | null
   currency: string | null
 }
 
@@ -750,7 +748,6 @@ export default function FinancingDetailPage() {
                           <tr key={li.id} style={{ borderBottom: i < deal.line_items.length - 1 ? '1px solid var(--border)' : 'none' }}>
                             <td style={{ padding: '9px 8px 9px 0', color: 'var(--ink)', lineHeight: 1.4 }}>
                               <div style={{ fontWeight: 500 }}>{li.name}</div>
-                              {li.hs_code && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>HS {li.hs_code}</div>}
                             </td>
                             <td style={{ padding: '9px 8px', textAlign: 'right', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
                               {li.quantity != null ? `${li.quantity}${li.unit ? ` ${li.unit}` : ''}` : '—'}
@@ -759,7 +756,7 @@ export default function FinancingDetailPage() {
                               {li.unit_price != null ? fmt(li.unit_price, li.currency ?? deal.agreed_currency) : '—'}
                             </td>
                             <td style={{ padding: '9px 0 9px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                              {li.total_price != null ? fmt(li.total_price, li.currency ?? deal.agreed_currency) : '—'}
+                              {(li.quantity != null && li.unit_price != null) ? fmt(li.quantity * li.unit_price, li.currency ?? deal.agreed_currency) : '—'}
                             </td>
                           </tr>
                         ))}

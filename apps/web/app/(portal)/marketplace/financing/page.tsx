@@ -30,8 +30,6 @@ interface LineItem {
   quantity: number | null
   unit?: string | null
   unit_price: number | null
-  total_price: number | null
-  hs_code?: string | null
   currency?: string | null
 }
 
@@ -602,15 +600,15 @@ function DetailPanel({
                   <tbody>
                     {item.deal.line_items.map((li) => {
                       const liCur = li.currency ?? item.deal!.agreed_currency ?? 'USD'
+                      const total = (li.quantity != null && li.unit_price != null) ? li.quantity * li.unit_price : null
                       return (
                         <tr key={li.id} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ paddingTop: 5, paddingBottom: 5, color: 'var(--ink)', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             <span title={li.name}>{li.name}</span>
-                            {li.hs_code && <div style={{ color: 'var(--gray)', fontSize: 10 }}>HS {li.hs_code}</div>}
                           </td>
                           <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink-soft)' }}>{li.quantity ?? '—'}{li.unit ? ` ${li.unit}` : ''}</td>
                           <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink-soft)' }}>{li.unit_price != null ? fmt(li.unit_price, liCur) : '—'}</td>
-                          <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink)', fontWeight: 500 }}>{li.total_price != null ? fmt(li.total_price, liCur) : '—'}</td>
+                          <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink)', fontWeight: 500 }}>{total != null ? fmt(total, liCur) : '—'}</td>
                         </tr>
                       )
                     })}
