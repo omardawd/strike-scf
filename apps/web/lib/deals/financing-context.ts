@@ -231,7 +231,9 @@ export function getFinancingContext(
       paymentStepLabel: `Pay ${supplierName}`,
       paymentWarningMessage: null,
       financingBadgeLabel: null,
-      aiContextSummary: 'No financing active. Direct payment to supplier applies.',
+      aiContextSummary: deal.status === 'financing_active'
+        ? `Financing was active on this deal (legacy status: financing_active). Bank SCF advance was involved. Transaction details are unavailable — this deal predates the current transaction tracking system. The buyer's repayment obligation may have already been fulfilled or may require direct bank coordination.`
+        : 'No financing active. Direct payment to supplier applies.',
     }
   }
 

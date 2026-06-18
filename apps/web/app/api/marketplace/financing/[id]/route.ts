@@ -170,7 +170,7 @@ export async function GET(
   if (['accepted', 'funded'].includes(request.status)) {
     const { data: txn } = await adminClient
       .from('transactions')
-      .select('id, status, bank_id, financing_amount_approved, esign_document_id, bank_signed_at, anchor_signed_at, supplier_signed_at, esign_completed_at, disbursed_at, disbursed_by_user_id, disbursement_reference, supplier_paid_at')
+      .select('id, status, bank_id, financing_amount_approved, financing_rate_apr, tenor_days, esign_document_id, bank_signed_at, anchor_signed_at, supplier_signed_at, esign_completed_at, disbursed_at, disbursed_by_user_id, disbursement_reference, supplier_paid_at')
       .eq('financing_request_id', id)
       .maybeSingle()
     managementTransaction = txn ?? null

@@ -725,6 +725,8 @@ export default function FinancingDetailPage() {
       disbursement_reference: transaction.disbursement_reference ?? null,
       funds_confirmed: !!transaction.supplier_paid_at,
       net_disbursement: transaction.financing_amount_approved ?? null,
+      accepted_rate_apr: transaction.financing_rate_apr ?? null,
+      tenor_days: transaction.tenor_days ?? null,
     } : null,
     ai_market_context: request.ai_market_context ?? null,
     ai_risk_assessment: request.ai_risk_assessment ?? null,
@@ -996,6 +998,18 @@ export default function FinancingDetailPage() {
                   <span className="k">Max Rate</span>
                   <span className="v">{request.preferred_rate_max ? `${request.preferred_rate_max}%` : '—'}</span>
                 </div>
+                {transaction?.financing_rate_apr != null && (
+                  <div className="kv-row">
+                    <span className="k">Accepted APR</span>
+                    <span className="v" style={{ fontWeight: 700, color: 'var(--color-green)' }}>{transaction.financing_rate_apr}%</span>
+                  </div>
+                )}
+                {transaction?.tenor_days != null && (
+                  <div className="kv-row">
+                    <span className="k">Tenor</span>
+                    <span className="v">{transaction.tenor_days}d</span>
+                  </div>
+                )}
                 <div className="kv-row">
                   <span className="k">Offers</span>
                   <span className="v">{all_offers_count}</span>

@@ -14,6 +14,8 @@ export interface ManagementTransaction {
   status: string
   bank_id: string | null
   financing_amount_approved?: number | null
+  financing_rate_apr?: number | null
+  tenor_days?: number | null
   esign_document_id: string | null
   bank_signed_at: string | null
   anchor_signed_at: string | null
