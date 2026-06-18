@@ -90,24 +90,34 @@ export async function GET(
   let listingTitle: string | null = null
   let listingDescription: string | null = null
 
+  let lineItems: unknown[] = []
+
   if (deal) {
     if (deal.listing_id) {
-      const { data: listing } = await adminClient
-        .from('marketplace_listings')
-        .select('title, description')
-        .eq('id', deal.listing_id)
-        .maybeSingle()
-      listingTitle = listing?.title ?? null
-      listingDescription = listing?.description ?? null
+      const [listingRes, lineItemsRes] = await Promise.all([
+        adminClient
+          .from('marketplace_listings')
+          .select('title, description')
+          .eq('id', deal.listing_id)
+          .maybeSingle(),
+        adminClient
+          .from('listing_line_items')
+          .select('id, name, description, quantity, unit, unit_price, total_price, hs_code, currency')
+          .eq('listing_id', deal.listing_id)
+          .order('created_at'),
+      ])
+      listingTitle = listingRes.data?.title ?? null
+      listingDescription = listingRes.data?.description ?? null
+      lineItems = lineItemsRes.data ?? []
     }
 
     const [{ data: buyer }, { data: supplier }] = await Promise.all([
       adminClient.from('organizations')
-        .select('id, legal_name, passport_score, risk_tier, trade_count_total, avg_payment_days, dispute_rate_network')
+        .select('id, legal_name, passport_score, risk_tier, kyb_status, avg_payment_days, dispute_rate_network, performance_tier, years_in_operation, annual_revenue_range')
         .eq('id', deal.buyer_org_id)
         .single(),
       adminClient.from('organizations')
-        .select('id, legal_name, passport_score, risk_tier, trade_count_total, avg_payment_days, dispute_rate_network')
+        .select('id, legal_name, passport_score, risk_tier, kyb_status, avg_payment_days, dispute_rate_network, performance_tier, years_in_operation, annual_revenue_range')
         .eq('id', deal.supplier_org_id)
         .single(),
     ])
@@ -194,6 +204,7 @@ export async function GET(
           total_value:         deal.total_value,
           buyer_org_id:        deal.buyer_org_id,
           supplier_org_id:     deal.supplier_org_id,
+          line_items:          lineItems,
         }
       : null,
     buyer_passport,

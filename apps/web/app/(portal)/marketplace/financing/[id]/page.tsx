@@ -14,9 +14,24 @@ interface OrgPassport {
   legal_name: string
   passport_score: number | null
   risk_tier: string | null
-  trade_count_total: number
+  kyb_status: string | null
   avg_payment_days: number | null
   dispute_rate_network: number | null
+  performance_tier: string | null
+  years_in_operation: number | null
+  annual_revenue_range: string | null
+}
+
+interface LineItem {
+  id: string
+  name: string
+  description: string | null
+  quantity: number | null
+  unit: string | null
+  unit_price: number | null
+  total_price: number | null
+  hs_code: string | null
+  currency: string | null
 }
 
 interface DealContext {
@@ -31,6 +46,7 @@ interface DealContext {
   total_value: number | null
   buyer_org_id: string
   supplier_org_id: string
+  line_items: LineItem[]
 }
 
 interface OfferWithBank extends FinancingRequestOffer {
@@ -93,10 +109,10 @@ function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; l
           <span className="passport-mini-type">{label}</span>
         </div>
         <div className="passport-mini-stats">
-          {passport.trade_count_total > 0 && (
+          {passport.avg_payment_days != null && (
             <div className="passport-mini-stat">
-              <span className="passport-mini-stat-label">Trades</span>
-              <span className="passport-mini-stat-value">{passport.trade_count_total}</span>
+              <span className="passport-mini-stat-label">Avg Pay</span>
+              <span className="passport-mini-stat-value">{passport.avg_payment_days}d</span>
             </div>
           )}
           {passport.avg_payment_days != null && (
@@ -690,10 +706,12 @@ export default function FinancingDetailPage() {
                       <span className="v plain">{deal.listing_title}</span>
                     </div>
                   )}
-                  <div className="kv-row">
-                    <span className="k">Goods</span>
-                    <span className="v plain">{deal.goods_description ?? deal.listing_description ?? '—'}</span>
-                  </div>
+                  {(deal.goods_description || deal.listing_description) && (
+                    <div className="kv-row">
+                      <span className="k">Goods</span>
+                      <span className="v plain">{deal.goods_description ?? deal.listing_description}</span>
+                    </div>
+                  )}
                   <div className="kv-row">
                     <span className="k">Deal Value</span>
                     <span className="v" style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600 }}>
@@ -711,6 +729,44 @@ export default function FinancingDetailPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Line items */}
+                {deal.line_items && deal.line_items.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--border)', margin: '0 20px', paddingTop: 14, paddingBottom: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 10 }}>
+                      Line Items
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 8px 8px 0', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Item</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Qty</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Unit Price</th>
+                          <th style={{ textAlign: 'right', padding: '4px 0 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deal.line_items.map((li, i) => (
+                          <tr key={li.id} style={{ borderBottom: i < deal.line_items.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                            <td style={{ padding: '9px 8px 9px 0', color: 'var(--ink)', lineHeight: 1.4 }}>
+                              <div style={{ fontWeight: 500 }}>{li.name}</div>
+                              {li.hs_code && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>HS {li.hs_code}</div>}
+                            </td>
+                            <td style={{ padding: '9px 8px', textAlign: 'right', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                              {li.quantity != null ? `${li.quantity}${li.unit ? ` ${li.unit}` : ''}` : '—'}
+                            </td>
+                            <td style={{ padding: '9px 8px', textAlign: 'right', color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                              {li.unit_price != null ? fmt(li.unit_price, li.currency ?? deal.agreed_currency) : '—'}
+                            </td>
+                            <td style={{ padding: '9px 0 9px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                              {li.total_price != null ? fmt(li.total_price, li.currency ?? deal.agreed_currency) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -805,45 +861,61 @@ export default function FinancingDetailPage() {
           {/* ── Aside ── */}
           <div className="split-panel-aside">
 
-            {/* Buyer passport */}
-            {buyer_passport && (
-              <div className="card">
-                <div className="card-head">Buyer</div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                  <PassportScoreRing score={buyer_passport.passport_score} size="sm" showLabel />
+            {/* Passport cards — show both parties, label who is the requester */}
+            {[
+              { passport: buyer_passport,    role: 'Buyer',    isRequester: deal?.buyer_org_id === request.requesting_org_id },
+              { passport: supplier_passport, role: 'Supplier', isRequester: deal?.supplier_org_id === request.requesting_org_id },
+            ].map(({ passport, role, isRequester }) => passport && (
+              <div className="card" key={role}>
+                <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {role}
+                  {isRequester && (
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: 'var(--color-accent-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Requester
+                    </span>
+                  )}
+                </div>
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <PassportScoreRing score={passport.passport_score} size="sm" showLabel />
                   <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', textAlign: 'center' }}>
-                    {buyer_passport.legal_name}
+                    {passport.legal_name}
+                  </div>
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {passport.kyb_status && (
+                      <div className="kv-row" style={{ fontSize: 11.5 }}>
+                        <span className="k">KYB</span>
+                        <span className="v plain" style={{ textTransform: 'capitalize' }}>{passport.kyb_status.replace(/_/g, ' ')}</span>
+                      </div>
+                    )}
+                    {passport.performance_tier && (
+                      <div className="kv-row" style={{ fontSize: 11.5 }}>
+                        <span className="k">Performance</span>
+                        <span className="v plain" style={{ textTransform: 'capitalize' }}>{passport.performance_tier.replace(/_/g, ' ')}</span>
+                      </div>
+                    )}
+                    {passport.avg_payment_days != null && (
+                      <div className="kv-row" style={{ fontSize: 11.5 }}>
+                        <span className="k">Avg Pay</span>
+                        <span className="v plain">{passport.avg_payment_days}d</span>
+                      </div>
+                    )}
+                    {passport.dispute_rate_network != null && (
+                      <div className="kv-row" style={{ fontSize: 11.5 }}>
+                        <span className="k">Dispute Rate</span>
+                        <span className="v plain">{(passport.dispute_rate_network * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
                   </div>
                   <Link
-                    href={`/passport/${buyer_passport.id}`}
+                    href={`/passport/${passport.id}`}
                     className="btn btn-ghost btn-sm"
                     style={{ width: '100%', justifyContent: 'center' }}
                   >
-                    View Passport
+                    View Full Passport →
                   </Link>
                 </div>
               </div>
-            )}
-
-            {/* Supplier passport */}
-            {supplier_passport && (
-              <div className="card">
-                <div className="card-head">Supplier</div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                  <PassportScoreRing score={supplier_passport.passport_score} size="sm" showLabel />
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', textAlign: 'center' }}>
-                    {supplier_passport.legal_name}
-                  </div>
-                  <Link
-                    href={`/passport/${supplier_passport.id}`}
-                    className="btn btn-ghost btn-sm"
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    View Passport
-                  </Link>
-                </div>
-              </div>
-            )}
+            ))}
 
             {/* Request stats */}
             <div className="card">
