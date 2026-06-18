@@ -197,9 +197,10 @@ export function AIOverlay() {
         body: JSON.stringify({
           feature: 'chat',
           portal,
+          overlay: true,
           system: systemPrompt,
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
-          max_tokens: 500,
+          max_tokens: 1024,
         }),
       })
       if (res.status === 429) {
