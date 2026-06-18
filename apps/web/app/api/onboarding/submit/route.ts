@@ -2,7 +2,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { KybStatus, OrgStatus, BankStatus } from '@strike-scf/types'
-import { runKybAiReview } from '@/app/api/kyb/ai-review/route'
+import { runKybAiReview } from '@/lib/kyb-review'
 import { evaluateSupplierPassport } from '@/lib/ai/tools/handlers/evaluate-supplier-passport'
 
 const adminClient = createSupabaseClient(

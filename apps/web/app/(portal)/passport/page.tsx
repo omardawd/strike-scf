@@ -489,6 +489,8 @@ export default function MyPassportPage() {
   const [uploadingDocs, setUploadingDocs] = useState(false)
   const [uploadingCerts, setUploadingCerts] = useState(false)
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+  const [runningAiReview, setRunningAiReview] = useState(false)
+  const [aiReviewResult, setAiReviewResult] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!orgId) {
@@ -552,6 +554,30 @@ export default function MyPassportPage() {
       await loadDocs()
     } finally {
       setDeletingDocId(null)
+    }
+  }
+
+  async function runAiReview() {
+    if (!orgId) return
+    setRunningAiReview(true)
+    setAiReviewResult(null)
+    try {
+      const res = await fetch('/api/kyb/ai-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setAiReviewResult((body as { error?: string }).error ?? 'Review failed')
+        return
+      }
+      setAiReviewResult('Analysis complete — refreshing passport…')
+      await load()
+    } catch {
+      setAiReviewResult('Request failed')
+    } finally {
+      setRunningAiReview(false)
     }
   }
 
@@ -648,6 +674,24 @@ export default function MyPassportPage() {
 
             {/* RIGHT — sticky AI panel */}
             <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Re-run AI analysis button */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={runAiReview}
+                  disabled={runningAiReview}
+                  style={{ width: '100%', opacity: runningAiReview ? 0.7 : 1 }}
+                >
+                  {runningAiReview ? 'Running Expert Analysis…' : 'Run Expert AI Analysis'}
+                </button>
+                {aiReviewResult && (
+                  <div style={{ fontSize: 12, color: aiReviewResult.includes('fail') || aiReviewResult.includes('error') ? 'var(--color-red)' : 'var(--color-green)', textAlign: 'center' }}>
+                    {aiReviewResult}
+                  </div>
+                )}
+              </div>
+
               <NarrativePanel narrative={org.passport_narrative} />
 
               {expertAnalysis && (
