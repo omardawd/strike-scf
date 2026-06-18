@@ -541,10 +541,44 @@ export default function MyPassportPage() {
   const isGhost = kyb === 'not_started'
   const isUnderReview = kyb === 'submitted' || kyb === 'under_review' || kyb === 'more_info_requested' || kyb === 'in_progress'
 
+  const aiContext = org ? JSON.stringify({
+    page: 'my_passport',
+    org_name: org.legal_name,
+    passport_score: org.passport_score ?? null,
+    kyb_status: kyb,
+    is_ghost: isGhost,
+    is_under_review: isUnderReview,
+    risk_tier: org.risk_tier ?? null,
+    performance_tier: org.performance_tier ?? null,
+    network_median_score: data?.network_passport_score_median ?? null,
+    score_vs_median: (org.passport_score != null && data?.network_passport_score_median != null)
+      ? (org.passport_score >= data.network_passport_score_median ? 'above_median' : 'below_median')
+      : null,
+    expert_analysis: expertAnalysis ? {
+      total_score: expertAnalysis.total_score,
+      kyb_compliance: expertAnalysis.scores.kyb_compliance?.score ?? null,
+      financial_health: expertAnalysis.scores.financial_health?.score ?? null,
+      trade_reliability: expertAnalysis.scores.trade_reliability?.score ?? null,
+      network_reputation: expertAnalysis.scores.network_reputation?.score ?? null,
+    } : null,
+    documents_uploaded: docs.length,
+    certifications_uploaded: certs.length,
+    what_to_do: isGhost
+      ? 'Submit KYB documents and activate passport to appear on the network'
+      : !expertAnalysis
+        ? 'Run Expert AI Analysis to get a detailed breakdown and score'
+        : expertAnalysis.total_score < 70
+          ? 'Improve score by uploading more documents, getting peer reviews, and completing KYB'
+          : 'Score is healthy — focus on completing trades and getting peer reviews',
+  }) : null
+
   return (
     <>
       <Topbar crumbs={[{ label: 'Strike' }, { label: 'My Passport' }]} actions={<NotifBell />} />
-      <div className="page">
+      <div className="page"
+        data-page-name="My Passport"
+        data-ai-context={aiContext ?? undefined}
+      >
         <div className="page-header">
           <h1>My Passport</h1>
           <div className="subtitle">Your AI-verified business risk identity on Strike.</div>

@@ -663,6 +663,73 @@ export default function FinancingDetailPage() {
   const days      = daysUntil(request.expires_at)
   const currency  = request.currency ?? 'USD'
 
+  const aiContext = JSON.stringify({
+    page: 'financing_request_detail',
+    request_id: id.slice(0, 8).toUpperCase(),
+    user_role: isBank ? 'bank' : (is_requester ? 'requester' : 'counterparty'),
+    status: request.status,
+    financing_type: request.financing_type ?? request.structure_type,
+    amount_requested: fmt(request.amount_requested, currency),
+    currency,
+    preferred_tenor_days: request.preferred_tenor_days ?? null,
+    preferred_rate_max: request.preferred_rate_max != null ? `${request.preferred_rate_max}%` : 'market',
+    expires_in_days: days,
+    all_offers_count,
+    my_offer: myOffer ? {
+      rate_apr: myOffer.offered_rate_apr,
+      amount: fmt(myOffer.offered_amount, currency),
+      tenor_days: myOffer.offered_tenor_days,
+      status: myOffer.status,
+    } : null,
+    bank_offers: isBank ? undefined : offers.map(o => ({
+      bank: (o as any).bank?.display_name ?? 'Bank',
+      rate_apr: o.offered_rate_apr,
+      amount: fmt(o.offered_amount, currency),
+      tenor_days: o.offered_tenor_days,
+      status: o.status,
+      ai_score: o.ai_score ?? null,
+    })),
+    deal: deal ? {
+      value: fmt(deal.total_value ?? deal.agreed_price, deal.agreed_currency),
+      currency: deal.agreed_currency,
+      listing_title: deal.listing_title ?? null,
+      goods: deal.goods_description ?? deal.listing_description ?? null,
+      delivery: deal.agreed_delivery_date,
+      incoterms: deal.agreed_incoterms,
+      line_items: deal.line_items.map(li => ({
+        name: li.name,
+        qty: li.quantity,
+        unit: li.unit,
+        unit_price: li.unit_price,
+      })),
+    } : null,
+    buyer: buyer_passport ? {
+      name: buyer_passport.legal_name,
+      passport_score: buyer_passport.passport_score,
+      kyb_status: buyer_passport.kyb_status,
+      avg_payment_days: buyer_passport.avg_payment_days,
+      performance_tier: buyer_passport.performance_tier,
+    } : null,
+    supplier: supplier_passport ? {
+      name: supplier_passport.legal_name,
+      passport_score: supplier_passport.passport_score,
+      kyb_status: supplier_passport.kyb_status,
+      avg_payment_days: supplier_passport.avg_payment_days,
+      performance_tier: supplier_passport.performance_tier,
+    } : null,
+    financing_contract: transaction ? {
+      bank_signed: !!transaction.bank_signed_at,
+      requester_signed: !!(transaction.anchor_signed_at ?? transaction.supplier_signed_at),
+      contract_complete: !!transaction.esign_completed_at,
+      disbursed: !!transaction.disbursed_at,
+      disbursement_reference: transaction.disbursement_reference ?? null,
+      funds_confirmed: !!transaction.supplier_paid_at,
+      net_disbursement: transaction.financing_amount_approved ?? null,
+    } : null,
+    ai_market_context: request.ai_market_context ?? null,
+    ai_risk_assessment: request.ai_risk_assessment ?? null,
+  })
+
   return (
     <>
       <Topbar
@@ -672,7 +739,10 @@ export default function FinancingDetailPage() {
         ]}
       />
 
-      <div className="page" style={{ maxWidth: 1280 }}>
+      <div className="page" style={{ maxWidth: 1280 }}
+        data-page-name="Financing Request"
+        data-ai-context={aiContext}
+      >
         {/* Request header */}
         <div className="page-header" style={{ marginBottom: 24 }}>
           <div className="page-id-title">

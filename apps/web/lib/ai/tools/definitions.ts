@@ -22,7 +22,7 @@ const LOOKUP_ENTITIES = {
 
 const CREATE_MARKETPLACE_LISTING = {
   name: 'create_marketplace_listing',
-  description: 'Create a marketplace listing (product/service or PO request) with line items. ALWAYS ask about incoterms and payment terms before calling if not provided. After success, respond with [LISTING_CARD:{listing_id}] on its own line.',
+  description: 'Create a marketplace listing (product/service or PO request) with line items. ALWAYS ask about: (1) incoterms and payment terms, (2) visibility — public (anyone on Strike) or network_only (only your private network) — and if network_only, which network. Ask all missing required info before calling. After success, respond with [LISTING_CARD:{listing_id}] on its own line.',
   input_schema: {
     type: 'object',
     properties: {

@@ -20,7 +20,9 @@ export async function callClaude(opts: {
   system: string
   messages: { role: 'user' | 'assistant'; content: string }[]
   max_tokens?: number
+  model?: string
 }): Promise<CallClaudeResult> {
+  const model = opts.model ?? AI_MODEL
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -29,7 +31,7 @@ export async function callClaude(opts: {
       'x-api-key': process.env.ANTHROPIC_API_KEY!,
     },
     body: JSON.stringify({
-      model: AI_MODEL,
+      model,
       max_tokens: opts.max_tokens ?? 512,
       system: opts.system,
       messages: opts.messages,
@@ -43,7 +45,7 @@ export async function callClaude(opts: {
 
   const data = await res.json()
   const text = (data?.content?.[0]?.text as string) ?? ''
-  return { text, usage: data?.usage ?? {}, model: AI_MODEL }
+  return { text, usage: data?.usage ?? {}, model }
 }
 
 // Models occasionally wrap JSON in prose or code fences. Pull the first JSON

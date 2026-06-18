@@ -685,10 +685,28 @@ function BankDashboard() {
     { label: 'Enrolled Orgs',     value: loading ? '—' : String(dashData?.enrolled_org_count ?? 0) },
   ]
 
+  const bankAiContext = JSON.stringify({
+    page: 'bank_dashboard',
+    role: 'bank',
+    bank: dashData?.bank_name ?? null,
+    active_programs: dashData?.active_program_count ?? null,
+    enrolled_orgs: dashData?.enrolled_org_count ?? null,
+    pending_review: dashData?.pending_bank_review ?? null,
+    active_transactions: dashData?.active_transactions ?? null,
+    outstanding_balance: dashData?.outstanding_balance ?? null,
+    avg_financing_rate: dashData?.avg_rate ?? null,
+    open_financing_requests: openFinancing,
+    portfolio_avg_passport_score: dashData?.passport_distribution?.avg_score ?? null,
+    portfolio_weak_scores: dashData?.passport_distribution?.weak ?? null,
+  })
+
   return (
     <>
       <Topbar crumbs={[{ label: 'Dashboard' }]} />
-      <div className="page">
+      <div className="page"
+        data-page-name="Dashboard"
+        data-ai-context={bankAiContext}
+      >
 
         {/* 1. Page header */}
         <div className="page-header">
@@ -915,10 +933,32 @@ function AnchorDashboard() {
     { label: 'Strike Place Listings', value: loading ? '—' : String(listings.length) },
   ]
 
+  const anchorAiContext = JSON.stringify({
+    page: 'anchor_dashboard',
+    role: 'buyer',
+    org: dashData?.org_name ?? null,
+    passport_score: (passport as any)?.organization?.passport_score ?? null,
+    active_deals: activeDeals.length,
+    deals_needing_action: dealsNeedingAction,
+    listings: listings.length,
+    listings_with_offers: listingsWithOffers,
+    financing_active_amount: financingActiveAmt,
+    financing_with_new_offers: financingWithOffers,
+    completed_trade_volume: completedVolume,
+    active_deal_list: activeDeals.slice(0, 5).map(d => ({
+      status: d.status,
+      value: (d as any).total_value ?? null,
+      role: d.user_role,
+    })),
+  })
+
   return (
     <>
       <Topbar crumbs={[{ label: 'Dashboard' }]} />
-      <div className="page">
+      <div className="page"
+        data-page-name="Dashboard"
+        data-ai-context={anchorAiContext}
+      >
 
         {/* 1. Header */}
         <div className="page-header">
@@ -1141,10 +1181,32 @@ function SupplierDashboard() {
     </div>
   ) : undefined
 
+  const supplierAiContext = JSON.stringify({
+    page: 'supplier_dashboard',
+    role: 'supplier',
+    org: dashData?.org_name ?? null,
+    passport_score: (passport as any)?.organization?.passport_score ?? null,
+    bank_views_30d: passport?.bank_view_count_30d ?? 0,
+    active_deals: activeDeals.length,
+    completed_deals: completedDeals,
+    deals_needing_action: dealsNeedingAction,
+    financing_with_new_offers: financingWithOffers,
+    total_financed: totalFinanced,
+    pending_network_invitations: pendingNetworks.length,
+    active_deal_list: activeDeals.slice(0, 5).map(d => ({
+      status: d.status,
+      value: (d as any).total_value ?? null,
+      role: d.user_role,
+    })),
+  })
+
   return (
     <>
       <Topbar crumbs={[{ label: 'Dashboard' }]} />
-      <div className="page">
+      <div className="page"
+        data-page-name="Dashboard"
+        data-ai-context={supplierAiContext}
+      >
 
         {/* 1. Header */}
         <div className="page-header">

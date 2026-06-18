@@ -74,17 +74,25 @@ Supplier: ${supplierRes.data?.legal_name ?? 'Supplier'}
 Deal value: ${currency} ${totalValue}
 Financing structure: ${deal.financing_type ?? 'Supply Chain Finance'}
 
-Include: parties, financing terms, obligations, payment routing, governing law. Keep under 600 words.`,
+Include: parties, financing terms, obligations, payment routing, governing law. Keep under 800 words.`,
         }],
-        max_tokens: 1024,
+        max_tokens: 2048,
+        model: 'claude-sonnet-4-6',
       })
       generatedContent = result.text
 
+      const bankStoragePath = `deals/${id}/bank_contract.txt`
+      const bankFileBytes = Buffer.from(generatedContent, 'utf-8')
+      await adminClient.storage.from('deal-documents').upload(bankStoragePath, bankFileBytes, {
+        contentType: 'text/plain',
+        upsert: true,
+      })
+
       const { data: doc } = await adminClient.from('documents').insert({
         name: `Financing Agreement - Deal #${shortId}`,
-        storage_path: `deals/${id}/bank_contract.txt`,
+        storage_path: bankStoragePath,
         mime_type: 'text/plain',
-        file_size_bytes: generatedContent.length,
+        size_bytes: bankFileBytes.length,
         entity_type: 'deal',
         entity_id: id,
         document_kind: 'bank_contract',
@@ -138,18 +146,26 @@ Payment terms: ${deal.payment_terms ?? 'Net 30'}
 Incoterms: ${deal.incoterms ?? 'DAP'}
 ${content ? `Additional context: ${content}` : ''}
 
-Include: parties, goods/services, payment terms, delivery terms, warranties, dispute resolution. Keep under 600 words. End with signature lines.`,
+Include: parties, goods/services, payment terms, delivery terms, warranties, dispute resolution. Keep under 800 words. End with signature lines.`,
       }],
-      max_tokens: 1024,
+      max_tokens: 2048,
+      model: 'claude-sonnet-4-6',
     })
     generatedContent = result.text
 
-    // Store as document
+    // Upload to deal-documents storage bucket
+    const storagePath = `deals/${id}/contract.txt`
+    const fileBytes = Buffer.from(generatedContent, 'utf-8')
+    await adminClient.storage.from('deal-documents').upload(storagePath, fileBytes, {
+      contentType: 'text/plain',
+      upsert: true,
+    })
+
     const { data: doc } = await adminClient.from('documents').insert({
       name: `Trade Agreement - Deal #${shortId}`,
-      storage_path: `deals/${id}/contract.txt`,
+      storage_path: storagePath,
       mime_type: 'text/plain',
-      file_size_bytes: generatedContent.length,
+      size_bytes: fileBytes.length,
       entity_type: 'deal',
       entity_id: id,
       document_kind: 'trade_contract',
