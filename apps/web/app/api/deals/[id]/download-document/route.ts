@@ -1,275 +1,404 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
-import { NextResponse } from 'next/server'
-import { callClaude, AI_MODEL } from '@/lib/ai'
+import PDFDocument from 'pdfkit'
+
+export const runtime = 'nodejs'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function today(): string {
-  return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-}
+// ── Brand palette ──────────────────────────────────────────────────────────
+const BLUE    = '#1428CC'
+const DARK    = '#111827'
+const MEDIUM  = '#374151'
+const GRAY    = '#9CA3AF'
+const LIGHT   = '#F3F4F6'
+const ALT_BG  = '#EEF0FF'
+const WHITE   = '#FFFFFF'
+const BORDER  = '#CBD5E1'
 
-function paymentDueDate(paymentTerms: string | null | undefined): string {
-  if (!paymentTerms) return today()
-  const match = paymentTerms.match(/(\d+)/)
-  const days = match?.[1] ? parseInt(match[1], 10) : 30
-  const due = new Date()
-  due.setDate(due.getDate() + days)
-  return due.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-}
-
-function fmt(n: number | null | undefined, currency = 'USD'): string {
+// ── Helpers ────────────────────────────────────────────────────────────────
+function fmtCurrency(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+  }).format(n)
 }
 
-const STRIKE_LOGO_SVG = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="36" height="36" rx="9" fill="#1428CC"/>
-  <path d="M10 13.5C10 12.1193 11.1193 11 12.5 11H20C22.2091 11 24 12.7909 24 15C24 16.1046 23.5523 17.1046 22.8284 17.8284C23.5523 18.5523 24 19.5523 24 20.6569C24 22.9526 22.2091 24.7435 20 24.7435H12.5C11.1193 24.7435 10 23.624 10 22.2435V13.5Z" fill="white" opacity="0.15"/>
-  <path d="M11 14C11 12.8954 11.8954 12 13 12H20.5C21.8807 12 23 13.1193 23 14.5C23 15.8807 21.8807 17 20.5 17H15.5C14.1193 17 13 18.1193 13 19.5C13 20.8807 14.1193 22 15.5 22H23" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
-</svg>`
+function todayStr(): string {
+  return new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
 
-function buildHtml({
-  docType,
-  refNumber,
-  content,
-  buyerName,
-  supplierName,
-  generatedAt,
-}: {
-  docType: string
+function dueDateStr(paymentTerms?: string | null): string {
+  const match = paymentTerms?.match(/(\d+)/)
+  const days = match?.[1] ? parseInt(match[1], 10) : 30
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function orgAddress(org: Record<string, any> | null): string {
+  if (!org) return ''
+  const parts = [
+    org.address_line1,
+    org.city,
+    org.state,
+    org.country_of_origin,
+  ].filter(Boolean)
+  return parts.join(', ')
+}
+
+interface LineItem {
+  name?: string | null
+  description?: string | null
+  quantity?: number | null
+  unit?: string | null
+  unit_price?: number | null
+  currency?: string | null
+}
+
+// ── PDF generator ─────────────────────────────────────────────────────────
+function generatePdf(opts: {
+  docType: 'po' | 'invoice'
   refNumber: string
-  content: string
-  buyerName: string
-  supplierName: string
-  generatedAt: string
-}): string {
-  // Escape HTML in the AI-generated content to prevent injection, then re-render as pre
-  const escaped = content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  issueDate: string
+  dueDate: string
+  buyer: { name: string; address: string }
+  supplier: { name: string; address: string }
+  lineItems: LineItem[]
+  totalValue: number
+  currency: string
+  paymentTerms: string
+  incoterms: string
+  deliveryDate: string
+  deliveryLocation?: string | null
+  goodsDescription?: string | null
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const ML = 50          // left/right margin
+    const MT = 50          // top margin
+    const PW = 612         // Letter width
+    const PH = 792         // Letter height
+    const CW = PW - ML * 2 // content width = 512
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${docType} — ${refNumber}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap');
+    const doc = new (PDFDocument as any)({
+      size: 'LETTER',
+      margins: { top: MT, bottom: 50, left: ML, right: ML },
+      info: {
+        Title: opts.docType === 'po'
+          ? `Purchase Order ${opts.refNumber}`
+          : `Commercial Invoice ${opts.refNumber}`,
+        Author: 'Strike SCF',
+        Creator: 'Strike SCF AI',
+        Subject: opts.docType === 'po' ? 'Purchase Order' : 'Commercial Invoice',
+      },
+      autoFirstPage: true,
+    }) as PDFKit.PDFDocument
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    const chunks: Buffer[] = []
+    doc.on('data', (c: Buffer) => chunks.push(c))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', reject)
 
-    body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13.5px;
-      line-height: 1.65;
-      color: #0D0D0D;
-      background: #ffffff;
-      padding: 56px 64px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
+    const isPO      = opts.docType === 'po'
+    const docLabel  = isPO ? 'PURCHASE ORDER' : 'COMMERCIAL INVOICE'
+    const issuer    = isPO ? opts.buyer    : opts.supplier
+    const recipient = isPO ? opts.supplier : opts.buyer
 
-    /* ── Header ── */
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 44px;
-      padding-bottom: 28px;
-      border-bottom: 2.5px solid #1428CC;
-    }
-    .logo-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .wordmark {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      color: #0D0D0D;
-      line-height: 1;
-    }
-    .wordmark span { color: #1428CC; }
-    .doc-meta { text-align: right; }
-    .doc-type {
-      font-size: 20px;
-      font-weight: 700;
-      color: #0D0D0D;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
-    }
-    .doc-ref {
-      font-size: 12px;
-      font-weight: 600;
-      color: #1428CC;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      margin-bottom: 3px;
-    }
-    .doc-date {
-      font-size: 12px;
-      color: #6B7280;
-    }
+    let y = MT
 
-    /* ── Parties banner ── */
-    .parties {
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      gap: 16px;
-      align-items: center;
-      background: #F5F4F0;
-      border-radius: 12px;
-      padding: 18px 24px;
-      margin-bottom: 36px;
-    }
-    .party-block { }
-    .party-label {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #6B7280;
-      margin-bottom: 4px;
-    }
-    .party-name {
-      font-size: 15px;
-      font-weight: 700;
-      color: #0D0D0D;
-    }
-    .arrow {
-      font-size: 20px;
-      color: #1428CC;
-      font-weight: 700;
-      text-align: center;
-    }
+    // ── HEADER ────────────────────────────────────────────────────────────
+    // Left accent bar
+    doc.rect(ML, y, 3, 66).fill(BLUE)
 
-    /* ── AI badge ── */
-    .ai-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #EEF0FF;
-      border: 1px solid rgba(20,40,204,0.15);
-      border-radius: 8px;
-      padding: 10px 16px;
-      margin-bottom: 28px;
-    }
-    .ai-dot {
-      font-size: 14px;
-      color: #1428CC;
-    }
-    .ai-text {
-      font-size: 12px;
-      color: #1428CC;
-      font-weight: 500;
-    }
-    .ai-text strong { font-weight: 700; }
+    // Issuer block (left)
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(DARK)
+      .text(issuer.name, ML + 10, y + 2, { width: 265, lineBreak: false })
+    doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+      .text(issuer.address || 'Address on file', ML + 10, y + 20, { width: 265, lineBreak: false })
+    doc.font('Helvetica').fontSize(7.5).fillColor(GRAY)
+      .text('strikescf.com', ML + 10, y + 32, { width: 265, lineBreak: false })
 
-    /* ── Document body ── */
-    .doc-content {
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 13px;
-      line-height: 1.75;
-      color: #1a1a1a;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: #fafafa;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 28px 32px;
+    // Document label (right)
+    doc.font('Helvetica-Bold').fontSize(16).fillColor(BLUE)
+      .text(docLabel, ML + 275, y, { width: CW - 275, align: 'right', lineBreak: false })
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(DARK)
+      .text(opts.refNumber, ML + 275, y + 23, { width: CW - 275, align: 'right', lineBreak: false })
+    doc.font('Helvetica').fontSize(8.5).fillColor(GRAY)
+      .text(`Date: ${opts.issueDate}`, ML + 275, y + 36, { width: CW - 275, align: 'right', lineBreak: false })
+
+    y += 76
+
+    // Thick blue separator line
+    doc.moveTo(ML, y).lineTo(ML + CW, y).strokeColor(BLUE).lineWidth(1.5).stroke()
+    y += 14
+
+    // ── INFO BAND ─────────────────────────────────────────────────────────
+    doc.rect(ML, y, CW, 40).fill(LIGHT)
+
+    const infoItems: [string, string][] = isPO
+      ? [
+          ['PO NUMBER', opts.refNumber],
+          ['ISSUE DATE', opts.issueDate],
+          ['DELIVERY DATE', opts.deliveryDate],
+          ['INCOTERMS', opts.incoterms],
+        ]
+      : [
+          ['INVOICE NO.', opts.refNumber],
+          ['ISSUE DATE', opts.issueDate],
+          ['PAYMENT DUE', opts.dueDate],
+          ['INCOTERMS', opts.incoterms],
+        ]
+
+    const iCW = CW / 4
+    infoItems.forEach(([lbl, val], i) => {
+      const ix = ML + i * iCW + 9
+      doc.font('Helvetica-Bold').fontSize(6.5).fillColor(GRAY)
+        .text(lbl, ix, y + 8, { width: iCW - 12, lineBreak: false })
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(DARK)
+        .text(val, ix, y + 18, { width: iCW - 12, lineBreak: false })
+    })
+
+    y += 54
+
+    // ── PARTIES ───────────────────────────────────────────────────────────
+    const halfW = Math.floor((CW - 12) / 2)
+
+    // Issuer box
+    doc.rect(ML, y, halfW, 76).fill(LIGHT)
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor(BLUE)
+      .text(isPO ? 'BUYER' : 'SELLER / INVOICE FROM', ML + 9, y + 9, { width: halfW - 18, lineBreak: false })
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK)
+      .text(issuer.name, ML + 9, y + 21, { width: halfW - 18 })
+    doc.font('Helvetica').fontSize(8).fillColor(MEDIUM)
+      .text(issuer.address || '—', ML + 9, y + 37, { width: halfW - 18 })
+
+    // Recipient box
+    const rx = ML + halfW + 12
+    doc.rect(rx, y, halfW, 76).fill(ALT_BG)
+    doc.rect(rx, y, 3, 76).fill(BLUE)
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor(BLUE)
+      .text(isPO ? 'SUPPLIER / SHIP FROM' : 'BUYER / BILL TO', rx + 10, y + 9, { width: halfW - 18, lineBreak: false })
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK)
+      .text(recipient.name, rx + 10, y + 21, { width: halfW - 18 })
+    doc.font('Helvetica').fontSize(8).fillColor(MEDIUM)
+      .text(recipient.address || '—', rx + 10, y + 37, { width: halfW - 18 })
+
+    y += 90
+
+    // ── LINE ITEMS TABLE ──────────────────────────────────────────────────
+    // Column layout (total = CW = 512)
+    const C = {
+      num:   { x: ML,       w: 22  },  // 50–72
+      desc:  { x: ML + 22,  w: 196 },  // 72–268
+      qty:   { x: ML + 218, w: 54  },  // 268–322
+      unit:  { x: ML + 272, w: 54  },  // 322–376
+      price: { x: ML + 326, w: 88  },  // 376–464
+      amt:   { x: ML + 414, w: 98  },  // 464–562 = ML+CW ✓
     }
 
-    /* ── Footer ── */
-    .footer {
-      margin-top: 44px;
-      padding-top: 20px;
-      border-top: 1px solid #e5e7eb;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
+    // Header
+    const TH = 22
+    doc.rect(ML, y, CW, TH).fill(BLUE)
+
+    const headers: Array<[keyof typeof C, string, 'left' | 'right' | 'center']> = [
+      ['num',   '#',           'center'],
+      ['desc',  'DESCRIPTION', 'left'],
+      ['qty',   'QTY',         'right'],
+      ['unit',  'UNIT',        'right'],
+      ['price', 'UNIT PRICE',  'right'],
+      ['amt',   'AMOUNT',      'right'],
+    ]
+
+    headers.forEach(([col, label, align]) => {
+      const c = C[col]
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(WHITE)
+        .text(label, c.x + 3, y + 7, { width: c.w - 6, align, lineBreak: false })
+    })
+
+    y += TH
+
+    // Rows
+    const rows = opts.lineItems.length > 0
+      ? opts.lineItems.map(li => {
+          const rawAmt =
+            li.quantity != null && li.unit_price != null
+              ? li.quantity * li.unit_price
+              : null
+          return {
+            desc:    li.name || li.description || 'Item',
+            qty:     li.quantity != null ? li.quantity.toLocaleString() : '—',
+            unit:    li.unit || '—',
+            price:   li.unit_price != null
+              ? fmtCurrency(li.unit_price, li.currency ?? opts.currency)
+              : '—',
+            amt:     rawAmt != null
+              ? fmtCurrency(rawAmt, li.currency ?? opts.currency)
+              : '—',
+            rawAmt,
+          }
+        })
+      : [{
+          desc:   opts.goodsDescription || 'Trade Goods',
+          qty:    '—',
+          unit:   '—',
+          price:  '—',
+          amt:    fmtCurrency(opts.totalValue, opts.currency),
+          rawAmt: opts.totalValue,
+        }]
+
+    let subtotal = 0
+    rows.forEach((row, i) => {
+      const RH = 22
+      if (i % 2 === 1) doc.rect(ML, y, CW, RH).fill(LIGHT)
+
+      doc.font('Helvetica').fontSize(8.5).fillColor(DARK)
+        .text(String(i + 1), C.num.x + 3,   y + 6, { width: C.num.w   - 6, align: 'center', lineBreak: false })
+        .text(row.desc,       C.desc.x + 3,  y + 6, { width: C.desc.w  - 6, align: 'left',   lineBreak: false })
+        .text(row.qty,        C.qty.x + 3,   y + 6, { width: C.qty.w   - 6, align: 'right',  lineBreak: false })
+        .text(row.unit,       C.unit.x + 3,  y + 6, { width: C.unit.w  - 6, align: 'right',  lineBreak: false })
+        .text(row.price,      C.price.x + 3, y + 6, { width: C.price.w - 6, align: 'right',  lineBreak: false })
+        .text(row.amt,        C.amt.x + 3,   y + 6, { width: C.amt.w   - 6, align: 'right',  lineBreak: false })
+
+      if (row.rawAmt != null) subtotal += row.rawAmt
+      y += RH
+    })
+
+    if (subtotal === 0) subtotal = opts.totalValue
+
+    // Table bottom border
+    doc.moveTo(ML, y).lineTo(ML + CW, y).strokeColor(BORDER).lineWidth(0.5).stroke()
+    y += 14
+
+    // ── TOTALS BOX ────────────────────────────────────────────────────────
+    const TBX = ML + CW - 180
+    const TBW = 180
+
+    doc.rect(TBX, y, TBW, 66).fill(LIGHT)
+
+    doc.font('Helvetica').fontSize(8.5).fillColor(MEDIUM)
+      .text('Subtotal', TBX + 9, y + 9, { width: 80, lineBreak: false })
+    doc.font('Helvetica').fontSize(8.5).fillColor(DARK)
+      .text(fmtCurrency(subtotal, opts.currency), TBX + 9, y + 9, { width: TBW - 18, align: 'right', lineBreak: false })
+
+    doc.font('Helvetica').fontSize(8.5).fillColor(MEDIUM)
+      .text('Tax / VAT', TBX + 9, y + 25, { width: 80, lineBreak: false })
+    doc.font('Helvetica').fontSize(8.5).fillColor(DARK)
+      .text(fmtCurrency(0, opts.currency), TBX + 9, y + 25, { width: TBW - 18, align: 'right', lineBreak: false })
+
+    doc.moveTo(TBX + 9, y + 42).lineTo(TBX + TBW - 9, y + 42).strokeColor(BORDER).lineWidth(0.5).stroke()
+
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(DARK)
+      .text('TOTAL', TBX + 9, y + 48, { width: 80, lineBreak: false })
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(BLUE)
+      .text(fmtCurrency(opts.totalValue, opts.currency), TBX + 9, y + 48, { width: TBW - 18, align: 'right', lineBreak: false })
+
+    y += 82
+
+    // ── TERMS ─────────────────────────────────────────────────────────────
+    const termsTitle = isPO ? 'TERMS & CONDITIONS' : 'PAYMENT INSTRUCTIONS'
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(BLUE)
+      .text(termsTitle, ML, y, { width: CW, lineBreak: false })
+    doc.moveTo(ML, y + 13).lineTo(ML + CW, y + 13).strokeColor(BLUE).lineWidth(0.75).stroke()
+    y += 20
+
+    const termsItems: [string, string][] = [
+      ['Payment Terms', opts.paymentTerms],
+      ['Incoterms',     opts.incoterms],
+      ['Delivery Date', opts.deliveryDate],
+      ...(opts.deliveryLocation ? [['Delivery Location', opts.deliveryLocation] as [string, string]] : []),
+    ]
+
+    const tCount = Math.min(termsItems.length, 4)
+    const tCW = CW / tCount
+    termsItems.slice(0, 4).forEach(([lbl, val], i) => {
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(GRAY)
+        .text(lbl.toUpperCase(), ML + i * tCW, y, { width: tCW - 10, lineBreak: false })
+      doc.font('Helvetica').fontSize(9).fillColor(DARK)
+        .text(val, ML + i * tCW, y + 13, { width: tCW - 10, lineBreak: false })
+    })
+
+    y += 36
+
+    if (!isPO) {
+      // Bank details note for invoices
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(GRAY)
+        .text('REMITTANCE', ML, y, { width: CW, lineBreak: false })
+      doc.font('Helvetica').fontSize(8.5).fillColor(MEDIUM)
+        .text(
+          'Remit payment to the bank account specified in the financing agreement, or contact your Strike SCF account manager.',
+          ML, y + 13,
+          { width: CW }
+        )
+      y += 38
     }
-    .footer-left {
-      font-size: 11px;
-      color: #9CA3AF;
-    }
-    .footer-left strong { color: #6B7280; }
-    .footer-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      background: #EEF0FF;
-      color: #1428CC;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-    }
-    .footer-right {
-      font-size: 11px;
-      color: #9CA3AF;
-    }
 
-    /* ── Print ── */
-    @media print {
-      body { padding: 24px 32px; }
-      .no-print { display: none !important; }
-    }
-  </style>
-</head>
-<body>
+    y += 8
 
-  <div class="header">
-    <div class="logo-row">
-      ${STRIKE_LOGO_SVG}
-      <span class="wordmark">Strike<span>SCF</span></span>
-    </div>
-    <div class="doc-meta">
-      <div class="doc-type">${docType}</div>
-      <div class="doc-ref">${refNumber}</div>
-      <div class="doc-date">${generatedAt}</div>
-    </div>
-  </div>
+    // ── SIGNATURE BLOCKS ──────────────────────────────────────────────────
+    const sigW = Math.floor((CW - 20) / 2)
+    const sig1 = isPO ? 'AUTHORIZED BY (BUYER)'      : 'ISSUED BY (SELLER)'
+    const sig2 = isPO ? 'ACKNOWLEDGED BY (SUPPLIER)' : 'RECEIVED BY (BUYER)'
 
-  <div class="parties">
-    <div class="party-block">
-      <div class="party-label">Buyer</div>
-      <div class="party-name">${buyerName}</div>
-    </div>
-    <div class="arrow">→</div>
-    <div class="party-block" style="text-align:right">
-      <div class="party-label">Supplier</div>
-      <div class="party-name">${supplierName}</div>
-    </div>
-  </div>
+    ;([
+      [ML,              sig1],
+      [ML + sigW + 20,  sig2],
+    ] as const).forEach(([x, lbl]) => {
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(GRAY)
+        .text(lbl, x, y, { width: sigW, lineBreak: false })
 
-  <div class="ai-banner">
-    <span class="ai-dot">✦</span>
-    <span class="ai-text"><strong>Strike AI</strong> — This document was generated by Strike's AI engine based on verified deal data on the Strike SCF platform. Review before executing.</span>
-  </div>
+      // Signature box
+      doc.rect(x, y + 13, sigW, 30).strokeColor(BORDER).lineWidth(0.5).stroke()
+      doc.font('Helvetica').fontSize(7).fillColor(BORDER)
+        .text('Signature', x + 5, y + 23, { width: sigW - 10, lineBreak: false })
 
-  <div class="doc-content">${escaped}</div>
+      const fieldY = y + 50
+      doc.font('Helvetica').fontSize(8).fillColor(MEDIUM)
+        .text('Name:', x, fieldY, { width: 38, lineBreak: false })
+      doc.moveTo(x + 42, fieldY + 9).lineTo(x + sigW, fieldY + 9).strokeColor(BORDER).lineWidth(0.4).stroke()
 
-  <div class="footer">
-    <span class="footer-left">Generated by <strong>Strike SCF</strong> · strikescf.com</span>
-    <span class="footer-badge">✦ Strike AI</span>
-    <span class="footer-right">${generatedAt}</span>
-  </div>
+      doc.font('Helvetica').fontSize(8).fillColor(MEDIUM)
+        .text('Title:', x, fieldY + 16, { width: 38, lineBreak: false })
+      doc.moveTo(x + 42, fieldY + 25).lineTo(x + sigW, fieldY + 25).strokeColor(BORDER).lineWidth(0.4).stroke()
 
-</body>
-</html>`
+      doc.font('Helvetica').fontSize(8).fillColor(MEDIUM)
+        .text('Date:', x, fieldY + 32, { width: 38, lineBreak: false })
+      doc.moveTo(x + 42, fieldY + 41).lineTo(x + sigW, fieldY + 41).strokeColor(BORDER).lineWidth(0.4).stroke()
+    })
+
+    y += 106
+
+    // ── FOOTER (pinned near bottom) ───────────────────────────────────────
+    const FY = PH - 50 - 26
+
+    doc.moveTo(ML, FY).lineTo(ML + CW, FY).strokeColor('#E5E7EB').lineWidth(0.5).stroke()
+
+    doc.font('Helvetica').fontSize(7.5).fillColor(GRAY)
+      .text(
+        'Generated by Strike SCF AI · Confidential · For authorized parties only',
+        ML, FY + 7,
+        { width: CW / 2, lineBreak: false }
+      )
+
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(BLUE)
+      .text('✦ strikescf.com', ML + CW / 2, FY + 7, { width: CW / 2, align: 'right', lineBreak: false })
+
+    doc.font('Helvetica').fontSize(7).fillColor(GRAY)
+      .text('Page 1 of 1', ML + CW / 2, FY + 17, { width: CW / 2, align: 'right', lineBreak: false })
+
+    doc.end()
+  })
 }
 
+// ── Route handler ─────────────────────────────────────────────────────────
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -278,22 +407,22 @@ export async function POST(
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: userData } = await adminClient
     .from('users')
     .select('id, role, org_id')
     .eq('id', user.id)
     .single()
-  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+  if (!userData) return Response.json({ error: 'User not found' }, { status: 401 })
 
   let body: { type: 'po' | 'invoice' }
   try { body = await request.json() }
-  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+  catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { type } = body
   if (type !== 'po' && type !== 'invoice') {
-    return NextResponse.json({ error: 'type must be po or invoice' }, { status: 400 })
+    return Response.json({ error: 'type must be po or invoice' }, { status: 400 })
   }
 
   const { data: deal } = await adminClient
@@ -301,109 +430,80 @@ export async function POST(
     .select('*')
     .eq('id', id)
     .single()
-  if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
+  if (!deal) return Response.json({ error: 'Deal not found' }, { status: 404 })
 
   const isBankUser = ['bank_admin', 'bank_credit_officer'].includes(userData.role)
-  const isParty = deal.buyer_org_id === userData.org_id || deal.supplier_org_id === userData.org_id
+  const isParty    = deal.buyer_org_id === userData.org_id || deal.supplier_org_id === userData.org_id
   if (!isParty && !isBankUser) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const [buyerRes, supplierRes, lineItemsRes] = await Promise.all([
-    adminClient.from('organizations').select('legal_name, doing_business_as, address_line1, city, state, zip, country_of_origin').eq('id', deal.buyer_org_id).single(),
-    adminClient.from('organizations').select('legal_name, doing_business_as, address_line1, city, state, zip, country_of_origin').eq('id', deal.supplier_org_id).single(),
+    adminClient
+      .from('organizations')
+      .select('legal_name, doing_business_as, address_line1, city, state, country_of_origin')
+      .eq('id', deal.buyer_org_id)
+      .single(),
+    adminClient
+      .from('organizations')
+      .select('legal_name, doing_business_as, address_line1, city, state, country_of_origin')
+      .eq('id', deal.supplier_org_id)
+      .single(),
     deal.listing_id
-      ? adminClient.from('listing_line_items').select('name, description, quantity, unit, unit_price, currency').eq('listing_id', deal.listing_id)
-      : Promise.resolve({ data: [] }),
+      ? adminClient
+          .from('listing_line_items')
+          .select('name, description, quantity, unit, unit_price, currency')
+          .eq('listing_id', deal.listing_id)
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
-  const buyer = buyerRes.data
-  const supplier = supplierRes.data
-  const lineItems: any[] = (lineItemsRes as any).data ?? []
+  const buyer     = buyerRes.data
+  const supplier  = supplierRes.data
+  const lineItems: LineItem[] = (lineItemsRes as any).data ?? []
 
-  const buyerName = buyer?.doing_business_as || buyer?.legal_name || 'Buyer'
-  const supplierName = supplier?.doing_business_as || supplier?.legal_name || 'Supplier'
-  const dealId8 = id.slice(0, 8).toUpperCase()
-  const currency = deal.agreed_currency ?? 'USD'
-  const totalValue = deal.total_value ?? deal.agreed_price ?? 0
+  const dealId8   = id.slice(0, 8).toUpperCase()
+  const currency  = deal.agreed_currency ?? 'USD'
+  const totalVal  = deal.total_value ?? deal.agreed_price ?? 0
 
-  const lineItemsText = lineItems.length > 0
-    ? lineItems.map((li: any, i: number) =>
-        `${i + 1}. ${li.name ?? li.description ?? 'Item'} — Qty: ${li.quantity ?? '—'} ${li.unit ?? ''} @ ${fmt(li.unit_price, li.currency ?? currency)} = ${li.quantity && li.unit_price ? fmt(li.quantity * li.unit_price, li.currency ?? currency) : '—'}`
-      ).join('\n')
-    : `${deal.goods_description ?? 'Trade Goods'} — Total: ${fmt(totalValue, currency)}`
+  const refNumber = type === 'po'
+    ? `STRIKE-PO-${dealId8}`
+    : `STRIKE-INV-${dealId8}`
 
-  // Use stored AI draft if available, otherwise generate fresh
-  const storedDraft = type === 'po' ? (deal as any).ai_po_draft : (deal as any).ai_invoice_draft
+  const issueDate    = todayStr()
+  const dueDate      = dueDateStr(deal.agreed_payment_terms)
+  const paymentTerms = deal.agreed_payment_terms ?? 'Net 30'
+  const incoterms    = deal.agreed_incoterms       ?? 'CIF'
+  const delivDate    = deal.agreed_delivery_date
+    ? new Date(deal.agreed_delivery_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : 'As agreed'
 
-  let docContent: string
+  const pdfBuffer = await generatePdf({
+    docType:          type,
+    refNumber,
+    issueDate,
+    dueDate,
+    buyer:    { name: buyer?.doing_business_as || buyer?.legal_name || 'Buyer',       address: orgAddress(buyer) },
+    supplier: { name: supplier?.doing_business_as || supplier?.legal_name || 'Supplier', address: orgAddress(supplier) },
+    lineItems,
+    totalValue:       totalVal,
+    currency,
+    paymentTerms,
+    incoterms,
+    deliveryDate:     delivDate,
+    deliveryLocation: deal.delivery_location,
+    goodsDescription: deal.goods_description,
+  })
 
-  if (storedDraft) {
-    docContent = storedDraft
-  } else {
-    const prompt = type === 'po'
-      ? `Generate a complete, professional Purchase Order document for a verified trade on the Strike SCF platform.
+  const filename = type === 'po'
+    ? `purchase-order-${dealId8}.pdf`
+    : `commercial-invoice-${dealId8}.pdf`
 
-PO Number: STRIKE-PO-${dealId8}
-Date: ${today()}
-Buyer: ${buyerName}${buyer?.city ? `, ${buyer.city}` : ''}${buyer?.country_of_origin ? `, ${buyer.country_of_origin}` : ''}
-Supplier: ${supplierName}${supplier?.city ? `, ${supplier.city}` : ''}${supplier?.country_of_origin ? `, ${supplier.country_of_origin}` : ''}
-Line Items:
-${lineItemsText}
-Total Value: ${fmt(totalValue, currency)}
-Delivery Date: ${deal.agreed_delivery_date ?? 'As agreed'}
-Incoterms: ${deal.agreed_incoterms ?? 'CIF'}
-Payment Terms: ${deal.agreed_payment_terms ?? 'Net 30'}
-${deal.delivery_location ? `Delivery Location: ${deal.delivery_location}` : ''}
-
-Include: PO header, itemized line items with quantities and prices, delivery terms, payment terms, special conditions if any, and signature blocks for both parties. Format as a formal trade document.`
-      : `Generate a complete, professional Commercial Invoice for a verified trade on the Strike SCF platform.
-
-Invoice Number: STRIKE-INV-${dealId8}
-Invoice Date: ${today()}
-Due Date: ${paymentDueDate(deal.agreed_payment_terms)}
-Seller (Supplier): ${supplierName}${supplier?.city ? `, ${supplier.city}` : ''}${supplier?.country_of_origin ? `, ${supplier.country_of_origin}` : ''}
-Buyer: ${buyerName}${buyer?.city ? `, ${buyer.city}` : ''}${buyer?.country_of_origin ? `, ${buyer.country_of_origin}` : ''}
-Line Items:
-${lineItemsText}
-Total Amount: ${fmt(totalValue, currency)}
-Incoterms: ${deal.agreed_incoterms ?? 'CIF'}
-Payment Terms: ${deal.agreed_payment_terms ?? 'Net 30'}
-Delivery Date: ${deal.agreed_delivery_date ?? 'As agreed'}
-
-Include: invoice header, line items table with unit prices and totals, subtotal, any taxes (mark as 0 if not applicable), grand total, bank details placeholder, payment instructions, and signature block.`
-
-    const result = await callClaude({
-      system: 'You are Strike AI, the document generation engine of the Strike SCF supply chain finance platform. Generate professional, legally-structured trade documents. Output plain text only — no markdown, no asterisks, no pound signs. Use clear section headers with ALL CAPS or dashes. Structure the document as a real trade professional would.',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-    })
-
-    docContent = result.text
-
-    // Log AI usage (fire-and-forget)
-    adminClient.from('ai_usage').insert({
-      user_id: userData.id,
-      org_id: userData.org_id,
-      feature: 'document',
-      tokens_input: result.usage.input_tokens ?? 0,
-      tokens_output: result.usage.output_tokens ?? 0,
-      tokens_total: (result.usage.input_tokens ?? 0) + (result.usage.output_tokens ?? 0),
-      model: AI_MODEL,
-    })
-  }
-
-  const refNumber = type === 'po' ? `STRIKE-PO-${dealId8}` : `STRIKE-INV-${dealId8}`
-  const docType = type === 'po' ? 'Purchase Order' : 'Commercial Invoice'
-  const generatedAt = today()
-
-  const html = buildHtml({ docType, refNumber, content: docContent, buyerName, supplierName, generatedAt })
-
-  return new Response(html, {
+  return new Response(new Uint8Array(pdfBuffer), {
     status: 200,
     headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${dealId8}.html"`,
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length':      String(pdfBuffer.length),
     },
   })
 }

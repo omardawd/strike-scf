@@ -275,12 +275,12 @@ function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
           body: JSON.stringify({ type: apiType }),
         })
         if (!res.ok) { alert('Failed to generate document'); return }
-        const html = await res.text()
-        const blob = new Blob([html], { type: 'text/html' })
+        const buf = await res.arrayBuffer()
+        const blob = new Blob([buf], { type: 'application/pdf' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${apiType === 'po' ? 'purchase-order' : 'commercial-invoice'}-${dealId.slice(0, 8).toUpperCase()}.html`
+        a.download = `${apiType === 'po' ? 'purchase-order' : 'commercial-invoice'}-${dealId.slice(0, 8).toUpperCase()}.pdf`
         a.click()
         URL.revokeObjectURL(url)
       } finally { setDownloading(false) }
@@ -641,12 +641,12 @@ export default function DealDetailPage() {
         alert(j.error ?? 'Failed to generate document')
         return
       }
-      const html = await res.text()
-      const blob = new Blob([html], { type: 'text/html' })
+      const buf = await res.arrayBuffer()
+      const blob = new Blob([buf], { type: 'application/pdf' })
       const url2 = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url2
-      a.download = `${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${shortId(id)}.html`
+      a.download = `${type === 'po' ? 'purchase-order' : 'commercial-invoice'}-${shortId(id)}.pdf`
       a.click()
       URL.revokeObjectURL(url2)
     } finally {
