@@ -585,6 +585,13 @@ export default function MyPassportPage() {
                 </div>
               </div>
 
+              {/* Score breakdown — right after header so it's immediately visible */}
+              {expertAnalysis ? (
+                <ScoreBreakdownCard analysis={expertAnalysis} onRerun={runAiReview} rerunning={runningAiReview} />
+              ) : (
+                <ScoreBreakdownPlaceholder onRunAnalysis={runAiReview} loading={runningAiReview} />
+              )}
+
               <PassportSections
                 org={org}
                 performance={data.supplier_performance}
@@ -601,17 +608,34 @@ export default function MyPassportPage() {
                 onUploadCertification={file => uploadPassportFile(file, 'certification')}
                 onDeleteDocument={deletePassportDoc}
               />
-
-              {/* Score breakdown — expert analysis or placeholder */}
-              {expertAnalysis ? (
-                <ScoreBreakdownCard analysis={expertAnalysis} onRerun={runAiReview} rerunning={runningAiReview} />
-              ) : (
-                <ScoreBreakdownPlaceholder onRunAnalysis={runAiReview} loading={runningAiReview} />
-              )}
             </div>
 
             {/* RIGHT — slim sticky panel */}
             <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Run / Re-run AI Analysis button */}
+              <div className="card">
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)' }}>
+                    Expert AI Analysis
+                  </div>
+                  {aiReviewMsg && (
+                    <div style={{ fontSize: 12, color: 'var(--color-green)', lineHeight: 1.4 }}>{aiReviewMsg}</div>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={runAiReview}
+                    disabled={runningAiReview}
+                    style={{ width: '100%', opacity: runningAiReview ? 0.7 : 1 }}
+                  >
+                    {runningAiReview ? 'Analyzing…' : expertAnalysis ? 'Re-run Analysis' : 'Run Expert AI Analysis →'}
+                  </button>
+                  <p style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                    Claude reads your uploaded documents and scores your business across 4 dimensions.
+                  </p>
+                </div>
+              </div>
+
               {/* View counts */}
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
