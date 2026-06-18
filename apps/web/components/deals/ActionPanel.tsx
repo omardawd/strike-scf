@@ -322,64 +322,137 @@ function GenericActionForm({ action, onSubmit, loading, error }: {
 
 // ── Contract Submit Form ──────────────────────────────────────────────────────
 
+type ContractPhase = 'form' | 'generating' | 'preview' | 'uploading'
+
 function ContractSubmitForm({ dealId, onSubmit, loading }: {
   dealId: string
   onSubmit: (payload: Record<string, unknown>) => Promise<void>
   loading: boolean
 }) {
-  const [mode, setMode] = useState<'ai' | 'upload'>('ai')
-  const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [phase, setPhase]             = useState<ContractPhase>('form')
+  const [previewText, setPreviewText] = useState<string>('')
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null)
+  const [file, setFile]               = useState<File | null>(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError]             = useState<string | null>(null)
+  const [showUpload, setShowUpload]   = useState(false)
 
-  async function handleSubmit() {
+  async function generatePreview() {
     setError(null)
-    if (mode === 'ai') {
-      await onSubmit({ generate_contract: true })
-    } else {
-      if (!file) { setError('Please select a contract document'); return }
-      setUploading(true)
-      try {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('document_kind', 'trade_contract')
-        const res = await fetch(`/api/deals/${dealId}/upload-document`, { method: 'POST', body: fd })
-        const json = await res.json()
-        if (!res.ok) { setError(json.error ?? 'Upload failed'); return }
-        await onSubmit({ generate_contract: false, contract_document_id: json.document.id })
-      } catch {
-        setError('Upload failed')
-      } finally {
-        setUploading(false)
-      }
+    setPhase('generating')
+    try {
+      const res = await fetch(`/api/deals/${dealId}/contract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preview: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Generation failed'); setPhase('form'); return }
+      setPreviewText(json.content ?? '')
+      setPreviewDocId(json.document_id ?? null)
+      setPhase('preview')
+    } catch {
+      setError('Failed to generate contract')
+      setPhase('form')
     }
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Submit Contract</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          type="button"
-          className={`btn btn-sm ${mode === 'ai' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setMode('ai')}
-        >
-          AI Generate
-        </button>
-        <button
-          type="button"
-          className={`btn btn-sm ${mode === 'upload' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setMode('upload')}
-        >
-          Upload Document
-        </button>
-      </div>
-      {mode === 'ai' ? (
-        <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--gray)' }}>
-          Strike AI will draft a trade agreement from your deal terms. The supplier will receive it to review and sign.
+  async function downloadPdf() {
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/download-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'contract' }),
+      })
+      if (!res.ok) { alert('Failed to generate PDF'); return }
+      const buf = await res.arrayBuffer()
+      const blob = new Blob([buf], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `trade-agreement-${dealId.slice(0, 8).toUpperCase()}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  async function sendToSupplier() {
+    if (!previewDocId) return
+    await onSubmit({ generate_contract: false, contract_document_id: previewDocId })
+  }
+
+  async function handleUpload() {
+    if (!file) { setError('Please select a contract document'); return }
+    setUploadingFile(true)
+    setError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('document_kind', 'trade_contract')
+      const res = await fetch(`/api/deals/${dealId}/upload-document`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Upload failed'); return }
+      await onSubmit({ generate_contract: false, contract_document_id: json.document.id })
+    } catch {
+      setError('Upload failed')
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  // ── Generating spinner ──
+  if (phase === 'generating') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Generating Contract…</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>
+          <span style={{ color: 'var(--blue)', flexShrink: 0 }}>✦</span>
+          Strike AI is drafting your trade agreement from the deal terms. This takes 10–20 seconds.
         </div>
-      ) : (
+      </div>
+    )
+  }
+
+  // ── Preview ──
+  if (phase === 'preview') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Contract Preview</span>
+          <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>
+        </div>
+        <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 340, overflowY: 'auto', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', margin: 0 }}>
+          {previewText}
+        </pre>
+        <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5 }}>
+          Review the contract above before sending. The supplier will see the same document.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-blue btn-sm" disabled={downloading} onClick={downloadPdf}>
+            {downloading ? '✦ Generating…' : '✦ Download PDF'}
+          </button>
+          <button className="btn btn-primary btn-sm" disabled={loading} onClick={sendToSupplier}>
+            {loading ? 'Sending…' : 'Send to Supplier →'}
+          </button>
+          <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={loading} onClick={() => { setPhase('form'); setPreviewDocId(null); setPreviewText('') }}>
+            Regenerate
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Upload mode ──
+  if (showUpload) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Upload Contract</div>
         <div className="form-field">
           <label className="field-label">Contract Document *</label>
           <input
@@ -391,13 +464,36 @@ function ContractSubmitForm({ dealId, onSubmit, loading }: {
           />
           {file && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{file.name}</div>}
         </div>
-      )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary btn-sm" disabled={loading || uploadingFile || !file} onClick={handleUpload}>
+            {uploadingFile ? 'Uploading…' : loading ? 'Submitting…' : 'Submit Contract'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setShowUpload(false); setError(null) }}>
+            ← Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Default form ──
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Generate Contract</div>
+      <div style={{ padding: '12px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--gray)' }}>
+        <span style={{ color: 'var(--blue)', marginRight: 6 }}>✦</span>
+        Strike AI will draft a trade agreement from your deal terms. You'll see a full preview before it's sent to the supplier.
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={generatePreview}>
+        Generate Contract with AI
+      </button>
       <button
-        className="btn btn-primary btn-sm"
-        disabled={loading || uploading || (mode === 'upload' && !file)}
-        onClick={handleSubmit}
+        className="btn btn-ghost btn-sm"
+        style={{ fontSize: 11, alignSelf: 'flex-start' }}
+        onClick={() => { setShowUpload(true); setError(null) }}
       >
-        {uploading ? 'Uploading…' : loading ? 'Submitting…' : 'Submit Contract'}
+        Upload your own document instead
       </button>
     </div>
   )

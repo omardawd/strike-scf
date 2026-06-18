@@ -120,40 +120,48 @@ Include: parties, financing terms, obligations, payment routing, governing law. 
   if (!isBuyer) return NextResponse.json({ error: 'Only the buyer can submit the contract' }, { status: 403 })
   if (deal.status !== 'agreed') return NextResponse.json({ error: 'Contract can only be submitted when deal is in agreed state' }, { status: 400 })
 
+  const { preview } = body  // preview=true: generate + store draft without advancing status
+
   let docId = contract_document_id ?? null
   let generatedContent: string | null = null
 
-  if (generate) {
-    // AI-generate the trade contract
+  if (generate || preview) {
+    // AI-generate the trade contract text
     const [buyerRes, supplierRes] = await Promise.all([
-      adminClient.from('organizations').select('legal_name').eq('id', deal.buyer_org_id).single(),
-      adminClient.from('organizations').select('legal_name').eq('id', deal.supplier_org_id).single(),
+      adminClient.from('organizations').select('legal_name, doing_business_as, city, country_of_origin').eq('id', deal.buyer_org_id).single(),
+      adminClient.from('organizations').select('legal_name, doing_business_as, city, country_of_origin').eq('id', deal.supplier_org_id).single(),
     ])
     const totalValue = deal.total_value ?? deal.agreed_price ?? 0
     const currency = deal.agreed_currency ?? 'USD'
     const shortId = id.slice(0, 8).toUpperCase()
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const buyerName = buyerRes.data?.doing_business_as || buyerRes.data?.legal_name || 'Buyer'
+    const supplierName = supplierRes.data?.doing_business_as || supplierRes.data?.legal_name || 'Supplier'
 
     const result = await callClaude({
-      system: 'You are a trade contract drafting assistant. Generate concise, professional commercial contracts. Use plain English with standard legal formatting.',
+      system: 'You are a trade contract drafting assistant. Generate concise, professional commercial contracts. Use plain English with standard legal section headers in ALL CAPS followed by a colon. No asterisks, no markdown. End with typed signature lines.',
       messages: [{
         role: 'user',
         content: `Generate a commercial trade agreement for Deal #${shortId} dated ${today}.
-Buyer: ${buyerRes.data?.legal_name ?? 'Buyer'}
-Supplier: ${supplierRes.data?.legal_name ?? 'Supplier'}
-Deal value: ${currency} ${totalValue}
-Payment terms: ${deal.payment_terms ?? 'Net 30'}
-Incoterms: ${deal.incoterms ?? 'DAP'}
-${content ? `Additional context: ${content}` : ''}
 
-Include: parties, goods/services, payment terms, delivery terms, warranties, dispute resolution. Keep under 800 words. End with signature lines.`,
+BUYER: ${buyerName}${buyerRes.data?.city ? ` (${buyerRes.data.city}${buyerRes.data.country_of_origin ? ', ' + buyerRes.data.country_of_origin : ''})` : ''}
+SELLER / SUPPLIER: ${supplierName}${supplierRes.data?.city ? ` (${supplierRes.data.city}${supplierRes.data.country_of_origin ? ', ' + supplierRes.data.country_of_origin : ''})` : ''}
+DEAL VALUE: ${currency} ${new Intl.NumberFormat('en-US').format(totalValue)}
+GOODS: ${deal.goods_description ?? 'As specified in the Purchase Order'}
+PAYMENT TERMS: ${deal.agreed_payment_terms ?? 'Net 30'}
+INCOTERMS: ${deal.agreed_incoterms ?? 'DAP'}
+DELIVERY DATE: ${deal.agreed_delivery_date ?? 'As agreed'}
+${deal.delivery_location ? `DELIVERY LOCATION: ${deal.delivery_location}` : ''}
+${content ? `ADDITIONAL CONTEXT: ${content}` : ''}
+
+Sections to include: PARTIES, GOODS AND SERVICES, PURCHASE PRICE AND PAYMENT, DELIVERY AND RISK, TITLE AND OWNERSHIP, WARRANTIES, DEFAULT AND REMEDIES, DISPUTE RESOLUTION, GOVERNING LAW. Keep under 900 words. End with two typed-signature blocks (Buyer / Seller).`,
       }],
       max_tokens: 2048,
       model: 'claude-sonnet-4-6',
     })
     generatedContent = result.text
 
-    // Upload to deal-documents storage bucket
+    // Store text in deal-documents bucket
     const storagePath = `deals/${id}/contract.txt`
     const fileBytes = Buffer.from(generatedContent, 'utf-8')
     await adminClient.storage.from('deal-documents').upload(storagePath, fileBytes, {
@@ -171,6 +179,11 @@ Include: parties, goods/services, payment terms, delivery terms, warranties, dis
       document_kind: 'trade_contract',
     }).select().single()
     if (doc) docId = doc.id
+
+    // preview-only: store the draft but do NOT advance status — let the buyer review first
+    if (preview) {
+      return NextResponse.json({ document_id: docId, content: generatedContent })
+    }
   }
 
   if (!docId && !generatedContent) {
@@ -183,7 +196,7 @@ Include: parties, goods/services, payment terms, delivery terms, warranties, dis
   await adminClient.from('deals').update({
     status: 'contract_pending',
     contract_document_id: docId,
-    contract_generated_at: generate ? now : null,
+    contract_generated_at: (generate || preview) ? now : null,
     contract_submitted_at: now,
     contract_submitted_by: user.id,
   }).eq('id', id)
@@ -194,7 +207,7 @@ Include: parties, goods/services, payment terms, delivery terms, warranties, dis
     await adminClient.from('notifications').insert(
       supplierUsers.map((u: { id: string }) => ({
         user_id: u.id, event: 'contract_submitted',
-        title: `Contract ready for signature — Deal #${id.slice(0,8).toUpperCase()}`,
+        title: `Contract ready for signature — Deal #${id.slice(0, 8).toUpperCase()}`,
         body: 'The buyer has submitted the trade contract. Please review and sign.',
         deep_link: `/deals/${id}`, read: false,
       }))
@@ -304,7 +317,7 @@ Buyer: ${buyerRes.data?.legal_name ?? 'Buyer'}
 Goods value: ${currency} ${goodsValue}
 ${shippingCost != null ? `Shipping cost: ${currency} ${shippingCost}\n` : ''}Strike Service Fee (0.3%): ${currency} ${buyerFee?.toFixed(2) ?? '0.00'}
 Invoice amount (total payable by buyer): ${currency} ${buyerTotalDue.toFixed(2)}
-Payment terms: ${deal.payment_terms ?? 'Net 30'}
+Payment terms: ${deal.agreed_payment_terms ?? 'Net 30'}
 
 Include: invoice number (INV-${shortId}), date, seller/buyer details, line items from deal, an itemized breakdown of goods value / shipping cost (if any) / Strike Service Fee, the total payable, payment instructions placeholder. Professional format.`,
       }],

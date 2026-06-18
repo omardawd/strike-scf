@@ -327,17 +327,36 @@ function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
 
 // ─── Contract Document Link ───────────────────────────────────────────────────
 
-function ContractDocumentLink({ documentId }: { documentId: string }) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    fetch(`/api/documents/${documentId}/url`).then(r => r.json()).then(d => { if (d.url) setUrl(d.url) }).catch(() => {})
-  }, [documentId])
-  if (!url) return <span style={{ fontSize: 12, color: 'var(--gray)' }}>Loading contract…</span>
+function ContractDocumentLink({ dealId }: { dealId: string }) {
+  const [downloading, setDownloading] = useState(false)
+
+  async function downloadPdf() {
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/download-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'contract' }),
+      })
+      if (!res.ok) { alert('Failed to download contract'); return }
+      const buf = await res.arrayBuffer()
+      const blob = new Blob([buf], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `trade-agreement-${dealId.slice(0, 8).toUpperCase()}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <button className="btn btn-blue btn-sm" disabled={downloading} onClick={downloadPdf} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
-      View / Download Contract
-    </a>
+      {downloading ? '✦ Generating PDF…' : '✦ Download Contract (PDF)'}
+    </button>
   )
 }
 
@@ -815,7 +834,7 @@ export default function DealDetailPage() {
                         <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
-                            <ContractDocumentLink documentId={contractData.contract.document_id} />
+                            <ContractDocumentLink dealId={id} />
                           </div>
                           {contractData.contract.generated_at && (
                             <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>AI Generated</span>
@@ -855,6 +874,9 @@ export default function DealDetailPage() {
                       <div className="kv-row"><span className="k">Signature</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.contract.supplier_signature}</span></div>
                     </>
                   )}
+                </div>
+                <div style={{ padding: '0 24px 16px' }}>
+                  <ContractDocumentLink dealId={id} />
                 </div>
               </div>
             )}
