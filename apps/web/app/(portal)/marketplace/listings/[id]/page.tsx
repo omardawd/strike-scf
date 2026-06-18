@@ -412,6 +412,7 @@ function OfferCard({
   listingLineItems,
   isListingOwner,
   isMyOffer,
+  posterOrgName,
   onAccept,
   onReject,
   onWithdraw,
@@ -428,6 +429,7 @@ function OfferCard({
   listingLineItems: any[]
   isListingOwner: boolean
   isMyOffer: boolean
+  posterOrgName: string
   onAccept: (id: string) => void
   onReject: (id: string) => void
   onWithdraw: (id: string) => void
@@ -469,6 +471,16 @@ function OfferCard({
         return sum + qty * price
       }, 0)
     : null
+
+  // Helper: compute total from a round's offer_items
+  function roundTotal(r: any): number | null {
+    const items: any[] = r?.offer_items ?? []
+    if (items.length === 0) return null
+    const t = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+    return t > 0 ? t : null
+  }
+
+  const offerorName = (offeror_org?.doing_business_as as string | null) || (offeror_org?.legal_name as string | null) || 'Offeror'
 
   const score = (offeror_org?.passport_score as number | null) ?? null
   const scoreColor = score == null ? 'var(--gray)' : score >= 70 ? 'var(--color-green)' : score >= 45 ? 'var(--color-amber)' : 'var(--color-red)'
@@ -573,6 +585,86 @@ function OfferCard({
                 View Passport →
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Negotiation history (shown when 2+ rounds have happened) ── */}
+      {rounds.length >= 2 && (
+        <div style={{ padding: '14px 20px 4px', borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+            Negotiation History
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {(rounds as any[]).map((r, idx) => {
+              const sentByOwner = r.by_org_id !== offer.from_org_id
+              const senderName = sentByOwner ? posterOrgName : offerorName
+              const isMe = sentByOwner ? isListingOwner : isMyOffer
+              const total = roundTotal(r)
+              const prev = idx > 0 ? roundTotal(rounds[idx - 1]) : null
+              const delta = total != null && prev != null ? total - prev : null
+              const isCurrent = idx === rounds.length - 1
+
+              return (
+                <div key={idx} style={{
+                  display: 'grid',
+                  gridTemplateColumns: '22px 1fr auto auto',
+                  gap: '0 10px',
+                  padding: '8px 0',
+                  borderBottom: idx < rounds.length - 1 ? '1px solid var(--border-light)' : 'none',
+                  alignItems: 'center',
+                  opacity: isCurrent ? 1 : 0.65,
+                }}>
+                  {/* Round indicator */}
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: isCurrent ? 'var(--blue)' : 'var(--border-strong)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, color: isCurrent ? '#fff' : 'var(--gray)', flexShrink: 0,
+                  }}>
+                    {idx + 1}
+                  </div>
+
+                  {/* Sender */}
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>
+                      {senderName}
+                    </span>
+                    {isMe && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 6px', marginLeft: 6, letterSpacing: '0.04em' }}>
+                        You
+                      </span>
+                    )}
+                    {isCurrent && (
+                      <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 6 }}>· Current</span>
+                    )}
+                  </div>
+
+                  {/* Delta */}
+                  <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
+                    {delta != null && (
+                      <span style={{ color: delta < 0 ? 'var(--color-green)' : 'var(--color-red)' }}>
+                        {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toLocaleString()}
+                      </span>
+                    )}
+                    {delta == null && idx === 0 && (
+                      <span style={{ color: 'var(--gray)', fontSize: 10 }}>Initial</span>
+                    )}
+                  </div>
+
+                  {/* Total */}
+                  <div style={{ textAlign: 'right', minWidth: 80 }}>
+                    {total != null ? (
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                        {total.toLocaleString()} <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--gray)' }}>{listing.currency}</span>
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--gray)' }}>—</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -952,7 +1044,33 @@ export default function ListingDetailPage() {
 
   const priceBenchmark = listing.ai_price_benchmark
 
+  const posterName = (poster_org?.doing_business_as as string | null) || (poster_org?.legal_name as string | null) || 'Listing Owner'
+
+  function buildRoundHistory(offerItem: typeof offers[0]) {
+    const offerRounds = Array.isArray((offerItem.offer as any).offer_rounds) ? (offerItem.offer as any).offer_rounds as any[] : []
+    const offerorDisplayName = (offerItem.offeror_org as any)?.doing_business_as || (offerItem.offeror_org as any)?.legal_name || 'Offeror'
+    return offerRounds.map((r: any, idx: number) => {
+      const sentByOwner = r.by_org_id !== offerItem.offer.from_org_id
+      const items: any[] = r.offer_items ?? []
+      const total = items.length > 0 ? items.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) : null
+      const prevItems: any[] = idx > 0 ? (offerRounds[idx - 1]?.offer_items ?? []) : []
+      const prevTotal = prevItems.length > 0 ? prevItems.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) : null
+      return {
+        round: idx + 1,
+        sent_by: sentByOwner ? 'listing_owner' : 'offeror',
+        sent_by_name: sentByOwner ? posterName : offerorDisplayName,
+        total: total ?? null,
+        delta_from_prev: total != null && prevTotal != null ? total - prevTotal : null,
+        incoterms: r.proposed_incoterms ?? null,
+        payment_terms: r.proposed_payment_terms ?? null,
+        delivery_date: r.proposed_delivery_date ?? null,
+        notes: r.notes ?? null,
+      }
+    })
+  }
+
   const aiContext = JSON.stringify({
+    page: 'listing_detail',
     listing_id: listing.id,
     listing_type: listing.listing_type === 'po_request' ? 'PO Request (buyer seeking supplier)' : 'Product/Service (supplier offering)',
     title: listing.title,
@@ -963,40 +1081,54 @@ export default function ListingDetailPage() {
     delivery_location: listing.delivery_location,
     incoterms: listing.incoterms,
     payment_terms: listing.payment_terms,
-    seller_name: poster_org?.doing_business_as || poster_org?.legal_name,
-    seller_passport_score: poster_org?.passport_score ?? null,
-    seller_kyb_status: poster_org?.kyb_status,
+    poster_name: posterName,
+    poster_passport_score: poster_org?.passport_score ?? null,
+    poster_kyb_status: poster_org?.kyb_status ?? null,
+    poster_type: poster_org?.type ?? null,
     offer_count,
     is_owner: isListingOwner,
     can_submit_offer: canSubmitOffer,
     my_offer: myOffer ? {
       status: myOffer.offer.status,
+      current_round: myOffer.offer.current_round,
       offered_price: myOffer.offer.offered_price,
-      offered_quantity: myOffer.offer.offered_quantity,
       proposed_delivery_date: myOffer.offer.proposed_delivery_date,
       proposed_incoterms: myOffer.offer.proposed_incoterms,
       proposed_payment_terms: myOffer.offer.proposed_payment_terms,
       notes: myOffer.offer.notes,
-      current_round: myOffer.offer.current_round,
+      round_history: buildRoundHistory(myOffer),
+      whose_turn: (() => {
+        const mr = Array.isArray((myOffer.offer as any).offer_rounds) ? (myOffer.offer as any).offer_rounds as any[] : []
+        const lr = mr.length > 0 ? mr[mr.length - 1] : null
+        return (!lr || lr.by_org_id === myOffer.offer.from_org_id) ? `listing_owner (${posterName})` : `offeror (me)`
+      })(),
     } : null,
-    // Include full offer details when viewer is the listing owner so AI can compare and advise
-    all_offers: isListingOwner ? offers.map(item => ({
-      offer_id: item.offer.id,
-      status: item.offer.status,
-      offered_price: item.offer.offered_price,
-      offered_quantity: item.offer.offered_quantity,
-      proposed_delivery_date: item.offer.proposed_delivery_date,
-      proposed_incoterms: item.offer.proposed_incoterms,
-      proposed_payment_terms: item.offer.proposed_payment_terms,
-      notes: item.offer.notes,
-      current_round: item.offer.current_round,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      offer_items: (item.offer as any).offer_items ?? null,
-      buyer_name: (item.offeror_org as any)?.doing_business_as || (item.offeror_org as any)?.legal_name || 'Unknown buyer',
-      buyer_passport_score: (item.offeror_org as any)?.passport_score ?? null,
-      buyer_kyb_status: (item.offeror_org as any)?.kyb_status ?? null,
-      ai_recommendation: item.ai_recommendation ?? null,
-    })) : null,
+    // Full offer details when viewer is listing owner so AI can compare, advise, and know who sent what
+    all_offers: isListingOwner ? offers.map(item => {
+      const offerorDisplayName = (item.offeror_org as any)?.doing_business_as || (item.offeror_org as any)?.legal_name || 'Unknown'
+      const itemRounds = Array.isArray((item.offer as any).offer_rounds) ? (item.offer as any).offer_rounds as any[] : []
+      const lastR = itemRounds.length > 0 ? itemRounds[itemRounds.length - 1] : null
+      const lastTotal = lastR?.offer_items?.reduce((s: number, it: any) => s + (Number(it.quantity)||0) * (Number(it.unit_price)||0), 0) ?? null
+      return {
+        offer_id: item.offer.id,
+        status: item.offer.status,
+        current_round: item.offer.current_round,
+        current_total: lastTotal ?? item.offer.offered_price,
+        proposed_incoterms: item.offer.proposed_incoterms,
+        proposed_payment_terms: item.offer.proposed_payment_terms,
+        proposed_delivery_date: item.offer.proposed_delivery_date,
+        offeror_name: offerorDisplayName,
+        offeror_passport_score: (item.offeror_org as any)?.passport_score ?? null,
+        offeror_kyb_status: (item.offeror_org as any)?.kyb_status ?? null,
+        ai_recommendation: item.ai_recommendation ?? null,
+        round_history: buildRoundHistory(item),
+        whose_turn: (() => {
+          const lr = itemRounds.length > 0 ? itemRounds[itemRounds.length - 1] : null
+          if (!lr) return `listing_owner (${posterName})`
+          return lr.by_org_id === item.offer.from_org_id ? `listing_owner (${posterName})` : `offeror (${offerorDisplayName})`
+        })(),
+      }
+    }) : null,
     line_items: lineItems.map((li: any) => ({
       name: li.name, qty: li.quantity, unit: li.unit, unit_price: li.unit_price,
     })),
@@ -1199,6 +1331,7 @@ export default function ListingDetailPage() {
                       listingLineItems={lineItems}
                       isListingOwner={isListingOwner}
                       isMyOffer={item.offer.from_org_id === viewer_org_id}
+                      posterOrgName={posterName}
                       onAccept={id => handleAction(id, 'accept')}
                       onReject={id => handleAction(id, 'reject')}
                       onWithdraw={id => handleAction(id, 'withdraw')}
@@ -1230,6 +1363,7 @@ export default function ListingDetailPage() {
                       listingLineItems={lineItems}
                       isListingOwner={false}
                       isMyOffer={true}
+                      posterOrgName={posterName}
                       onAccept={id => handleAction(id, 'accept')}
                       onReject={id => handleAction(id, 'reject')}
                       onWithdraw={id => handleAction(id, 'withdraw')}
