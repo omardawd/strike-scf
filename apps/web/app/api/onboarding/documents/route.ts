@@ -9,11 +9,18 @@ const adminClient = createSupabaseClient(
 )
 
 const VALID_DOCUMENT_KINDS = new Set([
+  // Onboarding step 7 document kinds
   'certificate_of_incorporation',
+  'photo_id',
+  'proof_of_address',
+  'ubo_declaration',
+  'bank_statements',
+  'audited_financials',
+  'tax_return',
+  'board_resolution',
+  // Legacy / other kinds
   'ein_letter',
   'ownership_structure',
-  'audited_financials',
-  'bank_statements',
   'insurance_certificate',
   'banking_license',
   'aml_kyc_policy',
