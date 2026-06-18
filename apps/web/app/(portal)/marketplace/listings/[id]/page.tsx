@@ -979,6 +979,24 @@ export default function ListingDetailPage() {
       notes: myOffer.offer.notes,
       current_round: myOffer.offer.current_round,
     } : null,
+    // Include full offer details when viewer is the listing owner so AI can compare and advise
+    all_offers: isListingOwner ? offers.map(item => ({
+      offer_id: item.offer.id,
+      status: item.offer.status,
+      offered_price: item.offer.offered_price,
+      offered_quantity: item.offer.offered_quantity,
+      proposed_delivery_date: item.offer.proposed_delivery_date,
+      proposed_incoterms: item.offer.proposed_incoterms,
+      proposed_payment_terms: item.offer.proposed_payment_terms,
+      notes: item.offer.notes,
+      current_round: item.offer.current_round,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      offer_items: (item.offer as any).offer_items ?? null,
+      buyer_name: (item.offeror_org as any)?.doing_business_as || (item.offeror_org as any)?.legal_name || 'Unknown buyer',
+      buyer_passport_score: (item.offeror_org as any)?.passport_score ?? null,
+      buyer_kyb_status: (item.offeror_org as any)?.kyb_status ?? null,
+      ai_recommendation: item.ai_recommendation ?? null,
+    })) : null,
     line_items: lineItems.map((li: any) => ({
       name: li.name, qty: li.quantity, unit: li.unit, unit_price: li.unit_price,
     })),
