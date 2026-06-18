@@ -17,8 +17,9 @@ const DAILY_LIMITS: Record<string, number> = {
 }
 
 // Maximum Claude ↔ tool execution cycles per request.
-// Prevents runaway loops while allowing multi-step plans (e.g. price check → create listing).
-const MAX_AGENTIC_ITERATIONS = 5
+// 3 is enough for virtually all flows: lookup → action → respond.
+// Higher values multiply input token cost by the number of iterations.
+const MAX_AGENTIC_ITERATIONS = 3
 
 // Prepended to every system prompt — non-negotiable identity rule.
 const STRIKE_AI_IDENTITY =
@@ -135,20 +136,25 @@ export async function POST(req: NextRequest) {
   let totalOutputTokens = 0
 
   for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
-    // Use the prompt caching beta to cache the system prompt across turns.
-    // Cache reads cost ~10× less than cache writes on sonnet/haiku.
-    const systemBlock = [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }]
-
     const anthropicBody: Record<string, unknown> = {
       model,
       max_tokens: body.max_tokens ?? 1024,
-      system: systemBlock,
+      // System prompt is dynamic (includes org_id + today's date) — caching it
+      // never hits across users/days, so pass it as a plain string instead.
+      system: systemPrompt,
       messages,
     }
 
     if (useTools) {
-      // Server auto-injects Strike tools — client never needs to pass them.
-      anthropicBody.tools = STRIKE_TOOLS
+      // Cache the tool definitions on the last entry — they are static and shared
+      // across every user/request. Anthropic caches all tools up to the marked entry,
+      // so subsequent calls within 5 min pay ~10× less for the tool schema tokens.
+      const toolsWithCache = STRIKE_TOOLS.map((t, i) =>
+        i === STRIKE_TOOLS.length - 1
+          ? { ...t, cache_control: { type: 'ephemeral' } }
+          : t
+      )
+      anthropicBody.tools = toolsWithCache
     } else if (!ghostOverride && body.tools && Array.isArray(body.tools)) {
       // Pass-through for callers that explicitly provide their own tools.
       anthropicBody.tools = body.tools
