@@ -193,7 +193,7 @@ export function getFinancingContext(
   const currency = deal.agreed_currency ?? 'USD'
   const supplierName = supplierOrg.legal_name ?? supplierOrg.display_name ?? 'Supplier'
   const bankName = bankOrg?.display_name ?? bankOrg?.legal_name ?? 'Bank'
-  const isActive = deal.financing_payment_active === true && transaction !== null
+  const isActive = (deal.financing_payment_active === true || deal.status === 'financing_active') && transaction !== null
   const structure: DealFinancingStructure = isActive && transaction
     ? mapStructure(transaction.type)
     : null

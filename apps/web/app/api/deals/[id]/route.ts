@@ -161,6 +161,7 @@ export async function GET(
     }
 
     const needsTxn = deal.financing_payment_active
+      || deal.status === 'financing_active'
       || anyAcceptedOrFunded
       || deal.dd_offer_presented_at != null
     if (needsTxn) {

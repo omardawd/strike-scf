@@ -87,7 +87,7 @@ export async function GET(
   // Fetch linked transaction
   let transaction: TransactionForContext | null = null
   let bankOrg: BankForContext | null = null
-  if (deal.financing_payment_active) {
+  if (deal.financing_payment_active || deal.status === 'financing_active') {
     const { data: txn } = await adminClient
       .from('transactions')
       .select('id, type, status, financing_amount_approved, repayment_due_date, bank_id, discount_rate, early_payment_date, repayment_routing')
