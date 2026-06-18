@@ -952,6 +952,29 @@ export default function ListingDetailPage() {
 
   const priceBenchmark = listing.ai_price_benchmark
 
+  const aiContext = JSON.stringify({
+    listing_id: listing.id,
+    listing_type: listing.listing_type === 'po_request' ? 'PO Request (buyer seeking supplier)' : 'Product/Service (supplier offering)',
+    title: listing.title,
+    category: listing.category,
+    target_price: listing.target_price,
+    currency: listing.currency,
+    delivery_deadline: listing.delivery_deadline,
+    delivery_location: listing.delivery_location,
+    incoterms: listing.incoterms,
+    payment_terms: listing.payment_terms,
+    seller_name: poster_org?.doing_business_as || poster_org?.legal_name,
+    seller_passport_score: poster_org?.passport_score ?? null,
+    seller_kyb_status: poster_org?.kyb_status,
+    offer_count,
+    is_owner: isListingOwner,
+    can_submit_offer: canSubmitOffer,
+    my_offer_status: myOffer?.offer?.status ?? null,
+    line_items: lineItems.map((li: any) => ({
+      name: li.name, qty: li.quantity, unit: li.unit, unit_price: li.unit_price,
+    })),
+  })
+
   return (
     <>
       <Topbar
@@ -968,7 +991,7 @@ export default function ListingDetailPage() {
         }
       />
 
-      <div className="page mp-page">
+      <div className="page mp-page" data-page-name="Listing" data-ai-context={aiContext}>
         <div className="split-panel">
 
           {/* ── Main panel ── */}

@@ -1,6 +1,10 @@
 'use client'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
+import { useUser } from '@/lib/user-context'
+import { usePortal } from '@/lib/portal-context'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -8,129 +12,127 @@ interface Message {
   timestamp: string
 }
 
-interface AIOverlayProps {
-  portal: 'bank' | 'anchor' | 'supplier'
-  userName?: string
-}
-
-function readContext(): { pageName: string; contextData: unknown } {
+function readPageContext(): { pageName: string; contextData: Record<string, unknown> | null } {
   let pageName = 'this page'
-  let contextData: unknown = null
+  let contextData: Record<string, unknown> | null = null
+  try {
+    const nameEl = document.querySelector('[data-page-name]')
+    pageName = nameEl?.getAttribute('data-page-name') || document.title || 'this page'
+  } catch { /* ignore */ }
   try {
     const el = document.querySelector('[data-ai-context]')
     const raw = el?.getAttribute('data-ai-context')
     if (raw) contextData = JSON.parse(raw)
-  } catch {
-    contextData = null
-  }
-  try {
-    const nameEl = document.querySelector('[data-page-name]')
-    pageName = nameEl?.getAttribute('data-page-name') || document.title || 'this page'
-  } catch {
-    pageName = 'this page'
-  }
+  } catch { /* ignore */ }
   return { pageName, contextData }
 }
 
-const UPLOAD_ICON = (
-  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="17 8 12 3 7 8" />
-    <line x1="12" y1="3" x2="12" y2="15" />
-  </svg>
-)
+function buildSystemPrompt(pageName: string, contextData: Record<string, unknown> | null, userName: string, portal: string) {
+  const today = new Date().toISOString().split('T')[0]
+  const ctx = contextData ? `\nPage context (live data from what the user sees):\n${JSON.stringify(contextData, null, 2)}` : ''
+  return `You are Strike AI, the assistant built into the Strike SCF platform. Strike AI is your name and only name.
+
+Today: ${today}
+User: ${userName} (${portal} portal)
+Current page: ${pageName}${ctx}
+
+You can see exactly what the user sees on this page. Use the page context to answer questions about pricing, risk, what to offer, whether terms are fair, etc. — no tool calls needed, just reason from the data.
+
+Rules:
+- Be concise. Short paragraphs or bullets. No markdown headers.
+- Format currency as $X,XXX. Bold key figures.
+- If the user asks to DO something (submit an offer, create a listing), tell them you can handle that on the full Strike AI page and offer a link.
+- Never invent data not in the page context.`
+}
+
+const MD_COMPONENTS = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  p: ({ children }: any) => <span style={{ display: 'block', margin: '3px 0', lineHeight: 1.6 }}>{children}</span>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  strong: ({ children }: any) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ul: ({ children }: any) => <ul style={{ paddingLeft: 16, margin: '4px 0' }}>{children}</ul>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ol: ({ children }: any) => <ol style={{ paddingLeft: 16, margin: '4px 0' }}>{children}</ol>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  li: ({ children }: any) => <li style={{ marginBottom: 2, lineHeight: 1.55 }}>{children}</li>,
+  hr: () => <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)', margin: '6px 0' }} />,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  code: ({ children }: any) => <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'rgba(0,0,0,0.06)', padding: '1px 4px', borderRadius: 3 }}>{children}</code>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  h1: ({ children }: any) => <strong style={{ display: 'block', fontWeight: 700, marginBottom: 2 }}>{children}</strong>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  h2: ({ children }: any) => <strong style={{ display: 'block', fontWeight: 700, marginBottom: 2 }}>{children}</strong>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  h3: ({ children }: any) => <strong style={{ display: 'block', fontWeight: 600, marginBottom: 2 }}>{children}</strong>,
+}
 
 const SEND_ICON = (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13" />
     <polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 )
 
-// TF.2 — Strike spark/bolt mark for the always-present floating trigger button.
-const TRIGGER_ICON = (
-  <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+const SPARK_ICON = (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
     <path d="M13 2.5 5.5 13h5l-1.2 8.5L19 10h-5.2z" />
   </svg>
 )
 
-export function AIOverlay({ portal, userName }: AIOverlayProps) {
+export function AIOverlay() {
   const pathname = usePathname()
   const isAIPage = pathname.startsWith('/ai')
+  const user = useUser()
+  const portal = usePortal()
+  const userName = user?.full_name?.split(' ')[0] ?? 'there'
 
-  const [pillVisible, setPillVisible] = useState(false)
-  const [focused, setFocused] = useState(false)
-  const [input, setInput] = useState('')
-
-  const [clusterOpen, setClusterOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // TF.2 — unread "signal" count on the floating trigger.
-  // NOTE: `ai_signals` is not yet in the live schema (see apps/web/CLAUDE.md), so the
-  // badge is wired to the user's unread notifications (GET /api/notifications), which is
-  // the closest existing org/user-scoped "active signals" source. Fully fail-soft:
-  // any error or a zero count renders no badge.
-  const [signalCount, setSignalCount] = useState(0)
-
-  // Cluster drag position
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const dragging = useRef(false)
-  const dragStart = useRef({ mx: 0, my: 0, top: 0, left: 0 })
+  const [pageName, setPageName] = useState('this page')
 
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const hovering = useRef(false)
 
-  // ── Hover-trigger detection ──
+  // Update page name whenever path changes
   useEffect(() => {
-    if (isAIPage) return
-    function onMove(e: MouseEvent) {
-      const inZone = e.clientY > window.innerHeight - 80
-      hovering.current = inZone
-      setPillVisible(inZone || focused || input.trim().length > 0)
+    const { pageName: p } = readPageContext()
+    setPageName(p)
+  }, [pathname])
+
+  // Auto-scroll messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  // Escape to close
+  useEffect(() => {
+    if (!isOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setIsOpen(false)
     }
-    window.addEventListener('mousemove', onMove, { passive: true })
-    return () => window.removeEventListener('mousemove', onMove)
-  }, [isAIPage, focused, input])
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen])
 
-  // Keep pill visible while focused or has text
+  // Focus panel input when overlay opens
   useEffect(() => {
-    if (focused || input.trim().length > 0) setPillVisible(true)
-    else if (!hovering.current) setPillVisible(false)
-  }, [focused, input])
-
-  // ── TF.2: unread signal count for the trigger badge (fail-soft) ──
-  useEffect(() => {
-    if (isAIPage) return
-    let cancelled = false
-    async function loadSignals() {
-      try {
-        const res = await fetch('/api/notifications?unread_only=true&limit=100')
-        if (!res.ok) return
-        const data = await res.json()
-        const count = typeof data?.unread_count === 'number'
-          ? data.unread_count
-          : Array.isArray(data?.notifications) ? data.notifications.length : 0
-        if (!cancelled) setSignalCount(count > 0 ? count : 0)
-      } catch {
-        if (!cancelled) setSignalCount(0)
-      }
+    if (isOpen) {
+      setTimeout(() => panelInputRef.current?.focus(), 50)
     }
-    loadSignals()
-    const id = window.setInterval(loadSignals, 60_000)
-    return () => { cancelled = true; window.clearInterval(id) }
-    // Refetch when the cluster closes — the user may have acted on signals.
-  }, [isAIPage, clusterOpen])
+  }, [isOpen])
 
-  // ── Listen for external prompt events (from insight cards) ──
+  // Listen for external prompt events from insight cards
   useEffect(() => {
     if (isAIPage) return
     function onPrompt(e: Event) {
       const detail = (e as CustomEvent).detail as { prompt?: string } | undefined
       if (detail?.prompt) {
-        setClusterOpen(true)
-        send(detail.prompt)
+        setIsOpen(true)
+        sendMessage(detail.prompt)
       }
     }
     window.addEventListener('strike-ai-prompt', onPrompt as EventListener)
@@ -138,72 +140,21 @@ export function AIOverlay({ portal, userName }: AIOverlayProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAIPage])
 
-  // ── Escape closes cluster ──
-  useEffect(() => {
-    if (!clusterOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setClusterOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [clusterOpen])
-
-  // ── Cluster drag ──
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!dragging.current) return
-      const dx = e.clientX - dragStart.current.mx
-      const dy = e.clientY - dragStart.current.my
-      setPos({
-        top: Math.max(8, dragStart.current.top + dy),
-        left: Math.max(8, Math.min(window.innerWidth - 380, dragStart.current.left + dx)),
-      })
-    }
-    function onUp() { dragging.current = false }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [])
-
-  const onHeaderDown = useCallback((e: React.MouseEvent) => {
-    const rect = (e.currentTarget.closest('[data-cluster]') as HTMLElement)?.getBoundingClientRect()
-    dragging.current = true
-    dragStart.current = {
-      mx: e.clientX,
-      my: e.clientY,
-      top: rect ? rect.top : 72,
-      left: rect ? rect.left : window.innerWidth - 404,
-    }
-    e.preventDefault()
-  }, [])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
-
-  const send = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || loading) return
 
-    const { pageName, contextData } = readContext()
+    const { pageName: pn, contextData } = readPageContext()
+    setPageName(pn)
     setInput('')
-    setClusterOpen(true)
+    setIsOpen(true)
     setLoading(true)
 
-    const next: Message[] = [
-      ...messages,
-      { role: 'user', content: trimmed, timestamp: new Date().toISOString() },
-    ]
-    setMessages(next)
+    const userMsg: Message = { role: 'user', content: trimmed, timestamp: new Date().toISOString() }
+    const nextMessages = [...messages, userMsg]
+    setMessages(nextMessages)
 
-    const systemPrompt = `You are Strike AI. You can see what the user sees.
-Page: ${pageName}
-${contextData ? `Page context: ${JSON.stringify(contextData)}` : ''}
-User: ${userName ?? 'Unknown'} (${portal} portal)
-Answer concisely. You are an overlay — keep responses brief and actionable.`
+    const systemPrompt = buildSystemPrompt(pn, contextData, userName, portal)
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -211,259 +162,279 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           feature: 'chat',
+          portal,
           system: systemPrompt,
-          messages: next.map(m => ({ role: m.role, content: m.content })),
-          max_tokens: 400,
+          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+          max_tokens: 500,
         }),
       })
+
       if (res.status === 429) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: 'Daily AI limit reached. Resets at midnight UTC.',
-          timestamp: new Date().toISOString(),
-        }])
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Daily AI limit reached. Resets at midnight UTC.', timestamp: new Date().toISOString() }])
         return
       }
       if (!res.ok) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: 'Strike AI is temporarily unavailable. Please try again in a moment.',
-          timestamp: new Date().toISOString(),
-        }])
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Strike AI is temporarily unavailable. Please try again in a moment.', timestamp: new Date().toISOString() }])
         return
       }
+
       const data: { content?: { type: string; text?: string }[] } = await res.json()
-      const reply: string =
-        data.content?.find(b => b.type === 'text')?.text ??
-        data.content?.[0]?.text ??
-        'No response'
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: reply,
-        timestamp: new Date().toISOString(),
-      }])
+      const reply = data.content?.find(b => b.type === 'text')?.text ?? data.content?.[0]?.text ?? 'No response'
+      setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: new Date().toISOString() }])
     } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Strike AI is temporarily unavailable. Please try again in a moment.',
-        timestamp: new Date().toISOString(),
-      }])
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Strike AI is temporarily unavailable. Please try again in a moment.', timestamp: new Date().toISOString() }])
     } finally {
       setLoading(false)
     }
   }, [loading, messages, portal, userName])
 
-  if (isAIPage) return null
+  const handlePillSubmit = () => {
+    if (input.trim()) sendMessage(input)
+  }
 
-  const showPill = pillVisible && !clusterOpen
+  if (isAIPage) return null
 
   return (
     <>
       <style>{`
-        @keyframes strike-overlay-spin { to { transform: rotate(360deg); } }
-        @keyframes strike-overlay-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        /* TF.2 — floating Strike AI trigger button */
-        .strike-ai-fab { transition: background 0.15s, box-shadow 0.15s; }
-        .strike-ai-fab:hover { background: var(--blue-hover); box-shadow: var(--shadow-elevated); }
+        @keyframes overlay-fade-in { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes panel-slide-up { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes bubble-in { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes thinking-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }
+        .strike-pill-input:focus { outline: none }
+        .strike-pill-input::placeholder { color: var(--gray-soft) }
+        .strike-overlay-send:hover { background: var(--blue-hover) !important }
+        .strike-overlay-send:disabled { opacity: 0.5; cursor: default }
       `}</style>
 
-      {/* Trigger zone */}
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, height: 80,
-        pointerEvents: 'none', zIndex: 140,
-      }} />
-
-      {/* Pill input */}
-      <div style={{
-        position: 'fixed', bottom: 16, left: '50%', zIndex: 150,
-        width: 'min(680px, calc(100vw - 48px))', height: 56,
-        background: 'var(--white)', borderRadius: 999,
-        boxShadow: 'var(--shadow-elevated)',
-        display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px',
-        transition: 'transform 0.2s ease-out, opacity 0.2s ease-out',
-        transform: showPill ? 'translateX(-50%) translateY(0)' : 'translateX(-50%) translateY(160%)',
-        opacity: showPill ? 1 : 0,
-        pointerEvents: showPill ? 'auto' : 'none',
-      }}>
-        <button
-          type="button"
-          aria-label="Upload"
+      {/* ── Backdrop ── */}
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
           style={{
-            width: 32, height: 32, flexShrink: 0, borderRadius: '50%',
-            background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {UPLOAD_ICON}
-        </button>
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); send(input) }
-          }}
-          placeholder="Ask Strike anything..."
-          style={{
-            flex: 1, border: 'none', outline: 'none', background: 'transparent',
-            fontSize: 15, color: 'var(--ink)', fontFamily: 'var(--font-body)',
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(13,13,13,0.45)',
+            backdropFilter: 'blur(2px)',
+            animation: 'overlay-fade-in 0.18s ease',
           }}
         />
-        <button
-          type="button"
-          aria-label="Send"
-          onClick={() => send(input)}
-          style={{
-            width: 40, height: 40, flexShrink: 0, borderRadius: '50%',
-            background: 'var(--blue)', color: '#fff', border: 'none',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {SEND_ICON}
-        </button>
-      </div>
-
-      {/* TF.2 — always-present floating trigger button. Hidden while the cluster is open,
-          and while the centered hover-pill is showing (they'd overlap on narrow viewports
-          and are redundant entry points in that moment).
-          Clicking opens the Strike AI overlay; a red badge surfaces unread signals. */}
-      {!clusterOpen && !showPill && (
-        <button
-          type="button"
-          className="strike-ai-fab"
-          aria-label={signalCount > 0 ? `Open Strike AI (${signalCount} unread)` : 'Open Strike AI'}
-          title="Strike AI"
-          onClick={() => setClusterOpen(true)}
-          style={{
-            position: 'fixed', bottom: 20, right: 20, zIndex: 150,
-            width: 52, height: 52, borderRadius: '50%',
-            background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
-          {TRIGGER_ICON}
-          {signalCount > 0 && (
-            <span
-              aria-hidden="true"
-              style={{
-                position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18,
-                padding: '0 5px', borderRadius: 999,
-                background: 'var(--color-red)', color: '#fff',
-                fontSize: 10, fontWeight: 700, lineHeight: '18px',
-                fontFamily: 'var(--font-body)', textAlign: 'center',
-                border: '2px solid var(--white)', boxSizing: 'content-box',
-              }}
-            >
-              {signalCount > 9 ? '9+' : signalCount}
-            </span>
-          )}
-        </button>
       )}
 
-      {/* Floating cluster */}
-      {clusterOpen && (
+      {/* ── Chat panel (open state) ── */}
+      {isOpen && (
         <div
-          data-cluster
+          onClick={e => e.stopPropagation()}
           style={{
-            position: 'fixed',
-            top: pos ? pos.top : 72,
-            ...(pos ? { left: pos.left } : { right: 24 }),
-            width: 380, maxHeight: 480, zIndex: 180,
-            background: 'var(--white)', borderRadius: 20,
-            boxShadow: 'var(--shadow-elevated)',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+            width: 'min(680px, calc(100vw - 32px))',
+            maxHeight: '72vh',
+            zIndex: 201,
+            background: 'var(--white)', borderRadius: '20px 20px 0 0',
+            boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+            display: 'flex', flexDirection: 'column',
+            animation: 'panel-slide-up 0.22s ease',
           }}
         >
-          {/* Header / drag handle */}
-          <div
-            onMouseDown={onHeaderDown}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 14px', borderBottom: '1px solid var(--border)',
-              cursor: dragging.current ? 'grabbing' : 'grab', userSelect: 'none', flexShrink: 0,
-            }}
-          >
-            <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain' }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Strike AI</span>
-            <span style={{ fontSize: 11, color: 'var(--gray)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {readContext().pageName}
-            </span>
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '12px 16px 12px 14px',
+            borderBottom: '1px solid var(--border)',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+            }}>
+              {SPARK_ICON}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Strike AI</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {pageName}
+              </div>
+            </div>
+            <a
+              href="/ai"
+              style={{
+                fontSize: 11, fontWeight: 600, color: 'var(--blue)',
+                textDecoration: 'none', padding: '4px 10px',
+                border: '1px solid var(--blue-light)',
+                borderRadius: 999, background: 'var(--blue-light)',
+                flexShrink: 0, whiteSpace: 'nowrap',
+              }}
+            >
+              Open Strike AI →
+            </a>
             <button
               type="button"
-              aria-label="Close"
-              onClick={() => setClusterOpen(false)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: 18, lineHeight: 1, padding: 0 }}
+              onClick={() => setIsOpen(false)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--gray)', fontSize: 20, lineHeight: 1, padding: '0 0 0 4px',
+                flexShrink: 0,
+              }}
             >
               ×
             </button>
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{
+            flex: 1, overflowY: 'auto', padding: '16px 14px',
+            display: 'flex', flexDirection: 'column', gap: 10,
+            minHeight: 80,
+          }}>
+            {messages.length === 0 && (
+              <div style={{ textAlign: 'center', color: 'var(--gray)', fontSize: 13, padding: '24px 0' }}>
+                Ask me anything about {pageName.toLowerCase()}.
+              </div>
+            )}
             {messages.map((m, i) => (
               m.role === 'user' ? (
                 <div key={i} style={{
-                  alignSelf: 'flex-end', maxWidth: '80%', padding: '10px 14px',
+                  alignSelf: 'flex-end', maxWidth: '78%',
+                  padding: '10px 14px',
                   background: 'var(--blue)', color: '#fff',
-                  borderRadius: '20px 20px 4px 20px', fontSize: 13, lineHeight: 1.55,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word', animation: 'strike-overlay-in 0.2s ease',
+                  borderRadius: '18px 18px 4px 18px',
+                  fontSize: 13, lineHeight: 1.55, wordBreak: 'break-word',
+                  animation: 'bubble-in 0.18s ease',
                 }}>
                   {m.content}
                 </div>
               ) : (
-                <div key={i} style={{ display: 'flex', gap: 8, alignSelf: 'flex-start', maxWidth: '92%', animation: 'strike-overlay-in 0.2s ease' }}>
-                  <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0, marginTop: 2 }} />
+                <div key={i} style={{
+                  alignSelf: 'flex-start', maxWidth: '88%',
+                  display: 'flex', gap: 8,
+                  animation: 'bubble-in 0.18s ease',
+                }}>
                   <div style={{
-                    padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)',
-                    borderRadius: '4px 20px 20px 20px', fontSize: 13, lineHeight: 1.55,
-                    color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                    background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
                   }}>
-                    {m.content}
+                    {SPARK_ICON}
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    background: 'var(--offwhite)', border: '1px solid var(--border)',
+                    borderRadius: '4px 18px 18px 18px',
+                    fontSize: 13, color: 'var(--ink)', wordBreak: 'break-word',
+                  }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                      {m.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               )
             ))}
             {loading && (
-              <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-start', alignItems: 'center' }}>
-                <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', animation: 'strike-overlay-spin 0.9s linear infinite' }} />
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Thinking</span>
+              <div style={{ alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+                }}>
+                  {SPARK_ICON}
+                </div>
+                <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: '4px 18px 18px 18px' }}>
+                  {[0, 1, 2].map(d => (
+                    <div key={d} style={{
+                      width: 6, height: 6, borderRadius: '50%', background: 'var(--gray)',
+                      animation: `thinking-pulse 1.2s ease ${d * 0.2}s infinite`,
+                    }} />
+                  ))}
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ padding: '10px 12px 14px', flexShrink: 0, borderTop: '1px solid var(--border)' }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              border: '1px solid var(--border)', borderRadius: 999, padding: '4px 4px 4px 14px',
+              background: 'var(--offwhite)', borderRadius: 999,
+              border: '1px solid var(--border)', padding: '6px 6px 6px 16px',
             }}>
               <input
+                ref={panelInputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(input) } }}
-                placeholder="Ask Strike anything..."
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--font-body)' }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) } }}
+                placeholder={`Ask about ${pageName.toLowerCase()}...`}
+                className="strike-pill-input"
+                style={{
+                  flex: 1, border: 'none', background: 'transparent',
+                  fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--font-body)',
+                }}
               />
               <button
                 type="button"
-                aria-label="Send"
-                onClick={() => send(input)}
-                disabled={loading}
+                className="strike-overlay-send"
+                onClick={() => sendMessage(input)}
+                disabled={loading || !input.trim()}
                 style={{
-                  width: 32, height: 32, flexShrink: 0, borderRadius: '50%',
-                  background: 'var(--blue)', color: '#fff', border: 'none',
-                  cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1,
+                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                  background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s',
                 }}
               >
                 {SEND_ICON}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Persistent pill (closed state) ── */}
+      {!isOpen && (
+        <div style={{
+          position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          width: 'min(560px, calc(100vw - 48px))',
+          zIndex: 150,
+          background: 'var(--white)', borderRadius: 999,
+          boxShadow: '0 2px 20px rgba(0,0,0,0.12)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '6px 6px 6px 14px',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+            background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+          }}>
+            {SPARK_ICON}
+          </div>
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePillSubmit() } }}
+            onFocus={() => { /* could expand pill on focus */ }}
+            placeholder={`Ask Strike AI about ${pageName.toLowerCase()}...`}
+            className="strike-pill-input"
+            style={{
+              flex: 1, border: 'none', background: 'transparent',
+              fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--font-body)',
+            }}
+          />
+          <button
+            type="button"
+            className="strike-overlay-send"
+            onClick={handlePillSubmit}
+            disabled={!input.trim()}
+            style={{
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+          >
+            {SEND_ICON}
+          </button>
         </div>
       )}
     </>

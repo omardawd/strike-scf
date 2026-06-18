@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
-import { StrikeAIPanel } from '@/components/strike-ai-panel'
+import { AIOverlay } from '@/components/ai-overlay'
 import type { PortalType } from '@/lib/portal-context'
 
 // Ordered specific-before-general so derivePageName resolves the deepest match first.
@@ -50,7 +50,7 @@ export function PortalShell({
       <main className="main">
         {children}
       </main>
-      <StrikeAIPanel />
+      <AIOverlay />
     </div>
   )
 }
