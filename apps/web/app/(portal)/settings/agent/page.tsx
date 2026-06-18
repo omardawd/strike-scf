@@ -473,7 +473,7 @@ export default function AgentSettingsPage() {
             saved={!!saved.max_deal_value_auto}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 14, color: 'var(--gray)', fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 14, color: 'var(--gray)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>
                 $
               </span>
               <input

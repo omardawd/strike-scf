@@ -185,7 +185,7 @@ export default function AdminPage() {
         <div className="section" style={{ marginBottom: 32 }}>
           <div className="rooms-section-head">
             <span className="rooms-section-title">KYB Escalation Queue</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
               {loading ? '…' : `${kybOrgs.length} pending`}
             </span>
           </div>
@@ -230,13 +230,13 @@ export default function AdminPage() {
                               {org.type}
                             </span>
                           </td>
-                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                          <td style={{ fontFamily: 'var(--font-body)', fontSize: 12 }}>
                             {fmtDate(org.kyb_submitted_at)}
                           </td>
                           <td>
                             {org.risk_score != null ? (
                               <span style={{
-                                fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500,
+                                fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 500,
                                 color: org.risk_score >= 70 ? 'var(--color-green)' : org.risk_score >= 45 ? 'var(--color-amber)' : 'var(--color-red)',
                               }}>
                                 {org.risk_score}
@@ -360,7 +360,7 @@ export default function AdminPage() {
         <div className="section">
           <div className="rooms-section-head">
             <span className="rooms-section-title">Room Reports Queue</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
               {loading ? '…' : `${reports.length} unresolved`}
             </span>
           </div>
@@ -405,7 +405,7 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--gray)' }}>{report.reported_by_name}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                      <td style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)' }}>
                         {fmtDate(report.created_at)}
                       </td>
                       <td className="row-actions">

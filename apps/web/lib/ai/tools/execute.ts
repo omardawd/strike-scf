@@ -1,0 +1,77 @@
+// Central dispatcher for all Strike AI tools.
+// Called by /api/ai/tools/execute after auth and scoping checks.
+// Each handler owns its own adminClient (imported from ../admin) to avoid type parameter issues.
+
+import { createMarketplaceListing, type CreateMarketplaceListingInput } from './handlers/create-marketplace-listing'
+import { evaluateSupplierPassport, type EvaluateSupplierPassportInput } from './handlers/evaluate-supplier-passport'
+import { findAndRecommendDeals, type FindAndRecommendDealsInput } from './handlers/find-and-recommend-deals'
+import { getPricingInsights, type GetPricingInsightsInput } from './handlers/get-pricing-insights'
+import { summarizeDealNegotiation, type SummarizeDealNegotiationInput } from './handlers/summarize-deal-negotiation'
+import { scoreAndRankFinancingOffers, type ScoreAndRankFinancingOffersInput } from './handlers/score-and-rank-financing-offers'
+import { detectDealRiskSignals, type DetectDealRiskSignalsInput } from './handlers/detect-deal-risk-signals'
+import { recommendSuppliersForBuyer, type RecommendSuppliersForBuyerInput } from './handlers/recommend-suppliers-for-buyer'
+import { generateDealTermSheet, type GenerateDealTermSheetInput } from './handlers/generate-deal-term-sheet'
+import { proactivePortfolioAlerts, type ProactivePortfolioAlertsInput } from './handlers/proactive-portfolio-alerts'
+import { lookupEntities, type LookupEntitiesInput } from './handlers/lookup-entities'
+import { evaluateListingOffers, type EvaluateListingOffersInput } from './handlers/evaluate-listing-offers'
+import { getPassportAdvice, type GetPassportAdviceInput } from './handlers/get-passport-advice'
+
+export type ToolName =
+  | 'create_marketplace_listing'
+  | 'evaluate_supplier_passport'
+  | 'find_and_recommend_deals'
+  | 'get_pricing_insights'
+  | 'summarize_deal_negotiation'
+  | 'score_and_rank_financing_offers'
+  | 'detect_deal_risk_signals'
+  | 'recommend_suppliers_for_buyer'
+  | 'generate_deal_term_sheet'
+  | 'proactive_portfolio_alerts'
+  | 'lookup_entities'
+  | 'evaluate_listing_offers'
+  | 'get_passport_advice'
+
+export async function executeTool(
+  toolName: ToolName,
+  toolInput: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  switch (toolName) {
+    case 'create_marketplace_listing':
+      return createMarketplaceListing(toolInput as unknown as CreateMarketplaceListingInput)
+    case 'evaluate_supplier_passport':
+      return evaluateSupplierPassport(toolInput as unknown as EvaluateSupplierPassportInput)
+    case 'find_and_recommend_deals':
+      return findAndRecommendDeals(toolInput as unknown as FindAndRecommendDealsInput)
+    case 'get_pricing_insights':
+      return getPricingInsights(toolInput as unknown as GetPricingInsightsInput)
+    case 'summarize_deal_negotiation':
+      return summarizeDealNegotiation(toolInput as unknown as SummarizeDealNegotiationInput)
+    case 'score_and_rank_financing_offers':
+      return scoreAndRankFinancingOffers(toolInput as unknown as ScoreAndRankFinancingOffersInput)
+    case 'detect_deal_risk_signals':
+      return detectDealRiskSignals(toolInput as unknown as DetectDealRiskSignalsInput)
+    case 'recommend_suppliers_for_buyer':
+      return recommendSuppliersForBuyer(toolInput as unknown as RecommendSuppliersForBuyerInput)
+    case 'generate_deal_term_sheet':
+      return generateDealTermSheet(toolInput as unknown as GenerateDealTermSheetInput)
+    case 'proactive_portfolio_alerts':
+      return proactivePortfolioAlerts(toolInput as unknown as ProactivePortfolioAlertsInput)
+    case 'lookup_entities':
+      return lookupEntities(toolInput as unknown as LookupEntitiesInput)
+    case 'evaluate_listing_offers':
+      return evaluateListingOffers(toolInput as unknown as EvaluateListingOffersInput)
+    case 'get_passport_advice':
+      return getPassportAdvice(toolInput as unknown as GetPassportAdviceInput)
+    default:
+      return { error: `Unknown tool: ${toolName as string}` }
+  }
+}
+
+// Tools that require a bank user
+export const BANK_ONLY_TOOLS: ToolName[] = ['proactive_portfolio_alerts']
+
+// Tools that write to the database (subject to agent approval preference)
+export const WRITE_TOOLS: ToolName[] = [
+  'create_marketplace_listing',
+  'score_and_rank_financing_offers',
+]

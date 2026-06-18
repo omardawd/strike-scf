@@ -372,20 +372,7 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
     )
   }
 
-  if (visible.length === 0) {
-    return (
-      <div style={{
-        marginBottom: 24, padding: '12px 18px',
-        background: 'var(--color-green-bg)',
-        borderLeft: '3px solid var(--color-green)',
-        display: 'flex', alignItems: 'center', gap: 10,
-        fontSize: 13, color: 'var(--color-green)',
-      }}>
-        <span style={{ fontWeight: 600 }}>✓</span>
-        <span>All clear — no items need attention</span>
-      </div>
-    )
-  }
+  if (visible.length === 0) return null
 
   return (
     <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
@@ -405,8 +392,8 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
         >
           <span style={{ fontSize: 13, color: 'var(--ink)' }}>{card.label}</span>
           <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600,
-            color: card.color, flexShrink: 0,
+            fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700,
+            letterSpacing: '-0.02em', color: card.color, flexShrink: 0,
           }}>
             {card.count}
           </span>
@@ -504,8 +491,8 @@ function PassportBanner({
             ...(org.avg_payment_days != null ? [{ label: 'On-Time Rate', value: `${org.avg_payment_days}d avg` }] : []),
           ].map(stat => (
             <div key={stat.label}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{stat.label}</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)' }}>{stat.value}</div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{stat.label}</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{stat.value}</div>
             </div>
           ))}
         </div>
@@ -625,7 +612,7 @@ function PassportOverviewWidget({
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
               <PassportScoreRing score={dist.avg_score} size="sm" />
               <div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
                   Avg PassportScore
                 </div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
@@ -785,11 +772,11 @@ function BankDashboard() {
                     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                         <PassportScoreRing score={item.buyer_passport?.passport_score ?? null} size="sm" />
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>BUYER</span>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Buyer</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                         <PassportScoreRing score={item.supplier_passport?.passport_score ?? null} size="sm" />
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>SUPPLIER</span>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Supplier</span>
                       </div>
                       {item.request.ai_risk_assessment && (
                         <div style={{
@@ -941,6 +928,20 @@ function AnchorDashboard() {
           <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
         </div>
 
+        {/* AI Overview */}
+        <div style={{ marginBottom: 20 }}>
+          <AIInsightCard
+            variant="banner"
+            portal="anchor"
+            page="dashboard"
+            context={{
+              org_name: dashData?.org_name,
+              active_deals: deals?.length ?? 0,
+              pending_financing: financing?.length ?? 0,
+            }}
+          />
+        </div>
+
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="md" />
 
@@ -1024,7 +1025,7 @@ function AnchorDashboard() {
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                     }}>
                       <div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -1148,6 +1149,22 @@ function SupplierDashboard() {
           <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
         </div>
 
+        {/* AI Overview */}
+        <div style={{ marginBottom: 20 }}>
+          <AIInsightCard
+            variant="banner"
+            portal="supplier"
+            page="dashboard"
+            context={{
+              org_name: dashData?.org_name,
+              active_deals: activeDeals?.length ?? 0,
+              pending_financing: financing?.length ?? 0,
+              on_time_rate: dashData?.on_time_rate,
+              passport_score: passport?.organization?.passport_score ?? null,
+            }}
+          />
+        </div>
+
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="lg" extras={passportExtras} />
 
@@ -1226,7 +1243,7 @@ function SupplierDashboard() {
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                     }}>
                       <div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500 }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -1282,21 +1299,6 @@ function SupplierDashboard() {
           </div>
         </div>
 
-        {/* 6. AI Insight */}
-        <AIInsight
-          title="Supplier Intelligence"
-          collapsed={true}
-          prompt={`This supplier has a PassportScore of ${passport?.organization?.passport_score ?? 'N/A'} (${scoreTierLabel(passport?.organization?.passport_score ?? null)} tier). They have ${activeDeals.length} active deals and ${financing.length} financing requests. What is the single most impactful action they can take today to improve their PassportScore and access better financing rates?`}
-          context={{
-            passport_score: passport?.organization?.passport_score ?? null,
-            score_tier: scoreTierLabel(passport?.organization?.passport_score ?? null),
-            active_deals: activeDeals.length,
-            financing_requests: financing.length,
-            on_time_rate: dashData?.on_time_rate,
-            completed_deals: completedDeals,
-            bank_views_30d: passport?.bank_view_count_30d ?? 0,
-          }}
-        />
       </div>
     </>
   )

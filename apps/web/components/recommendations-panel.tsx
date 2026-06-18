@@ -89,9 +89,10 @@ export function RecommendationsPanel({ bankId: _bankId, maxItems = 2 }: { bankId
             background: counts.high > 0 ? '#DC2626' : 'var(--gray)',
           }} />
           <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            letterSpacing: '0.14em',
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: '0.04em',
             textTransform: 'uppercase',
             color: 'var(--ink)',
           }}>

@@ -176,32 +176,83 @@ function SignupPageInner() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'var(--offwhite)',
-      display:    'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding:    '40px 24px',
-      fontFamily: 'var(--font-body)',
-      position:   'relative',
-      overflow:   'hidden',
-    }}>
+    <div className="login-v2-shell" style={{ fontFamily: 'var(--font-body)' }}>
+      {/* Left brand panel */}
+      <div className="login-v2-brand">
+        <div aria-hidden="true" style={{
+          position: 'absolute', width: 600, height: 600, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(20,40,204,0.28) 0%, transparent 65%)',
+          top: -200, right: -200, pointerEvents: 'none',
+          animation: 'auth-orb-drift 22s ease-in-out infinite',
+        }} />
+        <div aria-hidden="true" style={{
+          position: 'absolute', width: 400, height: 400, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 65%)',
+          bottom: -120, left: -100, pointerEvents: 'none',
+          animation: 'auth-orb-drift 28s ease-in-out infinite reverse',
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <Image
+            src="/strike_white_nobg.png"
+            alt="Strike SCF"
+            width={140}
+            height={40}
+            style={{ objectFit: 'contain', objectPosition: 'left center', height: 'auto' }}
+            priority
+          />
+        </div>
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <h2 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 36, fontWeight: 700,
+            letterSpacing: '-0.03em',
+            color: '#fff',
+            lineHeight: 1.15,
+            margin: '0 0 16px',
+          }}>
+            Start transacting<br/>in minutes.
+          </h2>
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65, margin: '0 0 36px', maxWidth: 320 }}>
+            Create your account, activate your Passport, and start financing deals on the same day.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {([
+              ['Free to join', 'No setup fees. Activate when you\'re ready to transact.'],
+              ['AI-powered onboarding', 'Smart document extraction speeds up your KYB process.'],
+              ['Instant deal access', 'Connect with anchors and banks in your first week.'],
+            ] as const).map(([title, desc]) => (
+              <div key={title} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  border: '1.5px solid rgba(255,255,255,0.25)',
+                  background: 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, marginTop: 1,
+                }}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ color: '#fff', fontSize: 13.5, fontWeight: 600, lineHeight: 1.3 }}>{title}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12.5, marginTop: 3, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ position: 'relative', zIndex: 1, fontSize: 12, color: 'rgba(255,255,255,0.28)', lineHeight: 1.6 }}>
+          © 2026 Strike SCF · Trusted by leading banks and corporations
+        </div>
+      </div>
+
+      {/* Right form panel */}
+      <div className="login-v2-card">
+        <div className="login-v2-card-inner" style={{ maxWidth: 460 }}>
       <style>{`
-        @keyframes su-orb-1 {
-          0%,100% { transform: translate(0,0) scale(1); }
-          40%     { transform: translate(40px,-30px) scale(1.05); }
-          70%     { transform: translate(-20px,25px) scale(0.97); }
-        }
-        @keyframes su-orb-2 {
-          0%,100% { transform: translate(0,0) scale(1); }
-          35%     { transform: translate(-35px,30px) scale(1.04); }
-          65%     { transform: translate(25px,-20px) scale(0.98); }
-        }
-        @keyframes su-orb-3 {
-          0%,100% { transform: translate(0,0) scale(1); }
-          50%     { transform: translate(20px,35px) scale(1.03); }
-        }
         @keyframes su-shimmer {
           0%   { transform: translateX(-120%); }
           50%  { transform: translateX(120%); }
@@ -251,10 +302,10 @@ function SignupPageInner() {
         .su-input[readonly] { background: var(--offwhite); }
         .su-select { appearance: auto; }
         .su-label {
-          font-family: var(--font-mono);
-          font-size: 10.5px;
+          font-family: var(--font-body);
+          font-size: 12px;
           font-weight: 500;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
           color: var(--gray);
           margin-bottom: 7px;
@@ -289,49 +340,6 @@ function SignupPageInner() {
         .su-submit:hover:not(:disabled) { box-shadow: 0 6px 26px rgba(124,58,237,0.4); }
         .su-submit:disabled { opacity: 0.55; cursor: not-allowed; }
       `}</style>
-
-      {/* Background gradient orbs */}
-      <div style={{
-        position: 'absolute', width: 700, height: 700, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(20,40,204,0.055) 0%, transparent 70%)',
-        top: -280, left: -220, animation: 'su-orb-1 22s ease-in-out infinite',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', width: 600, height: 600, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%)',
-        bottom: -250, right: -180, animation: 'su-orb-2 28s ease-in-out infinite',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', width: 400, height: 400, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(20,40,204,0.04) 0%, transparent 70%)',
-        top: '40%', right: '15%', animation: 'su-orb-3 18s ease-in-out infinite',
-        pointerEvents: 'none',
-      }} />
-
-      {/* Card */}
-      <div style={{
-        position:     'relative',
-        width:        '100%',
-        maxWidth:     460,
-        background:   'var(--white)',
-        borderRadius: 'var(--radius-card)',
-        padding:      '44px 40px',
-        boxShadow:    '0 8px 40px rgba(0,0,0,0.07), 0 1px 0 rgba(0,0,0,0.04)',
-        zIndex:       1,
-      }}>
-        {/* Logo */}
-        <div style={{ marginBottom: 28 }}>
-          <Image
-            src="/logo.png"
-            alt="Strike SCF"
-            width={160}
-            height={48}
-            style={{ objectFit: 'contain', objectPosition: 'left center', maxWidth: '100%', height: 'auto' }}
-            priority
-          />
-        </div>
 
         {/* Heading */}
         <div style={{ marginBottom: 28 }}>
@@ -529,6 +537,7 @@ function SignupPageInner() {
             Contact us
           </a>
           {' '}to get set up.
+        </div>
         </div>
       </div>
     </div>

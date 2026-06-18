@@ -82,9 +82,10 @@ export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }
         justifyContent: 'space-between',
       }}>
         <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          letterSpacing: '0.14em',
+          fontFamily: 'var(--font-body)',
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: '0.04em',
           textTransform: 'uppercase',
           color: 'var(--gray)',
         }}>Performance</span>
@@ -107,19 +108,16 @@ export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }
       <div style={{ padding: 20 }}>
         {loading ? (
           <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
             color: 'var(--gray)',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
             padding: '12px 0',
           }}>Calculating...</div>
         ) : !data ? (
           <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
+            fontFamily: 'var(--font-body)',
+            fontSize: 12,
             color: 'var(--gray)',
-            letterSpacing: '0.1em',
           }}>No performance data yet</div>
         ) : (
           <>
@@ -145,17 +143,18 @@ export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }
                       background: tier.color,
                     }} />
                     <span style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 11,
-                      letterSpacing: '0.12em',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 12,
+                      letterSpacing: '0.04em',
                       textTransform: 'uppercase',
                       color: tier.color,
-                      fontWeight: 500,
+                      fontWeight: 600,
                     }}>{tier.label}</span>
                     {data.performance_score !== null && (
                       <span style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 11,
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 13,
+                        fontWeight: 700,
                         color: tier.color,
                         marginLeft: 'auto',
                       }}>
@@ -194,15 +193,17 @@ export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }
                   alignItems: 'center',
                 }}>
                   <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                    letterSpacing: '0.1em',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: '0.04em',
                     textTransform: 'uppercase',
                     color: 'var(--gray)',
                   }}>{label}</span>
                   <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 13,
+                    fontWeight: 600,
                     color: 'var(--ink)',
                   }}>{value}</span>
                 </div>
@@ -217,9 +218,10 @@ export function PerformanceScorecard({ orgId, showRefresh, viewerRole = 'self' }
                 border: '1px solid rgba(5,150,105,0.15)',
               }}>
                 <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 9,
-                  letterSpacing: '0.12em',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
                   textTransform: 'uppercase',
                   color: '#059669',
                   marginBottom: 8,

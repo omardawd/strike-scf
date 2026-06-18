@@ -451,11 +451,9 @@ export default function KYBDetailPage() {
               {internalDocs.length === 0 ? (
                 <div style={{
                   padding: '16px 20px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10,
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 12,
                   color: 'var(--gray)',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
                 }}>
                   No internal documents
                 </div>
@@ -466,8 +464,8 @@ export default function KYBDetailPage() {
                     <svg width={14} height={14} className="doc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
                     <span className="doc-name">{doc.name ?? 'Document'}</span>
                     <span style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 10,
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 11,
                       color: 'var(--gray)',
                     }}>
                       {new Date(doc.created_at).toLocaleDateString()}

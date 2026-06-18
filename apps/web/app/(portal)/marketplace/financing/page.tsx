@@ -306,12 +306,12 @@ function TradingTerminal({
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 className="t-page-title">Strike Place</h1>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', margin: '2px 0 0' }}>
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', margin: '2px 0 0' }}>
             Live financing order book
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-green)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-green)' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)' }} /> Live
           </span>
         </div>
@@ -510,12 +510,12 @@ function DetailPanel({
               <PassportScoreRing score={cp.passport_score} size="sm" />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.legal_name}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', display: 'flex', gap: 10, marginTop: 2 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', display: 'flex', gap: 10, marginTop: 2 }}>
                   {cp.trade_count_total > 0 && <span>{cp.trade_count_total} trades</span>}
                   {cp.avg_payment_days != null && <span>{cp.avg_payment_days}d avg pay</span>}
                   {cp.country_of_origin && <span>{cp.country_of_origin}</span>}
                 </div>
-                <Link href={`/passport/${cp.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-mono)' }}>View Passport →</Link>
+                <Link href={`/passport/${cp.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-body)' }}>View Passport →</Link>
               </div>
             </div>
           </div>
@@ -644,12 +644,12 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
       {items.map(item => (
         <div key={item.id} className="listing-card" onClick={() => router.push(`/marketplace/financing/${item.id}`)}>
           <div className="listing-card-head">
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
               {fmt(item.amount_requested, item.currency)}
             </span>
             {structureBadge(item.financing_type ?? item.structure_type)}
             <span className={statusBadge(item.status)} style={{ marginLeft: 4 }}>{item.status.replace(/_/g, ' ')}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-mono)' }}>{timeAgo(item.created_at)}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>{timeAgo(item.created_at)}</span>
           </div>
           <div className="listing-card-body" style={{ gap: 8 }}>
             {item.deal?.goods_description && (

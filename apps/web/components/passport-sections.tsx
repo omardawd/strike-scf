@@ -27,6 +27,7 @@ export interface PassportOrg {
   performance_tier: string | null
   passport_score: number | null
   passport_score_updated_at: string | null
+  passport_ai_evaluated_at: string | null
   trade_count_total: number | null
   trade_volume_total: number | null
   avg_payment_days: number | null
@@ -253,8 +254,21 @@ export function PassportSections({
       <div className="card">
         <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 28, paddingBottom: 24 }}>
           <PassportScoreRing score={org.passport_score} size="lg" showLabel />
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', letterSpacing: '0.08em' }}>
-            Updated {fmtDate(org.passport_score_updated_at)}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+              Updated {fmtDate(org.passport_score_updated_at)}
+            </div>
+            {org.passport_ai_evaluated_at && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <circle cx="5" cy="5" r="4" stroke="var(--teal, #0FB8A0)" strokeWidth="1.2" />
+                  <circle cx="5" cy="5" r="1.8" fill="var(--teal, #0FB8A0)" />
+                </svg>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--teal, #0FB8A0)', letterSpacing: '0.06em' }}>
+                  AI evaluated {fmtDate(org.passport_ai_evaluated_at)}
+                </span>
+              </div>
+            )}
           </div>
           {flags.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>

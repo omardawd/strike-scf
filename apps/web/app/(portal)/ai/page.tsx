@@ -88,27 +88,37 @@ function deriveTitle(messages: Message[]): string {
   return firstUser.content.slice(0, 40) || 'New conversation'
 }
 
-function buildSystemPrompt(portal: string, page: string, userName?: string): string {
+function buildSystemPrompt(portal: string, page: string, userName?: string, orgId?: string, bankId?: string): string {
+  const identity = [
+    orgId   ? `org_id: ${orgId}`   : null,
+    bankId  ? `bank_id: ${bankId}` : null,
+  ].filter(Boolean).join('\n')
+
   return `You are Strike AI, the intelligent operating system embedded in Strike SCF — an AI-native supply chain finance platform.
 
-You are not a chatbot. You are an autonomous agent that can take actions on the platform on behalf of the user.
+You are an autonomous agent that takes actions on the platform on behalf of the user. When you have enough information to complete an action, execute it immediately using the appropriate tool — do not ask for confirmation unless a genuinely required field is missing.
 
 Current user: ${userName ?? 'Unknown'}
 Portal: ${portal}
 Current page: ${page}
+${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` : ''}
 
-Your capabilities:
-- Create listings on Strike Place
-- Request financing on behalf of suppliers
-- Generate professional documents (transaction summaries, KYB reports, audit logs)
-- Retrieve PassportScore and risk data
-- Answer questions about SCF workflows, platform features, and counterparty data
+Your tools:
+- create_marketplace_listing — post a product/service or PO listing on Strike Place
+- evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history
+- find_and_recommend_deals — match and score deals between buyer/supplier
+- get_pricing_insights — internal platform benchmarks + live external market pricing
+- summarize_deal_negotiation — timeline, open issues, and suggested next steps for a deal
+- score_and_rank_financing_offers — rank bank offers by cost, speed, or flexibility
+- detect_deal_risk_signals — fraud, compliance, payment, and delivery risk signals on a deal
+- recommend_suppliers_for_buyer — find the best-matched suppliers for a buyer's needs
+- generate_deal_term_sheet — structured term sheet with parties, goods, payment, and financing
+- proactive_portfolio_alerts — overdue, at-risk, and concentration alerts (bank users only)
 
 Rules:
-1. Only reference data explicitly provided in context. Never invent figures.
-2. When asked to take an action, confirm with the user before executing.
-3. Be concise. Use bullet points for lists. Format currency as $X,XXX.
-4. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.`
+1. Only reference data explicitly returned by tools or provided in context. Never invent figures.
+2. Be concise. Use bullet points for lists. Format currency as $X,XXX.
+3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.`
 }
 
 const QUICK_PROMPTS: Record<string, string[]> = {
@@ -172,6 +182,7 @@ export default function AIWorkspacePage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingPhrase, setLoadingPhrase] = useState('Thinking')
   const [collapsed, setCollapsed] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ text: string; description: string } | null>(null)
 
@@ -185,6 +196,28 @@ export default function AIWorkspacePage() {
       setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1')
     } catch {}
   }, [])
+
+  // ── Cycle loading phrases while the agent is working ──
+  const LOADING_PHRASES = [
+    'Thinking', 'Analyzing', 'Researching', 'Evaluating',
+    'Structuring', 'Calculating', 'Synthesizing', 'Strategizing',
+    'Calibrating', 'Sourcing', 'Deliberating', 'Processing',
+    'Negotiating', 'Weighing options', 'Cross-referencing',
+  ]
+  useEffect(() => {
+    if (!loading) {
+      setLoadingPhrase('Thinking')
+      return
+    }
+    let idx = 0
+    const tick = () => {
+      idx = (idx + 1) % LOADING_PHRASES.length
+      setLoadingPhrase(LOADING_PHRASES[idx] ?? 'Thinking')
+    }
+    const id = setInterval(tick, 1800)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
 
   const activeConvo = conversations.find(c => c.id === activeId) ?? null
   const messages = activeConvo?.messages ?? []
@@ -256,7 +289,7 @@ export default function AIWorkspacePage() {
         body: JSON.stringify({
           feature: 'chat',
           model: 'sonnet',
-          system: buildSystemPrompt(portal, 'ai', userName),
+          system: buildSystemPrompt(portal, 'ai', userName, user?.org_id ?? undefined, user?.bank_id ?? undefined),
           messages: convoMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
         }),
@@ -301,12 +334,6 @@ export default function AIWorkspacePage() {
   function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || loading) return
-    const description = describeAction(trimmed)
-    if (needsConfirmation(trimmed) && description) {
-      setPendingAction({ text: trimmed, description })
-      setInput('')
-      return
-    }
     runMessage(trimmed)
   }
 
@@ -323,8 +350,8 @@ export default function AIWorkspacePage() {
   return (
     <>
       <style>{`
-        @keyframes strike-ai-spin { to { transform: rotate(360deg); } }
         @keyframes strike-ai-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes strike-ai-dot { 0%,80%,100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
         .strike-ai-newchat:hover { background: var(--blue-hover) !important; }
         .strike-ai-quick:hover { border-color: var(--blue) !important; }
         .strike-ai-convo:hover { background: var(--offwhite); }
@@ -453,10 +480,15 @@ export default function AIWorkspacePage() {
             transition: 'padding-left 0.2s ease',
           }}>
             <div style={{
-              width: 28, height: 28, borderRadius: '50%', background: 'var(--blue)', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, flexShrink: 0,
-            }}>S</div>
+              width: 28, height: 28, borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+                <path d="M16 4.5v2M15 5.5h2" />
+              </svg>
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Strike AI</div>
               <div style={{ fontSize: 12, color: 'var(--gray)' }}>Supply chain intelligence</div>
@@ -473,7 +505,17 @@ export default function AIWorkspacePage() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {messages.length === 0 && !loading && !pendingAction ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 6 }}>
-                <img src="/favicon.png" alt="" draggable={false} style={{ width: 56, height: 56, objectFit: 'contain', animation: 'strike-ai-spin 4s linear infinite' }} />
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 8px 32px rgba(20,40,204,0.22)',
+                }}>
+                  <svg width="30" height="30" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+                    <path d="M16 4.5v2M15 5.5h2" />
+                  </svg>
+                </div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', marginTop: 8 }}>Strike AI</div>
                 <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>Your autonomous supply chain finance agent</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxWidth: 480, width: '100%' }}>
@@ -508,7 +550,16 @@ export default function AIWorkspacePage() {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: 8, maxWidth: '92%' }}>
-                        <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0, marginTop: 2 }} />
+                        <div style={{
+                          width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                          background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+                            <path d="M16 4.5v2M15 5.5h2" />
+                          </svg>
+                        </div>
                         <div style={{
                           padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)',
                           borderRadius: '4px 20px 20px 20px', fontSize: 13, lineHeight: 1.65,
@@ -518,7 +569,7 @@ export default function AIWorkspacePage() {
                         </div>
                       </div>
                     )}
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--gray-soft)', paddingLeft: m.role === 'assistant' ? 28 : 0 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', paddingLeft: m.role === 'assistant' ? 28 : 0 }}>
                       {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
@@ -564,8 +615,24 @@ export default function AIWorkspacePage() {
 
                 {loading && (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', animation: 'strike-ai-in 0.2s ease' }}>
-                    <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', animation: 'strike-ai-spin 0.9s linear infinite' }} />
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>Thinking</span>
+                    <div style={{
+                      width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                      background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+                        <path d="M16 4.5v2M15 5.5h2" />
+                      </svg>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {[0, 1, 2].map(i => (
+                        <span key={i} style={{
+                          width: 5, height: 5, borderRadius: '50%', background: 'var(--blue)', display: 'inline-block',
+                          animation: `strike-ai-dot 1.2s ${i * 0.2}s ease-in-out infinite`,
+                        }} />
+                      ))}
+                    </div>
                   </div>
                 )}
               </>

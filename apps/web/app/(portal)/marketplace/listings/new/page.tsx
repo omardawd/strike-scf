@@ -476,7 +476,7 @@ function NewListingPageInner() {
                 )}
 
                 {/* Header row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
                   <span>Item / Specs</span>
                   <span>Qty</span>
                   <span>Unit</span>
@@ -776,7 +776,7 @@ function NewListingPageInner() {
                   : <div className="listing-preview-placeholder" style={{ height: 22 }} />}
                 {computedTargetPrice != null
                   ? <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>
-                      {computedTargetPrice.toLocaleString()} <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--gray)' }}>{form.currency}</span>
+                      {computedTargetPrice.toLocaleString()} <span style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 500, color: 'var(--gray)' }}>{form.currency}</span>
                     </div>
                   : <div className="listing-preview-placeholder" style={{ height: 32, width: '55%' }} />}
                 <div style={{ display: 'flex', gap: 12 }}>

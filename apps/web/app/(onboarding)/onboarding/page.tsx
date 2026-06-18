@@ -280,12 +280,13 @@ function mapFormToData(form: Form): Record<string, unknown> {
 // ─────────────────────────────────────────────────────────────
 function StepHeader({ step, title, sub }: { step: number; title: string; sub: string }) {
   return (
-    <div style={{ marginBottom: 28 }}>
+    <div style={{ marginBottom: 18 }}>
       <div
         style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          letterSpacing: '0.14em',
+          fontFamily: 'var(--font-body)',
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: '0.05em',
           textTransform: 'uppercase',
           color: 'var(--blue)',
           marginBottom: 10,
@@ -337,13 +338,15 @@ function MultiSelect({
   options,
   selected,
   onToggle,
+  cols = 2,
 }: {
   options: { value: string; label: string }[]
   selected: string[]
   onToggle: (value: string) => void
+  cols?: 2 | 3
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
       {options.map((o) => {
         const on = selected.includes(o.value)
         return (
@@ -623,7 +626,7 @@ function NaicsSelect({ value, onChange }: { value: string; onChange: (code: stri
                 fontFamily: 'inherit',
               }}
             >
-              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-ink-4)', marginRight: 8 }}>
+              <span style={{ fontFamily: 'var(--font-body)', fontWeight: 500, color: 'var(--color-ink-4)', marginRight: 8 }}>
                 {n.code}
               </span>
               {n.label}
@@ -1020,14 +1023,16 @@ export default function OnboardingWizard() {
         <>
           <StepHeader step={1} title="Identity & Legal" sub="Start with your legal details. We cross-check these against public records." />
           <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Field label="Legal business name">
-                <input className="form-input" value={form.legal_name} onChange={(e) => update({ legal_name: e.target.value })} placeholder="Acme Corp LLC" />
-              </Field>
-              <Field label="Doing business as" optional>
-                <input className="form-input" value={form.doing_business_as} onChange={(e) => update({ doing_business_as: e.target.value })} placeholder="Acme" />
-              </Field>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
+                <Field label="Legal business name">
+                  <input className="form-input" value={form.legal_name} onChange={(e) => update({ legal_name: e.target.value })} placeholder="Acme Corp LLC" />
+                </Field>
+                <Field label="Doing business as" optional>
+                  <input className="form-input" value={form.doing_business_as} onChange={(e) => update({ doing_business_as: e.target.value })} placeholder="Acme" />
+                </Field>
+              </div>
+              <div className="form-row-3">
                 <Field label="Business type">
                   <select className="form-input form-select" value={form.business_type} onChange={(e) => update({ business_type: e.target.value })}>
                     <option value="">Select…</option>
@@ -1044,39 +1049,39 @@ export default function OnboardingWizard() {
                     ))}
                   </select>
                 </Field>
-              </div>
-              <div className="form-row-2">
-                <Field label="State / province of incorporation" optional>
+                <Field label="State / province of incorp." optional>
                   <input className="form-input" value={form.state_of_incorporation} onChange={(e) => update({ state_of_incorporation: e.target.value })} placeholder="DE" />
                 </Field>
+              </div>
+              <div className="form-row-3">
                 <Field label="Years in operation">
                   <input className="form-input" type="number" min={0} value={form.years_in_operation} onChange={(e) => update({ years_in_operation: e.target.value })} placeholder="5" />
+                </Field>
+                <Field label="Website" optional>
+                  <input className="form-input" value={form.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://acme.com" />
+                </Field>
+                <Field label="Tax ID / EIN" hint="Stored securely — only shared with verification partners.">
+                  <div className="input-with-status">
+                    <input
+                      className="form-input mono"
+                      type={showEin ? 'text' : 'password'}
+                      value={form.ein}
+                      onChange={(e) => update({ ein: e.target.value })}
+                      placeholder="12-3456789"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEin((s) => !s)}
+                      className="input-status"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)' }}
+                    >
+                      {showEin ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
                 </Field>
               </div>
               <Field label="Industry (NAICS)">
                 <NaicsSelect value={form.industry_naics} onChange={(code) => update({ industry_naics: code })} />
-              </Field>
-              <Field label="Tax ID / EIN" hint="Stored securely and only shared with verification partners.">
-                <div className="input-with-status">
-                  <input
-                    className="form-input mono"
-                    type={showEin ? 'text' : 'password'}
-                    value={form.ein}
-                    onChange={(e) => update({ ein: e.target.value })}
-                    placeholder="12-3456789"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowEin((s) => !s)}
-                    className="input-status"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-3)' }}
-                  >
-                    {showEin ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </Field>
-              <Field label="Website" optional>
-                <input className="form-input" value={form.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://acme.com" />
               </Field>
               <Field label="Products / services" optional hint="2–3 sentences on what your business does.">
                 <textarea
@@ -1101,11 +1106,11 @@ export default function OnboardingWizard() {
         <>
           <StepHeader step={2} title="Address & Contact" sub="Who should we reach out to, and where is your business registered?" />
           <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Field label="Primary contact name">
-                <input className="form-input" value={form.primary_contact_name} onChange={(e) => update({ primary_contact_name: e.target.value })} placeholder="Jane Doe" />
-              </Field>
-              <div className="form-row-2">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="form-row-3">
+                <Field label="Primary contact name">
+                  <input className="form-input" value={form.primary_contact_name} onChange={(e) => update({ primary_contact_name: e.target.value })} placeholder="Jane Doe" />
+                </Field>
                 <Field label="Title">
                   <input className="form-input" value={form.primary_contact_title} onChange={(e) => update({ primary_contact_title: e.target.value })} placeholder="CFO" />
                 </Field>
@@ -1113,13 +1118,15 @@ export default function OnboardingWizard() {
                   <input className="form-input" type="tel" value={form.primary_contact_phone} onChange={(e) => update({ primary_contact_phone: e.target.value })} placeholder="+1 (555) 010-0100" />
                 </Field>
               </div>
-              <Field label="Address line 1">
-                <input className="form-input" value={form.address_line1} onChange={(e) => update({ address_line1: e.target.value })} placeholder="123 Main St" />
-              </Field>
-              <Field label="Address line 2" optional>
-                <input className="form-input" value={form.address_line2} onChange={(e) => update({ address_line2: e.target.value })} placeholder="Suite 400" />
-              </Field>
-              <div className="form-row-3">
+              <div className="form-row-2">
+                <Field label="Address line 1">
+                  <input className="form-input" value={form.address_line1} onChange={(e) => update({ address_line1: e.target.value })} placeholder="123 Main St" />
+                </Field>
+                <Field label="Address line 2" optional>
+                  <input className="form-input" value={form.address_line2} onChange={(e) => update({ address_line2: e.target.value })} placeholder="Suite 400" />
+                </Field>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 2fr', gap: 12 }}>
                 <Field label="City">
                   <input className="form-input" value={form.city} onChange={(e) => update({ city: e.target.value })} placeholder="Portland" />
                 </Field>
@@ -1129,15 +1136,15 @@ export default function OnboardingWizard() {
                 <Field label="ZIP">
                   <input className="form-input" value={form.zip} onChange={(e) => update({ zip: e.target.value })} placeholder="97201" />
                 </Field>
+                <Field label="Country">
+                  <select className="form-input form-select" value={form.country} onChange={(e) => update({ country: e.target.value })}>
+                    <option value="">Select…</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
               </div>
-              <Field label="Country">
-                <select className="form-input form-select" value={form.country} onChange={(e) => update({ country: e.target.value })}>
-                  <option value="">Select…</option>
-                  {COUNTRIES.map((c) => (
-                    <option key={c.code} value={c.code}>{c.name}</option>
-                  ))}
-                </select>
-              </Field>
             </div>
           </div>
         </>
@@ -1148,17 +1155,23 @@ export default function OnboardingWizard() {
         <>
           <StepHeader step={3} title="Ownership & Compliance" sub="Tell us who controls the business and confirm a few compliance declarations." />
           <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Field label="CEO / director name(s)">
-                <input className="form-input" value={profile.ceo_name} onChange={(e) => updateProfile({ ceo_name: e.target.value })} placeholder="Jane Doe, John Smith" />
-              </Field>
-              <Field label="Ultimate beneficial owner(s) & ownership %" optional hint="List each UBO and their ownership stake. You'll also upload a signed UBO declaration.">
-                <input className="form-input" value={profile.ubo_summary} onChange={(e) => updateProfile({ ubo_summary: e.target.value })} placeholder="Jane Doe — 60%, John Smith — 40%" />
-              </Field>
-              <YesNo label="Is any owner, director or officer a Politically Exposed Person (PEP)?" value={profile.pep} onChange={(v) => updateProfile({ pep: v })} />
-              <YesNo label="Does the business operate in, or source from, sanctioned countries?" value={profile.sanctioned} onChange={(v) => updateProfile({ sanctioned: v })} />
-              <YesNo label="Has the business filed for bankruptcy in the last 7 years?" value={profile.bankruptcy} onChange={(v) => updateProfile({ bankruptcy: v })} />
-              <YesNo label="Is the business subject to any material litigation?" value={profile.litigation} onChange={(v) => updateProfile({ litigation: v })} />
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="form-row-2">
+                <Field label="CEO / director name(s)">
+                  <input className="form-input" value={profile.ceo_name} onChange={(e) => updateProfile({ ceo_name: e.target.value })} placeholder="Jane Doe, John Smith" />
+                </Field>
+                <Field label="Ultimate beneficial owner(s) & ownership %" optional hint="List each UBO and ownership stake.">
+                  <input className="form-input" value={profile.ubo_summary} onChange={(e) => updateProfile({ ubo_summary: e.target.value })} placeholder="Jane Doe — 60%, John Smith — 40%" />
+                </Field>
+              </div>
+              <div className="form-row-2">
+                <YesNo label="Is any owner, director or officer a Politically Exposed Person (PEP)?" value={profile.pep} onChange={(v) => updateProfile({ pep: v })} />
+                <YesNo label="Does the business operate in, or source from, sanctioned countries?" value={profile.sanctioned} onChange={(v) => updateProfile({ sanctioned: v })} />
+              </div>
+              <div className="form-row-2">
+                <YesNo label="Has the business filed for bankruptcy in the last 7 years?" value={profile.bankruptcy} onChange={(v) => updateProfile({ bankruptcy: v })} />
+                <YesNo label="Is the business subject to any material litigation?" value={profile.litigation} onChange={(v) => updateProfile({ litigation: v })} />
+              </div>
             </div>
           </div>
         </>
@@ -1169,7 +1182,7 @@ export default function OnboardingWizard() {
         <>
           <StepHeader step={4} title="Financial & Trade Profile" sub="This helps us size financing and tailor your Strike Passport." />
           <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
                 <Field label="Annual revenue range">
                   <select className="form-input form-select" value={form.annual_revenue_range} onChange={(e) => update({ annual_revenue_range: e.target.value })}>
@@ -1222,6 +1235,7 @@ export default function OnboardingWizard() {
                       options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
                       selected={form.sourcing_countries}
                       onToggle={(v) => toggleInArray('sourcing_countries', v)}
+                      cols={3}
                     />
                   </Field>
                   <div className="form-row-2">
@@ -1252,6 +1266,7 @@ export default function OnboardingWizard() {
                       options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
                       selected={form.product_categories}
                       onToggle={(v) => toggleInArray('product_categories', v)}
+                      cols={3}
                     />
                   </Field>
                   <div className="form-row-2">
@@ -1310,7 +1325,7 @@ export default function OnboardingWizard() {
         <>
           <StepHeader step={5} title="Systems & Intent" sub="Tell us how you operate and what you want to do on Strike." />
           <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
                 <Field label="ERP system">
                   <select className="form-input form-select" value={profile.erp_system} onChange={(e) => updateProfile({ erp_system: e.target.value })}>
@@ -1327,6 +1342,7 @@ export default function OnboardingWizard() {
                   options={INTENT_OPTIONS.map((c) => ({ value: c, label: c }))}
                   selected={profile.intent}
                   onToggle={toggleIntent}
+                  cols={3}
                 />
               </Field>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -1543,7 +1559,7 @@ export default function OnboardingWizard() {
                   </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--color-ink-1)' }}>55–75</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-ink-1)' }}>55–75</div>
                   <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>Est. PassportScore</div>
                 </div>
               </div>
@@ -1583,112 +1599,118 @@ export default function OnboardingWizard() {
             </div>
           </div>
 
-          {/* Business */}
-          <ReviewSection label="Business" onEdit={() => goTo(1)}>
-            <ReviewRow k="Legal name" v={form.legal_name} />
-            <ReviewRow k="Doing business as" v={form.doing_business_as} />
-            <ReviewRow k="Business type" v={businessTypeLabel(form.business_type)} />
-            <ReviewRow k="Country of incorporation" v={countryName(form.country_of_incorporation)} />
-            <ReviewRow k="State of incorporation" v={form.state_of_incorporation} />
-            <ReviewRow k="Years in operation" v={form.years_in_operation} />
-            <ReviewRow k="Industry" v={naicsLabel(form.industry_naics)} />
-            <ReviewRow k="Website" v={form.website} />
-          </ReviewSection>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+            <div>
+              {/* Business */}
+              <ReviewSection label="Business" onEdit={() => goTo(1)}>
+                <ReviewRow k="Legal name" v={form.legal_name} />
+                <ReviewRow k="Doing business as" v={form.doing_business_as} />
+                <ReviewRow k="Business type" v={businessTypeLabel(form.business_type)} />
+                <ReviewRow k="Country of incorporation" v={countryName(form.country_of_incorporation)} />
+                <ReviewRow k="State of incorporation" v={form.state_of_incorporation} />
+                <ReviewRow k="Years in operation" v={form.years_in_operation} />
+                <ReviewRow k="Industry" v={naicsLabel(form.industry_naics)} />
+                <ReviewRow k="Website" v={form.website} />
+              </ReviewSection>
 
-          {/* Contact */}
-          <ReviewSection label="Contact & address" onEdit={() => goTo(2)}>
-            <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' - ')} />
-            <ReviewRow k="Phone" v={form.primary_contact_phone} />
-            <ReviewRow
-              k="Address"
-              v={[form.address_line1, form.address_line2, form.city, form.state, form.zip, countryName(form.country)]
-                .filter(Boolean)
-                .join(', ')}
-            />
-          </ReviewSection>
+              {/* Contact */}
+              <ReviewSection label="Contact & address" onEdit={() => goTo(2)}>
+                <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' - ')} />
+                <ReviewRow k="Phone" v={form.primary_contact_phone} />
+                <ReviewRow
+                  k="Address"
+                  v={[form.address_line1, form.address_line2, form.city, form.state, form.zip, countryName(form.country)]
+                    .filter(Boolean)
+                    .join(', ')}
+                />
+              </ReviewSection>
 
-          {/* Ownership & Compliance */}
-          <ReviewSection label="Ownership & compliance" onEdit={() => goTo(3)}>
-            <ReviewRow k="CEO / director(s)" v={profile.ceo_name} />
-            <ReviewRow k="Beneficial owners" v={profile.ubo_summary} />
-            <ReviewRow k="PEP" v={profile.pep ? profile.pep.toUpperCase() : ''} />
-            <ReviewRow k="Sanctioned exposure" v={profile.sanctioned ? profile.sanctioned.toUpperCase() : ''} />
-            <ReviewRow k="Bankruptcy (7y)" v={profile.bankruptcy ? profile.bankruptcy.toUpperCase() : ''} />
-            <ReviewRow k="Material litigation" v={profile.litigation ? profile.litigation.toUpperCase() : ''} />
-          </ReviewSection>
-
-          {/* Financial & Trade */}
-          <ReviewSection label="Financial & trade profile" onEdit={() => goTo(4)}>
-            <ReviewRow k="Annual revenue" v={form.annual_revenue_range} />
-            <ReviewRow k="Employees" v={form.employee_count_range} />
-            <ReviewRow k="Operating currency" v={profile.primary_currency} />
-            {orgType === 'supplier' ? (
-              <>
-                <ReviewRow k="Country of origin" v={countryName(form.country_of_origin)} />
-                <ReviewRow k="Sourcing countries" v={form.sourcing_countries.map(countryName).join(', ')} />
-                <ReviewRow k="Financing need" v={profile.financing_need} />
-              </>
-            ) : (
-              <ReviewRow k="Product categories" v={form.product_categories.join(', ')} />
-            )}
-            <ReviewRow k="Payment terms" v={form.payment_terms_preference} />
-          </ReviewSection>
-
-          {/* Systems & Intent */}
-          <ReviewSection label="Systems & intent" onEdit={() => goTo(5)}>
-            <ReviewRow k="ERP system" v={profile.erp_system} />
-            <ReviewRow k="Primary bank" v={profile.primary_bank_name} />
-            <ReviewRow k="Intent" v={profile.intent.join(', ')} />
-            <ReviewRow k="AI matching" v={profile.ai_matching ? 'Enabled' : 'Disabled'} />
-          </ReviewSection>
-
-          {/* Bank Accounts */}
-          <ReviewSection label="Bank accounts" onEdit={() => goTo(6)}>
-            {bankAccounts.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: 'var(--gray)', padding: '4px 0' }}>No accounts added</div>
-            ) : (
-              bankAccounts.map(acc => (
-                <div key={acc.id} className="kv-row" style={{ padding: '6px 0' }}>
-                  <span className="k">{acc.nickname || acc.bank_name}</span>
-                  <span className="v plain">
-                    {acc.bank_name} - {acc.account_type} - ****{acc.account_number.slice(-4)}
-                    {acc.is_primary ? ' - Primary' : ''}
-                  </span>
-                </div>
-              ))
-            )}
-          </ReviewSection>
-
-          {/* Documents */}
-          <ReviewSection label="Documents" onEdit={() => goTo(7)}>
-            <div className="doc-list-inset">
-              {docSpecs.map((spec) => {
-                const done = docs[spec.kind]?.status === 'done'
-                return (
-                  <div className="doc-row-check" key={spec.kind}>
-                    {done ? (
-                      <span className="check-circle">
-                        <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
-                          <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        </svg>
-                      </span>
-                    ) : (
-                      <span
-                        style={{
-                          width: 18,
-                          height: 18,
-                          flexShrink: 0,
-                          border: '1.5px solid var(--color-border-strong)',
-                        }}
-                      />
-                    )}
-                    <span className="doc-name">{spec.label}</span>
-                    <span className="doc-meta">{done ? 'Uploaded' : spec.required ? 'Missing' : 'Optional'}</span>
-                  </div>
-                )
-              })}
+              {/* Ownership & Compliance */}
+              <ReviewSection label="Ownership & compliance" onEdit={() => goTo(3)}>
+                <ReviewRow k="CEO / director(s)" v={profile.ceo_name} />
+                <ReviewRow k="Beneficial owners" v={profile.ubo_summary} />
+                <ReviewRow k="PEP" v={profile.pep ? profile.pep.toUpperCase() : ''} />
+                <ReviewRow k="Sanctioned exposure" v={profile.sanctioned ? profile.sanctioned.toUpperCase() : ''} />
+                <ReviewRow k="Bankruptcy (7y)" v={profile.bankruptcy ? profile.bankruptcy.toUpperCase() : ''} />
+                <ReviewRow k="Material litigation" v={profile.litigation ? profile.litigation.toUpperCase() : ''} />
+              </ReviewSection>
             </div>
-          </ReviewSection>
+
+            <div>
+              {/* Financial & Trade */}
+              <ReviewSection label="Financial & trade profile" onEdit={() => goTo(4)}>
+                <ReviewRow k="Annual revenue" v={form.annual_revenue_range} />
+                <ReviewRow k="Employees" v={form.employee_count_range} />
+                <ReviewRow k="Operating currency" v={profile.primary_currency} />
+                {orgType === 'supplier' ? (
+                  <>
+                    <ReviewRow k="Country of origin" v={countryName(form.country_of_origin)} />
+                    <ReviewRow k="Sourcing countries" v={form.sourcing_countries.map(countryName).join(', ')} />
+                    <ReviewRow k="Financing need" v={profile.financing_need} />
+                  </>
+                ) : (
+                  <ReviewRow k="Product categories" v={form.product_categories.join(', ')} />
+                )}
+                <ReviewRow k="Payment terms" v={form.payment_terms_preference} />
+              </ReviewSection>
+
+              {/* Systems & Intent */}
+              <ReviewSection label="Systems & intent" onEdit={() => goTo(5)}>
+                <ReviewRow k="ERP system" v={profile.erp_system} />
+                <ReviewRow k="Primary bank" v={profile.primary_bank_name} />
+                <ReviewRow k="Intent" v={profile.intent.join(', ')} />
+                <ReviewRow k="AI matching" v={profile.ai_matching ? 'Enabled' : 'Disabled'} />
+              </ReviewSection>
+
+              {/* Bank Accounts */}
+              <ReviewSection label="Bank accounts" onEdit={() => goTo(6)}>
+                {bankAccounts.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--gray)', padding: '4px 0' }}>No accounts added</div>
+                ) : (
+                  bankAccounts.map(acc => (
+                    <div key={acc.id} className="kv-row" style={{ padding: '6px 0' }}>
+                      <span className="k">{acc.nickname || acc.bank_name}</span>
+                      <span className="v plain">
+                        {acc.bank_name} - {acc.account_type} - ****{acc.account_number.slice(-4)}
+                        {acc.is_primary ? ' - Primary' : ''}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </ReviewSection>
+
+              {/* Documents */}
+              <ReviewSection label="Documents" onEdit={() => goTo(7)}>
+                <div className="doc-list-inset">
+                  {docSpecs.map((spec) => {
+                    const done = docs[spec.kind]?.status === 'done'
+                    return (
+                      <div className="doc-row-check" key={spec.kind}>
+                        {done ? (
+                          <span className="check-circle">
+                            <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+                              <path d="M4 8 L7 11 L12 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            </svg>
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              width: 18,
+                              height: 18,
+                              flexShrink: 0,
+                              border: '1.5px solid var(--color-border-strong)',
+                            }}
+                          />
+                        )}
+                        <span className="doc-name">{spec.label}</span>
+                        <span className="doc-meta">{done ? 'Uploaded' : spec.required ? 'Missing' : 'Optional'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </ReviewSection>
+            </div>
+          </div>
 
           <label
             className="submit-disclaimer"

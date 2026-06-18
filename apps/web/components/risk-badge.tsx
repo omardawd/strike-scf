@@ -42,11 +42,13 @@ export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }
         padding: size === 'sm' ? '4px 10px' : '6px 12px',
         background: colors.bg,
         border: `1px solid ${colors.border}`,
-        fontFamily: 'var(--font-mono)',
-        fontSize: size === 'sm' ? 11 : 13,
-        letterSpacing: '0.1em',
+        fontFamily: 'var(--font-body)',
+        fontSize: size === 'sm' ? 11 : 12.5,
+        fontWeight: 600,
+        letterSpacing: '0.04em',
         textTransform: 'uppercase',
         color: colors.text,
+        borderRadius: 'var(--radius-badge)',
       }}>
         <div style={{
           width: 7,
@@ -67,9 +69,10 @@ export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }
             background: f.severity === 'high' ? 'rgba(220,38,38,0.06)' : 'var(--offwhite)',
             border: `1px solid ${f.severity === 'high' ? 'rgba(220,38,38,0.2)' : 'var(--border)'}`,
             borderLeft: '3px solid currentColor',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-body)',
             fontSize: 11,
-            letterSpacing: '0.1em',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
             textTransform: 'uppercase',
             color: f.severity === 'high' ? '#DC2626' : 'var(--gray)',
           }}
@@ -81,10 +84,10 @@ export function RiskBadge({ score, tier, flags, size = 'md', showScore = false }
 
       {flags && flags.length > 2 && (
         <div style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 9,
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
+          fontWeight: 500,
           color: 'var(--gray)',
-          letterSpacing: '0.08em',
         }}>
           +{flags.length - 2}
         </div>

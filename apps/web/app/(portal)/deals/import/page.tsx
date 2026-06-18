@@ -51,10 +51,10 @@ function ExtractedChip() {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+      fontFamily: 'var(--font-body)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
       textTransform: 'uppercase', color: 'var(--teal)',
       border: '1px solid var(--teal)', background: 'var(--teal-dim)',
-      padding: '1px 6px', marginLeft: 8,
+      padding: '2px 7px', marginLeft: 8, borderRadius: 'var(--radius-badge)',
     }}>
       ✦ Extracted
     </span>
@@ -68,7 +68,7 @@ function PassportMiniCompact({ org }: { org: OrgResult }) {
       <PassportScoreRing score={org.passport_score} size="sm" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray-soft)', marginTop: 2 }}>
+        <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray-soft)', marginTop: 2 }}>
           {org.type} · {org.country}
         </div>
       </div>

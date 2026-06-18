@@ -311,7 +311,7 @@ export default function DealsPage() {
                         ) : (
                           <span className="mono" style={{ color: 'var(--gray)' }}>Deal #{shortId(deal.id)}</span>
                         )}
-                        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 2 }}>
                           {SOURCE_LABEL[deal.deal_source] ?? deal.deal_source}
                         </div>
                       </td>
@@ -322,14 +322,14 @@ export default function DealsPage() {
                           )}
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{cpName}</div>
-                            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 1 }}>
+                            <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', color: 'var(--gray-soft)', marginTop: 1 }}>
                               {deal.user_role === 'buyer' ? 'You are buyer' : 'You are supplier'}
                             </div>
                           </div>
                         </div>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>
                           {fmt(value, deal.agreed_currency)}
                         </span>
                       </td>
@@ -356,7 +356,7 @@ export default function DealsPage() {
                         )}
                       </td>
                       <td>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
                           {fmtDate(deal.agreed_delivery_date)}
                         </span>
                       </td>

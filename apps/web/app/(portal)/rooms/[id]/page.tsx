@@ -114,7 +114,7 @@ function DateDivider({ label }: { label: string }) {
     }}>
       <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
       <span style={{
-        fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+        fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.04em',
         textTransform: 'uppercase', color: 'var(--gray-soft)',
       }}>
         {label}
@@ -222,7 +222,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
             <span className="room-msg-offer-price">
               {new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(price)}
               {' '}
-              <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', color: 'var(--gray)' }}>{currency}</span>
+              <span style={{ fontSize: 13, fontFamily: 'var(--font-body)', fontWeight: 500, color: 'var(--gray)' }}>{currency}</span>
             </span>
           )}
           {terms.length > 0 && (
@@ -542,7 +542,7 @@ export default function RoomPage() {
             <span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span>
             <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>{deal.counterparty_name}</span>
             {deal.total_value != null && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--gray-soft)' }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 500, color: 'var(--gray-soft)' }}>
                 {fmtAmount(deal.total_value, deal.agreed_currency)}
               </span>
             )}

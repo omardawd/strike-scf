@@ -2478,8 +2478,8 @@ export default function TransactionDetailPage() {
                         ['Discount Fee', showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'],
                       ] as [string, string][]).map(([label, value]) => (
                         <div key={label} style={{ background: 'var(--white)', padding: '16px 20px' }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 6 }}>{label}</div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{value}</div>
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 6 }}>{label}</div>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>{value}</div>
                         </div>
                       ))}
                     </div>

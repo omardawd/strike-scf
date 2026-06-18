@@ -108,7 +108,7 @@ function ItemPricingTable({
   }
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '6px 0', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '6px 0', fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
         <span>Item</span><span>Qty</span><span>Unit</span><span>Price / Unit</span>
       </div>
       {items.map((item, idx) => (
@@ -140,7 +140,7 @@ function ItemPricingTable({
           <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>
             {total.toLocaleString()}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>{currency}</span>
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, color: 'var(--gray)' }}>{currency}</span>
         </div>
       )}
     </div>
@@ -340,7 +340,7 @@ function CounterForm({
 
   return (
     <div style={{ margin: '0 20px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-      <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
         Counter Offer — Round {(offer.current_round ?? 1) + 1}
       </p>
 
@@ -480,7 +480,7 @@ function OfferCard({
       <div className="mp-offer-card-status">
         <span className={`badge ${OFFER_STATUS_CLASS[offer.status] ?? 'badge-draft'}`}>{offer.status}</span>
         {offer.current_round > 1 && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', letterSpacing: '0.08em' }}>
             Round {offer.current_round}
           </span>
         )}
@@ -488,14 +488,14 @@ function OfferCard({
 
       {/* ── Total price ── */}
       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>
+        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>
           Total Offer
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ink)', lineHeight: 1 }}>
             {(offerTotal ?? offer.offered_price)?.toLocaleString() ?? '—'}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--gray)' }}>
             {listing.currency}
           </span>
         </div>
@@ -504,7 +504,7 @@ function OfferCard({
       {/* ── Offered by ── */}
       {offeror_org && (
         <div style={{ padding: '14px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
             Offered By
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -526,7 +526,7 @@ function OfferCard({
                 )}
               </svg>
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 0 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', lineHeight: 1 }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>
                   {score ?? '—'}
                 </span>
               </div>
@@ -538,28 +538,28 @@ function OfferCard({
                 <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || 'Unknown'}
                 </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', border: '1px solid var(--border-strong)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', border: '1px solid var(--border-strong)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
                   {offeror_org.type as string}
                 </span>
               </div>
 
               <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Trades</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Trades</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                     {(offeror_org.trade_count_total as number | null) ?? '—'}
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Avg Pay</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Avg Pay</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                     {(offeror_org.avg_payment_days as number | null) != null ? `${offeror_org.avg_payment_days}d` : '—'}
                   </div>
                 </div>
                 {(offeror_org.dispute_rate_network as number | null) != null && (
                   <div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Disputes</div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Disputes</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                       {((offeror_org.dispute_rate_network as number) * 100).toFixed(1)}%
                     </div>
                   </div>
@@ -580,10 +580,10 @@ function OfferCard({
       {/* ── Per-item breakdown ── */}
       {lastRoundItems.length > 0 && (
         <div style={{ padding: '14px 20px 4px', borderBottom: '1px solid var(--border-light)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Item Breakdown
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 90px 90px', gap: 6, paddingBottom: 6, borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 90px 90px', gap: 6, paddingBottom: 6, borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
             <span>Item</span><span>Qty</span><span>Unit</span><span>Unit Price</span><span style={{ textAlign: 'right' }}>Total</span>
           </div>
           {lastRoundItems.map((it: any, idx: number) => {
@@ -607,9 +607,9 @@ function OfferCard({
           })}
           {offerTotal != null && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 8, padding: '10px 0 6px' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)' }}>Total</span>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)' }}>Total</span>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{offerTotal.toLocaleString()}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>{listing.currency}</span>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, color: 'var(--gray)' }}>{listing.currency}</span>
             </div>
           )}
         </div>
@@ -640,7 +640,7 @@ function OfferCard({
       )}
 
       <div className="mp-offer-card-footer">
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
           {timeAgo(offer.created_at)}
         </span>
 
@@ -1006,7 +1006,7 @@ export default function ListingDetailPage() {
                     {displayPrice != null
                       ? displayPrice.toLocaleString()
                       : '—'}&nbsp;
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gray)', letterSpacing: '0.08em' }}>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--gray)' }}>
                       {listing.currency}{!isTotal && listing.unit ? ` / ${listing.unit}` : ''}
                     </span>
                   </span>
@@ -1042,9 +1042,10 @@ export default function ListingDetailPage() {
                       {fmtDate(listing.delivery_deadline)}
                       {deliveryPast && (
                         <span style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 9,
-                          letterSpacing: '0.08em',
+                          fontFamily: 'var(--font-body)',
+                          fontSize: 11,
+                          fontWeight: 500,
+                          letterSpacing: '0.04em',
                           textTransform: 'uppercase',
                           color: 'var(--color-amber)',
                           background: 'rgba(217,119,6,0.08)',
@@ -1083,7 +1084,7 @@ export default function ListingDetailPage() {
               <div className="card">
                 <div className="card-head">Line Items</div>
                 <div style={{ padding: '0 0 8px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
                     <span>Item</span>
                     <span>Qty</span>
                     <span>Unit</span>
@@ -1111,7 +1112,7 @@ export default function ListingDetailPage() {
             {/* AI Summary */}
             {listing.ai_summary && (
               <div style={{ borderLeft: '3px solid var(--teal)', background: 'var(--teal-dim)', padding: '12px 16px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)', marginBottom: 4 }}>
                   Strike AI Summary
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--teal)', lineHeight: 1.6, fontStyle: 'italic' }}>
@@ -1124,10 +1125,10 @@ export default function ListingDetailPage() {
             {isListingOwner ? (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
                     Offers Received
                   </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, color: 'var(--blue)', fontWeight: 600 }}>
                     {offer_count ?? offers.length}
                   </span>
                 </div>
@@ -1167,7 +1168,7 @@ export default function ListingDetailPage() {
               </div>
             ) : offers.length > 0 ? (
               <div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
                   Your Offer
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1237,7 +1238,7 @@ export default function ListingDetailPage() {
                     <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
                       {(poster_org.doing_business_as as string | null) || (poster_org.legal_name as string | null) || 'Unknown'}
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
                       {poster_org.type as string}
                     </div>
                   </div>

@@ -58,13 +58,13 @@ function CountryCode({ code }: { code: string }) {
     <span
       title={FLAG_NAMES[code.toUpperCase()] ?? code.toUpperCase()}
       style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 9,
-        letterSpacing: '0.08em',
+        fontFamily: 'var(--font-body)',
+        fontSize: 10.5,
+        fontWeight: 500,
         color: 'var(--gray)',
         border: '1px solid var(--border)',
-        borderRadius: 2,
-        padding: '1px 4px',
+        borderRadius: 'var(--radius-badge)',
+        padding: '1px 5px',
         lineHeight: 1.5,
         display: 'inline-block',
         textTransform: 'uppercase',
@@ -819,9 +819,10 @@ export default function AnchorDetailPage() {
                           }}
                         >
                           <div style={{
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: 10,
-                            letterSpacing: '0.12em',
+                            fontFamily: 'var(--font-body)',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            letterSpacing: '0.04em',
                             textTransform: 'uppercase',
                             color: inviteMode === m.id ? 'var(--blue)' : 'var(--gray)',
                             marginBottom: 4,
@@ -846,7 +847,7 @@ export default function AnchorDetailPage() {
                     </div>
                     {inviteMode === 'known_counterparty' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
                           Pre-fill their organization details
                         </div>
                         <input className="input" placeholder="Legal name" value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
@@ -877,13 +878,14 @@ export default function AnchorDetailPage() {
                         </select>
                         <input className="input" placeholder="Primary contact phone" value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
                         <div style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 10,
-                          letterSpacing: '0.1em',
+                          fontFamily: 'var(--font-body)',
+                          fontSize: 12,
                           color: 'var(--gray)',
                           padding: '10px 14px',
                           background: 'var(--offwhite)',
                           border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          lineHeight: 1.5,
                         }}>
                           These details will be pre-filled in their onboarding. They will only need to create credentials — no KYB application required.
                         </div>
@@ -891,7 +893,7 @@ export default function AnchorDetailPage() {
                     )}
                     {inviteMode === 'custom_kyb' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
                           Required documents
                         </div>
                         {AVAILABLE_DOCS.map(doc => (

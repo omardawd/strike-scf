@@ -41,11 +41,8 @@ function fmtDate(d: string | null | undefined): string {
 }
 
 async function readJsonSafe<T = Record<string, unknown>>(res: Response): Promise<T & { error?: string }> {
-  try {
-    return await res.json()
-  } catch {
-    return { error: `Request failed (${res.status})` } as T & { error?: string }
-  }
+  try { return await res.json() }
+  catch { return { error: `Request failed (${res.status})` } as T & { error?: string } }
 }
 
 function ContractDocumentLink({ documentId }: { documentId: string }) {
@@ -53,12 +50,39 @@ function ContractDocumentLink({ documentId }: { documentId: string }) {
   useEffect(() => {
     fetch(`/api/documents/${documentId}/url`).then(r => r.json()).then(d => { if (d.url) setUrl(d.url) }).catch(() => {})
   }, [documentId])
-  if (!url) return <span style={{ fontSize: 12, color: 'var(--gray)' }}>Loading contract…</span>
+  if (!url) return <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>Loading contract…</span>
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
-      View / Download Contract
+    <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/>
+      </svg>
+      View Contract
     </a>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M3.5 8.5L6.5 11.5L12.5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function StepCircle({ n, done, active }: { n: number; done: boolean; active: boolean }) {
+  return (
+    <div style={{
+      width: 32, height: 32, borderRadius: '50%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 13, fontWeight: 700, flexShrink: 0,
+      border: done ? '2px solid var(--color-green)' : active ? '2px solid var(--blue)' : '2px solid var(--border-strong)',
+      background: done ? 'var(--color-green)' : active ? 'var(--blue)' : 'var(--white)',
+      color: done || active ? '#fff' : 'var(--gray)',
+      boxShadow: active ? '0 0 0 4px rgba(20,40,204,0.1)' : 'none',
+      zIndex: 1,
+    }}>
+      {done ? <CheckIcon /> : n}
+    </div>
   )
 }
 
@@ -87,20 +111,28 @@ export function FinancingManagementCard({
 }) {
   const { requesterFee, bankFee } = calcFinancingFees(financingAmount)
   const netDisbursement = calcNetDisbursement(financingAmount, requesterFee)
-  const [generating, setGenerating] = useState(false)
+  const [generating, setGenerating]   = useState(false)
   const [contractMode, setContractMode] = useState<'ai' | 'upload'>('ai')
   const [contractFile, setContractFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [signature, setSignature]   = useState('')
-  const [signing, setSigning]       = useState(false)
-  const [reference, setReference]   = useState('')
-  const [disbursing, setDisbursing] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const [error, setError]           = useState<string | null>(null)
+  const [uploading, setUploading]     = useState(false)
+  const [signature, setSignature]     = useState('')
+  const [signing, setSigning]         = useState(false)
+  const [reference, setReference]     = useState('')
+  const [disbursing, setDisbursing]   = useState(false)
+  const [confirming, setConfirming]   = useState(false)
+  const [error, setError]             = useState<string | null>(null)
 
   const requesterSignedAt = transaction
     ? (isRequesterBuyer ? transaction.anchor_signed_at : transaction.supplier_signed_at)
     : null
+
+  // Derived step states
+  const step1Done   = !!transaction?.esign_completed_at
+  const step1Active = !step1Done
+  const step2Done   = !!transaction?.disbursed_at
+  const step2Active = step1Done && !step2Done
+  const step3Done   = !!transaction?.supplier_paid_at
+  const step3Active = step2Done && !step3Done
 
   async function postContract(body: { generate?: boolean; contract_document_id?: string }): Promise<boolean> {
     const res = await fetch(`/api/marketplace/financing/${requestId}/contract`, {
@@ -110,8 +142,7 @@ export function FinancingManagementCard({
     })
     const json = await readJsonSafe(res)
     if (!res.ok) { setError(json.error ?? 'Failed to submit contract'); return false }
-    onReload()
-    return true
+    onReload(); return true
   }
 
   async function submitContract() {
@@ -126,22 +157,14 @@ export function FinancingManagementCard({
         const uploadJson = await readJsonSafe<{ document?: { id: string } }>(uploadRes)
         if (!uploadRes.ok || !uploadJson.document) { setError(uploadJson.error ?? 'Upload failed'); return }
         await postContract({ contract_document_id: uploadJson.document.id })
-      } catch {
-        setError('Network error — failed to upload contract')
-      } finally {
-        setUploading(false)
-      }
+      } catch { setError('Network error — failed to upload contract') }
+      finally { setUploading(false) }
       return
     }
-
     setGenerating(true)
-    try {
-      await postContract({ generate: true })
-    } catch {
-      setError('Network error — failed to submit contract')
-    } finally {
-      setGenerating(false)
-    }
+    try { await postContract({ generate: true }) }
+    catch { setError('Network error — failed to submit contract') }
+    finally { setGenerating(false) }
   }
 
   async function signContract() {
@@ -156,11 +179,8 @@ export function FinancingManagementCard({
       const json = await readJsonSafe(res)
       if (!res.ok) { setError(json.error ?? 'Failed to sign contract'); return }
       onReload()
-    } catch {
-      setError('Network error — failed to sign contract')
-    } finally {
-      setSigning(false)
-    }
+    } catch { setError('Network error — failed to sign contract') }
+    finally { setSigning(false) }
   }
 
   async function disburse() {
@@ -175,11 +195,8 @@ export function FinancingManagementCard({
       const json = await readJsonSafe(res)
       if (!res.ok) { setError(json.error ?? 'Failed to disburse'); return }
       onReload()
-    } catch {
-      setError('Network error — failed to disburse')
-    } finally {
-      setDisbursing(false)
-    }
+    } catch { setError('Network error — failed to disburse') }
+    finally { setDisbursing(false) }
   }
 
   async function confirmReceived() {
@@ -189,207 +206,227 @@ export function FinancingManagementCard({
       const json = await readJsonSafe(res)
       if (!res.ok) { setError(json.error ?? 'Failed to confirm receipt'); return }
       onReload()
-    } catch {
-      setError('Network error — failed to confirm receipt')
-    } finally {
-      setConfirming(false)
-    }
+    } catch { setError('Network error — failed to confirm receipt') }
+    finally { setConfirming(false) }
   }
 
   const content = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {error && (
+        <div className="alert alert-error" style={{ fontSize: 13, marginBottom: 16 }}>{error}</div>
+      )}
 
-        {financingAmount != null && (
-          <div className="kv-list">
-            <div className="kv-row"><span className="k">Financed Amount</span><span className="v">{fmtAmt(financingAmount, currency)}</span></div>
-            <div className="kv-row">
-              <span className="k">Strike Service Fee (0.15%) — {isBank ? 'You (bank)' : 'You'}</span>
-              <span className="v">{fmtAmt(isBank ? bankFee : requesterFee, currency)}</span>
-            </div>
-            {!isBank && <div className="kv-row"><span className="k">Net You'll Receive</span><span className="v" style={{ fontWeight: 700 }}>{fmtAmt(netDisbursement, currency)}</span></div>}
-          </div>
-        )}
-
-        {/* Step 1: Contract */}
-        <div>
-          <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 10 }}>
-            Step 1 · Financing Contract
-          </div>
-
-          {!transaction?.esign_document_id ? (
-            isBank ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${contractMode === 'ai' ? 'btn-blue' : 'btn-ghost'}`}
-                    onClick={() => setContractMode('ai')}
-                  >
-                    AI Generate
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${contractMode === 'upload' ? 'btn-blue' : 'btn-ghost'}`}
-                    onClick={() => setContractMode('upload')}
-                  >
-                    Upload Document
-                  </button>
-                </div>
-                {contractMode === 'ai' ? (
-                  <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--gray)' }}>
-                    Strike AI will draft a financing agreement from this request's terms. The borrower will receive it to review and sign.
-                  </div>
-                ) : (
-                  <div className="form-field">
-                    <label className="field-label">Contract Document *</label>
-                    <input
-                      className="input"
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt"
-                      style={{ paddingTop: 6 }}
-                      onChange={e => setContractFile(e.target.files?.[0] ?? null)}
-                    />
-                    {contractFile && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{contractFile.name}</div>}
-                  </div>
-                )}
-                <button
-                  className="btn btn-blue btn-sm"
-                  disabled={generating || uploading || (contractMode === 'upload' && !contractFile)}
-                  onClick={submitContract}
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  {uploading ? 'Uploading…' : generating ? 'Generating…' : 'Submit Contract'}
-                </button>
+      {/* Financing summary strip */}
+      {financingAmount != null && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isBank ? '1fr 1fr' : '1fr 1fr 1fr',
+          gap: 1,
+          background: 'var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          overflow: 'hidden',
+          marginBottom: 28,
+        }}>
+          {[
+            { label: 'Financed Amount', value: fmtAmt(financingAmount, currency), highlight: false },
+            { label: isBank ? 'Your Fee (0.15%)' : 'Strike Service Fee', value: fmtAmt(isBank ? bankFee : requesterFee, currency), highlight: false },
+            ...(!isBank ? [{ label: "Net You'll Receive", value: fmtAmt(netDisbursement, currency), highlight: true }] : []),
+          ].map((cell, i) => (
+            <div key={i} style={{
+              background: 'var(--white)', padding: '14px 18px',
+              display: 'flex', flexDirection: 'column', gap: 4,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                {cell.label}
               </div>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--gray)' }}>Waiting for the bank to issue the financing contract.</div>
-            )
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <ContractDocumentLink documentId={transaction.esign_document_id} />
-              <div className="kv-list">
-                <div className="kv-row">
-                  <span className="k">Bank Signed</span>
-                  <span className="v">{fmtDate(transaction.bank_signed_at)}</span>
-                </div>
-                <div className="kv-row">
-                  <span className="k">Borrower Signed</span>
-                  <span className="v">{requesterSignedAt ? fmtDate(requesterSignedAt) : 'Pending'}</span>
-                </div>
-                {transaction.esign_completed_at && (
-                  <div className="kv-row">
-                    <span className="k">Contract Status</span>
-                    <span className="badge badge-funded">Fully Executed</span>
-                  </div>
-                )}
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 18, fontWeight: 700,
+                letterSpacing: '-0.02em',
+                color: cell.highlight ? 'var(--blue)' : 'var(--ink)',
+              }}>
+                {cell.value}
               </div>
             </div>
-          )}
-
-          {transaction?.esign_document_id && !requesterSignedAt && isRequester && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-              <div className="form-field">
-                <label className="field-label">Typed Signature (Full Legal Name) *</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={signature}
-                  onChange={e => setSignature(e.target.value)}
-                  placeholder="Enter your full legal name"
-                />
-                <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>By typing your name you electronically sign this contract.</div>
-              </div>
-              <button className="btn btn-blue btn-sm" disabled={signing || !signature.trim()} onClick={signContract} style={{ alignSelf: 'flex-start' }}>
-                {signing ? 'Signing…' : 'Sign Contract'}
-              </button>
-            </div>
-          )}
+          ))}
         </div>
+      )}
 
-        {/* Step 2: Disbursement */}
-        {transaction?.esign_document_id && (
-          <div>
-            <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 10 }}>
-              Step 2 · Disbursement
+      {/* Steps */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Step 1: Contract */}
+        <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 16, position: 'relative', paddingBottom: 28 }}>
+          {/* connector */}
+          <div style={{ position: 'absolute', left: 15, top: 36, bottom: 0, width: 2, background: step1Done ? 'var(--color-green)' : 'var(--border)' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <StepCircle n={1} done={step1Done} active={step1Active} />
+          </div>
+          <div style={{ paddingTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: step1Active ? 'var(--ink)' : step1Done ? 'var(--color-ink-2)' : 'var(--gray)', marginBottom: 2 }}>
+              Financing Contract
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 14 }}>
+              {step1Done ? `Fully executed · ${fmtDate(transaction?.esign_completed_at)}` : 'Sign the financing agreement to proceed.'}
             </div>
 
-            {!transaction.disbursed_at ? (
-              !transaction.esign_completed_at ? (
-                <div style={{ fontSize: 13, color: 'var(--gray)' }}>The contract must be signed by both parties before funds can be disbursed.</div>
-              ) : isBank ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {requesterBankAccount ? (
-                    <div className="kv-list">
-                      <div className="kv-row"><span className="k">Receiving Bank</span><span className="v plain">{requesterBankAccount.bank_name}</span></div>
-                      <div className="kv-row"><span className="k">Account Holder</span><span className="v plain">{requesterBankAccount.account_holder_name}</span></div>
-                      <div className="kv-row">
-                        <span className="k">Account No.</span>
-                        <span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>
-                          ****{requesterBankAccount.account_number.slice(-4)}
-                        </span>
-                      </div>
-                      {(requesterBankAccount.swift_iban || requesterBankAccount.routing_number) && (
-                        <div className="kv-row"><span className="k">Routing / SWIFT</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{requesterBankAccount.swift_iban ?? requesterBankAccount.routing_number}</span></div>
-                      )}
-                      {netDisbursement != null && (
-                        <div className="kv-row"><span className="k">Net Amount to Wire</span><span className="v" style={{ fontWeight: 700 }}>{fmtAmt(netDisbursement, currency)}</span></div>
-                      )}
+            {!transaction?.esign_document_id ? (
+              isBank ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className={`btn btn-sm ${contractMode === 'ai' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('ai')}>
+                      AI Generate
+                    </button>
+                    <button type="button" className={`btn btn-sm ${contractMode === 'upload' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('upload')}>
+                      Upload PDF
+                    </button>
+                  </div>
+                  {contractMode === 'ai' ? (
+                    <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--gray)' }}>
+                      Strike AI will draft a financing agreement from this request's terms. The borrower will receive it to review and sign.
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: 'var(--color-amber)', padding: '8px 12px', background: 'var(--color-amber-bg)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8 }}>
-                      The borrower has not added a bank account yet. Disbursement cannot proceed until they do.
+                    <div className="form-field">
+                      <label className="field-label">Contract Document</label>
+                      <input className="input" type="file" accept=".pdf,.doc,.docx,.txt" style={{ paddingTop: 6 }} onChange={e => setContractFile(e.target.files?.[0] ?? null)} />
+                      {contractFile && <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>{contractFile.name}</div>}
                     </div>
                   )}
-                  <div className="form-field">
-                    <label className="field-label">Payment Reference</label>
-                    <input className="input" type="text" value={reference} onChange={e => setReference(e.target.value)} placeholder="Wire/payment reference (optional)" />
-                  </div>
-                  <button
-                    className="btn btn-blue btn-sm"
-                    disabled={disbursing || !requesterBankAccount}
-                    onClick={disburse}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    {disbursing ? 'Sending…' : 'Send Payment Reference'}
+                  <button className="btn btn-blue btn-sm" disabled={generating || uploading || (contractMode === 'upload' && !contractFile)} onClick={submitContract} style={{ alignSelf: 'flex-start' }}>
+                    {uploading ? 'Uploading…' : generating ? 'Generating…' : 'Submit Contract'}
                   </button>
                 </div>
               ) : (
-                <div style={{ fontSize: 13, color: 'var(--gray)' }}>Waiting for the bank to disburse funds.</div>
+                <div style={{ fontSize: 13, color: 'var(--gray)', fontStyle: 'italic' }}>Waiting for the bank to issue the financing contract.</div>
               )
             ) : (
-              <div className="kv-list">
-                <div className="kv-row"><span className="k">Disbursed</span><span className="v">{fmtDate(transaction.disbursed_at)}</span></div>
-                {transaction.disbursement_reference && (
-                  <div className="kv-row"><span className="k">Reference</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{transaction.disbursement_reference}</span></div>
-                )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <ContractDocumentLink documentId={transaction.esign_document_id} />
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12.5 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: transaction.bank_signed_at ? 'var(--color-green)' : 'var(--gray)' }}>
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.5L6.5 11.5L12.5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Bank signed {transaction.bank_signed_at ? fmtDate(transaction.bank_signed_at) : '(pending)'}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: requesterSignedAt ? 'var(--color-green)' : 'var(--gray)' }}>
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.5L6.5 11.5L12.5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Borrower signed {requesterSignedAt ? fmtDate(requesterSignedAt) : '(pending)'}
+                  </span>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Step 3: Confirm receipt */}
-        {transaction?.disbursed_at && (
-          <div>
-            <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 10 }}>
-              Step 3 · Confirm Receipt
-            </div>
-            {transaction.supplier_paid_at ? (
-              <div className="kv-list">
-                <div className="kv-row"><span className="k">Confirmed Received</span><span className="v">{fmtDate(transaction.supplier_paid_at)}</span></div>
-              </div>
-            ) : isRequester ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ fontSize: 13, color: 'var(--gray)' }}>Once the funds arrive in your account, confirm receipt below.</div>
-                <button className="btn btn-blue btn-sm" disabled={confirming} onClick={confirmReceived} style={{ alignSelf: 'flex-start' }}>
-                  {confirming ? 'Confirming…' : 'Confirm Receipt'}
+            {transaction?.esign_document_id && !requesterSignedAt && isRequester && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, padding: '14px 16px', background: 'var(--blue-light)', border: '1px solid rgba(20,40,204,0.18)', borderRadius: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--blue)', marginBottom: 2 }}>Sign the contract</div>
+                <div className="form-field">
+                  <label className="field-label">Type your full legal name</label>
+                  <input className="input" type="text" value={signature} onChange={e => setSignature(e.target.value)} placeholder="Your full legal name" />
+                  <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>By typing your name you electronically sign this contract.</div>
+                </div>
+                <button className="btn btn-blue btn-sm" disabled={signing || !signature.trim()} onClick={signContract} style={{ alignSelf: 'flex-start' }}>
+                  {signing ? 'Signing…' : 'Sign & Execute'}
                 </button>
               </div>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--gray)' }}>Waiting for the borrower to confirm receipt of funds.</div>
             )}
           </div>
-        )}
+        </div>
+
+        {/* Step 2: Disbursement */}
+        <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 16, position: 'relative', paddingBottom: 28 }}>
+          <div style={{ position: 'absolute', left: 15, top: 36, bottom: 0, width: 2, background: step2Done ? 'var(--color-green)' : 'var(--border)' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <StepCircle n={2} done={step2Done} active={step2Active} />
+          </div>
+          <div style={{ paddingTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: step2Active ? 'var(--ink)' : step2Done ? 'var(--color-ink-2)' : 'var(--gray)', marginBottom: 2 }}>
+              Disbursement
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 14 }}>
+              {step2Done ? `Funds sent · ${fmtDate(transaction?.disbursed_at)}${transaction?.disbursement_reference ? ` · Ref: ${transaction.disbursement_reference}` : ''}` : 'Bank wires funds after contract is executed.'}
+            </div>
+
+            {!transaction?.esign_document_id ? (
+              <div style={{ fontSize: 13, color: 'var(--gray-soft)', fontStyle: 'italic' }}>Awaiting contract execution.</div>
+            ) : !transaction.disbursed_at ? (
+              !transaction.esign_completed_at ? (
+                <div style={{ fontSize: 13, color: 'var(--gray-soft)', fontStyle: 'italic' }}>Awaiting signatures from both parties.</div>
+              ) : isBank ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {requesterBankAccount ? (
+                    <div style={{
+                      padding: '12px 16px',
+                      background: 'var(--offwhite)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      display: 'flex', flexDirection: 'column', gap: 6,
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Receiving account</div>
+                      {[
+                        { k: 'Bank', v: requesterBankAccount.bank_name },
+                        { k: 'Account Holder', v: requesterBankAccount.account_holder_name },
+                        { k: 'Account No.', v: `****${requesterBankAccount.account_number.slice(-4)}`, mono: true },
+                        ...(requesterBankAccount.swift_iban || requesterBankAccount.routing_number
+                          ? [{ k: 'Routing / SWIFT', v: requesterBankAccount.swift_iban ?? requesterBankAccount.routing_number ?? '', mono: true }]
+                          : []),
+                        ...(netDisbursement != null ? [{ k: 'Net Amount to Wire', v: fmtAmt(netDisbursement, currency), bold: true }] : []),
+                      ].map((row, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                          <span style={{ color: 'var(--gray)' }}>{row.k}</span>
+                          <span style={{ fontFamily: (row as any).mono ? 'var(--font-mono)' : 'inherit', fontWeight: (row as any).bold ? 700 : 500, color: (row as any).bold ? 'var(--blue)' : 'var(--ink)' }}>{row.v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--color-amber)', padding: '10px 14px', background: 'var(--color-amber-bg)', borderRadius: 8 }}>
+                      The borrower hasn't added a bank account yet. Disbursement cannot proceed until they do.
+                    </div>
+                  )}
+                  <div className="form-field">
+                    <label className="field-label">Payment Reference (optional)</label>
+                    <input className="input" type="text" value={reference} onChange={e => setReference(e.target.value)} placeholder="Wire/payment reference" />
+                  </div>
+                  <button className="btn btn-blue btn-sm" disabled={disbursing || !requesterBankAccount} onClick={disburse} style={{ alignSelf: 'flex-start' }}>
+                    {disbursing ? 'Sending…' : 'Confirm Disbursement'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--gray)', fontStyle: 'italic' }}>Waiting for the bank to disburse funds.</div>
+              )
+            ) : null}
+          </div>
+        </div>
+
+        {/* Step 3: Confirm receipt */}
+        <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <StepCircle n={3} done={step3Done} active={step3Active} />
+          </div>
+          <div style={{ paddingTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: step3Active ? 'var(--ink)' : step3Done ? 'var(--color-ink-2)' : 'var(--gray)', marginBottom: 2 }}>
+              Confirm Receipt
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 14 }}>
+              {step3Done ? `Funds confirmed received · ${fmtDate(transaction?.supplier_paid_at)}` : 'Confirm once the funds arrive in your account.'}
+            </div>
+
+            {!transaction?.disbursed_at ? (
+              <div style={{ fontSize: 13, color: 'var(--gray-soft)', fontStyle: 'italic' }}>Awaiting disbursement.</div>
+            ) : !transaction.supplier_paid_at ? (
+              isRequester ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.5 }}>
+                    Once the funds arrive in your account, click below to confirm receipt and complete the financing.
+                  </div>
+                  <button className="btn btn-blue btn-sm" disabled={confirming} onClick={confirmReceived} style={{ alignSelf: 'flex-start' }}>
+                    {confirming ? 'Confirming…' : 'Confirm Receipt'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--gray)', fontStyle: 'italic' }}>Waiting for the borrower to confirm receipt of funds.</div>
+              )
+            ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   )
 
@@ -397,7 +434,11 @@ export function FinancingManagementCard({
 
   return (
     <div className="card">
-      <div className="card-head">Financing Management</div>
+      <div className="card-head" style={{ gap: 8 }}>
+        <span>Financing Management</span>
+        {step1Done && step2Done && step3Done && <span className="badge badge-funded">Complete</span>}
+        {(step1Done || step2Done) && !step3Done && <span className="badge badge-active">In Progress</span>}
+      </div>
       <div className="card-body">{content}</div>
     </div>
   )

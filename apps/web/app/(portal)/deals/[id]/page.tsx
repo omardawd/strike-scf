@@ -147,7 +147,7 @@ function AmendmentBanner({ deal, onRefresh }: { deal: Deal; onRefresh: () => voi
 
   return (
     <div style={{ padding: '14px 16px', background: 'rgba(20,40,204,0.04)', border: '1.5px solid rgba(20,40,204,0.2)', borderRadius: 12, marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 8 }}>Amendment Pending</div>
+      <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 8 }}>Amendment Pending</div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13 }}>
         <div><span style={{ color: 'var(--gray)' }}>Field: </span>{pending.field.replace(/_/g, ' ')}</div>
         <div><span style={{ color: 'var(--gray)' }}>From: </span>{String(pending.current_value ?? '—')}</div>
@@ -749,7 +749,7 @@ export default function DealDetailPage() {
             <span className={statusBadgeClass(deal.status)}>{deal.status.replace(/_/g, ' ')}</span>
             <span className={sourceBadgeClass(deal.deal_source)}>{deal.deal_source}</span>
             {financingContext.financingBadgeLabel && (
-              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 {financingContext.financingBadgeLabel}
               </span>
             )}
@@ -804,7 +804,7 @@ export default function DealDetailPage() {
                       {(deal.status as string) === 'contract_pending' && contractData?.contract?.document_id && (
                         <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
+                            <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
                             <ContractDocumentLink documentId={contractData.contract.document_id} />
                           </div>
                           {contractData.contract.generated_at && (
@@ -952,23 +952,23 @@ export default function DealDetailPage() {
               </div>
               {listingLineItems.length > 0 ? (
                 <div style={{ padding: '0 24px 20px' }}>
-                  <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>Item Breakdown</div>
+                  <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>Item Breakdown</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '6px 16px', fontSize: 12 }}>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Qty</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Unit</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Unit Price</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Item</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Qty</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Unit</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Unit Price</span>
                     {listingLineItems.map((item: any) => (
                       <React.Fragment key={item.id}>
                         <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{item.name ?? item.description ?? '—'}</span>
-                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{item.quantity ?? '—'}</span>
+                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-display)', fontWeight: 500 }}>{item.quantity ?? '—'}</span>
                         <span style={{ color: 'var(--gray)' }}>{item.unit ?? ''}</span>
-                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: item.unit_price ? 'var(--ink)' : 'var(--gray)' }}>{item.unit_price ? fmt(item.unit_price, item.currency ?? currency) : '—'}</span>
+                        <span style={{ textAlign: 'right', fontFamily: 'var(--font-display)', fontWeight: 500, color: item.unit_price ? 'var(--ink)' : 'var(--gray)' }}>{item.unit_price ? fmt(item.unit_price, item.currency ?? currency) : '—'}</span>
                       </React.Fragment>
                     ))}
                   </div>
                   <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, color: 'var(--gray)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Agreed</span>
+                    <span style={{ fontSize: 12, color: 'var(--gray)', fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Agreed</span>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: '#C9A84C' }}>{fmt(deal.agreed_price, currency)}</span>
                   </div>
                 </div>
@@ -988,7 +988,7 @@ export default function DealDetailPage() {
                 <div className="card-head">
                   Active Financing
                   {financingContext.financingBadgeLabel && (
-                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {financingContext.financingBadgeLabel}
                     </span>
                   )}
@@ -996,10 +996,10 @@ export default function DealDetailPage() {
                 <div className="kv-list">
                   <div className="kv-row"><span className="k">Structure</span><span className="v plain">{financingContext.structure?.replace(/_/g, ' ') ?? '—'}</span></div>
                   <div className="kv-row"><span className="k">Payment to</span><span className="v plain">{financingContext.paymentRecipientName}</span></div>
-                  <div className="kv-row"><span className="k">Amount</span><span className="v" style={{ fontFamily: 'var(--font-mono)' }}>{fmt(financingContext.paymentAmount, financingContext.paymentCurrency)}</span></div>
+                  <div className="kv-row"><span className="k">Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(financingContext.paymentAmount, financingContext.paymentCurrency)}</span></div>
                   {financingContext.paymentDueDate && <div className="kv-row"><span className="k">Due Date</span><span className="v">{fmtDate(financingContext.paymentDueDate)}</span></div>}
                   {financingContext.ddDiscountRate != null && <div className="kv-row"><span className="k">Discount Rate</span><span className="v">{financingContext.ddDiscountRate}% annualized</span></div>}
-                  {financingContext.ddDiscountAmount != null && <div className="kv-row"><span className="k">Discount Amount</span><span className="v" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-red)' }}>-{fmt(financingContext.ddDiscountAmount, financingContext.paymentCurrency)}</span></div>}
+                  {financingContext.ddDiscountAmount != null && <div className="kv-row"><span className="k">Discount Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--color-red)' }}>-{fmt(financingContext.ddDiscountAmount, financingContext.paymentCurrency)}</span></div>}
                   {financingContext.noaRequired && (
                     <div className="kv-row">
                       <span className="k">NOA Status</span>
@@ -1124,8 +1124,8 @@ export default function DealDetailPage() {
                       <span className={`badge ${financing_request.status === 'funded' ? 'badge-funded' : 'badge-active'}`}>{financing_request.status.replace(/_/g, ' ')}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 24 }}>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>Amount</div><div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 500 }}>{fmt(financing_request.amount_requested, financing_request.currency)}</div></div>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>Offers</div><div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 500 }}>{financing_request.offer_count}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Amount</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{fmt(financing_request.amount_requested, financing_request.currency)}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Offers</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{financing_request.offer_count}</div></div>
                     </div>
                   </div>
                   {(() => {
@@ -1212,7 +1212,7 @@ export default function DealDetailPage() {
               <div className="card-head">Deal Value</div>
               <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px 8px' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>{fmt(dealValue, currency)}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · Goods Value</div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · Goods Value</div>
                 {financingContext.isActive && financingContext.structure !== 'dynamic_discounting' && (
                   <div style={{ marginTop: 8, fontSize: 11, color: 'var(--blue)' }}>
                     Repayment: {fmt(financingContext.paymentAmount, currency)} to {financingContext.paymentRecipientName}

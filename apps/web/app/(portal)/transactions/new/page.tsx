@@ -108,33 +108,34 @@ function StepPrograms({ programs, loading, onSelect }: {
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>{p.name}</div>
             {p.status && (
               <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                fontWeight: 500,
-                padding: '2px 8px',
+                fontFamily: 'var(--font-body)',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '2px 9px',
                 border: '1px solid currentColor',
+                borderRadius: 'var(--radius-badge)',
                 color: p.status === 'active' ? 'var(--color-green)' : 'var(--gray)',
                 textTransform: 'uppercase' as const,
-                letterSpacing: '0.1em',
+                letterSpacing: '0.04em',
               }}>
                 {p.status}
               </span>
             )}
           </div>
           {p.bank_name && (
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginBottom: 12, letterSpacing: '0.06em' }}>{p.bank_name}</div>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>{p.bank_name}</div>
           )}
           <div style={{ borderTop: '1px solid var(--border)', marginBottom: 12 }} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
             <div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Type</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)' }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Type</div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
                 {(p.financing_types ?? []).map(fmtFinancingType).join(', ') || '—'}
               </div>
             </div>
             <div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Limit</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)' }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>Limit</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
                 {p.program_limit ? fmtMoney(p.program_limit) : 'No limit'}
               </div>
             </div>
@@ -535,11 +536,10 @@ function StepDDInvoice({
                       Pay within {tier.days} days
                     </div>
                     <div style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 10,
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 11,
+                      fontWeight: 500,
                       color: 'var(--gray)',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
                       marginTop: 4,
                     }}>
                       {tier.rate}% discount applied
@@ -556,11 +556,10 @@ function StepDDInvoice({
                         : '—'}
                     </div>
                     <div style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 9,
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 11,
+                      fontWeight: 500,
                       color: 'var(--gray)',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
                       marginTop: 2,
                     }}>You receive</div>
                   </div>

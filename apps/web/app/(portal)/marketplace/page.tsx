@@ -71,8 +71,8 @@ function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']
           {org.doing_business_as ?? org.legal_name ?? '—'}
         </div>
         <div style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 9,
+          fontFamily: 'var(--font-body)',
+          fontSize: 11,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           color: 'var(--gray)',
@@ -505,22 +505,22 @@ export default function MarketplacePage() {
                         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
                           {ownPassport.doing_business_as ?? ownPassport.legal_name ?? 'Your Organization'}
                         </div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
+                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
                           {ownPassport.type}
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 20, width: '100%', justifyContent: 'center' }}>
                         <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
                             {ownPassport.trade_count_total ?? '—'}
                           </div>
-                          <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 1 }}>Trades</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>Trades</div>
                         </div>
                         <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
                             {formatVolume(ownPassport.trade_volume_total)}
                           </div>
-                          <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 1 }}>Volume</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>Volume</div>
                         </div>
                       </div>
                     </div>

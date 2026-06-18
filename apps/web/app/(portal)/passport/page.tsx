@@ -81,7 +81,7 @@ function NarrativePanel({ narrative }: { narrative: string | null }) {
     <div style={{ border: '1px solid var(--teal, rgba(0,180,160,0.4))', background: 'var(--teal-dim, rgba(0,180,160,0.04))' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--teal, rgba(0,180,160,0.15))' }}>
         <div style={{ width: 5, height: 5, background: 'var(--teal, #0FB8A0)', animation: 'badge-pulse 2.4s infinite', flexShrink: 0 }} />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal, #0FB8A0)' }}>
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal, #0FB8A0)' }}>
           Strike AI · Passport Narrative
         </span>
       </div>

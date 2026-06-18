@@ -79,8 +79,9 @@ function StarRow({
       {value > 0 && (
         <span
           style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12,
+            fontFamily: 'var(--font-body)',
+            fontSize: 11,
+            fontWeight: 500,
             color: 'var(--gray)',
             marginLeft: 4,
           }}
@@ -325,9 +326,10 @@ export default function ReviewFormPage() {
                 <div>
                   <div
                     style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 10,
-                      letterSpacing: '0.12em',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: '0.04em',
                       textTransform: 'uppercase',
                       color: 'var(--gray)',
                       marginBottom: 4,
@@ -335,7 +337,7 @@ export default function ReviewFormPage() {
                   >
                     Value
                   </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>
                     {fmtCurrency(deal.agreed_price, deal.agreed_currency)}
                   </div>
                 </div>
@@ -343,9 +345,10 @@ export default function ReviewFormPage() {
                   <div style={{ flex: 1, minWidth: 160 }}>
                     <div
                       style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 10,
-                        letterSpacing: '0.12em',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: '0.04em',
                         textTransform: 'uppercase',
                         color: 'var(--gray)',
                         marginBottom: 4,
@@ -362,9 +365,10 @@ export default function ReviewFormPage() {
                   <div>
                     <div
                       style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 10,
-                        letterSpacing: '0.12em',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: '0.04em',
                         textTransform: 'uppercase',
                         color: 'var(--gray)',
                         marginBottom: 4,

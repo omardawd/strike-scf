@@ -227,9 +227,10 @@ export function Topbar({
         opacity: loading ? 1 : 0,
       }} />
       <div className="breadcrumb" style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        letterSpacing: '0.1em',
+        fontFamily: 'var(--font-body)',
+        fontSize: 12,
+        fontWeight: 500,
+        letterSpacing: '0.04em',
         textTransform: 'uppercase',
         color: 'var(--gray)',
       }}>

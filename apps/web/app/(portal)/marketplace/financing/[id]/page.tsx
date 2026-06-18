@@ -243,7 +243,7 @@ function BankOfferForm({
                   <div style={{ flex: 1, height: 4, background: 'var(--border)', maxWidth: 80 }}>
                     <div style={{ width: `${existingOffer.ai_score}%`, height: '100%', background: 'var(--color-green)' }} />
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{existingOffer.ai_score}/100</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 700 }}>{existingOffer.ai_score}/100</span>
                 </div>
               </span>
             </div>
@@ -269,7 +269,7 @@ function BankOfferForm({
           }}>
             <div style={{ fontSize: 16, color: 'var(--teal)', flexShrink: 0, marginTop: 2 }}>✦</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
                 Strike AI · Action Required
               </span>
               <p style={{ fontSize: 13.5, color: 'var(--teal)', lineHeight: 1.6, margin: 0 }}>
@@ -458,7 +458,7 @@ function OrgOffersList({
                 alignItems: 'center',
                 gap: 8,
               }}>
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   ✦ Strike AI Recommends
                 </span>
                 {offer.ai_score_reasoning && (
@@ -510,7 +510,7 @@ function OrgOffersList({
 
             {offer.ai_score != null && (
               <div style={{ padding: '0 20px 12px' }}>
-                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4 }}>
                   AI Score
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -522,7 +522,7 @@ function OrgOffersList({
                       transition: 'width 300ms ease',
                     }} />
                   </div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 40, textAlign: 'right' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, minWidth: 40, textAlign: 'right' }}>
                     {offer.ai_score}/100
                   </span>
                 </div>
@@ -530,7 +530,7 @@ function OrgOffersList({
             )}
 
             <div className="mp-offer-card-footer">
-              <span style={{ fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>
                 {new Date(offer.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </span>
               <div className="mp-offer-actions">
@@ -740,7 +740,7 @@ export default function FinancingDetailPage() {
               }}>
                 <div style={{ fontSize: 16, color: 'var(--teal)', flexShrink: 0, marginTop: 2 }}>✦</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
                     Strike AI · Market Intelligence
                   </span>
                   {request.ai_market_context && (

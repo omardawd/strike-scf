@@ -190,9 +190,12 @@ const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
       <path d="M6.7 7.2L9 13.4M13.3 7.2L11 13.4M7 6h6" />
     </>
   ),
-  // Strike AI — lightning bolt
+  // Strike AI — sparkle cluster (4-pt star + small cross)
   ai: (
-    <path d="M11 2.5L4.5 11h4.2l-1 6.5L15 8.5h-4.2z" />
+    <>
+      <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+      <path d="M16 4.5v2M15 5.5h2" />
+    </>
   ),
   // Financing — circular flow / refresh
   financing: (
@@ -357,74 +360,6 @@ export function Sidebar() {
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <style>{`
-        .strike-ai-nav-pill {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          margin: 10px 0 6px;
-          background: linear-gradient(135deg, #1428CC 0%, #7C3AED 100%);
-          border-radius: var(--radius-nav);
-          text-decoration: none;
-          color: #fff;
-          position: relative;
-          overflow: hidden;
-          box-shadow: 0 2px 14px rgba(20,40,204,0.22);
-          transition: box-shadow 0.2s ease;
-          flex-shrink: 0;
-        }
-        .strike-ai-nav-pill.collapsed-pill {
-          justify-content: center;
-          padding: 10px;
-          margin: 10px auto 6px;
-          width: 40px;
-          height: 40px;
-        }
-        .strike-ai-nav-pill::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.14) 50%, transparent 75%);
-          transform: translateX(-120%);
-          animation: ai-pill-shimmer 3.5s ease-in-out infinite;
-          pointer-events: none;
-        }
-        @keyframes ai-pill-shimmer {
-          0%   { transform: translateX(-120%); }
-          50%  { transform: translateX(120%); }
-          100% { transform: translateX(120%); }
-        }
-        .strike-ai-nav-pill:hover {
-          box-shadow: 0 4px 24px rgba(124,58,237,0.45) !important;
-        }
-        .strike-ai-nav-pill.ai-pill-active {
-          box-shadow: 0 4px 24px rgba(124,58,237,0.5);
-          outline: 1.5px solid rgba(255,255,255,0.25);
-          outline-offset: 1px;
-        }
-        .strike-ai-pill-label {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          flex: 1;
-          min-width: 0;
-        }
-        .strike-ai-pill-title {
-          font-size: 13px;
-          font-weight: 700;
-          font-family: var(--font-display);
-          line-height: 1.15;
-          letter-spacing: 0.01em;
-        }
-        .strike-ai-pill-sub {
-          font-size: 10px;
-          opacity: 0.72;
-          line-height: 1.2;
-          letter-spacing: 0.03em;
-          font-weight: 500;
-        }
-      `}</style>
       {/* Logo + collapse toggle (TA.1 removed the portal label; TA.2 added the toggle) */}
       <div className="sidebar-head">
         {!collapsed && (
@@ -456,20 +391,15 @@ export function Sidebar() {
 
       {/* Unified navigation */}
       <nav className="nav-section" style={{ marginTop: 4 }}>
-        {/* Strike AI — special featured button at the top */}
+        {/* Strike AI — first nav item */}
         <Link
           href="/ai"
-          className={`strike-ai-nav-pill${collapsed ? ' collapsed-pill' : ''}${aiActive ? ' ai-pill-active' : ''}`}
+          className={`nav-item${aiActive ? ' active' : ''}`}
           title={collapsed ? 'Strike AI' : undefined}
           aria-label="Strike AI"
         >
-          <NavIcon name="ai" size={19} />
-          {!collapsed && (
-            <div className="strike-ai-pill-label">
-              <span className="strike-ai-pill-title">Strike AI</span>
-              <span className="strike-ai-pill-sub">Your AI co-pilot</span>
-            </div>
-          )}
+          <NavIcon name="ai" size={18} />
+          {!collapsed && <span>Strike AI</span>}
         </Link>
 
         {sections.map((section, si) => (

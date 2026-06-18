@@ -130,10 +130,9 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                   }}
                 />
                 <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 13,
+                  fontWeight: 500,
                   color: file ? 'var(--blue)' : 'var(--gray)',
                   marginBottom: 8,
                 }}>
@@ -173,9 +172,10 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                         <div key={h} style={{
                           background: 'var(--offwhite)',
                           padding: '8px 12px',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 10,
-                          letterSpacing: '0.1em',
+                          fontFamily: 'var(--font-body)',
+                          fontSize: 11,
+                          fontWeight: 500,
+                          letterSpacing: '0.04em',
                           textTransform: 'uppercase',
                           color: 'var(--gray)',
                         }}>{h}</div>
@@ -192,13 +192,13 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
                       </div>
                     ))}
                     {preview.length > 5 && (
-                      <div style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--gray)', letterSpacing: '0.1em' }}>
+                      <div style={{ padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
                         + {preview.length - 5} more
                       </div>
                     )}
                   </div>
 
-                  <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--blue)', letterSpacing: '0.1em' }}>
+                  <div style={{ marginTop: 10, fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--blue)' }}>
                     {preview.length} suppliers will be invited
                   </div>
                 </>

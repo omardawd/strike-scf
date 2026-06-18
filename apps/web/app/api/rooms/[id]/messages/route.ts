@@ -146,5 +146,66 @@ export async function POST(
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', id)
 
+  // Agreement detection: for private rooms only, check every 5th message whether
+  // parties are converging on a deal. If so, inject an AI system message.
+  if (room.room_type === 'private' && finalStatus === 'visible') {
+    const { count: msgCount } = await adminClient
+      .from('room_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('room_id', id)
+      .eq('status', 'visible')
+
+    if ((msgCount ?? 0) % 5 === 0) {
+      const { data: recentMsgs } = await adminClient
+        .from('room_messages')
+        .select('content, user_id')
+        .eq('room_id', id)
+        .eq('status', 'visible')
+        .order('created_at', { ascending: false })
+        .limit(15)
+
+      void (async () => {
+        try {
+          const transcript = (recentMsgs ?? [])
+            .reverse()
+            .map((m: { content: string; user_id: string }) =>
+              `[${m.user_id === user.id ? 'You' : 'Counterparty'}]: ${m.content}`
+            )
+            .join('\n')
+
+          const detectionResult = await callClaude({
+            system:
+              'You are monitoring a trade negotiation room. Analyze the last messages and determine if both parties have reached — or are very close to reaching — a deal agreement. ' +
+              'Respond with only: AGREEMENT_DETECTED or NO_AGREEMENT',
+            messages: [
+              {
+                role: 'user',
+                content: `Recent messages:\n${transcript}\n\nHas an agreement been reached or are parties clearly converging on one?`,
+              },
+            ],
+            max_tokens: 20,
+          })
+
+          if (detectionResult.text.trim().startsWith('AGREEMENT_DETECTED')) {
+            await adminClient.from('room_messages').insert({
+              room_id: id,
+              user_id: null,
+              org_id: null,
+              bank_id: null,
+              content:
+                'Strike AI has detected that both parties appear to be reaching an agreement. ' +
+                'When ready, head to your Deal page to finalize terms, sign the trade contract, and move to confirmed status.',
+              message_type: 'ai_insight',
+              status: 'visible',
+              reply_to_id: null,
+            })
+          }
+        } catch {
+          // Never block message delivery on agreement detection failures
+        }
+      })()
+    }
+  }
+
   return NextResponse.json({ message: updatedMessage ?? message }, { status: 201 })
 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { KybStatus, OrgStatus, BankStatus } from '@strike-scf/types'
 import { runKybAiReview } from '@/app/api/kyb/ai-review/route'
+import { evaluateSupplierPassport } from '@/lib/ai/tools/handlers/evaluate-supplier-passport'
 
 const adminClient = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -141,6 +142,19 @@ export async function POST(request: Request) {
   runKybAiReview(org_id, { triggeredByUserId: user.id }).catch(err =>
     console.error('[onboarding/submit] KYB AI review failed:', err)
   )
+
+  // After KYB review kicks off, fire the AI passport evaluation. This uses Claude
+  // sonnet to holistically score the org and writes the result back to
+  // organizations.passport_score. Runs non-blocking after a short delay so the
+  // KYB review has a moment to write its credit_scores row first.
+  setTimeout(() => {
+    evaluateSupplierPassport({
+      supplier_org_id: org_id,
+      evaluation_purpose: 'network_onboarding',
+    }).catch(err =>
+      console.error('[onboarding/submit] AI passport evaluation failed:', err)
+    )
+  }, 3000)
 
   // Auto-enroll invited supplier in their program if not already enrolled
   const programId   = user.user_metadata?.program_id as string | undefined

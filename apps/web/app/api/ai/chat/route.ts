@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { STRIKE_TOOLS } from '@/lib/ai/tools/definitions'
+import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +16,19 @@ const DAILY_LIMITS: Record<string, number> = {
   scoring: 500,
 }
 
+// Maximum Claude ↔ tool execution cycles per request.
+// Prevents runaway loops while allowing multi-step plans (e.g. price check → create listing).
+const MAX_AGENTIC_ITERATIONS = 5
+
+// Appended to the system prompt when tools are active so Claude acts on the first message
+// rather than asking clarifying questions it can infer from context.
+const TOOL_AGENT_ADDENDUM =
+  '\n\nYou have access to Strike SCF platform tools. When the user gives you enough information ' +
+  'to complete an action (create a listing, evaluate a supplier, score offers, etc.), call the ' +
+  'appropriate tool immediately — do not ask for confirmation unless a genuinely required field ' +
+  'is missing. If you need the user\'s org_id or other ID and it is not in context, ask for it ' +
+  'concisely before proceeding. After executing a tool, summarise what was done and offer next steps.'
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const { data: userRow } = await adminClient
     .from('users')
-    .select('id, org_id, bank_id')
+    .select('id, org_id, bank_id, role')
     .eq('id', user.id)
     .single()
 
@@ -29,12 +44,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
 
-  // Ghost (Tier-0) enforcement (TD.2): if the caller's org has not activated its
-  // Passport (network_visible=false AND kyb_status not_started/in_progress), Strike
-  // AI is INFO-ONLY. We override the system prompt and strip any tools so it cannot
-  // touch org data or take actions — its only job is to explain the value of the
-  // Passport and guide the user to activate it. Enforced server-side so it holds no
-  // matter which client surface (overlay / dedicated page) called it.
+  // Ghost (Tier-0) enforcement: if the org has not activated its Passport,
+  // Strike AI is info-only. Tools are stripped and the system prompt is overridden.
   let ghostOverride = false
   if (userRow.org_id) {
     const { data: orgRow } = await adminClient
@@ -89,37 +100,133 @@ export async function POST(req: NextRequest) {
     ? 'claude-sonnet-4-6'
     : 'claude-haiku-4-5-20251001'
 
-  const anthropicBody: Record<string, unknown> = {
-    model,
-    max_tokens: body.max_tokens ?? 1024,
-    system: ghostOverride ? GHOST_SYSTEM_PROMPT : body.system,
-    messages: body.messages,
+  // Activate the agentic tool loop only on the dedicated /ai page (sonnet) for non-ghost users.
+  const useTools = model === 'claude-sonnet-4-6' && !ghostOverride
+
+  // Build system prompt — append the proactive-action addendum when tools are active.
+  const systemPrompt = ghostOverride
+    ? GHOST_SYSTEM_PROMPT
+    : useTools
+      ? (body.system ?? '') + TOOL_AGENT_ADDENDUM
+      : body.system
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AnyMessage = { role: string; content: any }
+  let messages: AnyMessage[] = body.messages
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let finalData: any = null
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+
+  for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
+    const anthropicBody: Record<string, unknown> = {
+      model,
+      max_tokens: body.max_tokens ?? 1024,
+      system: systemPrompt,
+      messages,
+    }
+
+    if (useTools) {
+      // Server auto-injects Strike tools — client never needs to pass them.
+      anthropicBody.tools = STRIKE_TOOLS
+    } else if (!ghostOverride && body.tools && Array.isArray(body.tools)) {
+      // Pass-through for callers that explicitly provide their own tools.
+      anthropicBody.tools = body.tools
+      if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      },
+      body: JSON.stringify(anthropicBody),
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      console.error('[AI] Anthropic error:', err)
+      return NextResponse.json({ error: 'AI service error' }, { status: 502 })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await response.json()
+    totalInputTokens += data.usage?.input_tokens ?? 0
+    totalOutputTokens += data.usage?.output_tokens ?? 0
+
+    // If Claude is done (or tools are off), exit the loop with this response.
+    if (data.stop_reason !== 'tool_use' || !useTools) {
+      finalData = data
+      break
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolUseBlocks: any[] = (data.content ?? []).filter((b: any) => b.type === 'tool_use')
+    if (toolUseBlocks.length === 0) {
+      finalData = data
+      break
+    }
+
+    // Execute every tool Claude requested, in parallel, then feed results back.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolResults: any[] = await Promise.all(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      toolUseBlocks.map(async (block: any) => {
+        let result: Record<string, unknown>
+        try {
+          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>)
+        } catch (err) {
+          result = { error: err instanceof Error ? err.message : 'Tool execution failed' }
+        }
+
+        // Fire-and-forget audit log — never blocks the response.
+        void Promise.resolve(
+          adminClient
+            .from('agent_actions')
+            .insert({
+              user_id: userRow.id,
+              org_id: userRow.org_id ?? null,
+              bank_id: userRow.bank_id ?? null,
+              action_type: block.name,
+              entity_type: 'ai_tool',
+              input_summary: JSON.stringify(block.input).slice(0, 500),
+              output_summary: JSON.stringify(result).slice(0, 500),
+              outcome: 'error' in result ? 'error' : 'success',
+              model,
+            })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ).then(({ error: logErr }: { error: any }) => {
+          if (logErr) console.error('[AI] agent_actions log error:', logErr)
+        }).catch(() => { /* silently ignore logging failures */ })
+
+        return {
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        }
+      })
+    )
+
+    // Append the assistant's tool_use turn + our results, then loop.
+    messages = [
+      ...messages,
+      { role: 'assistant', content: data.content },
+      { role: 'user', content: toolResults },
+    ]
   }
-  // Ghost users get NO tools — info-only, no platform actions.
-  if (!ghostOverride && body.tools && Array.isArray(body.tools)) {
-    anthropicBody.tools = body.tools
-    if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
+
+  // Safety net: loop exhausted without reaching end_turn.
+  if (!finalData) {
+    finalData = {
+      content: [{ type: 'text', text: 'I reached the maximum number of steps. Please try breaking your request into smaller parts.' }],
+      stop_reason: 'end_turn',
+    }
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-    },
-    body: JSON.stringify(anthropicBody),
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    console.error('[AI] Anthropic error:', err)
-    return NextResponse.json({ error: 'AI service error' }, { status: 502 })
-  }
-
-  const data = await response.json()
-  const usage = data.usage ?? {}
-
+  // Log aggregated token usage across all iterations as a single row.
   try {
     const { error: usageErr } = await adminClient
       .from('ai_usage')
@@ -128,9 +235,9 @@ export async function POST(req: NextRequest) {
         org_id: userRow.org_id ?? null,
         bank_id: userRow.bank_id ?? null,
         feature: body.feature ?? 'chat',
-        tokens_input: usage.input_tokens ?? 0,
-        tokens_output: usage.output_tokens ?? 0,
-        tokens_total: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+        tokens_input: totalInputTokens,
+        tokens_output: totalOutputTokens,
+        tokens_total: totalInputTokens + totalOutputTokens,
         model,
       })
     if (usageErr) console.error('[AI] Usage log error:', usageErr)
@@ -138,5 +245,5 @@ export async function POST(req: NextRequest) {
     // silently continue if table doesn't exist
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json(finalData)
 }

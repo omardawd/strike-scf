@@ -188,9 +188,10 @@ function NetworkCard({
           )}
           {countryOfOrigin && (
             <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 9,
-              letterSpacing: '0.1em',
+              fontFamily: 'var(--font-body)',
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.04em',
               textTransform: 'uppercase',
               color: 'var(--gray)',
               marginTop: 3,
@@ -716,13 +717,13 @@ export default function ProgramDetailPage() {
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                     {/* Available capacity */}
                     <div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
                         Available capacity
                       </div>
                       {pipeline?.capacity.program_limit != null ? (
                         <>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--blue)', fontVariantNumeric: 'tabular-nums' }}>
+                            <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--blue)' }}>
                               {fmtMoney(pipeline.capacity.available ?? 0)}
                             </span>
                             <span style={{ fontSize: 12, color: 'var(--gray)' }}>
@@ -745,7 +746,7 @@ export default function ProgramDetailPage() {
 
                     {/* Offer pipeline (pending) */}
                     <div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
                         Offer pipeline {pipeline?.offer_pipeline.length ? `(${pipeline.offer_pipeline.length} pending)` : ''}
                       </div>
                       {!pipeline || pipeline.offer_pipeline.length === 0 ? (
@@ -763,13 +764,13 @@ export default function ProgramDetailPage() {
                               onClick={() => router.push(`/marketplace/financing/${o.request_id}`)}
                               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--white)', cursor: 'pointer' }}
                             >
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600, color: 'var(--color-amber)', fontVariantNumeric: 'tabular-nums', minWidth: 60 }}>
+                              <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--color-amber)', minWidth: 60 }}>
                                 {o.rate_apr}%
                               </span>
-                              <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>
+                              <span style={{ flex: 1, fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
                                 {fmtMoney(o.amount)}
                               </span>
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>
+                              <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
                                 {o.tenor_days}d · {o.structure_type.replace(/_/g, ' ')}
                               </span>
                               <span className="badge badge-pending">Pending</span>
@@ -873,8 +874,8 @@ export default function ProgramDetailPage() {
                         onMouseLeave={d.deal_id ? e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none' } : undefined}
                       >
                         <div style={{ minWidth: 110 }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>Financed</div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--blue)', fontVariantNumeric: 'tabular-nums' }}>
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>Financed</div>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--blue)' }}>
                             {fmtMoney(d.amount)}
                           </div>
                         </div>
@@ -882,12 +883,12 @@ export default function ProgramDetailPage() {
                           <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {d.counterparty}
                           </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
                             {d.type.replace(/_/g, ' ')}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>
                             {d.rate_apr != null ? `${d.rate_apr}% APR` : '—'} · {d.tenor_days ?? '—'}d
                           </div>
                           <span className={`badge ${statusBadge(d.status)}`}>{d.status.replace(/_/g, ' ')}</span>
@@ -1541,7 +1542,7 @@ export default function ProgramDetailPage() {
                   </div>
                   {inviteMode === 'known_counterparty' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
+                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
                         Pre-fill their organization details
                       </div>
                       <input className="input" placeholder="Legal name" value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
@@ -1586,7 +1587,7 @@ export default function ProgramDetailPage() {
                   )}
                   {inviteMode === 'custom_kyb' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                      <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
                         Required documents
                       </div>
                       {AVAILABLE_DOCS.map(doc => (

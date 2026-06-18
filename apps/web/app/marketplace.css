@@ -50,9 +50,9 @@
 }
 
 .passport-mini-score {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--ink);
   line-height: 1;
   position: relative;
@@ -84,15 +84,17 @@
 }
 
 .passport-mini-type {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--gray);
   border: 1px solid var(--border-strong);
-  padding: 1px 5px;
+  padding: 2px 6px;
   white-space: nowrap;
   flex-shrink: 0;
+  border-radius: var(--radius-badge);
 }
 
 .passport-mini-stats {
@@ -115,18 +117,20 @@
 }
 
 .passport-mini-stat-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray-soft);
   line-height: 1.2;
 }
 
 .passport-mini-stat-value {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
@@ -145,8 +149,7 @@
 }
 
 .listing-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   border-color: var(--border-strong);
 }
 
@@ -160,14 +163,15 @@
 .listing-type-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  padding: 2px 9px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: 600;
   border: 1px solid currentColor;
   white-space: nowrap;
+  border-radius: var(--radius-badge);
 }
 
 .listing-type-po {
@@ -181,22 +185,24 @@
 }
 
 .listing-category-tag {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.08em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--gray);
   border: 1px solid var(--border);
-  padding: 2px 7px;
+  padding: 2px 8px;
   background: var(--offwhite);
+  border-radius: var(--radius-badge);
 }
 
 .listing-posted-time {
   margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: var(--gray-soft);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
 }
 
 .listing-card-body {
@@ -232,10 +238,11 @@
 }
 
 .listing-price-currency {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
+  font-weight: 500;
   color: var(--gray);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -268,18 +275,19 @@
 }
 
 .listing-detail-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray-soft);
 }
 
 .listing-detail-value {
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--gray);
-  letter-spacing: 0.04em;
 }
 
 .listing-ai-summary {
@@ -305,13 +313,15 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--gray);
   border: 1px solid var(--border);
-  padding: 3px 8px;
+  padding: 3px 9px;
   white-space: nowrap;
+  border-radius: var(--radius-badge);
 }
 
 .listing-offer-badge-count {
@@ -357,9 +367,10 @@
 }
 
 .mp-offer-price-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray-soft);
 }
@@ -374,10 +385,10 @@
 }
 
 .mp-offer-price-currency {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 13px;
+  font-weight: 500;
   color: var(--gray);
-  letter-spacing: 0.08em;
 }
 
 .mp-offer-terms-row {
@@ -389,14 +400,16 @@
 }
 
 .mp-offer-term-pill {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--gray);
   border: 1px solid var(--border);
-  padding: 3px 8px;
+  padding: 3px 9px;
   background: var(--offwhite);
   white-space: nowrap;
+  border-radius: var(--radius-badge);
 }
 
 .mp-offer-ai-strip {
@@ -407,9 +420,10 @@
 }
 
 .mp-offer-ai-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--teal);
   margin-bottom: 3px;
@@ -454,12 +468,13 @@
   flex-shrink: 0;
   background: var(--color-accent-light);
   color: var(--blue);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
 }
 
 .room-msg-avatar-ai {
@@ -490,10 +505,10 @@
 }
 
 .room-msg-time {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: var(--gray-soft);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
 }
 
 .room-msg-content {
@@ -559,10 +574,9 @@
 }
 
 .room-msg-doc-size {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: var(--gray-soft);
-  letter-spacing: 0.06em;
 }
 
 .room-msg-doc-download {
@@ -588,9 +602,10 @@
 }
 
 .room-msg-offer-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray-soft);
 }
@@ -692,10 +707,9 @@
 }
 
 .deal-tl-timestamp {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: var(--gray-soft);
-  letter-spacing: 0.06em;
 }
 
 .deal-tl-actor {
@@ -954,9 +968,10 @@
 }
 
 .mp-stat-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray);
 }
@@ -1005,12 +1020,14 @@
 }
 
 .deals-tab-count {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
   background: var(--offwhite);
   border: 1px solid var(--border);
-  padding: 1px 5px;
+  padding: 1px 6px;
   color: var(--gray);
+  border-radius: var(--radius-badge);
 }
 
 .deals-empty {
@@ -1064,7 +1081,7 @@
 
 .room-card:hover {
   border-color: var(--border-strong);
-  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .room-card-head {
@@ -1085,14 +1102,16 @@
 }
 
 .room-card-category {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray);
   border: 1px solid var(--border);
-  padding: 2px 6px;
+  padding: 2px 7px;
   white-space: nowrap;
+  border-radius: var(--radius-badge);
 }
 
 .room-card-meta {
@@ -1105,9 +1124,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: var(--gray-soft);
 }
 
@@ -1120,8 +1138,7 @@
 .room-last-activity {
   font-size: 11px;
   color: var(--gray-soft);
-  font-family: var(--font-mono);
-  letter-spacing: 0.04em;
+  font-family: var(--font-body);
 }
 
 .rooms-section-head {
@@ -1132,9 +1149,10 @@
 }
 
 .rooms-section-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--gray);
 }
@@ -1219,12 +1237,12 @@
 }
 
 .rooms-nav-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--gray);
-  font-weight: 500;
 }
 
 .rooms-nav-header-actions {
@@ -1278,9 +1296,10 @@
 
 .rooms-nav-section-label {
   display: block;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray-soft);
   padding: 10px 8px 4px;
@@ -1358,8 +1377,8 @@
   justify-content: center;
   background: var(--blue);
   color: #fff;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 10.5px;
   font-weight: 600;
   border-radius: var(--radius-badge);
 }
@@ -1519,9 +1538,9 @@
   border-radius: 50%;
   background: var(--color-accent-light);
   color: var(--blue);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1666,9 +1685,10 @@
 }
 
 .listing-preview-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray);
   padding: 10px 16px;
@@ -1710,9 +1730,10 @@
 }
 
 .ai-tip-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--teal);
 }
@@ -1763,9 +1784,10 @@
 
 /* Form section divider label (new listing form) */
 .mp-form-section-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gray);
   padding-bottom: 10px;

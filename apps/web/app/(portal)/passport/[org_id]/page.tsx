@@ -117,9 +117,10 @@ function AiAssessmentPanel({
         />
         <span
           style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            letterSpacing: '0.12em',
+            fontFamily: 'var(--font-body)',
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.04em',
             textTransform: 'uppercase',
             color: 'var(--blue)',
           }}
@@ -131,10 +132,11 @@ function AiAssessmentPanel({
         <div
           style={{
             padding: '12px 14px',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-body)',
             fontSize: 11,
+            fontWeight: 500,
             color: 'var(--blue)',
-            letterSpacing: '0.1em',
+            letterSpacing: '0.04em',
           }}
         >
           Analyzing…
@@ -328,9 +330,10 @@ export default function PublicPassportPage() {
                   style={{
                     padding: '10px 16px',
                     borderBottom: '1px solid var(--border)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                    letterSpacing: '0.12em',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: '0.04em',
                     textTransform: 'uppercase',
                     color: 'var(--gray)',
                   }}
@@ -432,9 +435,10 @@ export default function PublicPassportPage() {
                         <div style={{ height: 1, background: 'var(--border)' }} />
                         <div
                           style={{
-                            fontSize: 12,
+                            fontSize: 11,
+                            fontWeight: 500,
                             color: 'var(--gray)',
-                            fontFamily: 'var(--font-mono)',
+                            fontFamily: 'var(--font-body)',
                             letterSpacing: '0.04em',
                           }}
                         >

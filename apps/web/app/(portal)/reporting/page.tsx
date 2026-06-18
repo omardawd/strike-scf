@@ -406,8 +406,8 @@ export default function ReportingPage() {
                 <div style={{
                   padding: '12px 20px',
                   borderBottom: '1px solid var(--border)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10, letterSpacing: '0.14em',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 11, letterSpacing: '0.14em',
                   textTransform: 'uppercase', color: 'var(--gray)',
                 }}>Payables Pipeline</div>
 
@@ -420,8 +420,8 @@ export default function ReportingPage() {
                     <div key={h} style={{
                       background: 'var(--offwhite)',
                       padding: '8px 16px',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 9, letterSpacing: '0.12em',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: 11, letterSpacing: '0.12em',
                       textTransform: 'uppercase', color: 'var(--gray)',
                     }}>{h}</div>
                   ))}
@@ -446,14 +446,14 @@ export default function ReportingPage() {
                     <div style={{
                       background: i % 2 === 0 ? 'var(--white)' : 'var(--offwhite)',
                       padding: '10px 16px',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 13, color: 'var(--ink)',
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 600, fontSize: 13, color: 'var(--ink)',
                     }}>{v.count}</div>
                     <div style={{
                       background: i % 2 === 0 ? 'var(--white)' : 'var(--offwhite)',
                       padding: '10px 16px',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 13, color: 'var(--ink)',
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 600, fontSize: 13, color: 'var(--ink)',
                     }}>
                       {fmtCurrencyFull(v.total)}
                     </div>
@@ -464,7 +464,7 @@ export default function ReportingPage() {
                   Object.values(data.payables_summary).every(v => !v?.count)) && (
                   <div style={{
                     padding: '20px 16px', textAlign: 'center',
-                    fontFamily: 'var(--font-mono)', fontSize: 10,
+                    fontFamily: 'var(--font-body)', fontSize: 11,
                     textTransform: 'uppercase', color: 'var(--gray)',
                     letterSpacing: '0.1em',
                   }}>No payables activity</div>

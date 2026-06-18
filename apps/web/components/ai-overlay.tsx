@@ -421,7 +421,7 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
             {loading && (
               <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-start', alignItems: 'center' }}>
                 <img src="/favicon.png" alt="" draggable={false} style={{ width: 20, height: 20, objectFit: 'contain', animation: 'strike-overlay-spin 0.9s linear infinite' }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)' }}>Thinking</span>
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Thinking</span>
               </div>
             )}
             <div ref={messagesEndRef} />
