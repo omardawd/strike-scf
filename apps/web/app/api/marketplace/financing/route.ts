@@ -88,12 +88,33 @@ export async function GET() {
       if (allOrgIds.length > 0) {
         const { data: orgs } = await adminClient
           .from('organizations')
-          .select('id, legal_name, passport_score, risk_tier, trade_count_total, avg_payment_days, dispute_rate_network')
+          .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, avg_payment_days, dispute_rate_network, country_of_origin')
           .in('id', allOrgIds)
 
         for (const org of orgs ?? []) {
           if (buyerIds.includes(org.id))    buyerOrgsMap[org.id]    = org
           if (supplierIds.includes(org.id)) supplierOrgsMap[org.id] = org
+        }
+      }
+
+      // Fetch line items for all listings referenced by these deals
+      const lineItemsMap: Record<string, any[]> = {}
+      const allListingIds = [...new Set((deals ?? []).filter((d: any) => d.listing_id).map((d: any) => d.listing_id as string))]
+      if (allListingIds.length > 0) {
+        const { data: allLineItems } = await adminClient
+          .from('listing_line_items')
+          .select('id, listing_id, name, description, quantity, unit, unit_price, total_price, hs_code, currency')
+          .in('listing_id', allListingIds)
+          .order('created_at')
+        for (const li of allLineItems ?? []) {
+          const lid = (li as any).listing_id as string
+          if (!lineItemsMap[lid]) lineItemsMap[lid] = []
+          lineItemsMap[lid].push(li)
+        }
+        for (const d of deals ?? []) {
+          if (d.listing_id && lineItemsMap[d.listing_id]) {
+            dealsMap[d.id] = { ...dealsMap[d.id], line_items: lineItemsMap[d.listing_id] }
+          }
         }
       }
     }
@@ -135,9 +156,11 @@ export async function GET() {
           listing_description: deal.listing_description ?? null,
           agreed_delivery_date: deal.agreed_delivery_date,
           agreed_incoterms: deal.agreed_incoterms,
+          line_items: deal.line_items ?? [],
         } : null,
         buyer_passport:    deal ? (buyerOrgsMap[deal.buyer_org_id] ?? null) : null,
         supplier_passport: deal ? (supplierOrgsMap[deal.supplier_org_id] ?? null) : null,
+        requesting_org_id: req.requesting_org_id,
         my_offer:          myOffersMap[req.id] ?? null,
         all_offers_count:  offerCountsMap[req.id] ?? 0,
       }

@@ -16,10 +16,23 @@ interface OrgPassport {
   legal_name: string
   passport_score: number | null
   risk_tier: string | null
-  trade_count_total: number
+  kyb_status?: string | null
+  performance_tier?: string | null
   avg_payment_days: number | null
   dispute_rate_network: number | null
   country_of_origin?: string | null
+}
+
+interface LineItem {
+  id: string
+  name: string
+  description?: string | null
+  quantity: number | null
+  unit?: string | null
+  unit_price: number | null
+  total_price: number | null
+  hs_code?: string | null
+  currency?: string | null
 }
 
 interface DealSummary {
@@ -27,9 +40,11 @@ interface DealSummary {
   agreed_price: number
   agreed_currency: string
   goods_description: string | null
+  listing_title?: string | null
   agreed_delivery_date: string | null
   agreed_incoterms: string | null
   total_value?: number | null
+  line_items?: LineItem[]
 }
 
 interface BankRequestItem {
@@ -37,6 +52,7 @@ interface BankRequestItem {
   deal:              DealSummary | null
   buyer_passport:    OrgPassport | null
   supplier_passport: OrgPassport | null
+  requesting_org_id: string | null
   my_offer:          any | null
   all_offers_count:  number
 }
@@ -478,6 +494,34 @@ function TradingTerminal({
   )
 }
 
+// ── Passport party card ───────────────────────────────────────────────────────────
+function PassportPartyCard({ passport, role, isRequester }: { passport: OrgPassport; role: string; isRequester: boolean }) {
+  return (
+    <div>
+      <div className="term-detail-section-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {role}
+        {isRequester && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 7px', letterSpacing: '0.04em' }}>Requester</span>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <PassportScoreRing score={passport.passport_score} size="sm" />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{passport.legal_name}</div>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginTop: 2 }}>
+            {passport.kyb_status && <span style={{ textTransform: 'capitalize' }}>KYB: {passport.kyb_status.replace(/_/g, ' ')}</span>}
+            {passport.performance_tier && <span style={{ textTransform: 'capitalize' }}>{passport.performance_tier}</span>}
+            {passport.avg_payment_days != null && <span>{passport.avg_payment_days}d avg pay</span>}
+            {passport.dispute_rate_network != null && passport.dispute_rate_network > 0 && <span>{(passport.dispute_rate_network * 100).toFixed(1)}% dispute</span>}
+            {passport.country_of_origin && <span>{passport.country_of_origin}</span>}
+          </div>
+          <Link href={`/passport/${passport.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-body)' }}>View Passport →</Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Detail panel ─────────────────────────────────────────────────────────────────
 function DetailPanel({
   item,
@@ -490,7 +534,6 @@ function DetailPanel({
 }) {
   const r = item.request
   const tm = typeMeta(r)
-  const cp = item.supplier_passport ?? item.buyer_passport
   const cur = r.currency ?? 'USD'
 
   return (
@@ -502,38 +545,22 @@ function DetailPanel({
       </div>
 
       <div className="term-detail-body">
-        {/* Counterparty PassportScore widget */}
-        {cp && (
-          <div>
-            <div className="term-detail-section-label">Counterparty</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <PassportScoreRing score={cp.passport_score} size="sm" />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.legal_name}</div>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', display: 'flex', gap: 10, marginTop: 2 }}>
-                  {cp.trade_count_total > 0 && <span>{cp.trade_count_total} trades</span>}
-                  {cp.avg_payment_days != null && <span>{cp.avg_payment_days}d avg pay</span>}
-                  {cp.country_of_origin && <span>{cp.country_of_origin}</span>}
-                </div>
-                <Link href={`/passport/${cp.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-body)' }}>View Passport →</Link>
-              </div>
-            </div>
-          </div>
+        {/* Buyer passport */}
+        {item.buyer_passport && (
+          <PassportPartyCard
+            passport={item.buyer_passport}
+            role="Buyer"
+            isRequester={item.requesting_org_id === item.buyer_passport.id}
+          />
         )}
 
-        {/* Both counterparties when both exist */}
-        {item.buyer_passport && item.supplier_passport && (
-          <div>
-            <div className="term-detail-section-label">Scores</div>
-            <div className="term-kv">
-              <span className="term-kv-k">Buyer</span>
-              <span className="term-kv-v" style={{ color: scoreColor(item.buyer_passport.passport_score) }}>{item.buyer_passport.passport_score ?? '—'}</span>
-            </div>
-            <div className="term-kv">
-              <span className="term-kv-k">Supplier</span>
-              <span className="term-kv-v" style={{ color: scoreColor(item.supplier_passport.passport_score) }}>{item.supplier_passport.passport_score ?? '—'}</span>
-            </div>
-          </div>
+        {/* Supplier passport */}
+        {item.supplier_passport && (
+          <PassportPartyCard
+            passport={item.supplier_passport}
+            role="Supplier"
+            isRequester={item.requesting_org_id === item.supplier_passport.id}
+          />
         )}
 
         {/* Terms */}
@@ -551,11 +578,46 @@ function DetailPanel({
         {item.deal && (
           <div>
             <div className="term-detail-section-label">Underlying Deal</div>
-            <div className="term-kv"><span className="term-kv-k">Deal Value</span><span className="term-kv-v">{fmt(item.deal.total_value ?? item.deal.agreed_price, item.deal.agreed_currency)}</span></div>
-            {item.deal.goods_description && (
-              <div className="term-kv"><span className="term-kv-k">Goods</span><span className="term-kv-v" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.deal.goods_description}</span></div>
+            {item.deal.listing_title && (
+              <div className="term-kv"><span className="term-kv-k">Listing</span><span className="term-kv-v" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.deal.listing_title}</span></div>
             )}
+            <div className="term-kv"><span className="term-kv-k">Deal Value</span><span className="term-kv-v">{fmt(item.deal.total_value ?? item.deal.agreed_price, item.deal.agreed_currency)}</span></div>
             <div className="term-kv"><span className="term-kv-k">Delivery</span><span className="term-kv-v">{fmtDate(item.deal.agreed_delivery_date)}</span></div>
+            {item.deal.agreed_incoterms && (
+              <div className="term-kv"><span className="term-kv-k">Incoterms</span><span className="term-kv-v">{item.deal.agreed_incoterms}</span></div>
+            )}
+            {/* Line items table */}
+            {item.deal.line_items && item.deal.line_items.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Goods / Line Items</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: 'var(--font-body)' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ textAlign: 'left', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Item</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Qty</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Unit Price</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {item.deal.line_items.map((li) => {
+                      const liCur = li.currency ?? item.deal!.agreed_currency ?? 'USD'
+                      return (
+                        <tr key={li.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ paddingTop: 5, paddingBottom: 5, color: 'var(--ink)', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span title={li.name}>{li.name}</span>
+                            {li.hs_code && <div style={{ color: 'var(--gray)', fontSize: 10 }}>HS {li.hs_code}</div>}
+                          </td>
+                          <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink-soft)' }}>{li.quantity ?? '—'}{li.unit ? ` ${li.unit}` : ''}</td>
+                          <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink-soft)' }}>{li.unit_price != null ? fmt(li.unit_price, liCur) : '—'}</td>
+                          <td style={{ textAlign: 'right', paddingTop: 5, paddingBottom: 5, color: 'var(--ink)', fontWeight: 500 }}>{li.total_price != null ? fmt(li.total_price, liCur) : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
