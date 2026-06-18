@@ -52,8 +52,10 @@ export const STRIKE_TOOLS = [
         description: { type: 'string', description: 'Detailed listing description' },
         category: { type: 'string', description: 'Product/service category (e.g. "Steel", "Electronics", "Logistics")' },
         currency: { type: 'string', default: 'USD' },
-        delivery_date: { type: 'string', format: 'date', description: 'Expected delivery date (YYYY-MM-DD)' },
-        delivery_location: { type: 'string', description: 'Delivery city, state/country' },
+        delivery_deadline: { type: 'string', format: 'date', description: 'Required delivery date (YYYY-MM-DD)' },
+        delivery_location: { type: 'string', description: 'Delivery city, state/country (e.g. "NYC Port, New York, USA")' },
+        expires_at: { type: 'string', format: 'date-time', description: 'When the listing expires (ISO 8601). Use end-of-day for date-only inputs, e.g. "2025-07-31T23:59:59Z"' },
+        min_passport_score: { type: 'number', description: 'Minimum PassportScore required to submit an offer (0-100). Offers from orgs below this score are blocked.' },
         tags: { type: 'array', items: { type: 'string' } },
         visibility: {
           type: 'string',
@@ -397,6 +399,26 @@ export const STRIKE_TOOLS = [
         },
       },
       required: ['bank_id'],
+    },
+  },
+
+  {
+    name: 'get_active_deals',
+    description:
+      'List all active (non-completed, non-cancelled) deals for an organization. ' +
+      'Use this whenever the user asks about their current deals, deal status, what\'s in progress, ' +
+      'payment due dates, or wants a deals summary. Pass the org_id from the user identity in context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'UUID of the organization whose deals to fetch' },
+        status_filter: {
+          type: 'string',
+          enum: ['all', 'active_only', 'payment_due', 'needs_action'],
+          description: 'all = everything active; active_only = excludes payment-related; payment_due = overdue/due; needs_action = stages requiring the user to act',
+        },
+      },
+      required: ['org_id'],
     },
   },
 ] as const

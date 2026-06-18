@@ -17,8 +17,10 @@ export interface CreateMarketplaceListingInput {
   description?: string
   category?: string
   currency?: string
-  delivery_date?: string
+  delivery_deadline?: string
   delivery_location?: string
+  expires_at?: string
+  min_passport_score?: number
   tags?: string[]
   visibility?: 'public' | 'network_only'
   network_id?: string
@@ -37,8 +39,10 @@ export async function createMarketplaceListing(input: CreateMarketplaceListingIn
       description: input.description ?? null,
       category: input.category ?? null,
       currency,
-      delivery_date: input.delivery_date ?? null,
+      delivery_deadline: input.delivery_deadline ?? null,
       delivery_location: input.delivery_location ?? null,
+      expires_at: input.expires_at ?? null,
+      min_passport_score: input.min_passport_score ?? null,
       tags: input.tags ?? [],
       visibility: input.visibility ?? 'public',
       network_id: input.network_id ?? null,

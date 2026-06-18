@@ -211,10 +211,9 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           feature: 'chat',
-          model: undefined,
           system: systemPrompt,
           messages: next.map(m => ({ role: m.role, content: m.content })),
-          max_tokens: 1024,
+          max_tokens: 400,
         }),
       })
       if (res.status === 429) {
@@ -225,10 +224,19 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
         }])
         return
       }
-      const data = await res.json()
-      const reply: string = data.content?.find?.((b: { type: string; text?: string }) => b.type === 'text')?.text
-        ?? data.content?.[0]?.text
-        ?? 'No response'
+      if (!res.ok) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Strike AI is temporarily unavailable. Please try again in a moment.',
+          timestamp: new Date().toISOString(),
+        }])
+        return
+      }
+      const data: { content?: { type: string; text?: string }[] } = await res.json()
+      const reply: string =
+        data.content?.find(b => b.type === 'text')?.text ??
+        data.content?.[0]?.text ??
+        'No response'
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: reply,
@@ -237,7 +245,7 @@ Answer concisely. You are an overlay — keep responses brief and actionable.`
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: 'Strike AI is temporarily unavailable. Please try again in a moment.',
         timestamp: new Date().toISOString(),
       }])
     } finally {

@@ -122,7 +122,12 @@ export async function POST(req: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type AnyMessage = { role: string; content: any }
-  let messages: AnyMessage[] = body.messages
+  // Trim history to the last 20 messages to cap input token growth.
+  // Always keep the first message (system context) and the latest 19.
+  const rawMessages: AnyMessage[] = body.messages ?? []
+  let messages: AnyMessage[] = rawMessages.length > 20
+    ? rawMessages.slice(-20)
+    : rawMessages
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let finalData: any = null
@@ -130,10 +135,14 @@ export async function POST(req: NextRequest) {
   let totalOutputTokens = 0
 
   for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
+    // Use the prompt caching beta to cache the system prompt across turns.
+    // Cache reads cost ~10× less than cache writes on sonnet/haiku.
+    const systemBlock = [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }]
+
     const anthropicBody: Record<string, unknown> = {
       model,
       max_tokens: body.max_tokens ?? 1024,
-      system: systemPrompt,
+      system: systemBlock,
       messages,
     }
 
@@ -151,6 +160,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'x-api-key': process.env.ANTHROPIC_API_KEY!,
       },
       body: JSON.stringify(anthropicBody),
