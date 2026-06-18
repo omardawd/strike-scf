@@ -10,6 +10,65 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// GET /api/marketplace/offers — returns the current user's own active offers (pending/countered)
+export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData } = await adminClient
+    .from('users')
+    .select('id, org_id')
+    .eq('id', user.id)
+    .single()
+  if (!userData?.org_id) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  const { data: offers, error } = await adminClient
+    .from('marketplace_offers')
+    .select(`
+      id, status, listing_id, offered_price, current_round, offer_rounds,
+      proposed_delivery_date, proposed_incoterms, proposed_payment_terms, created_at,
+      marketplace_listings (
+        id, title, currency, listing_type, org_id,
+        organizations ( legal_name, doing_business_as, passport_score )
+      )
+    `)
+    .eq('from_org_id', userData.org_id)
+    .in('status', ['pending', 'countered'])
+    .order('created_at', { ascending: false })
+
+  if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
+
+  const mapped = (offers ?? []).map((o: any) => {
+    const listing = o.marketplace_listings
+    const poster = listing?.organizations
+    const rounds: any[] = Array.isArray(o.offer_rounds) ? o.offer_rounds : []
+    const lastRound = rounds.length > 0 ? rounds[rounds.length - 1] : null
+    const lastItems: any[] = lastRound?.offer_items ?? []
+    const currentTotal = lastItems.length > 0
+      ? lastItems.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+      : (o.offered_price ?? null)
+    return {
+      id: o.id,
+      status: o.status,
+      listing_id: o.listing_id,
+      listing_title: listing?.title ?? null,
+      listing_currency: listing?.currency ?? 'USD',
+      listing_type: listing?.listing_type ?? null,
+      listing_owner_name: poster?.doing_business_as || poster?.legal_name || null,
+      listing_owner_score: poster?.passport_score ?? null,
+      current_total: currentTotal,
+      current_round: o.current_round ?? 1,
+      proposed_delivery_date: o.proposed_delivery_date ?? null,
+      proposed_incoterms: o.proposed_incoterms ?? null,
+      proposed_payment_terms: o.proposed_payment_terms ?? null,
+      created_at: o.created_at,
+    }
+  })
+
+  return NextResponse.json({ offers: mapped })
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

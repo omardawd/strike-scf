@@ -48,7 +48,7 @@ const TAB_STATUS_MAP: Record<DealTab, string | null> = {
 const EMPTY_MESSAGES: Record<DealTab, { title: string; sub: string }> = {
   all:          { title: 'No deals yet',          sub: 'When you accept or send an offer on Strike Place, your deals will appear here.' },
   active:       { title: 'No active deals',        sub: 'Deals in progress — funded and on track — will show here.' },
-  negotiating:  { title: 'No deals negotiating',   sub: 'Deals where you are exchanging offers or counteroffers will appear here.' },
+  negotiating:  { title: 'No active negotiations',  sub: 'Deals and marketplace offers you are actively negotiating will appear here.' },
   completed:    { title: 'No completed deals',     sub: 'Deals that have reached delivery and payment will show here.' },
 }
 
@@ -161,30 +161,49 @@ const DEAL_COLUMNS = [
   { key: 'actions',      label: '',              width: 150 },
 ]
 
+interface PendingOffer {
+  id: string
+  status: 'pending' | 'countered'
+  listing_id: string
+  listing_title: string | null
+  listing_currency: string
+  listing_type: string | null
+  listing_owner_name: string | null
+  listing_owner_score: number | null
+  current_total: number | null
+  current_round: number
+  proposed_delivery_date: string | null
+  proposed_incoterms: string | null
+  proposed_payment_terms: string | null
+  created_at: string
+}
+
 export default function DealsPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<DealTab>('all')
   const [deals, setDeals] = useState<DealRow[]>([])
+  const [pendingOffers, setPendingOffers] = useState<PendingOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState<Record<DealTab, number>>({ all: 0, active: 0, negotiating: 0, completed: 0 })
 
   useEffect(() => {
     setLoading(true)
-    fetch('/api/deals')
-      .then(r => r.json())
-      .then(data => {
-        const all: DealRow[] = data.deals ?? []
-        setDeals(all)
-        const ACTIVE_STATUSES = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
-        setCounts({
-          all:         all.length,
-          active:      all.filter(d => ACTIVE_STATUSES.includes(d.status)).length,
-          negotiating: all.filter(d => d.status === 'negotiating' || d.status === 'agreed').length,
-          completed:   all.filter(d => d.status === 'completed').length,
-        })
+    Promise.all([
+      fetch('/api/deals').then(r => r.ok ? r.json() : { deals: [] }).catch(() => ({ deals: [] })),
+      fetch('/api/marketplace/offers').then(r => r.ok ? r.json() : { offers: [] }).catch(() => ({ offers: [] })),
+    ]).then(([dealsData, offersData]) => {
+      const all: DealRow[] = dealsData.deals ?? []
+      const offers: PendingOffer[] = offersData.offers ?? []
+      setDeals(all)
+      setPendingOffers(offers)
+      const ACTIVE_STATUSES = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
+      setCounts({
+        all:         all.length + offers.length,
+        active:      all.filter(d => ACTIVE_STATUSES.includes(d.status)).length,
+        negotiating: all.filter(d => d.status === 'negotiating' || d.status === 'agreed').length + offers.length,
+        completed:   all.filter(d => d.status === 'completed').length,
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    }).finally(() => setLoading(false))
   }, [])
 
   const ACTIVE_STATUSES_FILTER = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
@@ -214,7 +233,7 @@ export default function DealsPage() {
         }
       />
 
-      <div className="page" style={{ maxWidth: 1280 }} data-page-name="Deals" data-ai-context={JSON.stringify({ total: counts.all, active: counts.active, negotiating: counts.negotiating, completed: counts.completed, active_tab: activeTab })}>
+      <div className="page" style={{ maxWidth: 1280 }} data-page-name="Deals" data-ai-context={JSON.stringify({ total: counts.all, active: counts.active, negotiating: counts.negotiating, completed: counts.completed, active_tab: activeTab, pending_offers: pendingOffers.length, pending_offer_listings: pendingOffers.map(o => ({ title: o.listing_title, status: o.status, round: o.current_round, total: o.current_total })) })}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
             My Deals
@@ -239,8 +258,88 @@ export default function DealsPage() {
           ))}
         </div>
 
-        {/* Table */}
-        <div className="card">
+        {/* Pending Offers section — shown on All and Negotiating tabs */}
+        {!loading && pendingOffers.length > 0 && (activeTab === 'all' || activeTab === 'negotiating') && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+              Pending Offers ({pendingOffers.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pendingOffers.map(offer => {
+                const isCounted = offer.status === 'countered'
+                return (
+                  <div
+                    key={offer.id}
+                    className="card"
+                    style={{ cursor: 'pointer', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}
+                    onClick={() => router.push(`/marketplace/listings/${offer.listing_id}`)}
+                  >
+                    {/* Title + type */}
+                    <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {offer.listing_title ?? 'Untitled listing'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                        {offer.listing_type === 'po_request' ? 'PO Request' : 'Product / Service'} · Strike Place
+                      </div>
+                    </div>
+
+                    {/* Posted by */}
+                    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <PassportScoreRing score={offer.listing_owner_score} size="sm" />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{offer.listing_owner_name ?? '—'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)' }}>Listing owner</div>
+                      </div>
+                    </div>
+
+                    {/* Your offer total */}
+                    <div style={{ flex: '0 0 auto', textAlign: 'right' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>
+                        {offer.current_total != null ? fmt(offer.current_total, offer.listing_currency) : '—'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                        Round {offer.current_round}
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div style={{ flex: '0 0 auto' }}>
+                      <span className={isCounted ? 'badge badge-offer' : 'badge badge-draft'}>
+                        {isCounted ? 'Countered' : 'Offer Sent'}
+                      </span>
+                    </div>
+
+                    {/* Terms pills */}
+                    <div style={{ flex: '0 0 auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {offer.proposed_incoterms && (
+                        <span style={{ fontSize: 11, color: 'var(--gray)', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 7px' }}>
+                          {offer.proposed_incoterms}
+                        </span>
+                      )}
+                      {offer.proposed_payment_terms && (
+                        <span style={{ fontSize: 11, color: 'var(--gray)', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 7px' }}>
+                          {offer.proposed_payment_terms}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ flexShrink: 0 }}
+                      onClick={e => { e.stopPropagation(); router.push(`/marketplace/listings/${offer.listing_id}`) }}
+                    >
+                      View Offer →
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Table — hidden when no deals to show and pending offers section already fills the tab */}
+        {(filtered.length > 0 || loading || !(activeTab === 'negotiating' && pendingOffers.length > 0)) && <div className="card">
           <table className="table" style={{ tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
               {DEAL_COLUMNS.map(col => (
@@ -267,7 +366,7 @@ export default function DealsPage() {
                     ))}
                   </tr>
                 ))
-              ) : filtered.length === 0 ? (
+              ) : filtered.length === 0 && !(activeTab === 'negotiating' && pendingOffers.length > 0) ? (
                 <tr>
                   <td colSpan={DEAL_COLUMNS.length} style={{ padding: 0, border: 'none' }}>
                     <div className="deals-empty">
@@ -383,7 +482,7 @@ export default function DealsPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
     </>
   )
