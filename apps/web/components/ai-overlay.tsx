@@ -196,10 +196,12 @@ export function AIOverlay() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           feature: 'chat',
+          model: 'sonnet',   // enables web search tool
+          overlay: true,     // limits tools to search_web only (no action side-effects)
           portal,
           system: systemPrompt,
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
-          max_tokens: 500,
+          max_tokens: 600,
         }),
       })
       if (res.status === 429) {

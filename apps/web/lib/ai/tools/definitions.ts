@@ -285,6 +285,20 @@ const SUBMIT_MARKETPLACE_OFFER = {
   },
 }
 
+const SEARCH_WEB = {
+  name: 'search_web',
+  description: 'Search the internet for current market prices, commodity rates, trade regulations, incoterms guidance, industry benchmarks, or any real-world factual information. Use when the user asks about market rates, current pricing, trade standards, or anything that requires up-to-date external data.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search query — be specific (e.g. "wood pallet price per unit NYC 2026" not just "pallet price")' },
+      topic: { type: 'string', enum: ['general', 'news', 'finance'], default: 'general', description: 'Use "finance" for commodity/market data, "news" for current events, "general" for everything else' },
+      max_results: { type: 'number', default: 5, description: 'Number of results to return (1–10)' },
+    },
+    required: ['query'],
+  },
+}
+
 const PROACTIVE_PORTFOLIO_ALERTS = {
   name: 'proactive_portfolio_alerts',
   description: 'Scan a bank\'s portfolio for issues: overdue payments, stuck deals, deteriorating performance, concentration risk, upcoming maturities. Bank users only.',
@@ -309,6 +323,7 @@ const PROACTIVE_PORTFOLIO_ALERTS = {
 // Fewer tools = fewer input tokens on every request.
 const SUPPLIER_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
@@ -326,6 +341,7 @@ const SUPPLIER_TOOLS = [
 
 const ANCHOR_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
@@ -343,6 +359,7 @@ const ANCHOR_TOOLS = [
 
 const BANK_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
   GET_ACTIVE_DEALS,
@@ -359,6 +376,7 @@ const BANK_TOOLS = [
 // Full set used as fallback and for type inference in execute.ts.
 export const STRIKE_TOOLS = [
   LOOKUP_ENTITIES,
+  SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
@@ -375,6 +393,10 @@ export const STRIKE_TOOLS = [
   GET_PASSPORT_ADVICE,
   PROACTIVE_PORTFOLIO_ALERTS,
 ] as const
+
+// Minimal tool set for the overlay — web search only, no action tools.
+// Keeps the overlay from accidentally creating listings or submitting offers.
+export const OVERLAY_TOOLS = [SEARCH_WEB]
 
 export function getToolsForPortal(portal?: string) {
   switch (portal) {

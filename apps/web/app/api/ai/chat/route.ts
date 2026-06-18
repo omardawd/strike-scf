@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { getToolsForPortal } from '@/lib/ai/tools/definitions'
+import { getToolsForPortal, OVERLAY_TOOLS } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 
 const adminClient = createAdmin(
@@ -149,7 +149,10 @@ export async function POST(req: NextRequest) {
       // Select only the tools relevant to this portal — fewer tools = fewer tokens
       // on every request regardless of caching. Cache the last entry so repeated
       // calls within the same agentic loop (iter 2, 3) get a ~10× read discount.
-      const portalTools = getToolsForPortal(body.portal as string | undefined)
+      // Overlay calls use a minimal set (search_web only) to prevent action side-effects.
+      const portalTools = body.overlay
+        ? OVERLAY_TOOLS
+        : getToolsForPortal(body.portal as string | undefined)
       const toolsWithCache = portalTools.map((t, i) =>
         i === portalTools.length - 1
           ? { ...t, cache_control: { type: 'ephemeral' } }
