@@ -606,30 +606,30 @@ export default function MyPassportPage() {
                 onUploadDocument={file => uploadPassportFile(file, 'document')}
                 onUploadCertification={file => uploadPassportFile(file, 'certification')}
                 onDeleteDocument={deletePassportDoc}
-              />
-
-              {/* Strike AI Insight — below score/KPIs */}
-              <AIInsight
-                title="Passport Insight"
-                prompt="Analyse this business's Strike Passport. Comment on their score, risk tier, KYB status, financial health, and what they should prioritise to improve their standing on the network. Use **bold** for key figures, bullet points for recommendations, and a 'Recommended action:' line at the end."
-                context={{
-                  org_id: org.id,
-                  legal_name: org.legal_name,
-                  type: org.type,
-                  kyb_status: org.kyb_status,
-                  passport_score: org.passport_score,
-                  risk_tier: org.risk_tier,
-                  annual_revenue_range: org.annual_revenue_range,
-                  years_in_operation: org.years_in_operation,
-                  industry_naics: org.industry_naics,
-                  performance_tier: org.performance_tier,
-                  peer_review_count: data.review_count,
-                  avg_peer_rating: data.avg_rating,
-                  recent_deals: data.recent_deals,
-                  expert_analysis_total: expertAnalysis?.total_score ?? null,
-                  expert_risk_tier: expertAnalysis?.risk_tier ?? null,
-                  expert_confidence: expertAnalysis?.analyst_confidence ?? null,
-                }}
+                afterScore={
+                  <AIInsight
+                    title="Passport Insight"
+                    prompt="Analyse this business's Strike Passport. Comment on their score, risk tier, KYB status, financial health, and what they should prioritise to improve their standing on the network. Use **bold** for key figures, bullet points for recommendations, and a 'Recommended action:' line at the end. Do NOT use # headings."
+                    context={{
+                      org_id: org.id,
+                      legal_name: org.legal_name,
+                      type: org.type,
+                      kyb_status: org.kyb_status,
+                      passport_score: org.passport_score,
+                      risk_tier: org.risk_tier,
+                      annual_revenue_range: org.annual_revenue_range,
+                      years_in_operation: org.years_in_operation,
+                      industry_naics: org.industry_naics,
+                      performance_tier: org.performance_tier,
+                      peer_review_count: data.review_count,
+                      avg_peer_rating: data.avg_rating,
+                      recent_deals: data.recent_deals,
+                      expert_analysis_total: expertAnalysis?.total_score ?? null,
+                      expert_risk_tier: expertAnalysis?.risk_tier ?? null,
+                      expert_confidence: expertAnalysis?.analyst_confidence ?? null,
+                    }}
+                  />
+                }
               />
             </div>
 

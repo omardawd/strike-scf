@@ -26,6 +26,19 @@ function MarkdownContent({ text, clamp }: { text: string; clamp?: number }) {
     const lines = para.split('\n')
     const isListBlock = lines.every(l => /^[-•*]\s/.test(l.trim()) || l.trim() === '')
 
+    const headingMatch = para.match(/^(#{1,3})\s+(.+)/)
+    if (headingMatch) {
+      const level = headingMatch[1]!.length
+      const text = headingMatch[2]!
+      const size = level === 1 ? 14.5 : level === 2 ? 13.5 : 13
+      nodes.push(
+        <div key={pi} style={{ fontSize: size, fontWeight: 700, color: 'var(--ink)', marginTop: pi > 0 ? 10 : 0, marginBottom: 2, lineHeight: 1.4 }}>
+          {renderInline(text)}
+        </div>
+      )
+      continue
+    }
+
     if (isListBlock) {
       nodes.push(
         <ul key={pi} style={{ margin: '5px 0', paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>

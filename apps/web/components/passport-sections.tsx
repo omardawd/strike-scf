@@ -228,6 +228,7 @@ export function PassportSections({
   onUploadDocument,
   onUploadCertification,
   onDeleteDocument,
+  afterScore,
 }: {
   org: PassportOrg
   performance: PassportPerformance | null
@@ -243,6 +244,7 @@ export function PassportSections({
   onUploadDocument?: (file: File) => void
   onUploadCertification?: (file: File) => void
   onDeleteDocument?: (id: string) => void
+  afterScore?: React.ReactNode
 }) {
   const flags = org.risk_flags ?? []
   const sourcing = org.sourcing_countries ?? []
@@ -298,6 +300,8 @@ export function PassportSections({
         </div>
       </div>
 
+
+      {afterScore}
 
       {/* (c) Stat tiles — hairline-divider grid */}
       <div className="kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
