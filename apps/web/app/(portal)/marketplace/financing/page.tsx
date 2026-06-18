@@ -314,8 +314,80 @@ function TradingTerminal({
     if (selectedId) router.push(`/marketplace/financing/${selectedId}?program=${program.id}`)
   }
 
+  const bankAiContext = JSON.stringify({
+    page: 'strike_place_financing',
+    role: 'bank',
+    market: {
+      active_requests: stats.activeCount,
+      total_volume: stats.totalVolume,
+      avg_preferred_rate: stats.avgRate,
+      open_offers_submitted: stats.openOffers,
+    },
+    selected_request: selected ? (() => {
+      const r = selected.request
+      const deal = selected.deal
+      const buyer = selected.buyer_passport
+      const supplier = selected.supplier_passport
+      const lastItems = deal?.line_items ?? []
+      return {
+        request_id: r.id,
+        status: r.status,
+        financing_type: r.financing_type ?? r.structure_type,
+        amount_requested: r.amount_requested,
+        currency: r.currency ?? 'USD',
+        preferred_tenor_days: r.preferred_tenor_days,
+        preferred_rate_max: r.preferred_rate_max,
+        expires_at: (r as any).expires_at ?? null,
+        all_offers_count: selected.all_offers_count,
+        my_offer_submitted: !!selected.my_offer,
+        my_offer: selected.my_offer ? {
+          rate_apr: selected.my_offer.offered_rate_apr,
+          amount: selected.my_offer.offered_amount,
+          tenor_days: selected.my_offer.offered_tenor_days,
+          status: selected.my_offer.status,
+        } : null,
+        deal: deal ? {
+          value: deal.total_value ?? deal.agreed_price,
+          currency: deal.agreed_currency,
+          goods: deal.goods_description,
+          listing_title: deal.listing_title,
+          delivery_date: deal.agreed_delivery_date,
+          incoterms: deal.agreed_incoterms,
+          line_items: lastItems.map((li: LineItem) => ({
+            name: li.name,
+            qty: li.quantity,
+            unit: li.unit,
+            unit_price: li.unit_price,
+            line_total: li.quantity != null && li.unit_price != null ? li.quantity * li.unit_price : null,
+          })),
+        } : null,
+        buyer: buyer ? {
+          name: buyer.legal_name,
+          passport_score: buyer.passport_score,
+          risk_tier: buyer.risk_tier,
+          kyb_status: buyer.kyb_status,
+          performance_tier: buyer.performance_tier,
+          avg_payment_days: buyer.avg_payment_days,
+          dispute_rate: buyer.dispute_rate_network,
+          country: buyer.country_of_origin,
+        } : null,
+        supplier: supplier ? {
+          name: supplier.legal_name,
+          passport_score: supplier.passport_score,
+          risk_tier: supplier.risk_tier,
+          kyb_status: supplier.kyb_status,
+          performance_tier: supplier.performance_tier,
+          avg_payment_days: supplier.avg_payment_days,
+          dispute_rate: supplier.dispute_rate_network,
+          country: supplier.country_of_origin,
+        } : null,
+        ai_instruction: 'The bank user is viewing this financing request. Answer questions about whether to finance, risk, terms, and competitive rates using this full context.',
+      }
+    })() : null,
+  })
+
   return (
-    <div className="term-page" data-page-name="Strike Place" data-ai-context={JSON.stringify({ active: stats.activeCount, avg_rate: stats.avgRate, volume: stats.totalVolume })}>
+    <div className="term-page" data-page-name="Strike Place" data-ai-context={bankAiContext}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div>
