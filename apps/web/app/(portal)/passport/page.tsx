@@ -114,7 +114,7 @@ function confLabel(c: string) {
   return                     { label: 'Low Confidence',    color: 'var(--color-red)' }
 }
 
-function ScoreBreakdownCard({ analysis }: { analysis: ExpertAnalysis }) {
+function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: ExpertAnalysis; onRerun?: () => void; rerunning?: boolean }) {
   const [openDim, setOpenDim] = useState<string | null>(null)
   const [openSection, setOpenSection] = useState<'strengths' | 'flags' | 'actions' | null>('strengths')
   const tc = tierColor(analysis.risk_tier)
@@ -137,6 +137,16 @@ function ScoreBreakdownCard({ analysis }: { analysis: ExpertAnalysis }) {
           {analysis.risk_tier.charAt(0).toUpperCase() + analysis.risk_tier.slice(1)} Tier
         </span>
         <span style={{ fontSize: 11, fontWeight: 600, color: cc.color }}>{cc.label}</span>
+        {onRerun && (
+          <button
+            type="button"
+            onClick={onRerun}
+            disabled={rerunning}
+            style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--blue)', background: 'transparent', color: 'var(--blue)', cursor: rerunning ? 'not-allowed' : 'pointer', opacity: rerunning ? 0.6 : 1, whiteSpace: 'nowrap' }}
+          >
+            {rerunning ? 'Analyzing…' : 'Re-run Analysis'}
+          </button>
+        )}
       </div>
 
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -575,13 +585,6 @@ export default function MyPassportPage() {
                 </div>
               </div>
 
-              {/* Score breakdown — expert analysis or placeholder */}
-              {expertAnalysis ? (
-                <ScoreBreakdownCard analysis={expertAnalysis} />
-              ) : (
-                <ScoreBreakdownPlaceholder onRunAnalysis={runAiReview} loading={runningAiReview} />
-              )}
-
               <PassportSections
                 org={org}
                 performance={data.supplier_performance}
@@ -598,30 +601,17 @@ export default function MyPassportPage() {
                 onUploadCertification={file => uploadPassportFile(file, 'certification')}
                 onDeleteDocument={deletePassportDoc}
               />
+
+              {/* Score breakdown — expert analysis or placeholder */}
+              {expertAnalysis ? (
+                <ScoreBreakdownCard analysis={expertAnalysis} onRerun={runAiReview} rerunning={runningAiReview} />
+              ) : (
+                <ScoreBreakdownPlaceholder onRunAnalysis={runAiReview} loading={runningAiReview} />
+              )}
             </div>
 
             {/* RIGHT — slim sticky panel */}
             <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Re-run AI analysis */}
-              {expertAnalysis && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={runAiReview}
-                    disabled={runningAiReview}
-                    style={{ width: '100%', opacity: runningAiReview ? 0.7 : 1 }}
-                  >
-                    {runningAiReview ? 'Analyzing…' : 'Re-run Expert AI Analysis'}
-                  </button>
-                  {aiReviewMsg && (
-                    <div style={{ fontSize: 12, color: aiReviewMsg.includes('fail') || aiReviewMsg.includes('error') ? 'var(--color-red)' : 'var(--color-green)', textAlign: 'center' }}>
-                      {aiReviewMsg}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* View counts */}
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
