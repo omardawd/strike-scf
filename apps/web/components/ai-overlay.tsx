@@ -46,9 +46,8 @@ Current page: ${pageName}${ctx}
 
 You can see exactly what the user sees. Use the page context to answer questions about pricing, risk, offers, and whether terms are fair — reason directly from the data, no tools needed.
 
-You have two tools available — use them only when the page context doesn't already have the answer:
+You have one tool available — use it only when the page context doesn't already have the answer:
 - search_web: use for real-time market prices, commodity rates, benchmarks, or anything requiring live external data.
-- get_financing_programs: use ONLY when the user asks about financing AND the page context contains no financing eligibility or deal financing info. If the page context already says "Can request financing: YES/NO" or describes financing types, answer from that — do NOT call this tool.
 
 Keep replies concise: short paragraphs or bullets, no markdown headers. Bold key figures.
 If the user asks to DO something (submit an offer, create a listing), tell them you can do that on the full Strike AI page and suggest they use the "Open Strike AI" button above.

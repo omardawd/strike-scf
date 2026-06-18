@@ -406,9 +406,9 @@ const GET_FINANCING_PROGRAMS = {
   },
 }
 
-// Overlay tools — read-only: web search + financing program lookup.
-// No write/action tools to prevent side-effects from the hover overlay.
-export const OVERLAY_TOOLS = [SEARCH_WEB, GET_FINANCING_PROGRAMS]
+// Overlay tools — web search only. No write/action tools.
+// Financing questions on deal pages are answered from page context directly.
+export const OVERLAY_TOOLS = [SEARCH_WEB]
 
 export function getToolsForPortal(portal?: string) {
   switch (portal) {
