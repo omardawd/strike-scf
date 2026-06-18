@@ -22,6 +22,7 @@ async function generateContractPdf(opts: {
 
     const doc = new (PDFDocument as any)({
       size: 'LETTER',
+      bufferPages: true,
       margins: { top: MT, bottom: 55, left: ML, right: ML },
       info: {
         Title: `Trade Agreement ${opts.refNumber}`,
@@ -557,7 +558,20 @@ export async function POST(
 
   // ── Contract PDF (fetch stored text → render as PDF) ──────────────────────
   if (type === 'contract') {
-    const contractDocId = (deal as any).contract_document_id
+    // Use submitted contract_document_id, or fall back to most recent draft
+    // (generated via preview before deal advances to contract_pending)
+    let contractDocId: string | null = (deal as any).contract_document_id ?? null
+    if (!contractDocId) {
+      const { data: latestDoc } = await adminClient
+        .from('documents')
+        .select('id')
+        .eq('entity_id', id)
+        .eq('document_kind', 'trade_contract')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      contractDocId = latestDoc?.id ?? null
+    }
     if (!contractDocId) {
       return Response.json({ error: 'No contract document found for this deal' }, { status: 404 })
     }
