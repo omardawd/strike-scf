@@ -394,9 +394,21 @@ export const STRIKE_TOOLS = [
   PROACTIVE_PORTFOLIO_ALERTS,
 ] as const
 
-// Minimal tool set for the overlay — web search only, no action tools.
-// Keeps the overlay from accidentally creating listings or submitting offers.
-export const OVERLAY_TOOLS = [SEARCH_WEB]
+const GET_FINANCING_PROGRAMS = {
+  name: 'get_financing_programs',
+  description: 'Fetch the financing programs that an organization is enrolled in on Strike. Use when the user asks about available financing options, which program to use, financing rates, deal size limits, or tenor. Requires the org_id from page context.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string', description: 'The organization ID to look up programs for' },
+    },
+    required: ['org_id'],
+  },
+}
+
+// Overlay tools — read-only: web search + financing program lookup.
+// No write/action tools to prevent side-effects from the hover overlay.
+export const OVERLAY_TOOLS = [SEARCH_WEB, GET_FINANCING_PROGRAMS]
 
 export function getToolsForPortal(portal?: string) {
   switch (portal) {

@@ -19,6 +19,7 @@ import { getActiveDeals, type GetActiveDealsInput } from './handlers/get-active-
 import { searchMarketplaceListings, type SearchMarketplaceListingsInput } from './handlers/search-marketplace-listings'
 import { submitMarketplaceOffer, type SubmitMarketplaceOfferInput } from './handlers/submit-marketplace-offer'
 import { handleSearchWeb } from './handlers/search-web'
+import { getFinancingPrograms, type GetFinancingProgramsInput } from './handlers/get-financing-programs'
 
 export type ToolName =
   | 'create_marketplace_listing'
@@ -38,6 +39,7 @@ export type ToolName =
   | 'search_marketplace_listings'
   | 'submit_marketplace_offer'
   | 'search_web'
+  | 'get_financing_programs'
 
 export async function executeTool(
   toolName: ToolName,
@@ -78,6 +80,8 @@ export async function executeTool(
       return submitMarketplaceOffer(toolInput as unknown as SubmitMarketplaceOfferInput)
     case 'search_web':
       return handleSearchWeb(toolInput)
+    case 'get_financing_programs':
+      return getFinancingPrograms(toolInput as unknown as GetFinancingProgramsInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }

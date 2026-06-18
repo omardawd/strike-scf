@@ -32,6 +32,7 @@ function buildSystemPrompt(
   contextData: Record<string, unknown> | null,
   userName: string,
   portal: string,
+  orgId: string | null,
 ) {
   const today = new Date().toISOString().split('T')[0]
   const ctx = contextData
@@ -40,10 +41,14 @@ function buildSystemPrompt(
   return `You are Strike AI, the assistant built into Strike SCF. Strike AI is your only name.
 
 Today: ${today}
-User: ${userName} (${portal} portal)
+User: ${userName} (${portal} portal)${orgId ? `\nOrg ID: ${orgId}` : ''}
 Current page: ${pageName}${ctx}
 
 You can see exactly what the user sees. Use the page context to answer questions about pricing, risk, offers, and whether terms are fair — reason directly from the data, no tools needed.
+
+You have two tools available:
+- search_web: use for real-time market prices, commodity rates, benchmarks, or any external factual data.
+- get_financing_programs: use whenever the user asks about financing options, programs, rates, or "which financing should I use" — call it with the Org ID above.
 
 Keep replies concise: short paragraphs or bullets, no markdown headers. Bold key figures.
 If the user asks to DO something (submit an offer, create a listing), tell them you can do that on the full Strike AI page and suggest they use the "Open Strike AI" button above.
@@ -188,7 +193,7 @@ export function AIOverlay() {
     const nextMessages = [...messages, userMsg]
     setMessages(nextMessages)
 
-    const systemPrompt = buildSystemPrompt(pn, contextData, userName, portal)
+    const systemPrompt = buildSystemPrompt(pn, contextData, userName, portal, user?.org_id ?? null)
 
     try {
       const res = await fetch('/api/ai/chat', {
