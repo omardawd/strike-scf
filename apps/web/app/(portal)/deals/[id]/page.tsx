@@ -728,16 +728,26 @@ export default function DealDetailPage() {
 
   // G5.1 — AI context summary for the overlay
   const recentActions = availableActions.filter(a => a.available).slice(0, 3).map(a => `- ${a.action}: ${a.description}`).join('\n')
-  const aiContext = [
-    `Deal #${shortId(deal.id)} | Status: ${deal.status} | Role: ${user_role}`,
-    `Buyer: ${buyer_org?.legal_name ?? '—'} | Supplier: ${supplier_org?.legal_name ?? '—'}`,
-    dealValue ? `Deal amount: ${fmt(dealValue, currency)} ${currency}` : '',
-    `Financing: ${financingContext.aiContextSummary}`,
-    canFinance
-      ? `Can request financing: YES — use the "Request Financing" button on this page to submit a financing request to banks on Strike Place. Financing types available: Reverse Factoring (buyer requests bank to pay supplier early, buyer repays bank), Invoice Factoring (supplier sells receivable to bank), PO Financing (pre-shipment working capital), Dynamic Discounting (anchor pays early for a discount).`
-      : `Can request financing: NO (deal status or financing already active)`,
-    recentActions ? `Available actions:\n${recentActions}` : 'No actions available for this user.',
-  ].filter(Boolean).join('\n')
+  const aiContext = JSON.stringify({
+    deal_id: shortId(deal.id),
+    status: deal.status,
+    user_role,
+    buyer: buyer_org?.legal_name ?? null,
+    supplier: supplier_org?.legal_name ?? null,
+    deal_amount: dealValue ? `${fmt(dealValue, currency)} ${currency}` : null,
+    financing_summary: financingContext.aiContextSummary,
+    can_request_financing: canFinance,
+    financing_how_to: canFinance
+      ? 'Use the "Request Financing" button on this page to submit a financing request to banks on Strike Place.'
+      : null,
+    financing_types_available: canFinance ? {
+      reverse_factoring: 'Buyer requests bank to pay supplier early; buyer repays bank on original due date.',
+      invoice_factoring: 'Supplier sells receivable to bank for immediate cash; bank collects from buyer.',
+      po_financing: 'Pre-shipment working capital — bank funds production/inventory before goods ship.',
+      dynamic_discounting: 'Anchor (buyer) pays supplier early in exchange for a discount on the invoice.',
+    } : null,
+    available_actions: availableActions.filter(a => a.available).map(a => ({ action: a.action, description: a.description })),
+  })
 
   return (
     <>
