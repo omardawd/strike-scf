@@ -320,7 +320,41 @@ export default function MarketplacePage() {
         }
       />
 
-      <div className="mp-page page" data-page-name="Marketplace" data-ai-context={JSON.stringify({ role: (user as any)?.role, total_listings: total, active_tab: mainTab, type_filter: typeFilter, category, sort, search: committedSearch, my_listings_count: myListings.length })}>
+      <div className="mp-page page" data-page-name="Marketplace" data-ai-context={JSON.stringify({
+          role: (user as any)?.role,
+          total_listings: total,
+          active_tab: mainTab,
+          type_filter: typeFilter,
+          category,
+          sort,
+          search: committedSearch,
+          my_listings_count: myListings.length,
+          visible_listings: (mainTab === 'marketplace' ? listings : myListings).map(item => ({
+            id: item.listing.id,
+            type: item.listing.listing_type,
+            title: item.listing.title,
+            description: item.listing.description ?? null,
+            category: item.listing.category ?? null,
+            quantity: item.listing.quantity ?? null,
+            unit: item.listing.unit ?? null,
+            target_price: item.listing.target_price ?? null,
+            currency: item.listing.currency,
+            incoterms: item.listing.incoterms ?? null,
+            payment_terms: item.listing.payment_terms ?? null,
+            delivery_location: item.listing.delivery_location ?? null,
+            delivery_deadline: item.listing.delivery_deadline ?? null,
+            offer_count: item.listing.offer_count,
+            ai_summary: item.listing.ai_summary ?? null,
+            poster: item.poster_org ? {
+              name: item.poster_org.doing_business_as ?? item.poster_org.legal_name,
+              type: item.poster_org.type,
+              passport_score: item.poster_org.passport_score,
+              risk_tier: item.poster_org.risk_tier,
+              trade_count: item.poster_org.trade_count_total,
+              country: item.poster_org.country_of_origin,
+            } : null,
+          })),
+        })}>
         <div className="mp-tabs">
           <button
             className={`mp-tab${mainTab === 'marketplace' ? ' mp-tab-active' : ''}`}
