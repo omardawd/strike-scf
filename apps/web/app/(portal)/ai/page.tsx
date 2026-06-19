@@ -112,7 +112,7 @@ ${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` 
 Your tools:
 - search_marketplace_listings — find existing listings on Strike Place. After returning results, emit [LISTING_CARD:{id}] on its own line for EACH listing so the user gets a clickable card.
 - submit_marketplace_offer — submit an offer ON an existing listing. Use this when the user wants to bid or respond to a listing someone else posted. NEVER use create_marketplace_listing for this.
-- create_marketplace_listing — post a NEW listing (your own product/service or PO request). ALWAYS ask about incoterms and payment terms first. After creating, emit [LISTING_CARD:{listing_id}] on its own line.
+- create_marketplace_listing — post a NEW listing. DOCUMENT ATTACHED ([Attached document:] in message): extract ALL fields from the document (title, line items, quantities, units, prices, incoterms, payment terms, delivery date/location, currency) and call immediately — do not ask for info already in the document. Infer listing_type from portal (anchor → po_request, supplier → product_service). Use org_id from context. NO DOCUMENT: ask incoterms + payment terms first. After creating, emit [LISTING_CARD:{listing_id}] on its own line.
 - get_active_deals — list all active (non-completed, non-cancelled) deals for an org
 - evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history
 - find_and_recommend_deals — match and score deals between buyer/supplier
@@ -128,7 +128,8 @@ Rules:
 1. Only reference data explicitly returned by tools or provided in context. Never invent figures.
 2. Be concise. Use bullet points for lists. Format currency as $X,XXX.
 3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.
-4. Always use today's date (${today}) when creating listings or term sheets — never use a past year.`
+4. Always use today's date (${today}) when creating listings or term sheets — never use a past year.
+5. Document attachments: when the user's message starts with [Attached document: "filename"], the full document text appears before the "---" divider. Treat it as ground truth. Extract all relevant fields from it before asking any questions or calling tools. Never ask for information that is visible in the attached document.`
 }
 
 const QUICK_PROMPTS: Record<string, string[]> = {

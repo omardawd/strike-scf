@@ -22,7 +22,7 @@ const LOOKUP_ENTITIES = {
 
 const CREATE_MARKETPLACE_LISTING = {
   name: 'create_marketplace_listing',
-  description: 'Create a marketplace listing (product/service or PO request) with line items. ALWAYS ask about: (1) incoterms and payment terms, (2) visibility — public (anyone on Strike) or network_only (only your private network) — and if network_only, which network. Ask all missing required info before calling. After success, respond with [LISTING_CARD:{listing_id}] on its own line.',
+  description: 'Create a marketplace listing (product/service or PO request) with line items. DOCUMENT MODE: When the user\'s message contains an [Attached document:] section, extract every listing field directly from that document (title, line items with quantities/units/prices, incoterms, payment terms, delivery date, delivery location, currency). Use org_id from context. Infer listing_type from portal: anchor/buyer → po_request, supplier → product_service. Call the tool immediately with all extracted fields — do not ask for info already present in the document. Only ask if a required field is genuinely absent. NO DOCUMENT: Ask for incoterms, payment terms, and visibility (public vs network_only) before calling. After success, always emit [LISTING_CARD:{listing_id}] on its own line.',
   input_schema: {
     type: 'object',
     properties: {
