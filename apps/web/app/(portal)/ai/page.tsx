@@ -11,6 +11,7 @@ interface Message {
   content: string
   timestamp: string
   isDocument?: boolean
+  attachmentName?: string // filename pill for display; full file text is embedded in content
 }
 
 interface Conversation {
@@ -293,9 +294,12 @@ export default function AIWorkspacePage() {
   const [loadingPhrase, setLoadingPhrase] = useState('Thinking')
   const [collapsed, setCollapsed] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ text: string; description: string } | null>(null)
+  const [attachment, setAttachment] = useState<{ filename: string; text: string } | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Load on mount ──
   useEffect(() => {
@@ -354,7 +358,7 @@ export default function AIWorkspacePage() {
     saveConversations(convos)
   }, [])
 
-  const runMessage = useCallback(async (text: string) => {
+  const runMessage = useCallback(async (text: string, attachmentName?: string) => {
     const trimmed = text.trim()
     if (!trimmed || loading) return
 
@@ -362,7 +366,7 @@ export default function AIWorkspacePage() {
     setLoading(true)
 
     const now = new Date().toISOString()
-    const userMsg: Message = { role: 'user', content: trimmed, timestamp: now }
+    const userMsg: Message = { role: 'user', content: trimmed, timestamp: now, attachmentName }
 
     // Resolve or create the active conversation
     let convoId = activeId
@@ -440,10 +444,40 @@ export default function AIWorkspacePage() {
     }
   }, [activeId, conversations, loading, persist, portal, userName])
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/ai/upload', { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'Upload failed'); return }
+      setAttachment({ filename: data.filename as string, text: data.text as string })
+      inputRef.current?.focus()
+    } catch {
+      alert('Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   function submit(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || loading) return
-    runMessage(trimmed)
+    if ((!trimmed && !attachment) || loading) return
+
+    if (attachment) {
+      const userTyped = trimmed || 'Please analyze this document.'
+      const fullContent = `[Attached document: "${attachment.filename}"]\n\n${attachment.text}\n\n---\n\n${userTyped}`
+      const att = attachment
+      setAttachment(null)
+      setInput('')
+      runMessage(fullContent, att.filename)
+    } else {
+      runMessage(trimmed)
+    }
   }
 
   function confirmAction() {
@@ -461,6 +495,7 @@ export default function AIWorkspacePage() {
       <style>{`
         @keyframes strike-ai-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes strike-ai-dot { 0%,80%,100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+        @keyframes strike-ai-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .strike-ai-newchat:hover { background: var(--blue-hover) !important; }
         .strike-ai-quick:hover { border-color: var(--blue) !important; }
         .strike-ai-convo:hover { background: var(--offwhite); }
@@ -650,12 +685,30 @@ export default function AIWorkspacePage() {
                 {messages.map((m, i) => (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', gap: 3, animation: 'strike-ai-in 0.2s ease' }}>
                     {m.role === 'user' ? (
-                      <div style={{
-                        maxWidth: '80%', padding: '10px 14px', background: 'var(--blue)', color: '#fff',
-                        borderRadius: '20px 20px 4px 20px', fontSize: 13, lineHeight: 1.65,
-                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      }}>
-                        {m.content}
+                      <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                        {m.attachmentName && (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px',
+                            background: 'var(--blue-light)', borderRadius: 8,
+                            fontSize: 11, fontWeight: 600, color: 'var(--blue)', maxWidth: '100%',
+                          }}>
+                            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{m.attachmentName}</span>
+                          </div>
+                        )}
+                        <div style={{
+                          padding: '10px 14px', background: 'var(--blue)', color: '#fff',
+                          borderRadius: '20px 20px 4px 20px', fontSize: 13, lineHeight: 1.65,
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        }}>
+                          {m.attachmentName && m.content.includes('\n\n---\n\n')
+                            ? (m.content.split('\n\n---\n\n').at(-1) ?? m.content)
+                            : m.content}
+                        </div>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: 8, maxWidth: '92%' }}>
@@ -751,25 +804,67 @@ export default function AIWorkspacePage() {
 
           {/* Input */}
           <div style={{ padding: '12px 18px 18px', flexShrink: 0 }}>
+            {/* Attachment pill */}
+            {attachment && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '6px 10px', background: 'var(--blue-light)', borderRadius: 10, width: 'fit-content', maxWidth: '100%' }}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--blue)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+                  {attachment.filename}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachment(null)}
+                  aria-label="Remove attachment"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                >
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            )}
             <div style={{
               minHeight: 56, borderRadius: 28, background: 'var(--white)',
               boxShadow: 'var(--shadow-card)', border: '1px solid var(--border)',
               display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px',
             }}>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv,.json,.md,.docx,.doc"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
               <button
                 type="button"
-                aria-label="Upload"
+                aria-label={uploading ? 'Uploading…' : 'Attach file'}
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Attach a file (PDF, image, text, CSV)"
                 style={{
-                  width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: 'var(--blue)',
-                  color: '#fff', border: 'none', cursor: 'pointer',
+                  width: 32, height: 32, flexShrink: 0, borderRadius: '50%',
+                  background: uploading ? 'var(--gray-soft)' : attachment ? 'var(--blue-hover)' : 'var(--blue)',
+                  color: '#fff', border: 'none', cursor: uploading ? 'default' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s',
                 }}
               >
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
+                {uploading ? (
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true" style={{ animation: 'strike-ai-spin 0.9s linear infinite' }}>
+                    <circle cx="12" cy="12" r="10" strokeDasharray="31.4" strokeDashoffset="10" />
+                  </svg>
+                ) : (
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                )}
               </button>
               <textarea
                 ref={inputRef}
@@ -782,7 +877,7 @@ export default function AIWorkspacePage() {
                   }
                 }}
                 rows={1}
-                placeholder="Ask Strike anything..."
+                placeholder={attachment ? `Ask about ${attachment.filename}…` : 'Ask Strike anything…'}
                 style={{
                   flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
                   fontSize: 15, color: 'var(--ink)', fontFamily: 'var(--font-body)',
@@ -793,12 +888,12 @@ export default function AIWorkspacePage() {
                 type="button"
                 aria-label="Send"
                 onClick={() => submit(input)}
-                disabled={!input.trim() || loading}
+                disabled={(!input.trim() && !attachment) || loading}
                 style={{
                   width: 40, height: 40, flexShrink: 0, borderRadius: '50%', background: 'var(--blue)',
                   color: '#fff', border: 'none',
-                  cursor: input.trim() && !loading ? 'pointer' : 'default',
-                  opacity: input.trim() && !loading ? 1 : 0.5,
+                  cursor: (input.trim() || attachment) && !loading ? 'pointer' : 'default',
+                  opacity: (input.trim() || attachment) && !loading ? 1 : 0.5,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
