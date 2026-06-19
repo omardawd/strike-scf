@@ -742,6 +742,24 @@ export default function DealDetailPage() {
     buyer: buyer_org?.legal_name ?? null,
     supplier: supplier_org?.legal_name ?? null,
     deal_amount: dealValue ? `${fmt(dealValue, currency)} ${currency}` : null,
+    goods_description: deal.goods_description ?? null,
+    agreed_quantity: deal.agreed_quantity ?? null,
+    agreed_unit: (deal as any).agreed_unit ?? null,
+    agreed_price: deal.agreed_price ? `${fmt(deal.agreed_price, currency)} ${currency}` : null,
+    incoterms: deal.agreed_incoterms ?? null,
+    payment_terms: deal.agreed_payment_terms ?? null,
+    delivery_date: deal.agreed_delivery_date ?? null,
+    currency,
+    line_items: listingLineItems.length > 0
+      ? listingLineItems.map((item: any) => ({
+          name: item.name,
+          description: item.description ?? null,
+          quantity: item.quantity ?? null,
+          unit: item.unit ?? null,
+          unit_price: item.unit_price ?? null,
+          currency: item.currency ?? currency,
+        }))
+      : null,
     financing_summary: financingContext.aiContextSummary,
     financing_terms: txn ? {
       structure: txn.type,
