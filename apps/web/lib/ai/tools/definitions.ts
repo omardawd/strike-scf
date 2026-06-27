@@ -319,6 +319,24 @@ const PROACTIVE_PORTFOLIO_ALERTS = {
   },
 }
 
+const GET_ERP_DATA = {
+  name: 'get_erp_data',
+  description: 'Read live ERP data synced from the organization\'s connected ERP system (ERPNext, NetSuite, SAP, etc). Returns cash position, AR aging, AP aging, inventory levels, and open orders. Also surfaces proactive advisories — low inventory, overdue receivables, cash stress. Use when the user asks about their financial position, inventory, orders, or when proactively scanning for actionable signals.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string', description: 'Organization ID to read ERP data for' },
+      data_type: {
+        type: 'string',
+        enum: ['ar_aging', 'ap_aging', 'cash_position', 'inventory_levels', 'open_orders', 'all'],
+        default: 'all',
+        description: 'Which ERP dataset to retrieve. Use "all" for a full overview.',
+      },
+    },
+    required: ['org_id'],
+  },
+}
+
 // Portal-specific tool sets — only send what each role can actually use.
 // Fewer tools = fewer input tokens on every request.
 const SUPPLIER_TOOLS = [
@@ -336,6 +354,7 @@ const SUPPLIER_TOOLS = [
   SUMMARIZE_DEAL_NEGOTIATION,
   DETECT_DEAL_RISK_SIGNALS,
   GENERATE_DEAL_TERM_SHEET,
+  GET_ERP_DATA,
   PROACTIVE_PORTFOLIO_ALERTS,
 ]
 
@@ -355,6 +374,7 @@ const ANCHOR_TOOLS = [
   SUMMARIZE_DEAL_NEGOTIATION,
   DETECT_DEAL_RISK_SIGNALS,
   GET_PASSPORT_ADVICE,
+  GET_ERP_DATA,
 ]
 
 const BANK_TOOLS = [
@@ -392,6 +412,7 @@ export const STRIKE_TOOLS = [
   EVALUATE_LISTING_OFFERS,
   GET_PASSPORT_ADVICE,
   PROACTIVE_PORTFOLIO_ALERTS,
+  GET_ERP_DATA,
 ] as const
 
 const GET_FINANCING_PROGRAMS = {

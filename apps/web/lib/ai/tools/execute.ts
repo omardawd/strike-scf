@@ -20,6 +20,7 @@ import { searchMarketplaceListings, type SearchMarketplaceListingsInput } from '
 import { submitMarketplaceOffer, type SubmitMarketplaceOfferInput } from './handlers/submit-marketplace-offer'
 import { handleSearchWeb } from './handlers/search-web'
 import { getFinancingPrograms, type GetFinancingProgramsInput } from './handlers/get-financing-programs'
+import { getErpData, type GetErpDataInput } from './handlers/get-erp-data'
 
 export type ToolName =
   | 'create_marketplace_listing'
@@ -40,6 +41,7 @@ export type ToolName =
   | 'submit_marketplace_offer'
   | 'search_web'
   | 'get_financing_programs'
+  | 'get_erp_data'
 
 export async function executeTool(
   toolName: ToolName,
@@ -82,6 +84,8 @@ export async function executeTool(
       return handleSearchWeb(toolInput)
     case 'get_financing_programs':
       return getFinancingPrograms(toolInput as unknown as GetFinancingProgramsInput)
+    case 'get_erp_data':
+      return getErpData(toolInput as unknown as GetErpDataInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }

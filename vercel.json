@@ -11,6 +11,10 @@
     {
       "path": "/api/deals/check-overdue",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/erp/sync",
+      "schedule": "0 6 * * *"
     }
   ]
 }
