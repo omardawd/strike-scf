@@ -1,0 +1,17 @@
+name: Cron - ERP Sync
+
+# Syncs ERP data daily at 06:00 UTC. Requires repo secrets APP_BASE_URL and
+# CRON_SECRET (see cron-agents-tick.yml).
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/erp/sync
+        run: |
+          curl -fsS -X GET "${{ secrets.APP_BASE_URL }}/api/erp/sync" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

@@ -6,6 +6,7 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { getAgentPreferences } from './agent-preferences'
 import { HARD_MAX_ROUNDS, HARD_MAX_DEADLINE_DAYS, NEGOTIATION_CAPABLE_TOOLS } from './negotiation-constants'
+import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -102,7 +103,25 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
     .eq('status', 'active')
     .limit(5)
 
-  // ── 6b. Load agent guardrail preferences — bounds what negotiation-capable ─
+  // ── 6b. Load OTHER orgs' marketplace listings this org could bid on ────────
+  // Without this, Claude has no real listing to ground a submit_marketplace_offer
+  // proposal in — it can only ever propose creating this org's own listing.
+  // Direction mirrors lib/deals/roles.ts's getRolesFromListingType: a buyer
+  // (anchor) submits offers on suppliers' `product_service` listings; a
+  // supplier submits offers on buyers' `po_request` listings.
+  const opportunityListingType = org?.type === 'anchor' ? 'product_service' : 'po_request'
+  const visibilityFilter = await getVisibilityFilter(adminClient, orgId)
+  const { data: opportunities } = await adminClient
+    .from('marketplace_listings')
+    .select('id, title, description, target_price, currency, delivery_location, org_id, organizations!marketplace_listings_org_id_fkey(legal_name, doing_business_as, passport_score)')
+    .eq('listing_type', opportunityListingType)
+    .eq('status', 'active')
+    .neq('org_id', orgId)
+    .or(buildListingVisibilityOr(visibilityFilter, orgId))
+    .order('created_at', { ascending: false })
+    .limit(8)
+
+  // ── 6c. Load agent guardrail preferences — bounds what negotiation-capable ─
   // proposals (create_marketplace_listing / submit_marketplace_offer) can carry.
   const prefs = await getAgentPreferences(orgId)
 
@@ -144,6 +163,21 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
     listings?.length
       ? listings.map((l) => `${l.listing_type} — ${l.title}`).join('\n')
       : 'No active listings.',
+    '',
+    `Marketplace opportunities you could submit an offer on (other orgs' ${opportunityListingType} listings — use the exact listing_id when proposing submit_marketplace_offer):`,
+    opportunities?.length
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? JSON.stringify(opportunities.map((o: any) => ({
+          listing_id: o.id,
+          title: o.title,
+          description: o.description?.slice(0, 120),
+          target_price: o.target_price,
+          currency: o.currency,
+          delivery_location: o.delivery_location,
+          posted_by: o.organizations?.doing_business_as ?? o.organizations?.legal_name ?? 'Unknown',
+          poster_passport_score: o.organizations?.passport_score,
+        })), null, 2)
+      : `No open ${opportunityListingType} listings from other orgs right now.`,
     '',
     'Agent guardrails configured for this org (only relevant to create_marketplace_listing / submit_marketplace_offer proposals — these are the ones that can lead to an autonomous negotiation):',
     prefs.hasPriceGuardrails
@@ -188,8 +222,17 @@ Each proposal must follow this exact schema:
   }
 }
 
-Produce 1-5 proposals max. Prioritise by urgency (cash flow > overdue receivables > inventory > procurement).
-Only propose actions with clear supporting evidence in the data. If there is nothing meaningful to propose, return [].`
+If the "Marketplace opportunities" section lists any listings, seriously consider proposing a "submit_offer" for the
+best-fitting one(s) — this is how the agent actually sources/sells on Strike Place, not just manages existing deals.
+When you do, use tool_name "submit_marketplace_offer" with tool_input: { "listing_id": <the exact listing_id from the
+opportunity>, "from_org_id": "${orgId}", "offered_price": <a real, competitive number you determine from target_price
+and any pricing context — never leave this blank>, plus any of offered_quantity/proposed_delivery_date/
+proposed_incoterms/proposed_payment_terms/notes that are relevant }. Name the counterparty by company name in the
+title/body, never "the poster" or the listing_id.
+
+Produce 1-5 proposals max. Prioritise by urgency (cash flow > overdue receivables > inventory > procurement > new
+marketplace opportunities). Only propose actions with clear supporting evidence in the data. If there is nothing
+meaningful to propose, return [].`
 
   const userPrompt = `Here is the current state of the organisation:\n\n${contextSections}\n\nBased on this data, what actions do you propose for the human controller to review?`
 

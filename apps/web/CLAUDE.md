@@ -712,17 +712,22 @@ CRON_SECRET              ← required; middleware gates /api/risk/refresh-signal
 NEXT_PUBLIC_DEV_BANK_ID=ff1a209f-aa2a-471c-95c8-9d01018cdecd
 ```
 
-Cron-gated routes (all check `x-cron-secret` against `CRON_SECRET`; NOT declared in
+Cron-gated routes (all check `x-cron-secret` against `CRON_SECRET`). NOT declared in
 `vercel.json` — Vercel Hobby caps cron jobs at 2/day and we have 5, one needing 5-minute
-frequency, so native Vercel Cron isn't usable on Hobby. On Pro, re-add a `crons` array to
-`vercel.json` with the schedules below; on Hobby, trigger each route on schedule from an
-external scheduler, e.g. cron-job.org or a scheduled GitHub Action, POSTing/GETting the
-path with header `x-cron-secret: $CRON_SECRET`):
-- `/api/risk/refresh-signals` — intended daily 00:00 UTC
-- `/api/deals/check-overdue` — intended daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
-- `/api/erp/sync` — intended daily 06:00 UTC
-- `/api/agents/scan` — intended daily 07:00 UTC
-- `/api/agents/tick` — intended every 5 minutes (the autonomous negotiation loop; see `lib/ai/agent-tick.ts`) — does nothing until this is scheduled somehow
+frequency, so native Vercel Cron isn't usable on Hobby. Instead scheduled via GitHub
+Actions (`.github/workflows/cron-*.yml`, free on Hobby) — each workflow calls its route
+on the schedule below using `curl` with header `x-cron-secret: ${{ secrets.CRON_SECRET }}`.
+Requires two repo secrets set in GitHub → Settings → Secrets and variables → Actions:
+`APP_BASE_URL` (the deployed app's base URL) and `CRON_SECRET` (must match the Vercel env
+var of the same name). Caveat: GitHub auto-disables scheduled workflows after 60 days
+with no repo activity — a commit or manual "Run workflow" re-enables them. If/when
+upgrading to Vercel Pro, delete the `.github/workflows/cron-*.yml` files and re-add a
+`crons` array to `vercel.json` instead (native, no 60-day-inactivity risk).
+- `cron-risk-refresh-signals.yml` → `/api/risk/refresh-signals` — daily 00:00 UTC
+- `cron-deals-check-overdue.yml` → `/api/deals/check-overdue` — daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
+- `cron-erp-sync.yml` → `/api/erp/sync` — daily 06:00 UTC
+- `cron-agents-scan.yml` → `/api/agents/scan` — daily 07:00 UTC
+- `cron-agents-tick.yml` → `/api/agents/tick` — every 5 minutes (the autonomous negotiation loop; see `lib/ai/agent-tick.ts`)
 
 **External packages** (`next.config.js` `serverExternalPackages`): `pdfkit` is excluded from
 webpack bundling. Any route using PDFKit must use `export const runtime = 'nodejs'`.

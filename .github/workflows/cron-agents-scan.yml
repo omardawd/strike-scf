@@ -1,0 +1,17 @@
+name: Cron - Agent Daily Scan
+
+# Runs the autonomous agent's daily proposal scan at 07:00 UTC. Requires repo
+# secrets APP_BASE_URL and CRON_SECRET (see cron-agents-tick.yml).
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/agents/scan
+        run: |
+          curl -fsS -X POST "${{ secrets.APP_BASE_URL }}/api/agents/scan" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

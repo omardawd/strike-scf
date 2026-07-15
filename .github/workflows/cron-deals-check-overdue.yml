@@ -1,0 +1,17 @@
+name: Cron - Deals Check Overdue
+
+# Moves overdue deals to payment_overdue daily at 08:00 UTC. Requires repo
+# secrets APP_BASE_URL and CRON_SECRET (see cron-agents-tick.yml).
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-overdue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/deals/check-overdue
+        run: |
+          curl -fsS -X GET "${{ secrets.APP_BASE_URL }}/api/deals/check-overdue" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
