@@ -17,9 +17,9 @@ const DAILY_LIMITS: Record<string, number> = {
 }
 
 // Maximum Claude ↔ tool execution cycles per request.
-// 3 is enough for virtually all flows: lookup → action → respond.
+// 6 covers multi-step flows: ERP lookup → AR data → create financing request → respond.
 // Higher values multiply input token cost by the number of iterations.
-const MAX_AGENTIC_ITERATIONS = 3
+const MAX_AGENTIC_ITERATIONS = 6
 
 // Prepended to every system prompt — non-negotiable identity rule.
 const STRIKE_AI_IDENTITY =
@@ -218,7 +218,6 @@ export async function POST(req: NextRequest) {
           adminClient
             .from('agent_actions')
             .insert({
-              user_id: userRow.id,
               org_id: userRow.org_id ?? null,
               bank_id: userRow.bank_id ?? null,
               action_type: block.name,

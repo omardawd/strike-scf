@@ -6,6 +6,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { extractJson } from '@/lib/ai'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,6 +17,75 @@ const KIND_MAP = {
   document: 'passport_document',
   certification: 'passport_certification',
 } as const
+
+const MAX_CLASSIFY_SIZE = 10 * 1024 * 1024
+
+// Best-effort AI classification of what the uploaded file actually is —
+// shown to the user as a confirmation popup right after upload. Never blocks
+// the upload itself; any failure here just means no detected type is shown.
+async function classifyDocument(
+  file: File,
+  kind: 'document' | 'certification',
+  buf: ArrayBuffer
+): Promise<{ detected_type: string; confidence: 'high' | 'medium' | 'low' } | null> {
+  try {
+    if (buf.byteLength > MAX_CLASSIFY_SIZE) return null
+
+    const mime = file.type || 'application/octet-stream'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content: any[] = []
+    const base64 = Buffer.from(buf).toString('base64')
+
+    if (mime === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } })
+    } else if (mime.startsWith('image/')) {
+      const media = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime) ? mime : 'image/jpeg'
+      content.push({ type: 'image', source: { type: 'base64', media_type: media, data: base64 } })
+    } else if (mime.startsWith('text/') || /\.(txt|csv|md)$/i.test(file.name)) {
+      const text = Buffer.from(buf).toString('utf-8').slice(0, 6000)
+      content.push({ type: 'text', text: `Document text content:\n${text}` })
+    } else {
+      // Unsupported binary (docx/xlsx/etc) — no content to read, skip AI classification.
+      return null
+    }
+
+    content.push({
+      type: 'text',
+      text: kind === 'certification'
+        ? 'Identify exactly what certification this is (e.g. "ISO 9001:2015 Quality Management", "SOC 2 Type II", "Fair Trade Certification"). Respond with ONLY JSON: {"detected_type": "<specific certification name>", "confidence": "high"|"medium"|"low"}'
+        : 'Identify exactly what type of business document this is (e.g. "Certificate of Incorporation", "W-9 Tax Form", "Proof of Insurance", "Bank Reference Letter"). Respond with ONLY JSON: {"detected_type": "<specific document type>", "confidence": "high"|"medium"|"low"}',
+    })
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 150,
+        messages: [{ role: 'user', content }],
+      }),
+    })
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const text: string = data?.content?.[0]?.text ?? ''
+    const parsed = extractJson<{ detected_type?: string; confidence?: string }>(text)
+    if (!parsed?.detected_type) return null
+
+    const confidence = ['high', 'medium', 'low'].includes(parsed.confidence ?? '')
+      ? (parsed.confidence as 'high' | 'medium' | 'low')
+      : 'medium'
+    return { detected_type: parsed.detected_type, confidence }
+  } catch (e) {
+    console.error('[passport/documents] classification failed:', e)
+    return null
+  }
+}
 
 async function getUser() {
   const supabase = await createClient()
@@ -123,5 +193,11 @@ export async function POST(
     .from('kyb-documents')
     .createSignedUrl(storagePath, 3600)
 
-  return NextResponse.json({ document: { ...doc, url: signed?.signedUrl ?? null } }, { status: 201 })
+  const classification = await classifyDocument(file, kind, buf)
+
+  return NextResponse.json({
+    document: { ...doc, url: signed?.signedUrl ?? null },
+    detected_type: classification?.detected_type ?? null,
+    detection_confidence: classification?.confidence ?? null,
+  }, { status: 201 })
 }

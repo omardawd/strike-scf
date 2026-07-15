@@ -70,7 +70,16 @@ function initials(name: string | null): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-function OrgAvatar({ name }: { name: string | null }) {
+function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | null }) {
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name ?? 'Organization logo'}
+        style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 8, objectFit: 'contain', background: 'var(--white)', border: '1px solid var(--border)' }}
+      />
+    )
+  }
   return (
     <div style={{ width: 52, height: 52, flexShrink: 0, background: 'var(--gold-dim)', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, letterSpacing: '-0.02em' }}>
       {initials(name)}
@@ -89,11 +98,11 @@ function TypeBadge({ type }: { type: string | null }) {
 
 // ── Score Breakdown ───────────────────────────────────────────────────────────
 
-const DIMS: { key: keyof ExpertAnalysis['scores']; label: string; icon: string }[] = [
-  { key: 'kyb_compliance',    label: 'KYB & Compliance',  icon: '🛡' },
-  { key: 'financial_health',  label: 'Financial Health',  icon: '📊' },
-  { key: 'trade_reliability', label: 'Trade Reliability', icon: '🤝' },
-  { key: 'network_reputation',label: 'Network Reputation',icon: '🌐' },
+const DIMS: { key: keyof ExpertAnalysis['scores']; label: string }[] = [
+  { key: 'kyb_compliance',    label: 'KYB & Compliance' },
+  { key: 'financial_health',  label: 'Financial Health' },
+  { key: 'trade_reliability', label: 'Trade Reliability' },
+  { key: 'network_reputation',label: 'Network Reputation' },
 ]
 
 function dimColor(score: number): string {
@@ -145,7 +154,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             disabled={rerunning}
             style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--blue)', background: 'transparent', color: 'var(--blue)', cursor: rerunning ? 'not-allowed' : 'pointer', opacity: rerunning ? 0.6 : 1, whiteSpace: 'nowrap' }}
           >
-            {rerunning ? 'Analyzing…' : 'Re-run Analysis'}
+            {rerunning ? 'Analyzing…' : 'Update Score'}
           </button>
         )}
       </div>
@@ -186,7 +195,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
 
         {/* ── 4 dimension bars ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
-          {DIMS.map(({ key, label, icon }) => {
+          {DIMS.map(({ key, label }) => {
             const dim = analysis.scores[key]
             const color = dimColor(dim.score)
             const isOpen = openDim === key
@@ -198,7 +207,6 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
                   style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                    <span style={{ fontSize: 13 }}>{icon}</span>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{label}</span>
                     <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: 'var(--font-display)' }}>{dim.score}/25</span>
                   </div>
@@ -255,7 +263,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <button type="button" onClick={() => setOpenSection(openSection === 'strengths' ? null : 'strengths')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                <span style={{ fontSize: 14 }}>✅</span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-green)', flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-green)' }}>Key Strengths</span>
                 <span style={{ fontSize: 11, color: 'var(--gray)', background: 'var(--color-green-bg)', padding: '2px 8px', borderRadius: 999 }}>
                   {analysis.key_strengths.length}
@@ -280,7 +288,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <button type="button" onClick={() => setOpenSection(openSection === 'flags' ? null : 'flags')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                <span style={{ fontSize: 14 }}>⚠️</span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-red)', flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-red)' }}>Risk Flags</span>
                 <span style={{ fontSize: 11, color: 'var(--color-red)', background: 'var(--color-red-bg, #FEE2E2)', padding: '2px 8px', borderRadius: 999 }}>
                   {analysis.risk_flags.length}
@@ -305,7 +313,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <button type="button" onClick={() => setOpenSection(openSection === 'actions' ? null : 'actions')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                <span style={{ fontSize: 14 }}>📈</span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--blue)', flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--blue)' }}>How to Improve</span>
                 <span style={{ fontSize: 11, color: 'var(--blue)', background: 'var(--color-accent-light, #EEF0FF)', padding: '2px 8px', borderRadius: 999 }}>
                   {analysis.improvement_actions.length}
@@ -353,7 +361,12 @@ function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: 
   return (
     <div className="card">
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, padding: '32px 24px' }}>
-        <div style={{ fontSize: 36 }}>🔍</div>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--blue-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="8.5" cy="8.5" r="5.5" stroke="var(--blue)" strokeWidth="1.6" />
+            <path d="M16 16l-3.2-3.2" stroke="var(--blue)" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </div>
         <div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>
             No Expert Analysis Yet
@@ -373,7 +386,7 @@ function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: 
           </div>
         ) : (
           <button type="button" className="btn btn-primary" onClick={onRunAnalysis}>
-            Run Expert AI Analysis →
+            Update Passport Score →
           </button>
         )}
       </div>
@@ -440,6 +453,12 @@ export default function MyPassportPage() {
   const [uploadingDocs, setUploadingDocs] = useState(false)
   const [uploadingCerts, setUploadingCerts] = useState(false)
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+  const [detectedType, setDetectedType] = useState<{
+    fileName: string
+    kind: 'document' | 'certification'
+    detected_type: string
+    confidence: string
+  } | null>(null)
 
   const [runningAiReview, setRunningAiReview] = useState(false)
   const [aiReviewMsg, setAiReviewMsg] = useState<string | null>(null)
@@ -485,7 +504,11 @@ export default function MyPassportPage() {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('kind', kind)
-      await fetch(`/api/passport/${orgId}/documents`, { method: 'POST', body: fd })
+      const res = await fetch(`/api/passport/${orgId}/documents`, { method: 'POST', body: fd })
+      const json = await res.json().catch(() => null) as { detected_type?: string | null; detection_confidence?: string | null } | null
+      if (json?.detected_type) {
+        setDetectedType({ fileName: file.name, kind, detected_type: json.detected_type, confidence: json.detection_confidence ?? 'medium' })
+      }
       await loadDocs()
     } finally {
       setUploading(false)
@@ -566,7 +589,7 @@ export default function MyPassportPage() {
     what_to_do: isGhost
       ? 'Submit KYB documents and activate passport to appear on the network'
       : !expertAnalysis
-        ? 'Run Expert AI Analysis to get a detailed breakdown and score'
+        ? 'Update Passport Score to get a detailed breakdown'
         : expertAnalysis.total_score < 70
           ? 'Improve score by uploading more documents, getting peer reviews, and completing KYB'
           : 'Score is healthy — focus on completing trades and getting peer reviews',
@@ -607,7 +630,7 @@ export default function MyPassportPage() {
               {/* Header card */}
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <OrgAvatar name={org.legal_name} />
+                  <OrgAvatar name={org.legal_name} logoUrl={org.logo_url} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
@@ -685,7 +708,7 @@ export default function MyPassportPage() {
                     disabled={runningAiReview}
                     style={{ width: '100%', opacity: runningAiReview ? 0.7 : 1 }}
                   >
-                    {runningAiReview ? 'Analyzing…' : expertAnalysis ? 'Re-run Analysis' : 'Run Expert AI Analysis →'}
+                    {runningAiReview ? 'Analyzing…' : expertAnalysis ? 'Update Passport Score' : 'Update Passport Score →'}
                   </button>
                   <p style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
                     Claude reads your uploaded documents and scores your business across 4 dimensions.
@@ -751,6 +774,58 @@ export default function MyPassportPage() {
           </div>
         ) : null}
       </div>
+
+      {detectedType && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.32)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={() => setDetectedType(null)}
+        >
+          <div
+            style={{ background: 'var(--white)', borderRadius: 'var(--radius-card)', padding: 28, width: '100%', maxWidth: 420, boxShadow: 'var(--shadow-elevated)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Document identified</h2>
+              <button onClick={() => setDetectedType(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--gray)' }}>×</button>
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 4 }}>
+              {detectedType.fileName}
+            </p>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px',
+              background: 'var(--blue-light)', borderRadius: 'var(--radius-input)', marginTop: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--blue)', marginBottom: 3 }}>
+                  Strike AI detected
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
+                  {detectedType.detected_type}
+                </div>
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+                background: detectedType.confidence === 'high' ? 'var(--color-green-bg)' : 'var(--offwhite)',
+                color: detectedType.confidence === 'high' ? 'var(--color-green)' : 'var(--gray)',
+                textTransform: 'capitalize',
+              }}>
+                {detectedType.confidence} confidence
+              </span>
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 14, lineHeight: 1.5 }}>
+              Filed under {detectedType.kind === 'certification' ? 'Certifications' : 'Documents'} on your Passport profile.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: 16 }}
+              onClick={() => setDetectedType(null)}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

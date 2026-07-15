@@ -453,18 +453,24 @@ export default function DealDetailPage() {
   }, [id, data?.deal?.status])
 
   // Realtime: re-fetch when the deal row changes (financing acceptance, status update, etc.)
+  // (gracefully degrades if WebSocket is blocked — deal still loads via load())
   useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`deal-detail:${id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'deals',
-        filter: `id=eq.${id}`,
-      }, () => { load() })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    let supabase: ReturnType<typeof createClient> | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null
+    try {
+      supabase = createClient()
+      channel = supabase
+        .channel(`deal-detail:${id}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'deals',
+          filter: `id=eq.${id}`,
+        }, () => { load() })
+        .subscribe()
+    } catch { /* realtime unavailable — page still works without live updates */ }
+    return () => { if (supabase && channel) supabase.removeChannel(channel) }
   }, [id, load])
 
   useEffect(() => {

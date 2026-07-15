@@ -7,7 +7,6 @@ interface LineItem {
   unit?: string
   unit_price?: number
   specs?: Record<string, unknown>
-  specs_flexible?: boolean
 }
 
 export interface CreateMarketplaceListingInput {
@@ -67,8 +66,8 @@ export async function createMarketplaceListing(input: CreateMarketplaceListingIn
     unit: item.unit ?? 'units',
     unit_price: item.unit_price ?? null,
     currency,
-    specs: item.specs ?? null,
-    specs_flexible: item.specs_flexible ?? false,
+    // listing_line_items.specs is NOT NULL (default '[]') — never pass null explicitly.
+    specs: item.specs ?? [],
     sort_order: idx,
   }))
 

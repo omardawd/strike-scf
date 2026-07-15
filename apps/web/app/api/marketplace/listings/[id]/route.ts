@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isListingVisibleToOrg } from '@/lib/networks/visibility'
+import { getOrgTradeStats, getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -65,11 +66,18 @@ export async function GET(
     .eq('id', id)
     .then(() => {})
 
-  const { data: poster_org } = await adminClient
+  const { data: posterOrgRow } = await adminClient
     .from('organizations')
-    .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, trade_count_total, trade_volume_total, avg_payment_days, dispute_rate_network, country_of_origin, description')
+    .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, country_of_origin, description')
     .eq('id', listing.org_id)
     .single()
+
+  // trade_count_total / trade_volume_total / avg_payment_days / dispute_rate_network
+  // are never written on `organizations` — compute live from deals instead (see
+  // lib/passport/trade-stats.ts).
+  const poster_org = posterOrgRow
+    ? { ...posterOrgRow, ...(await getOrgTradeStats(adminClient, posterOrgRow.id)) }
+    : null
 
   const isListingOwner = me.org_id != null && me.org_id === listing.org_id
 
@@ -93,12 +101,15 @@ export async function GET(
   const offerorOrgsMap: Record<string, any> = {}
 
   if (offerorOrgIds.length > 0) {
-    const { data: offerorOrgs } = await adminClient
-      .from('organizations')
-      .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, trade_count_total, avg_payment_days, dispute_rate_network')
-      .in('id', offerorOrgIds)
+    const [{ data: offerorOrgs }, statsMap] = await Promise.all([
+      adminClient
+        .from('organizations')
+        .select('id, legal_name, doing_business_as, type, passport_score, risk_tier')
+        .in('id', offerorOrgIds),
+      getOrgsTradeStatsBatch(adminClient, offerorOrgIds),
+    ])
     for (const org of offerorOrgs ?? []) {
-      offerorOrgsMap[org.id] = org
+      offerorOrgsMap[org.id] = { ...org, ...statsMap[org.id] }
     }
   }
 

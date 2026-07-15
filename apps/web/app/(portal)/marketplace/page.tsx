@@ -264,19 +264,25 @@ export default function MarketplacePage() {
   }, [fetchListings, mainTab])
 
   // Realtime: refresh listings when new listings are created or statuses change
+  // (gracefully degrades if WebSocket is blocked — listings still load via fetchListings)
   const realtimeRef = useRef<ReturnType<typeof createClient> | null>(null)
   useEffect(() => {
-    const supabase = createClient()
-    realtimeRef.current = supabase
-    const channel = supabase
-      .channel('marketplace-listings-list')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'marketplace_listings',
-      }, () => { fetchListings() })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    let supabase: ReturnType<typeof createClient> | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null
+    try {
+      supabase = createClient()
+      realtimeRef.current = supabase
+      channel = supabase
+        .channel('marketplace-listings-list')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'marketplace_listings',
+        }, () => { fetchListings() })
+        .subscribe()
+    } catch { /* realtime unavailable — page still works without live updates */ }
+    return () => { if (supabase && channel) supabase.removeChannel(channel) }
   }, [fetchListings])
 
   useEffect(() => {

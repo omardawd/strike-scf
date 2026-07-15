@@ -2516,13 +2516,19 @@ textarea.input {
   height: 32px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%);
+  box-shadow: 0 0 0 4px rgba(124,58,237,0.08);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   flex-shrink: 0;
+  animation: ai-icon-glow 2.6s ease-in-out infinite;
+}
+@keyframes ai-icon-glow {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(124,58,237,0.08); }
+  50%      { box-shadow: 0 0 0 7px rgba(124,58,237,0.14); }
 }
 .ai-insight-banner-label {
   font-size: 10.5px;

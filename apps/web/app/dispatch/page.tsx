@@ -17,6 +17,8 @@ function DispatchInner() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Keep a parallel history array in the format the API expects (no ts field)
+  const historyRef = useRef<Array<{ role: string; content: string }>>([])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -32,6 +34,9 @@ function DispatchInner() {
     setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
+    // Snapshot history before this message (for the API call)
+    const historySnapshot = [...historyRef.current]
+
     try {
       const res = await fetch('/api/ai/dispatch', {
         method: 'POST',
@@ -39,16 +44,23 @@ function DispatchInner() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: msg, source: 'mobile' }),
+        body: JSON.stringify({ message: msg, source: 'mobile', history: historySnapshot }),
       })
       const json = await res.json()
       if (!res.ok) {
         setError(json.error ?? 'Request failed')
         return
       }
+      const replyText = json.response ?? '(no response)'
+      // Append both turns to history for next request
+      historyRef.current = [
+        ...historySnapshot,
+        { role: 'user', content: msg },
+        { role: 'assistant', content: replyText },
+      ]
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: json.response ?? '(no response)',
+        text: replyText,
         ts: new Date().toLocaleTimeString(),
       }])
     } catch {
@@ -105,7 +117,6 @@ function DispatchInner() {
 
         {hasToken && messages.length === 0 && !loading && (
           <div style={{ textAlign: 'center', color: 'var(--gray, #6B7280)', fontSize: 14, paddingTop: 40 }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
             <div style={{ fontWeight: 600, color: 'var(--ink, #0D0D0D)', marginBottom: 4 }}>Ready</div>
             <div>Send a command to Strike AI. It can check inventory, create listings, request financing, and more.</div>
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>

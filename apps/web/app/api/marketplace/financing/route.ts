@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateFinancingRequestPayload } from '@strike-scf/types'
 import { getVisibilityFilter } from '@/lib/networks/visibility'
+import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,14 +87,20 @@ export async function GET() {
       const allOrgIds = [...new Set([...buyerIds, ...supplierIds])]
 
       if (allOrgIds.length > 0) {
-        const { data: orgs } = await adminClient
-          .from('organizations')
-          .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, avg_payment_days, dispute_rate_network, country_of_origin')
-          .in('id', allOrgIds)
+        const [{ data: orgs }, statsMap] = await Promise.all([
+          adminClient
+            .from('organizations')
+            .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, country_of_origin')
+            .in('id', allOrgIds),
+          // avg_payment_days / dispute_rate_network are never written on
+          // `organizations` — compute live from deals instead (see lib/passport/trade-stats.ts).
+          getOrgsTradeStatsBatch(adminClient, allOrgIds),
+        ])
 
         for (const org of orgs ?? []) {
-          if (buyerIds.includes(org.id))    buyerOrgsMap[org.id]    = org
-          if (supplierIds.includes(org.id)) supplierOrgsMap[org.id] = org
+          const enriched = { ...org, ...statsMap[org.id] }
+          if (buyerIds.includes(org.id))    buyerOrgsMap[org.id]    = enriched
+          if (supplierIds.includes(org.id)) supplierOrgsMap[org.id] = enriched
         }
       }
 

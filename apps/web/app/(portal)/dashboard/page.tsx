@@ -74,8 +74,16 @@ interface DealItem {
   status: string
   goods_description: string | null
   total_value: number | null
+  agreed_price: number | null
   counterparty: { id: string; legal_name: string | null; passport_score: number | null } | null
   user_role: 'buyer' | 'supplier'
+}
+
+// Deal value: total_value is only populated late in the flow; agreed_price
+// carries the value from the moment a deal is struck. Fall back so in-progress
+// deals never read as $0.
+function dealValue(d: { total_value: number | null; agreed_price: number | null }): number {
+  return Number(d.total_value ?? d.agreed_price ?? 0)
 }
 
 interface ListingItem {
@@ -130,6 +138,10 @@ function fmtRelTime(iso: string): string {
 
 function todayFull(): string {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
+function fmtStructureType(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function dealStatusClass(status: string): string {
@@ -355,6 +367,30 @@ function SkeletonCard({ height = 120 }: { height?: number }) {
   )
 }
 
+// ─── Dashboard Header (gradient hero) ─────────────────────────────────────────
+function DashboardHeader({ eyebrow, title, subtitle }: { eyebrow?: string; title: string; subtitle: React.ReactNode }) {
+  return (
+    <div className="page-header" style={{
+      position: 'relative', overflow: 'hidden',
+      background: 'linear-gradient(120deg, rgba(20,40,204,0.05) 0%, rgba(124,58,237,0.05) 60%, transparent 100%)',
+      border: '1px solid rgba(20,40,204,0.08)',
+      borderRadius: 'var(--radius-card)',
+      padding: '22px 26px',
+      marginBottom: 24,
+    }}>
+      <div style={{
+        position: 'absolute', top: -60, right: -60, width: 220, height: 220, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(124,58,237,0.10) 0%, transparent 70%)', pointerEvents: 'none',
+      }} />
+      {eyebrow && <div className="eyebrow" style={{ position: 'relative' }}>{eyebrow}</div>}
+      <h1 style={{ position: 'relative', fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
+        {title}
+      </h1>
+      <div className="subtitle" style={{ position: 'relative' }}>{subtitle}</div>
+    </div>
+  )
+}
+
 // ─── Action Queue Strip ───────────────────────────────────────────────────────
 interface ActionCard { color: string; label: string; href: string; count: number }
 
@@ -404,14 +440,43 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
 }
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
-interface KpiItem { label: string; value: string; sub?: string; valueColor?: string }
+type KpiIconName = 'deals' | 'volume' | 'financing' | 'listings' | 'programs' | 'balance' | 'rate' | 'org'
+interface KpiItem { label: string; value: string; sub?: string; valueColor?: string; icon?: KpiIconName; tint?: string }
+
+const KPI_ICON_PATHS: Record<KpiIconName, React.ReactNode> = {
+  deals:     <path d="M4 9l3-3 3 3M7 6v9M17 8l-3 3-3-3M14 11V2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
+  volume:    <><path d="M10 2v16M14 5.5c0-1.4-1.8-2.5-4-2.5s-4 1.1-4 2.5S8 8 10 8s4 1.1 4 2.5-1.8 2.5-4 2.5-4-1.1-4-2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" /></>,
+  financing: <><rect x="2.5" y="8" width="15" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.6" fill="none" /><path d="M5.5 8V6a4.5 4.5 0 019 0v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" /></>,
+  listings:  <><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" fill="none" /><rect x="11" y="2.5" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" fill="none" /><rect x="2.5" y="11" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" fill="none" /><rect x="11" y="11" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" fill="none" /></>,
+  programs:  <><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.6" fill="none" /><path d="M2.5 8h15" stroke="currentColor" strokeWidth="1.6" /></>,
+  balance:   <><circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.6" fill="none" /><path d="M10 6v8M12.5 8.2c0-1-1.1-1.7-2.5-1.7s-2.5.7-2.5 1.7 1.1 1.5 2.5 1.5 2.5.6 2.5 1.6-1.1 1.7-2.5 1.7-2.5-.7-2.5-1.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" /></>,
+  rate:      <><path d="M4 16L16 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="6" cy="6" r="2.2" stroke="currentColor" strokeWidth="1.6" fill="none" /><circle cx="14" cy="14" r="2.2" stroke="currentColor" strokeWidth="1.6" fill="none" /></>,
+  org:       <><path d="M4 17V4a1 1 0 011-1h6a1 1 0 011 1v13" stroke="currentColor" strokeWidth="1.6" fill="none" /><path d="M12 9h3a1 1 0 011 1v7" stroke="currentColor" strokeWidth="1.6" fill="none" /><path d="M6.5 6.5h1M6.5 9.5h1M6.5 12.5h1M9.5 6.5h1M9.5 9.5h1M9.5 12.5h1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></>,
+}
+
+function KpiIcon({ name, tint }: { name: KpiIconName; tint: string }) {
+  return (
+    <div style={{
+      width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+      background: `color-mix(in srgb, ${tint} 14%, transparent)`,
+      color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        {KPI_ICON_PATHS[name]}
+      </svg>
+    </div>
+  )
+}
 
 function KpiStrip({ kpis, loading }: { kpis: KpiItem[]; loading: boolean }) {
   return (
     <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
       {kpis.map((k, i) => (
         <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)' }}>
-          <div className="kpi-label">{k.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+            <div className="kpi-label" style={{ marginBottom: 0 }}>{k.label}</div>
+            {k.icon && <KpiIcon name={k.icon} tint={k.tint ?? 'var(--blue)'} />}
+          </div>
           {loading ? (
             <div style={{ marginTop: 4, marginBottom: 4 }}><SkeletonBlock height={24} width={80} /></div>
           ) : (
@@ -679,10 +744,10 @@ function BankDashboard() {
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Programs',    value: loading ? '—' : String(dashData?.active_program_count ?? 0), sub: dashData ? `${dashData.program_count} total` : undefined },
-    { label: 'Outstanding Balance', value: loading ? '—' : fmtCurrency(dashData?.outstanding_balance ?? 0), valueColor: 'var(--blue)' },
-    { label: 'Avg Financing Rate', value: loading ? '—' : (dashData?.avg_rate != null ? `${dashData.avg_rate}%` : '—') },
-    { label: 'Enrolled Orgs',     value: loading ? '—' : String(dashData?.enrolled_org_count ?? 0) },
+    { label: 'Active Programs',    value: loading ? '—' : String(dashData?.active_program_count ?? 0), sub: dashData ? `${dashData.program_count} total` : undefined, icon: 'programs', tint: 'var(--blue)' },
+    { label: 'Outstanding Balance', value: loading ? '—' : fmtCurrency(dashData?.outstanding_balance ?? 0), valueColor: 'var(--blue)', icon: 'balance', tint: 'var(--blue)' },
+    { label: 'Avg Financing Rate', value: loading ? '—' : (dashData?.avg_rate != null ? `${dashData.avg_rate}%` : '—'), icon: 'rate', tint: 'var(--color-purple)' },
+    { label: 'Enrolled Orgs',     value: loading ? '—' : String(dashData?.enrolled_org_count ?? 0), icon: 'org', tint: 'var(--color-green)' },
   ]
 
   const bankAiContext = JSON.stringify({
@@ -709,19 +774,16 @@ function BankDashboard() {
       >
 
         {/* 1. Page header */}
-        <div className="page-header">
-          <div className="eyebrow">{dashData?.bank_name ?? 'Bank'} · Command Center</div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
-            Good {greeting()}, {firstName}
-          </h1>
-          <div className="subtitle">
-            {loading ? 'Loading…'
+        <DashboardHeader
+          eyebrow={`${dashData?.bank_name ?? 'Bank'} · Command Center`}
+          title={`Good ${greeting()}, ${firstName}`}
+          subtitle={
+            loading ? 'Loading…'
               : attentionCount > 0
               ? `${attentionCount} item${attentionCount !== 1 ? 's' : ''} need your attention · ${todayFull()}`
               : `Everything is up to date · ${todayFull()}`
-            }
-          </div>
-        </div>
+          }
+        />
 
         {dashData && (
           <div style={{ marginBottom: 24 }}>
@@ -784,7 +846,7 @@ function BankDashboard() {
                         {fmtCurrency(item.request.amount_requested)}
                       </span>
                       <span className={`badge ${structureBadgeClass(item.request.structure_type)}`}>
-                        {item.request.structure_type}
+                        {fmtStructureType(item.request.structure_type)}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -913,24 +975,33 @@ function AnchorDashboard() {
   }, [user?.org_id])
 
   const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status))
-  const completedVolume = deals.filter(d => d.status === 'completed').reduce((s, d) => s + (d.total_value ?? 0), 0)
+  const tradingDeals = deals.filter(d => d.status !== 'cancelled')
+  const tradeVolume = tradingDeals.reduce((s, d) => s + dealValue(d), 0)
+  const completedDealCount = deals.filter(d => d.status === 'completed').length
   const financingActiveAmt = financing.filter(f => ['open', 'offers_received', 'accepted'].includes(f.status)).reduce((s, f) => s + f.amount_requested, 0)
 
   const dealsNeedingAction = deals.filter(d => d.status === 'negotiating' && d.user_role === 'buyer').length
-  const listingsWithOffers = listings.filter(l => l.listing.offer_count > 0).length
+  const listingsWithOffersList = listings.filter(l => l.listing.offer_count > 0)
+  const listingsWithOffers = listingsWithOffersList.length
   const financingWithOffers = financing.filter(f => f.status === 'offers_received').length
+
+  // Deep-link straight to the listing when there's exactly one with offers;
+  // otherwise land on Strike Place so the user can pick from "My Listings".
+  const listingsWithOffersHref = listingsWithOffers === 1 && listingsWithOffersList[0]
+    ? `/marketplace/listings/${listingsWithOffersList[0].listing.id}`
+    : '/marketplace'
 
   const actionCards: ActionCard[] = [
     { color: 'var(--color-amber)', label: `${dealsNeedingAction} deal${dealsNeedingAction !== 1 ? 's' : ''} awaiting your action`, count: dealsNeedingAction, href: '/deals' },
-    { color: 'var(--blue)', label: `${listingsWithOffers} listing${listingsWithOffers !== 1 ? 's' : ''} with offers`, count: listingsWithOffers, href: '/marketplace/listings' },
+    { color: 'var(--blue)', label: `${listingsWithOffers} listing${listingsWithOffers !== 1 ? 's' : ''} with offers`, count: listingsWithOffers, href: listingsWithOffersHref },
     { color: 'var(--color-green)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} received`, count: financingWithOffers, href: '/marketplace/financing' },
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',         value: loading ? '—' : String(activeDeals.length) },
-    { label: 'Trade Volume',         value: loading ? '—' : fmtCurrency(completedVolume), sub: 'Completed deals', valueColor: completedVolume > 0 ? 'var(--color-green)' : undefined },
-    { label: 'Financing Active',     value: loading ? '—' : fmtCurrency(financingActiveAmt), valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined },
-    { label: 'Strike Place Listings', value: loading ? '—' : String(listings.length) },
+    { label: 'Active Deals',         value: loading ? '—' : String(activeDeals.length), icon: 'deals', tint: 'var(--blue)' },
+    { label: 'Trade Volume',         value: loading ? '—' : fmtCurrency(tradeVolume), sub: completedDealCount > 0 ? `${completedDealCount} completed` : 'Active + completed', valueColor: tradeVolume > 0 ? 'var(--color-green)' : undefined, icon: 'volume', tint: 'var(--color-green)' },
+    { label: 'Financing Active',     value: loading ? '—' : fmtCurrency(financingActiveAmt), valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined, icon: 'financing', tint: 'var(--color-purple)' },
+    { label: 'Strike Place Listings', value: loading ? '—' : String(listings.length), icon: 'listings', tint: 'var(--color-amber)' },
   ]
 
   const anchorAiContext = JSON.stringify({
@@ -944,7 +1015,8 @@ function AnchorDashboard() {
     listings_with_offers: listingsWithOffers,
     financing_active_amount: financingActiveAmt,
     financing_with_new_offers: financingWithOffers,
-    completed_trade_volume: completedVolume,
+    trade_volume: tradeVolume,
+    completed_deals: completedDealCount,
     active_deal_list: activeDeals.slice(0, 5).map(d => ({
       status: d.status,
       value: (d as any).total_value ?? null,
@@ -961,12 +1033,10 @@ function AnchorDashboard() {
       >
 
         {/* 1. Header */}
-        <div className="page-header">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
-            Good {greeting()}, {firstName}
-          </h1>
-          <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
-        </div>
+        <DashboardHeader
+          title={`Good ${greeting()}, ${firstName}`}
+          subtitle={`${dashData?.org_name ?? ''}${dashData?.org_name ? ' · ' : ''}${todayFull()}`}
+        />
 
         {/* AI Overview — only mount after data loads so context is populated */}
         {!loading && (
@@ -981,7 +1051,7 @@ function AnchorDashboard() {
                 deals_needing_action: dealsNeedingAction,
                 listings_with_offers: listingsWithOffers,
                 pending_financing: financing?.length ?? 0,
-                completed_deal_volume: completedVolume,
+                trade_volume: tradeVolume,
               }}
             />
           </div>
@@ -1071,7 +1141,7 @@ function AnchorDashboard() {
                     }}>
                       <div>
                         <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{fmtStructureType(f.structure_type)}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                         <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>
@@ -1092,10 +1162,10 @@ function AnchorDashboard() {
         <AIInsight
           title="Trade Intelligence"
           collapsed={true}
-          prompt={`This buyer has ${activeDeals.length} active deals worth $${completedVolume.toFixed(0)} total. They have ${listings.length} Strike Place listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
+          prompt={`This buyer has ${activeDeals.length} active deals and $${tradeVolume.toFixed(0)} in total trade volume across active and completed deals. They have ${listings.length} Strike Place listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
           context={{
             active_deals: activeDeals.length,
-            completed_deal_volume: completedVolume,
+            trade_volume: tradeVolume,
             marketplace_listings: listings.length,
             financing_requests: financing.length,
             listings_with_offers: listingsWithOffers,
@@ -1160,10 +1230,10 @@ function SupplierDashboard() {
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',    value: loading ? '—' : String(activeDeals.length) },
-    { label: 'Total Financed',  value: loading ? '—' : fmtCurrency(totalFinanced), valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined },
-    { label: 'Completed Deals', value: loading ? '—' : String(completedDeals), sub: 'Track record' },
-    { label: 'Bank Views',      value: loading ? '—' : String(passport?.bank_view_count_30d ?? 0), sub: 'Last 30 days' },
+    { label: 'Active Deals',    value: loading ? '—' : String(activeDeals.length), icon: 'deals', tint: 'var(--blue)' },
+    { label: 'Total Financed',  value: loading ? '—' : fmtCurrency(totalFinanced), valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined, icon: 'financing', tint: 'var(--color-green)' },
+    { label: 'Completed Deals', value: loading ? '—' : String(completedDeals), sub: 'Track record', icon: 'volume', tint: 'var(--color-purple)' },
+    { label: 'Bank Views',      value: loading ? '—' : String(passport?.bank_view_count_30d ?? 0), sub: 'Last 30 days', icon: 'org', tint: 'var(--color-amber)' },
   ]
 
   const passportExtras = passport ? (
@@ -1209,12 +1279,10 @@ function SupplierDashboard() {
       >
 
         {/* 1. Header */}
-        <div className="page-header">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', margin: '4px 0' }}>
-            Good {greeting()}, {firstName}
-          </h1>
-          <div className="subtitle">{dashData?.org_name ?? ''}{dashData?.org_name ? ' · ' : ''}{todayFull()}</div>
-        </div>
+        <DashboardHeader
+          title={`Good ${greeting()}, ${firstName}`}
+          subtitle={`${dashData?.org_name ?? ''}${dashData?.org_name ? ' · ' : ''}${todayFull()}`}
+        />
 
         {/* AI Overview — only mount after data loads so context is populated */}
         {!loading && (
@@ -1243,7 +1311,7 @@ function SupplierDashboard() {
         {!loading && pendingNetworks.length > 0 && (
           <div className="card" style={{ marginBottom: 8, borderLeft: '3px solid var(--color-amber)', paddingLeft: 16 }}>
             <div className="card-head" style={{ marginBottom: 10 }}>
-              <span style={{ fontWeight: 700 }}>📬 Network Invitations</span>
+              <span style={{ fontWeight: 700 }}>Network Invitations</span>
               <a href="/networks" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>
                 View all ({pendingNetworks.length}) →
               </a>
@@ -1315,7 +1383,7 @@ function SupplierDashboard() {
                     }}>
                       <div>
                         <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{f.structure_type}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{fmtStructureType(f.structure_type)}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                         <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>

@@ -66,7 +66,7 @@ export function BulkInviteModal({ isOpen, onClose, programId, anchorOrgId }: Pro
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 50,
+        position: 'fixed', inset: 0, zIndex: 400,
         background: 'rgba(0,0,0,0.4)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}

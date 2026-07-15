@@ -52,7 +52,6 @@ const CREATE_MARKETPLACE_LISTING = {
             unit: { type: 'string', default: 'units' },
             unit_price: { type: 'number' },
             specs: { type: 'object' },
-            specs_flexible: { type: 'boolean', default: false },
           },
           required: ['name'],
         },
@@ -256,6 +255,7 @@ const SEARCH_MARKETPLACE_LISTINGS = {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'Keyword to search for (e.g. "steel", "electronics"). Use "all" to list recent listings.' },
+      org_id: { type: 'string', description: 'org_id from context. Include it so network_only listings this org can see are included, not just public ones.' },
       listing_type: { type: 'string', enum: ['po_request', 'product_service', 'all'], default: 'all', description: 'po_request = buyers looking to procure; product_service = suppliers offering goods/services' },
       category: { type: 'string', description: 'Filter by category (optional)' },
       max_budget: { type: 'number', description: 'Max target price filter (optional)' },
@@ -284,6 +284,95 @@ const SUBMIT_MARKETPLACE_OFFER = {
     required: ['listing_id', 'from_org_id'],
   },
 }
+
+const COUNTER_MARKETPLACE_OFFER = {
+  name: 'counter_marketplace_offer',
+  description: 'Submit a counter-offer on an existing marketplace offer. Only valid when it is this org\'s turn to counter (the other party made the last move). Use evaluate_listing_offers or get_pricing_insights first to decide on fair terms.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      offer_id: { type: 'string', description: 'UUID of the offer to counter' },
+      acting_org_id: { type: 'string', description: 'org_id of the org submitting this counter (use org_id from context)' },
+      offered_price: { type: 'number', description: 'Total counter price in the listing currency' },
+      offered_quantity: { type: 'number' },
+      proposed_delivery_date: { type: 'string', format: 'date' },
+      proposed_incoterms: { type: 'string', description: 'e.g. CIF, FOB, EXW' },
+      proposed_payment_terms: { type: 'string', description: 'e.g. Net 30, LC at sight' },
+      shipping_cost: { type: 'number', description: 'Required when this org is the supplier and incoterms put main carriage on the seller' },
+      notes: { type: 'string' },
+    },
+    required: ['offer_id', 'acting_org_id', 'offered_price'],
+  },
+}
+
+const REJECT_MARKETPLACE_OFFER = {
+  name: 'reject_marketplace_offer',
+  description: 'Reject an offer on your own listing outright, ending the negotiation. Only the listing owner can reject. Use this when a counter-offer is clearly unacceptable rather than countering again.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      offer_id: { type: 'string', description: 'UUID of the offer to reject' },
+      acting_org_id: { type: 'string', description: 'org_id of the listing owner rejecting (use org_id from context)' },
+      reason: { type: 'string', description: 'Brief reason for rejecting, for the audit trail' },
+    },
+    required: ['offer_id', 'acting_org_id'],
+  },
+}
+
+// NOTE: accept_marketplace_offer intentionally has no schema wired into any
+// portal's chat tool set below — accepting an offer creates a binding deal,
+// and per the negotiation design that must only ever happen through a human
+// explicitly approving a 'negotiation_ready_to_finalize' agent_tasks row
+// (see app/api/agents/tasks/[id]/approve/route.ts), never via ad-hoc chat.
+
+// Signal-only "tool" for the negotiation tick loop (app/api/agents/tick/route.ts).
+// Not a real action — calling it does nothing on its own. It's how Claude tells
+// the tick loop "the counterparty's current terms should be accepted" without
+// ever being able to accept the offer itself; the tick loop intercepts this
+// tool_use block directly (it is NOT registered in execute.ts/ToolName) and
+// turns it into a 'negotiation_ready_to_finalize' agent_tasks row for GATE 2.
+const RECOMMEND_FINALIZATION = {
+  name: 'recommend_finalization',
+  description: 'Call this when you believe the counterparty\'s current offer terms are good and should be accepted — NOT when you want to counter or reject. This does not accept the offer; it flags it for a human to make the final call.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      offer_id: { type: 'string', description: 'UUID of the offer whose current terms you recommend accepting' },
+      reasoning: { type: 'string', description: 'Brief explanation of why these terms are good, for the human reviewing it' },
+    },
+    required: ['offer_id', 'reasoning'],
+  },
+}
+
+// Signal-only "tool" for per-task plan chats (app/api/agents/tasks/[id]/messages/route.ts).
+// Not a real action — it never touches the database itself. Claude calls this
+// when the human asks it to change the terms of a pending proposed action; the
+// route intercepts the tool_use block directly (NOT registered in execute.ts/
+// ToolName) and merges `patch` into the task's proposed_action.tool_input.
+const REVISE_PROPOSED_ACTION = {
+  name: 'revise_proposed_action',
+  description: 'Update the terms of the currently proposed action based on what the human just asked for. Only include the fields that should change — they are merged into the existing action, not used to replace it wholesale.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      patch: { type: 'object', description: 'Partial tool_input fields to change (e.g. {"amount": 75000})' },
+      summary: { type: 'string', description: 'One sentence describing what changed, shown to the human in the thread' },
+    },
+    required: ['patch', 'summary'],
+  },
+}
+
+// Bounded tool set for per-task plan chats — lets Strike AI look things up while
+// discussing a pending proposal, and revise its terms, but never execute
+// anything directly (approve/reject in the UI still own execution).
+export const TASK_CHAT_TOOLS = [
+  REVISE_PROPOSED_ACTION,
+  LOOKUP_ENTITIES,
+  GET_ACTIVE_DEALS,
+  SEARCH_MARKETPLACE_LISTINGS,
+  GET_PRICING_INSIGHTS,
+  EVALUATE_LISTING_OFFERS,
+]
 
 const SEARCH_WEB = {
   name: 'search_web',
@@ -337,6 +426,42 @@ const GET_ERP_DATA = {
   },
 }
 
+const GET_AGENT_TASKS = {
+  name: 'get_agent_tasks',
+  description: 'List the AI agent\'s pending proposals and recent task history for an org. Use when the user asks what their agent is doing, what proposals are waiting, or to review agent activity.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string' },
+      status: { type: 'string', enum: ['awaiting_approval', 'completed', 'failed', 'rejected', 'all'], default: 'all' },
+      limit:  { type: 'number', default: 20 },
+    },
+    required: ['org_id'],
+  },
+}
+
+const CREATE_FINANCING_REQUEST = {
+  name: 'create_financing_request',
+  description: 'Post a receivables or trade financing request to Strike Place so banks can submit offers. Use this — NOT create_marketplace_listing — whenever the user wants to finance an invoice, receivable, or existing trade. For ERP-sourced invoices with no Strike deal yet, provide invoice details and a deal is auto-imported. Always prefer invoice_factoring for AR/receivables financing.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id:               { type: 'string' },
+      deal_id:              { type: 'string', description: 'Existing Strike deal ID. Omit if financing an ERP invoice — the deal will be auto-imported.' },
+      invoice_description:  { type: 'string', description: 'Short description of the invoice/receivable, e.g. "AR invoice — Walmart eCommerce"' },
+      amount:               { type: 'number', description: 'Total amount to finance' },
+      currency:             { type: 'string', default: 'USD' },
+      counterparty_name:    { type: 'string', description: 'Buyer/debtor name (e.g. "Walmart eCommerce")' },
+      invoice_due_date:     { type: 'string', format: 'date', description: 'Invoice due date YYYY-MM-DD' },
+      financing_type:       { type: 'string', enum: ['invoice_factoring', 'reverse_factoring', 'po_financing', 'dynamic_discounting'], default: 'invoice_factoring' },
+      structure_type:       { type: 'string', enum: ['preset', 'custom', 'open'], default: 'open' },
+      preferred_tenor_days: { type: 'number', description: 'Financing tenor in days, e.g. 60' },
+      preferred_rate_max:   { type: 'number', description: 'Maximum acceptable rate (APR %)' },
+    },
+    required: ['org_id', 'amount'],
+  },
+}
+
 // Portal-specific tool sets — only send what each role can actually use.
 // Fewer tools = fewer input tokens on every request.
 const SUPPLIER_TOOLS = [
@@ -344,7 +469,10 @@ const SUPPLIER_TOOLS = [
   SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
+  COUNTER_MARKETPLACE_OFFER,
+  REJECT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
+  CREATE_FINANCING_REQUEST,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
@@ -355,6 +483,7 @@ const SUPPLIER_TOOLS = [
   DETECT_DEAL_RISK_SIGNALS,
   GENERATE_DEAL_TERM_SHEET,
   GET_ERP_DATA,
+  GET_AGENT_TASKS,
   PROACTIVE_PORTFOLIO_ALERTS,
 ]
 
@@ -363,7 +492,10 @@ const ANCHOR_TOOLS = [
   SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
+  COUNTER_MARKETPLACE_OFFER,
+  REJECT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
+  CREATE_FINANCING_REQUEST,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
@@ -375,6 +507,7 @@ const ANCHOR_TOOLS = [
   DETECT_DEAL_RISK_SIGNALS,
   GET_PASSPORT_ADVICE,
   GET_ERP_DATA,
+  GET_AGENT_TASKS,
 ]
 
 const BANK_TOOLS = [
@@ -382,6 +515,8 @@ const BANK_TOOLS = [
   SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
+  COUNTER_MARKETPLACE_OFFER,
+  REJECT_MARKETPLACE_OFFER,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   PROACTIVE_PORTFOLIO_ALERTS,
@@ -399,7 +534,10 @@ export const STRIKE_TOOLS = [
   SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
   SUBMIT_MARKETPLACE_OFFER,
+  COUNTER_MARKETPLACE_OFFER,
+  REJECT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
+  CREATE_FINANCING_REQUEST,
   GET_ACTIVE_DEALS,
   EVALUATE_SUPPLIER_PASSPORT,
   FIND_AND_RECOMMEND_DEALS,
@@ -413,7 +551,20 @@ export const STRIKE_TOOLS = [
   GET_PASSPORT_ADVICE,
   PROACTIVE_PORTFOLIO_ALERTS,
   GET_ERP_DATA,
+  GET_AGENT_TASKS,
 ] as const
+
+// Bounded tool set for the autonomous negotiation tick loop (see
+// app/api/agents/tick/route.ts). Deliberately excludes accept_marketplace_offer —
+// finalizing a deal always requires a separate human approval (GATE 2), never
+// a live Claude tool-use decision inside the tick loop.
+export const NEGOTIATION_TOOLS = [
+  COUNTER_MARKETPLACE_OFFER,
+  REJECT_MARKETPLACE_OFFER,
+  RECOMMEND_FINALIZATION,
+  GET_PRICING_INSIGHTS,
+  EVALUATE_LISTING_OFFERS,
+]
 
 const GET_FINANCING_PROGRAMS = {
   name: 'get_financing_programs',

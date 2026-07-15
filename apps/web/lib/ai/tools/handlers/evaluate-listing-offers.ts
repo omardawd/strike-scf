@@ -9,19 +9,19 @@ export interface EvaluateListingOffersInput {
 export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
   const priority = input.priority ?? 'balanced'
 
-  const [{ data: listing }, { data: offers }] = await Promise.all([
+  const [{ data: listing, error: listingErr }, { data: offers, error: offersErr }] = await Promise.all([
     adminClient
       .from('marketplace_listings')
       .select(
         'id, title, listing_type, status, target_price, currency, ' +
-        'delivery_date, delivery_location, org_id, created_at'
+        'delivery_deadline, delivery_location, org_id, created_at'
       )
       .eq('id', input.listing_id)
       .single(),
     adminClient
       .from('marketplace_offers')
       .select(
-        'id, org_id, offered_price, offered_quantity, proposed_delivery_date, ' +
+        'id, from_org_id, offered_price, offered_quantity, proposed_delivery_date, ' +
         'proposed_incoterms, proposed_payment_terms, shipping_cost, notes, ' +
         'offer_items, status, created_at'
       )
@@ -30,13 +30,15 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
       .order('created_at', { ascending: true }),
   ])
 
+  if (listingErr) return { error: `Failed to load listing: ${listingErr.message}` }
   if (!listing) return { error: `Listing ${input.listing_id} not found` }
+  if (offersErr) return { error: `Failed to load offers: ${offersErr.message}` }
   if (!offers || offers.length === 0) {
     return { listing_id: input.listing_id, message: 'No active offers to evaluate yet.' }
   }
 
   // Fetch each offeror org's profile and passport in parallel
-  const offerorIds = [...new Set(offers.map((o: { org_id: string }) => o.org_id))]
+  const offerorIds = [...new Set(offers.map((o: { from_org_id: string }) => o.from_org_id))]
   const { data: orgs } = await adminClient
     .from('organizations')
     .select(
@@ -52,18 +54,18 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
 
   // Build a compact summary for Claude to reason over
   const offerSummaries = offers.map((o: {
-    id: string; org_id: string; offered_price: number; offered_quantity: number | null;
+    id: string; from_org_id: string; offered_price: number; offered_quantity: number | null;
     proposed_delivery_date: string | null; proposed_incoterms: string | null;
     proposed_payment_terms: string | null; shipping_cost: number | null;
     notes: string | null; offer_items: unknown; status: string;
   }) => {
-    const org = orgMap[o.org_id] ?? {}
+    const org = orgMap[o.from_org_id] ?? {}
     return {
       offer_id: o.id,
       offeror: {
-        org_id: o.org_id,
+        org_id: o.from_org_id,
         name: (org as { doing_business_as?: string; legal_name?: string }).doing_business_as
-          ?? (org as { legal_name?: string }).legal_name ?? o.org_id,
+          ?? (org as { legal_name?: string }).legal_name ?? o.from_org_id,
         kyb_status: (org as { kyb_status?: string }).kyb_status,
         passport_score: (org as { passport_score?: number }).passport_score,
         risk_tier: (org as { risk_tier?: string }).risk_tier,
@@ -91,7 +93,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
     listing_type: listing.listing_type,
     target_price: listing.target_price,
     currency: listing.currency,
-    required_delivery_date: listing.delivery_date,
+    required_delivery_date: listing.delivery_deadline,
     delivery_location: listing.delivery_location,
   }
 

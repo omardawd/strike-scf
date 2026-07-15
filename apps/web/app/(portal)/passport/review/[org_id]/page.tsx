@@ -287,7 +287,17 @@ export default function ReviewFormPage() {
         ]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div
+        className="page"
+        data-page-name="Write Passport Review"
+        data-ai-context={JSON.stringify({
+          reviewed_org_id: reviewedOrgId,
+          reviewed_org_name: reviewedOrg?.legal_name ?? null,
+          reviewed_org_passport_score: reviewedOrg?.passport_score ?? null,
+          deal_id: deal?.id ?? null,
+          load_error: loadError,
+        })}
+      >
         <div className="page-header">
           <h1 className="t-page-title">Write a Review</h1>
           <div className="subtitle">Share your experience trading with this organization.</div>

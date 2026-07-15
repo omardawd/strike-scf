@@ -186,7 +186,6 @@ function AnchorNetworksPage() {
             border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)',
             padding: '64px 32px', textAlign: 'center',
           }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>🌐</div>
             <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>No networks yet</h3>
             <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto 24px' }}>
               You haven't created any supplier networks yet. Create one to invite suppliers and post private listings.
@@ -318,7 +317,6 @@ function SupplierNetworksPage() {
         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>Loading…</div>
       ) : data.length === 0 ? (
         <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)', padding: '64px 32px', textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>📬</div>
           <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>No network invitations yet</h3>
           <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto' }}>
             You haven't joined any supplier networks yet. Networks are created by buyers — you'll receive an invitation when a buyer adds you.
@@ -334,7 +332,7 @@ function SupplierNetworksPage() {
                 borderRadius: 'var(--radius-card)', padding: '12px 16px', marginBottom: 16,
                 fontSize: 14, fontWeight: 600, color: '#92400e',
               }}>
-                📬 You have {pending.length} pending network invitation{pending.length > 1 ? 's' : ''}
+                You have {pending.length} pending network invitation{pending.length > 1 ? 's' : ''}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {pending.map(({ membership, network, anchor }) => (

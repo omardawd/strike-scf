@@ -1,5 +1,6 @@
 'use client'
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { usePortal } from '@/lib/portal-context'
@@ -282,11 +283,665 @@ function Chevron({ dir }: { dir: 'left' | 'right' }) {
   )
 }
 
+// ============== Agent Task Panel ==============
+interface NegotiationProgress {
+  id: string
+  status: string
+  current_round: number
+  last_tick_at: string | null
+  halt_requested: boolean
+  outcome_summary: string | null
+}
+
+interface AgentTask {
+  id: string
+  active_task_id?: string
+  type: string
+  title: string
+  body: string | null
+  status: string
+  proposed_action: { tool_name: string; tool_input: Record<string, unknown> } | null
+  plan: { max_rounds?: number; guardrails_configured?: boolean; deadline_at?: string } | null
+  result: Record<string, unknown> | null
+  created_at: string
+  updated_at?: string
+  approved_at: string | null
+  rejected_reason: string | null
+  negotiation: NegotiationProgress | null
+}
+
+interface TaskThreadMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  created_at: string
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  get_active_deals: 'Review active deals',
+  create_financing_request: 'Submit financing request',
+  create_marketplace_listing: 'Create marketplace listing',
+  submit_marketplace_offer: 'Submit offer',
+  counter_marketplace_offer: 'Send counter-offer',
+  accept_marketplace_offer: 'Finalize deal',
+  reject_marketplace_offer: 'Reject offer',
+  search_marketplace_listings: 'Search marketplace',
+  get_agent_tasks: 'Check agent tasks',
+}
+
+function friendlyToolLabel(tool: string | undefined): string {
+  if (!tool) return 'Advisory'
+  return TOOL_LABELS[tool] ?? tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function describeOutcome(task: AgentTask): { summary: string; href?: string } | null {
+  const tool = task.proposed_action?.tool_name
+  const result = task.result
+  if (!result || 'error' in result) return null
+
+  switch (tool) {
+    case 'create_financing_request': {
+      const amount = Number(result.amount_requested ?? 0)
+      const currency = String(result.currency ?? 'USD')
+      return {
+        summary: `Financing request for ${currency} ${amount.toLocaleString()} was submitted and is now visible to banks on Strike Place.`,
+        href: typeof result.url === 'string' ? result.url : undefined,
+      }
+    }
+    case 'create_marketplace_listing': {
+      const listingId = result.listing_id
+      return {
+        summary: 'Listing was created and published to Strike Place.',
+        href: typeof listingId === 'string' ? `/marketplace/listings/${listingId}` : undefined,
+      }
+    }
+    case 'submit_marketplace_offer':
+      return { summary: 'Offer was submitted on the listing.' }
+    case 'counter_marketplace_offer':
+      return { summary: 'Counter-offer was sent to the counterparty.' }
+    case 'accept_marketplace_offer': {
+      const dealId = result.deal_id
+      return {
+        summary: 'Terms were finalized — a deal was created.',
+        href: typeof dealId === 'string' ? `/deals/${dealId}` : undefined,
+      }
+    }
+    case 'reject_marketplace_offer':
+      return { summary: 'The offer was rejected and the negotiation ended.' }
+    case 'get_active_deals':
+      return { summary: 'Deals reviewed — no changes were made to your account.' }
+    case 'get_agent_tasks':
+      return { summary: 'Task list reviewed — no changes were made to your account.' }
+    default:
+      return { summary: 'Action completed successfully.' }
+  }
+}
+
+const NEGOTIATION_STATUS_LABELS: Record<string, string> = {
+  active:                'Negotiating',
+  awaiting_finalization: 'Awaiting finalization',
+  halted_by_user:        'Stopped',
+  halted_guardrail:      'Halted — agent deactivated',
+  completed_accepted:    'Deal finalized',
+  completed_rejected:    'Rejected',
+  completed_withdrawn:   'Withdrawn',
+  completed_deadline:    'Deadline reached',
+  failed:                'Failed',
+}
+
+function timeSince(iso: string | null): string {
+  if (!iso) return 'not yet'
+  const ms = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(ms / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  awaiting_approval: 'var(--color-amber)',
+  approved:          'var(--color-green)',
+  executing:         'var(--blue)',
+  completed:         'var(--color-green)',
+  rejected:          'var(--gray)',
+  failed:            'var(--color-red)',
+}
+const STATUS_BG: Record<string, string> = {
+  awaiting_approval: '#FEF3C7',
+  approved:          '#EDFAF4',
+  executing:         'var(--blue-light)',
+  completed:         '#EDFAF4',
+  rejected:          'var(--offwhite)',
+  failed:            '#FEE2E2',
+}
+const STATUS_LABEL: Record<string, string> = {
+  awaiting_approval: 'Needs approval',
+  approved:          'Approved',
+  executing:         'Negotiating',
+  completed:         'Completed',
+  rejected:          'Rejected',
+  failed:            'Failed',
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span style={{
+      padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+      background: STATUS_BG[status] ?? 'var(--offwhite)',
+      color: STATUS_COLOR[status] ?? 'var(--gray)',
+    }}>
+      {STATUS_LABEL[status] ?? status}
+    </span>
+  )
+}
+
+function AgentPanel({ orgId }: { orgId: string }) {
+  void orgId
+  const router = useRouter()
+  const [tasks, setTasks]         = useState<AgentTask[]>([])
+  const [counts, setCounts]       = useState({ pending: 0, completed: 0 })
+  const [loading, setLoading]     = useState(true)
+  const [filter, setFilter]       = useState<'all' | 'awaiting_approval' | 'completed'>('all')
+  const [scanRunning, setScanRunning] = useState(false)
+  const [scanMsg, setScanMsg]     = useState<string | null>(null)
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null)
+
+  const loadTasks = useCallback(async () => {
+    try {
+      const params = filter !== 'all' ? `?status=${filter}` : ''
+      const res = await fetch(`/api/agents/tasks${params}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setTasks(data.tasks ?? [])
+      setCounts(data.counts ?? { pending: 0, completed: 0 })
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [filter])
+
+  useEffect(() => { loadTasks() }, [loadTasks])
+
+  async function runScan() {
+    setScanRunning(true)
+    setScanMsg(null)
+    try {
+      const res = await fetch('/api/agents/scan', { method: 'POST' })
+      const json = await res.json()
+      setScanMsg(json.message ?? 'Scan complete.')
+      await loadTasks()
+    } finally { setScanRunning(false) }
+  }
+
+  if (openTaskId) {
+    return (
+      <TaskThreadView
+        taskId={openTaskId}
+        onBack={() => { setOpenTaskId(null); loadTasks() }}
+      />
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', margin: 0 }}>Agent Task Queue</h2>
+          <p style={{ fontSize: 13, color: 'var(--gray)', margin: '3px 0 0' }}>
+            {counts.pending} pending · {counts.completed} completed
+          </p>
+        </div>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => router.push('/settings/agent')}
+        >
+          Agent Settings
+        </button>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={runScan}
+          disabled={scanRunning}
+        >
+          {scanRunning ? 'Scanning…' : 'Run Scan'}
+        </button>
+      </div>
+
+      {scanMsg && (
+        <div style={{ padding: '10px 14px', background: '#EDFAF4', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--color-green)', marginBottom: 16 }}>
+          {scanMsg}
+        </div>
+      )}
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {(['all', 'awaiting_approval', 'completed'] as const).map((f) => (
+          <button
+            key={f}
+            className="btn btn-ghost btn-sm"
+            onClick={() => setFilter(f)}
+            style={{
+              fontWeight: filter === f ? 700 : 400,
+              background: filter === f ? 'var(--blue-light)' : undefined,
+              color: filter === f ? 'var(--blue)' : undefined,
+            }}
+          >
+            {f === 'all' ? 'All' : f === 'awaiting_approval' ? `Pending (${counts.pending})` : `Done (${counts.completed})`}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>Loading tasks…</div>
+      ) : tasks.length === 0 ? (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--gray)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No tasks yet</div>
+          <div style={{ fontSize: 13 }}>Run a scan to let your agent analyse your ERP data and propose actions.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          {tasks.map((task) => (
+            <button
+              key={task.id}
+              onClick={() => setOpenTaskId(task.active_task_id ?? task.id)}
+              style={{
+                textAlign: 'left',
+                background: 'var(--white)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-card)',
+                padding: '18px 20px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+              }}
+            >
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <StatusBadge status={task.status} />
+                <span style={{ fontSize: 11, color: 'var(--gray)' }}>
+                  {friendlyToolLabel(task.proposed_action?.tool_name)}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--gray-soft)', marginLeft: 'auto' }}>
+                  {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{task.title}</div>
+              {task.body && (
+                <div style={{
+                  fontSize: 13, color: 'var(--gray)', lineHeight: 1.5,
+                  display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                }}>
+                  {task.body}
+                </div>
+              )}
+              {task.status === 'executing' && task.negotiation && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--blue)', fontWeight: 600, marginTop: 2 }}>
+                  {task.negotiation.status === 'active' && !task.negotiation.halt_requested && (
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)', animation: 'badge-pulse 2.4s ease infinite', flexShrink: 0 }} />
+                  )}
+                  Round {task.negotiation.current_round} of {task.plan?.max_rounds ?? '—'} · last checked {timeSince(task.negotiation.last_tick_at)}
+                </div>
+              )}
+              {task.plan && task.plan.guardrails_configured === false && task.status === 'awaiting_approval' && (
+                <div style={{ fontSize: 11, color: '#92620A', fontWeight: 600, marginTop: 2 }}>
+                  No price guardrails configured
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600, marginTop: 4 }}>Open chat →</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============== Task thread view (per-plan chat) ==============
+function WorkingBubble({ label }: { label: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        maxWidth: '80%', padding: '10px 14px', borderRadius: 14,
+        fontSize: 13.5, background: 'var(--white)', border: '1px solid var(--border)', color: 'var(--gray)',
+      }}>
+        <span style={{ display: 'flex', gap: 3 }}>
+          {[0, 1, 2].map((i) => (
+            <span key={i} style={{
+              width: 5, height: 5, borderRadius: '50%', background: 'var(--blue)',
+              animation: `ai-dot-pulse 1.2s ease-in-out ${i * 0.15}s infinite`,
+            }} />
+          ))}
+        </span>
+        {label}
+      </div>
+    </div>
+  )
+}
+
+function MessageBubble({ role, content }: { role: TaskThreadMessage['role']; content: string }) {
+  if (role === 'system') {
+    return (
+      <div style={{ textAlign: 'center', margin: '4px 0' }}>
+        <span style={{
+          display: 'inline-block', fontSize: 12, color: 'var(--ink-soft)',
+          background: 'var(--offwhite)', borderRadius: 999, padding: '6px 14px', lineHeight: 1.5,
+        }}>
+          {content}
+        </span>
+      </div>
+    )
+  }
+  const isUser = role === 'user'
+  return (
+    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+      <div style={{
+        maxWidth: '80%',
+        padding: '10px 14px',
+        borderRadius: 14,
+        fontSize: 13.5,
+        lineHeight: 1.55,
+        whiteSpace: 'pre-wrap',
+        background: isUser ? 'var(--blue)' : 'var(--white)',
+        color: isUser ? 'var(--white)' : 'var(--ink)',
+        border: isUser ? 'none' : '1px solid var(--border)',
+      }}>
+        {content}
+      </div>
+    </div>
+  )
+}
+
+// What to show while a proposed action is actually executing — keyed by
+// tool_name so the preview reads like real activity, not a generic spinner.
+const WORKING_LABELS: Record<string, string> = {
+  create_marketplace_listing: '📝 Posting your listing to Strike Place…',
+  submit_marketplace_offer: '🤝 Submitting your offer…',
+  counter_marketplace_offer: '💬 Sending your counter-offer…',
+  accept_marketplace_offer: '✅ Finalizing the deal…',
+  reject_marketplace_offer: '✋ Rejecting the offer…',
+  create_financing_request: '💰 Submitting your financing request…',
+  search_marketplace_listings: '🔍 Searching the marketplace…',
+  get_active_deals: '📂 Reviewing active deals…',
+  get_agent_tasks: '🗂️ Checking agent tasks…',
+}
+
+function describeWorking(toolName: string | undefined): string {
+  if (!toolName) return '⚙️ Working…'
+  return WORKING_LABELS[toolName] ?? `⚙️ Running ${toolName.replace(/_/g, ' ')}…`
+}
+
+function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void }) {
+  const [loading, setLoading] = useState(true)
+  const [rootTask, setRootTask] = useState<AgentTask | null>(null)
+  const [currentTask, setCurrentTask] = useState<AgentTask | null>(null)
+  const [messages, setMessages] = useState<TaskThreadMessage[]>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [acting, setActing] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/agents/tasks/${taskId}/messages`)
+    if (res.ok) {
+      const data = await res.json()
+      setRootTask(data.rootTask ?? null)
+      setCurrentTask(data.currentTask ?? null)
+      setMessages(data.messages ?? [])
+    }
+    setLoading(false)
+  }, [taskId])
+
+  useEffect(() => { load() }, [load])
+
+  // While a negotiation is actively being monitored by the tick loop, poll
+  // gently so a counter/escalation/finalization that lands in the background
+  // (cron fires every 5 minutes regardless of whether this tab is open)
+  // appears here without the user needing to back out and reopen the thread.
+  const negotiationIsLive = rootTask?.negotiation?.status === 'active'
+  useEffect(() => {
+    if (!negotiationIsLive) return
+    const interval = setInterval(load, 15000)
+    return () => clearInterval(interval)
+  }, [negotiationIsLive, load])
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages])
+
+  async function send() {
+    const content = input.trim()
+    if (!content || sending) return
+    setInput('')
+    setSending(true)
+    setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, role: 'user', content, created_at: new Date().toISOString() }])
+    try {
+      const res = await fetch(`/api/agents/tasks/${taskId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRootTask(data.rootTask ?? null)
+        setCurrentTask(data.currentTask ?? null)
+        setMessages(data.messages ?? [])
+      }
+    } finally { setSending(false) }
+  }
+
+  async function approve() {
+    if (!currentTask) return
+    setActing(true)
+    try {
+      await fetch(`/api/agents/tasks/${currentTask.id}/approve`, { method: 'POST' })
+      await load()
+    } finally { setActing(false) }
+  }
+
+  async function reject() {
+    if (!currentTask) return
+    setActing(true)
+    try {
+      await fetch(`/api/agents/tasks/${currentTask.id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Declined by user' }),
+      })
+      await load()
+    } finally { setActing(false) }
+  }
+
+  async function retry() {
+    if (!currentTask) return
+    setActing(true)
+    try {
+      await fetch(`/api/agents/tasks/${currentTask.id}/retry`, { method: 'POST' })
+      await load()
+    } finally { setActing(false) }
+  }
+
+  async function haltNegotiation() {
+    if (!rootTask) return
+    setActing(true)
+    try {
+      await fetch(`/api/agents/tasks/${rootTask.id}/halt`, { method: 'POST' })
+      await load()
+    } finally { setActing(false) }
+  }
+
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>Loading…</div>
+  }
+  if (!rootTask || !currentTask) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)' }}>
+        <div style={{ marginBottom: 12 }}>This plan couldn&apos;t be found.</div>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Back</button>
+      </div>
+    )
+  }
+
+  const effectiveStatus = currentTask.status
+  const isAwaitingApproval = effectiveStatus === 'awaiting_approval'
+  const isFailed = effectiveStatus === 'failed'
+  const isNegotiating = effectiveStatus === 'executing' && !!rootTask.negotiation
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Header */}
+      <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+        <button
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'var(--gray)', marginBottom: 8 }}
+        >
+          ← Back to all plans
+        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+          <StatusBadge status={effectiveStatus} />
+          <span style={{ fontSize: 11, color: 'var(--gray)' }}>{friendlyToolLabel(currentTask.proposed_action?.tool_name)}</span>
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{rootTask.title}</div>
+
+        {isNegotiating && rootTask.negotiation && (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--blue-light)', borderRadius: 'var(--radius-sm)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              {rootTask.negotiation.status === 'active' && !rootTask.negotiation.halt_requested && (
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)',
+                  animation: 'badge-pulse 2.4s ease infinite',
+                }} />
+              )}
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>
+                {NEGOTIATION_STATUS_LABELS[rootTask.negotiation.status] ?? rootTask.negotiation.status}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--gray)' }}>
+                Round {rootTask.negotiation.current_round} of {rootTask.plan?.max_rounds ?? '—'}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--gray-soft)' }}>
+                · last checked {timeSince(rootTask.negotiation.last_tick_at)}
+              </span>
+            </div>
+            {rootTask.negotiation.status === 'active' && !rootTask.negotiation.halt_requested && (
+              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginBottom: 8 }}>
+                Live — negotiating autonomously with the counterparty&apos;s agent. Checks automatically every few minutes; this page refreshes on its own.
+              </div>
+            )}
+            {rootTask.negotiation.halt_requested ? (
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Stop requested — will halt on the next check.</div>
+            ) : (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={haltNegotiation}
+                disabled={acting}
+                style={{ color: 'var(--color-red)', borderColor: 'var(--color-red)' }}
+              >
+                {acting ? 'Stopping…' : 'Stop negotiation'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {currentTask.plan?.guardrails_configured === false && (isAwaitingApproval || isNegotiating) && (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: '#FEF3C7', borderRadius: 'var(--radius-sm)', fontSize: 12, color: '#92620A', lineHeight: 1.5 }}>
+            No price guardrails are configured for your agent — it will use its own judgment on price. You&apos;ll still approve the final terms before any deal is created.
+          </div>
+        )}
+
+        {currentTask.proposed_action?.tool_name && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={() => setShowDetails((v) => !v)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: 'var(--gray-soft)', textDecoration: 'underline' }}
+            >
+              {showDetails ? 'Hide technical details' : 'Technical details'}
+            </button>
+            {showDetails && (
+              <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--offwhite)', borderRadius: 'var(--radius-sm)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                <span style={{ color: 'var(--blue)', fontWeight: 600 }}>{currentTask.proposed_action.tool_name}</span>
+                {' '}
+                <span style={{ color: 'var(--gray)' }}>
+                  {Object.entries(currentTask.proposed_action.tool_input ?? {}).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Message list */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <MessageBubble role="assistant" content={rootTask.body ?? rootTask.title} />
+        {messages.map((m) => <MessageBubble key={m.id} role={m.role} content={m.content} />)}
+        {acting && (
+          <WorkingBubble label={describeWorking(currentTask.proposed_action?.tool_name)} />
+        )}
+        {sending && !acting && (
+          <WorkingBubble label="💭 Thinking…" />
+        )}
+        {currentTask.status === 'completed' && (() => {
+          const outcome = describeOutcome(currentTask)
+          return outcome?.href ? (
+            <div style={{ textAlign: 'center' }}>
+              <a href={outcome.href} style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 700, textDecoration: 'underline' }}>
+                View it →
+              </a>
+            </div>
+          ) : null
+        })()}
+      </div>
+
+      {/* Approve/Reject/Retry */}
+      {(isAwaitingApproval || isFailed) && (
+        <div style={{ display: 'flex', gap: 8, padding: '0 24px 14px' }}>
+          {isAwaitingApproval && (
+            <>
+              <button className="btn btn-primary btn-sm" onClick={approve} disabled={acting} style={{ minWidth: 96 }}>
+                {acting ? 'Executing…' : '✓ Approve'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={reject} disabled={acting}>Reject</button>
+            </>
+          )}
+          {isFailed && (
+            <button className="btn btn-ghost btn-sm" onClick={retry} disabled={acting} style={{ color: 'var(--color-amber)', borderColor: 'var(--color-amber)' }}>
+              {acting ? 'Resetting…' : '↺ Retry'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ display: 'flex', gap: 8, padding: '14px 24px', borderTop: '1px solid var(--border)' }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          placeholder="Ask Strike AI about this plan, or ask it to revise the terms…"
+          style={{
+            flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-input)',
+            border: '1px solid var(--border)', fontSize: 13.5, background: 'var(--offwhite)',
+          }}
+        />
+        <button className="btn btn-primary btn-sm" onClick={send} disabled={sending || !input.trim()}>
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ============== Page ==============
-export default function AIWorkspacePage() {
+function AIWorkspaceInner() {
   const portal = usePortal()
   const user = useUser()
   const userName = user?.full_name || undefined
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  const [activeTab, setActiveTab] = useState<'chat' | 'agent'>(
+    searchParams.get('tab') === 'agent' ? 'agent' : 'chat'
+  )
 
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -615,9 +1270,9 @@ export default function AIWorkspacePage() {
           </button>
         )}
 
-        {/* ── RIGHT: Chat ── */}
+        {/* ── RIGHT: Chat / Agent ── */}
         <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Header (left padding grows when collapsed to clear the expand chevron) */}
+          {/* Header */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '14px 18px', paddingLeft: collapsed ? 48 : 18,
@@ -634,10 +1289,30 @@ export default function AIWorkspacePage() {
                 <path d="M16 4.5v2M15 5.5h2" />
               </svg>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Strike AI</div>
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Supply chain intelligence</div>
+            {/* Tab switcher */}
+            <div style={{ display: 'flex', gap: 2, background: 'var(--offwhite)', borderRadius: 999, padding: '3px' }}>
+              {(['chat', 'agent'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab)
+                    router.replace(`/ai${tab === 'agent' ? '?tab=agent' : ''}`, { scroll: false })
+                  }}
+                  style={{
+                    padding: '5px 14px', borderRadius: 999, border: 'none',
+                    fontSize: 13, fontWeight: activeTab === tab ? 700 : 400,
+                    background: activeTab === tab ? 'var(--white)' : 'transparent',
+                    color: activeTab === tab ? 'var(--blue)' : 'var(--gray)',
+                    cursor: 'pointer', transition: 'all .12s',
+                    boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+                  }}
+                >
+                  {tab === 'chat' ? 'Chat' : 'Agent'}
+                </button>
+              ))}
             </div>
+            <div style={{ flex: 1 }} />
             <span style={{
               padding: '4px 10px', borderRadius: 999, background: 'var(--color-accent-light)',
               color: 'var(--blue)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
@@ -646,6 +1321,13 @@ export default function AIWorkspacePage() {
             </span>
           </div>
 
+          {/* Agent tab */}
+          {activeTab === 'agent' && user?.org_id && (
+            <AgentPanel orgId={user.org_id} />
+          )}
+
+          {/* Chat tab — messages + input */}
+          {activeTab === 'chat' && <>
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {messages.length === 0 && !loading && !pendingAction ? (
@@ -905,8 +1587,17 @@ export default function AIWorkspacePage() {
               </button>
             </div>
           </div>
+          </>}
         </div>
       </div>
     </>
+  )
+}
+
+export default function AIWorkspacePage() {
+  return (
+    <Suspense fallback={null}>
+      <AIWorkspaceInner />
+    </Suspense>
   )
 }

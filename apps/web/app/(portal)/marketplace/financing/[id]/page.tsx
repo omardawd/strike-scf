@@ -755,7 +755,7 @@ export default function FinancingDetailPage() {
             )}
           </div>
           <p className="subtitle" style={{ marginTop: 4 }}>
-            Structure: {request.structure_type}
+            Structure: {request.structure_type.replace(/_/g, ' ')}
             {request.preferred_tenor_days && ` · ${request.preferred_tenor_days}d preferred tenor`}
             {request.preferred_rate_max && ` · Max rate ${request.preferred_rate_max}%`}
           </p>

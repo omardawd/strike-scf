@@ -129,7 +129,7 @@ export async function GET() {
     let preview: string | null = null
     if (p) {
       if (p.message_type === 'system') preview = p.content
-      else if (p.message_type === 'document_share') preview = '📎 Shared a document'
+      else if (p.message_type === 'document_share') preview = 'Shared a document'
       else if (p.message_type === 'offer_update' || p.message_type === 'contract_draft') preview = 'Offer update'
       else if (p.message_type === 'ai_suggestion') preview = `Strike AI: ${p.content ?? ''}`.trim()
       else preview = p.content

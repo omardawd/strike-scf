@@ -206,6 +206,16 @@ function PrefCard({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+interface AgentConfig {
+  id?: string
+  name: string
+  persona: string
+  goals: string[]
+  is_active: boolean
+}
+
+const DEFAULT_AGENT: AgentConfig = { name: 'Strike Agent', persona: '', goals: [], is_active: false }
+
 export default function AgentSettingsPage() {
   const user   = useUser()
   const router = useRouter()
@@ -214,8 +224,67 @@ export default function AgentSettingsPage() {
   const [saving, setSaving]   = useState<PrefType | null>(null)
   const [saved,  setSaved]    = useState<Partial<Record<PrefType, boolean>>>({})
 
+  // Agent config state
+  const [agent, setAgent]         = useState<AgentConfig>(DEFAULT_AGENT)
+  const [agentSaving, setAgentSaving] = useState(false)
+  const [agentSaved,  setAgentSaved]  = useState(false)
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanResult,  setScanResult]  = useState<string | null>(null)
+
   const updatePref = (type: PrefType, partial: Partial<PrefState>) =>
     setPrefs((p) => ({ ...p, [type]: { ...p[type], ...partial } }))
+
+  const loadAgentConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agents/config')
+      if (!res.ok) return
+      const { agent: a } = await res.json()
+      if (a) setAgent({
+        id: a.id,
+        name: a.name ?? 'Strike Agent',
+        persona: a.persona ?? '',
+        goals: a.goals ?? [],
+        is_active: a.is_active ?? false,
+      })
+    } catch { /* ignore */ }
+  }, [])
+
+  async function saveAgentConfig() {
+    setAgentSaving(true)
+    try {
+      // Save name/persona/goals
+      await fetch('/api/agents/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agent.name, persona: agent.persona, goals: agent.goals }),
+      })
+      setAgentSaved(true)
+      setTimeout(() => setAgentSaved(false), 2800)
+    } catch { /* ignore */ } finally { setAgentSaving(false) }
+  }
+
+  async function toggleAgent(active: boolean) {
+    setAgentSaving(true)
+    try {
+      const res = await fetch('/api/agents/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      })
+      if (res.ok) setAgent((a) => ({ ...a, is_active: active }))
+    } catch { /* ignore */ } finally { setAgentSaving(false) }
+  }
+
+  async function runScan() {
+    setScanLoading(true)
+    setScanResult(null)
+    try {
+      const res = await fetch('/api/agents/scan', { method: 'POST' })
+      const json = await res.json()
+      setScanResult(json.message ?? 'Scan complete.')
+    } catch { setScanResult('Scan failed — check console.') }
+    finally { setScanLoading(false) }
+  }
 
   const loadPrefs = useCallback(async () => {
     try {
@@ -238,7 +307,7 @@ export default function AgentSettingsPage() {
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => { loadPrefs() }, [loadPrefs])
+  useEffect(() => { loadPrefs(); loadAgentConfig() }, [loadPrefs, loadAgentConfig])
 
   async function savePref(type: PrefType) {
     setSaving(type)
@@ -327,6 +396,93 @@ export default function AgentSettingsPage() {
             <button type="button" className="btn btn-primary btn-sm" style={{ cursor: 'default' }}>
               AI Agent
             </button>
+          </div>
+
+          {/* ── Autonomous Agent Config ── */}
+          <div style={{
+            background: 'var(--white)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-card)',
+            padding: '20px 22px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>Autonomous Agent</div>
+                <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                  Your named AI agent that scans your ERP and platform data daily, proposes actions,
+                  and awaits your approval before executing anything.
+                </div>
+              </div>
+              <Toggle
+                checked={agent.is_active}
+                onChange={toggleAgent}
+                label="Activate agent"
+              />
+            </div>
+
+            {agent.is_active && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    Agent Name
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={agent.name}
+                    onChange={(e) => setAgent((a) => ({ ...a, name: e.target.value }))}
+                    placeholder="e.g. Westcoast Agent"
+                    style={{ maxWidth: 320 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    Focus / Persona
+                  </label>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={agent.persona}
+                    onChange={(e) => setAgent((a) => ({ ...a, persona: e.target.value }))}
+                    placeholder="e.g. Optimise cash flow and find the lowest-cost financing options for AR invoices"
+                    style={{ resize: 'vertical', width: '100%' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={saveAgentConfig}
+                    disabled={agentSaving}
+                  >
+                    {agentSaving ? 'Saving…' : agentSaved ? 'Saved ✓' : 'Save Agent Config'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={runScan}
+                    disabled={scanLoading}
+                  >
+                    {scanLoading ? 'Scanning…' : 'Run Scan Now'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => router.push('/ai?tab=agent')}
+                  >
+                    View Task Queue →
+                  </button>
+                </div>
+                {scanResult && (
+                  <div style={{ fontSize: 13, color: 'var(--color-green)', padding: '8px 12px', background: '#EDFAF4', borderRadius: 'var(--radius-sm)' }}>
+                    {scanResult}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ── Rate Floor ── */}

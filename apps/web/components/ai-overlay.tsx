@@ -96,7 +96,9 @@ const WINDOW_HEIGHT = 480
 
 export function AIOverlay() {
   const pathname = usePathname()
-  const isAIPage = pathname.startsWith('/ai')
+  // Strike Rooms has its own message composer docked at the same screen position —
+  // the overlay's floating input would sit on top of it and block clicks.
+  const hideOverlay = pathname.startsWith('/ai') || pathname.startsWith('/rooms')
   const user = useUser()
   const portal = usePortal()
   const userName = user?.full_name?.split(' ')[0] ?? 'there'
@@ -142,7 +144,7 @@ export function AIOverlay() {
 
   // External prompt events (from insight cards)
   useEffect(() => {
-    if (isAIPage) return
+    if (hideOverlay) return
     function onPrompt(e: Event) {
       const detail = (e as CustomEvent).detail as { prompt?: string } | undefined
       if (detail?.prompt) { setIsOpen(true); sendMessage(detail.prompt) }
@@ -150,7 +152,7 @@ export function AIOverlay() {
     window.addEventListener('strike-ai-prompt', onPrompt as EventListener)
     return () => window.removeEventListener('strike-ai-prompt', onPrompt as EventListener)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAIPage])
+  }, [hideOverlay])
 
   // Drag logic
   useEffect(() => {
@@ -225,7 +227,7 @@ export function AIOverlay() {
     }
   }, [loading, messages, portal, userName])
 
-  if (isAIPage) return null
+  if (hideOverlay) return null
 
   // Position: use dragged pos if set, otherwise anchor to bottom-right
   const windowStyle: React.CSSProperties = pos

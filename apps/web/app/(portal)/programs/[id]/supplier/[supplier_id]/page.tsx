@@ -325,7 +325,20 @@ export default function IFSupplierDetailPage() {
         ]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div
+        className="page"
+        data-page-name="Program Supplier Detail"
+        data-ai-context={JSON.stringify({
+          program_id: programId,
+          supplier_org_id: supplierId,
+          supplier_name: orgName,
+          kyb_status: org?.kyb_status ?? null,
+          risk_tier: org?.risk_tier ?? null,
+          credit_score: org?.credit_score ?? null,
+          transaction_count: transactions.length,
+          collateral_count: collateral.length,
+        })}
+      >
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 20 }}>
             <Icon name="error" size={16} className="alert-icon" />

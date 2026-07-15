@@ -434,7 +434,19 @@ export default function SupplierDetailPage() {
           ]}
           actions={<NotifBell />}
         />
-        <div className="page">
+        <div
+          className="page"
+          data-page-name="Program Anchor-Supplier Detail"
+          data-ai-context={JSON.stringify({
+            role: 'anchor',
+            program_id: programId,
+            anchor_org_id: anchorId,
+            supplier_org_id: supplierId,
+            supplier_name: orgName,
+            kyb_status: org?.kyb_status ?? null,
+            transaction_count: transactions.length,
+          })}
+        >
           {error && (
             <div className="alert alert-error" style={{ marginBottom: 20 }}>
               <Icon name="error" size={16} className="alert-icon" />
@@ -633,7 +645,22 @@ export default function SupplierDetailPage() {
         ]}
         actions={<NotifBell />}
       />
-      <div className="page">
+      <div
+        className="page"
+        data-page-name="Program Anchor-Supplier Detail"
+        data-ai-context={JSON.stringify({
+          role: 'bank',
+          program_id: programId,
+          anchor_org_id: anchorId,
+          supplier_org_id: supplierId,
+          supplier_name: orgName,
+          kyb_status: org?.kyb_status ?? null,
+          risk_tier: org?.risk_tier ?? null,
+          credit_score: org?.credit_score ?? null,
+          transaction_count: transactions.length,
+          collateral_count: collateral.length,
+        })}
+      >
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 20 }}>
             <Icon name="error" size={16} className="alert-icon" />

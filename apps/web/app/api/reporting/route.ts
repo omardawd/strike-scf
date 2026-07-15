@@ -205,205 +205,197 @@ export async function GET(request: Request) {
     })
   }
 
-  // ── ANCHOR ────────────────────────────────────────────────────────────────
-  if (effectiveRole.startsWith('anchor')) {
+  // ── ANCHOR / SUPPLIER ────────────────────────────────────────────────────
+  // Strike Place v2: the real activity for these roles lives in `deals` +
+  // `financing_requests`, not the legacy `transactions`/`programs` tables
+  // (those are the old direct-SCF-program flow and are near-empty for orgs
+  // that transact through the marketplace). Source from deals so every KPI
+  // here matches what the org actually sees on their Dashboard/My Deals.
+  if (effectiveRole.startsWith('anchor') || effectiveRole.startsWith('supplier')) {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+    const isAnchor = effectiveRole.startsWith('anchor')
 
-    const [enrolledResult, txnResult] = await Promise.all([
+    // Deal role is per-deal (buyer_org_id/supplier_org_id), never derived from
+    // organizations.type — an anchor org can still be the supplier on a given
+    // deal. Match every deal where this org is on either side, same as
+    // /api/deals, so counts here agree with My Deals / Dashboard.
+    const [dealsResult, listingsResult, finReqResult] = await Promise.all([
       adminClient
-        .from('program_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .in('status', ['active', 'invited', 'onboarding']),
+        .from('deals')
+        .select('id, status, agreed_price, total_value, agreed_currency, buyer_org_id, supplier_org_id, created_at, completed_at, cancelled_at, disputed_at, contract_document_id, external_counterparty_name')
+        .or(`buyer_org_id.eq.${orgId},supplier_org_id.eq.${orgId}`)
+        .order('created_at', { ascending: false }),
       adminClient
-        .from('transactions')
-        .select('id, status, invoice_amount, created_at, supplier_id, program_id')
-        .eq('anchor_id', orgId),
-    ])
-
-    const enrolled_programs = enrolledResult.count ?? 0
-    const txns = txnResult.data ?? []
-
-    // Resolve program names from transaction program_ids
-    const txnProgramIds = [...new Set(txns.map((t: { program_id: string }) => t.program_id).filter(Boolean))]
-    const anchorProgramData: Array<{ id: string; name: string }> = txnProgramIds.length > 0
-      ? ((await adminClient.from('programs').select('id, name').in('id', txnProgramIds)).data ?? [])
-      : []
-    const anchorProgramNameMap = new Map(anchorProgramData.map(p => [p.id, p.name]))
-
-    // Volume by period
-    const anchorBuckets = buildBuckets(period)
-    const monthly_volume = anchorBuckets.map(b => {
-      const slice = txns.filter(t => {
-        const d = new Date(t.created_at)
-        return d >= b.start && d < b.end
-      })
-      return {
-        label:                b.label,
-        count:                slice.length,
-        total_invoice_amount: slice.reduce((s, t) => s + (t.invoice_amount ?? 0), 0),
-      }
-    })
-
-    // Payables summary
-    const payablesMap: Record<string, { count: number; total: number }> = {}
-    for (const t of txns) {
-      if (payablesMap[t.status]) {
-        payablesMap[t.status]!.count += 1
-        payablesMap[t.status]!.total += t.invoice_amount ?? 0
-      } else {
-        payablesMap[t.status] = { count: 1, total: t.invoice_amount ?? 0 }
-      }
-    }
-
-    // Top suppliers
-    const supplierMap = new Map<string, { count: number; volume: number }>()
-    for (const t of txns) {
-      if (!t.supplier_id) continue
-      const existing = supplierMap.get(t.supplier_id)
-      if (existing) {
-        existing.count  += 1
-        existing.volume += t.invoice_amount ?? 0
-      } else {
-        supplierMap.set(t.supplier_id, { count: 1, volume: t.invoice_amount ?? 0 })
-      }
-    }
-    const sortedSupplierIds = Array.from(supplierMap.keys())
-      .sort((a, b) => supplierMap.get(b)!.volume - supplierMap.get(a)!.volume)
-      .slice(0, 5)
-    const orgNames = await fetchOrgNames(sortedSupplierIds)
-    const top_suppliers = sortedSupplierIds.map(id => ({
-      legal_name:        orgNames.get(id) ?? id,
-      transaction_count: supplierMap.get(id)!.count,
-      total_volume:      parseFloat((supplierMap.get(id)!.volume).toFixed(2)),
-    }))
-
-    const anchorProgramVolMap = new Map<string, { name: string; volume: number }>()
-    for (const t of txns) {
-      if (!t.program_id) continue
-      const name = anchorProgramNameMap.get(t.program_id) ?? t.program_id
-      const cur = anchorProgramVolMap.get(t.program_id) ?? { name, volume: 0 }
-      cur.volume += t.invoice_amount ?? 0
-      anchorProgramVolMap.set(t.program_id, cur)
-    }
-    const anchor_program_breakdown = Array.from(anchorProgramVolMap.values()).sort((a, b) => b.volume - a.volume)
-
-    return NextResponse.json({
-      role: 'anchor',
-      enrolled_programs,
-      monthly_volume,
-      payables_summary: payablesMap,
-      top_suppliers,
-      program_breakdown: anchor_program_breakdown,
-    })
-  }
-
-  // ── SUPPLIER ──────────────────────────────────────────────────────────────
-  if (effectiveRole.startsWith('supplier')) {
-    const orgId = profile.org_id
-    if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
-
-    const [enrolledResult, txnResult, supplierProgramsResult] = await Promise.all([
-      adminClient
-        .from('program_enrollments')
+        .from('marketplace_listings')
         .select('id', { count: 'exact', head: true })
         .eq('org_id', orgId)
         .eq('status', 'active'),
       adminClient
-        .from('transactions')
-        .select('id, invoice_number, status, invoice_amount, financing_amount_approved, financing_rate_apr, fee_amount, created_at, program_id')
-        .eq('supplier_id', orgId)
-        .order('created_at', { ascending: false }),
-      adminClient
-        .from('programs')
-        .select('id, name')
-        .in('id',
-          (await adminClient
-            .from('program_enrollments')
-            .select('program_id')
-            .eq('org_id', orgId)
-            .eq('status', 'active')
-          ).data?.map((e: { program_id: string }) => e.program_id) ?? []
-        ),
+        .from('financing_requests')
+        .select('id, deal_id, status, amount_requested, structure_type, accepted_offer_id, created_at')
+        .eq('requesting_org_id', orgId),
     ])
 
-    const enrolled_programs = enrolledResult.count ?? 0
-    const txns = txnResult.data ?? []
+    const deals = dealsResult.data ?? []
+    const active_listings = listingsResult.count ?? 0
+    const finReqs = finReqResult.data ?? []
 
-    // Volume by period
-    const supplierBuckets = buildBuckets(period)
-    const monthly_volume = supplierBuckets.map(b => {
-      const slice = txns.filter(t => {
-        const d = new Date(t.created_at)
-        return d >= b.start && d < b.end
+    const counterpartyOf = (d: { buyer_org_id: string; supplier_org_id: string }) =>
+      d.buyer_org_id === orgId ? d.supplier_org_id : d.buyer_org_id
+
+    const CANCELLED = new Set(['cancelled'])
+    const COMPLETED = new Set(['completed'])
+    const completedDeals = deals.filter(d => COMPLETED.has(d.status))
+    const activeDeals = deals.filter(d => !COMPLETED.has(d.status) && !CANCELLED.has(d.status))
+    const tradingDeals = deals.filter(d => !CANCELLED.has(d.status))
+    const dealValue = (d: { total_value: number | null; agreed_price: number }) => Number(d.total_value ?? d.agreed_price ?? 0)
+
+    // Headline "trade volume" = value of every deal in flight or done (not just
+    // completed), valued at total_value with an agreed_price fallback — matching
+    // what the org sees on My Deals. Completed/active are also broken out.
+    const total_trade_volume = tradingDeals.reduce((s, d) => s + dealValue(d), 0)
+    const completed_volume = completedDeals.reduce((s, d) => s + dealValue(d), 0)
+    const active_volume = activeDeals.reduce((s, d) => s + dealValue(d), 0)
+
+    const cycleDurations = completedDeals
+      .filter(d => d.completed_at)
+      .map(d => (new Date(d.completed_at as string).getTime() - new Date(d.created_at).getTime()) / (24 * 60 * 60 * 1000))
+    const avg_deal_cycle_days = cycleDurations.length > 0
+      ? Math.round(cycleDurations.reduce((s, n) => s + n, 0) / cycleDurations.length)
+      : null
+
+    // Fallback KPI so the "cycle time" card isn't empty until deals actually
+    // complete — average age (in days) of deals still active right now.
+    const now = Date.now()
+    const pipelineAges = activeDeals.map(d => (now - new Date(d.created_at).getTime()) / (24 * 60 * 60 * 1000))
+    const avg_pipeline_age_days = pipelineAges.length > 0
+      ? Math.round(pipelineAges.reduce((s, n) => s + n, 0) / pipelineAges.length)
+      : null
+
+    // Volume by period — every deal counts toward activity, valued at agreed_price/total_value
+    const buckets = buildBuckets(period)
+    const monthly_volume = buckets.map(b => {
+      const slice = deals.filter(d => {
+        const created = new Date(d.created_at)
+        return created >= b.start && created < b.end
       })
       return {
-        label:          b.label,
-        count:          slice.length,
-        total_financed: slice.reduce((s, t) => s + (t.financing_amount_approved ?? 0), 0),
+        label:  b.label,
+        count:  slice.length,
+        volume: slice.reduce((s, d) => s + dealValue(d), 0),
       }
     })
 
-    // Receivables summary
-    let outstanding_count = 0, outstanding_balance = 0
-    let approved_count = 0, approved_balance = 0
-    let rateSum = 0, rateCount = 0, total_fees_paid = 0
+    // Status breakdown
+    const statusMap = new Map<string, number>()
+    for (const d of deals) statusMap.set(d.status, (statusMap.get(d.status) ?? 0) + 1)
+    const status_breakdown = Array.from(statusMap.entries())
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count)
 
-    for (const t of txns) {
-      if (t.status === 'funded') {
-        outstanding_count   += 1
-        outstanding_balance += t.financing_amount_approved ?? 0
-      }
-      if (t.status === 'financing_approved') {
-        approved_count   += 1
-        approved_balance += t.financing_amount_approved ?? 0
-      }
-      if (t.financing_rate_apr != null) { rateSum += t.financing_rate_apr; rateCount += 1 }
-      if (t.fee_amount != null)          total_fees_paid += t.fee_amount
+    // Top counterparties (suppliers for an anchor, buyers for a supplier)
+    const cpMap = new Map<string, { count: number; volume: number }>()
+    for (const d of deals) {
+      const cpId = counterpartyOf(d)
+      const existing = cpMap.get(cpId)
+      const val = dealValue(d)
+      if (existing) { existing.count += 1; existing.volume += val }
+      else cpMap.set(cpId, { count: 1, volume: val })
     }
-
-    const avg_rate = rateCount > 0 ? parseFloat((rateSum / rateCount).toFixed(2)) : null
-
-    const recent_transactions = txns.slice(0, 5).map(t => ({
-      id:                        t.id,
-      invoice_number:            t.invoice_number,
-      invoice_amount:            t.invoice_amount,
-      financing_amount_approved: t.financing_amount_approved,
-      status:                    t.status,
-      created_at:                t.created_at,
+    const sortedCpIds = Array.from(cpMap.keys()).sort((a, b) => cpMap.get(b)!.volume - cpMap.get(a)!.volume).slice(0, 5)
+    const cpNames = await fetchOrgNames(sortedCpIds.filter(id => id))
+    const top_counterparties = sortedCpIds.map(id => ({
+      id,
+      name:         cpNames.get(id) ?? 'Counterparty',
+      deal_count:   cpMap.get(id)!.count,
+      total_volume: parseFloat(cpMap.get(id)!.volume.toFixed(2)),
     }))
 
-    const acceptedStatuses = new Set(['financing_approved', 'funded', 'completed'])
-    const accepted_count = txns.filter(t => acceptedStatuses.has(t.status)).length
-    const acceptance_rate = txns.length > 0 ? parseFloat((accepted_count / txns.length * 100).toFixed(1)) : null
+    // ── Audit / treasury metrics ──
+    const disputedDeals = deals.filter(d => d.disputed_at != null)
+    const cancelledDeals = deals.filter(d => CANCELLED.has(d.status))
+    const dispute_rate = deals.length > 0 ? parseFloat(((disputedDeals.length / deals.length) * 100).toFixed(1)) : null
+    const cancellation_rate = deals.length > 0 ? parseFloat(((cancelledDeals.length / deals.length) * 100).toFixed(1)) : null
 
-    const supplierProgramNameMap = new Map((supplierProgramsResult.data ?? []).map((p: { id: string; name: string }) => [p.id, p.name]))
-    const supplierProgramVolMap = new Map<string, { name: string; volume: number }>()
-    for (const t of txns) {
-      if (!t.program_id) continue
-      const name = supplierProgramNameMap.get(t.program_id) ?? t.program_id
-      const cur = supplierProgramVolMap.get(t.program_id) ?? { name, volume: 0 }
-      cur.volume += t.financing_amount_approved ?? 0
-      supplierProgramVolMap.set(t.program_id, cur)
+    const concentration_risk = total_trade_volume > 0 && top_counterparties.length > 0
+      ? parseFloat(((top_counterparties[0]!.total_volume / total_trade_volume) * 100).toFixed(1))
+      : null
+
+    const dealsWithContract = deals.filter(d => d.contract_document_id != null)
+    const contract_completion_rate = deals.length > 0
+      ? parseFloat(((dealsWithContract.length / deals.length) * 100).toFixed(1))
+      : null
+
+    const STALE_THRESHOLD_DAYS = 14
+    const STALE_STATUSES = new Set(['negotiating', 'agreed'])
+    const stale_deals = activeDeals
+      .filter(d => STALE_STATUSES.has(d.status))
+      .map(d => ({
+        id: d.id,
+        counterparty_name: cpNames.get(counterpartyOf(d)) ?? d.external_counterparty_name ?? 'Counterparty',
+        status: d.status,
+        days_stale: Math.floor((now - new Date(d.created_at).getTime()) / (24 * 60 * 60 * 1000)),
+      }))
+      .filter(d => d.days_stale >= STALE_THRESHOLD_DAYS)
+      .sort((a, b) => b.days_stale - a.days_stale)
+      .slice(0, 5)
+
+    // Financing summary — requests this org has made against its own deals
+    const openFinReqs = finReqs.filter(f => f.status === 'open' || f.status === 'offers_received')
+    const acceptedFinReqs = finReqs.filter(f => f.status === 'accepted' || f.status === 'funded')
+    const acceptedOfferIds = acceptedFinReqs.map(f => f.accepted_offer_id).filter((id): id is string => !!id)
+    let acceptedOffers: Array<{ id: string; offered_rate_apr: number; offered_amount: number }> = []
+    if (acceptedOfferIds.length > 0) {
+      const { data } = await adminClient
+        .from('financing_request_offers')
+        .select('id, offered_rate_apr, offered_amount')
+        .in('id', acceptedOfferIds)
+      acceptedOffers = data ?? []
     }
-    const supplier_program_breakdown = Array.from(supplierProgramVolMap.values()).sort((a, b) => b.volume - a.volume)
+    const total_financed = acceptedOffers.reduce((s, o) => s + (o.offered_amount ?? 0), 0)
+    const rates = acceptedOffers.map(o => o.offered_rate_apr).filter((r): r is number => r != null)
+    const avg_financing_rate = rates.length > 0 ? parseFloat((rates.reduce((s, r) => s + r, 0) / rates.length).toFixed(2)) : null
+    const min_financing_rate = rates.length > 0 ? Math.min(...rates) : null
+    const max_financing_rate = rates.length > 0 ? Math.max(...rates) : null
+
+    const recent_deals = deals.slice(0, 8).map(d => ({
+      id:               d.id,
+      counterparty_name: cpNames.get(counterpartyOf(d)) ?? d.external_counterparty_name ?? 'Counterparty',
+      status:           d.status,
+      value:            dealValue(d),
+      currency:         d.agreed_currency ?? 'USD',
+      created_at:       d.created_at,
+    }))
 
     return NextResponse.json({
-      role: 'supplier',
-      enrolled_programs,
-      monthly_volume,
-      receivables: {
-        outstanding_count,
-        outstanding_balance: parseFloat(outstanding_balance.toFixed(2)),
-        approved_count,
-        approved_balance:    parseFloat(approved_balance.toFixed(2)),
-        avg_rate,
-        total_fees_paid:     parseFloat(total_fees_paid.toFixed(2)),
+      role: isAnchor ? 'anchor' : 'supplier',
+      kpis: {
+        total_deals:                deals.length,
+        active_deals:               activeDeals.length,
+        completed_deals:            completedDeals.length,
+        total_trade_volume:         parseFloat(total_trade_volume.toFixed(2)),
+        completed_volume:           parseFloat(completed_volume.toFixed(2)),
+        active_volume:              parseFloat(active_volume.toFixed(2)),
+        avg_deal_cycle_days,
+        avg_pipeline_age_days,
+        active_listings,
+        pending_financing_requests: openFinReqs.length,
+        total_financing_requested:  parseFloat(openFinReqs.reduce((s, f) => s + (f.amount_requested ?? 0), 0).toFixed(2)),
+        total_financed:             parseFloat(total_financed.toFixed(2)),
+        avg_financing_rate,
+        min_financing_rate,
+        max_financing_rate,
+        dispute_rate,
+        cancellation_rate,
+        concentration_risk,
+        contract_completion_rate,
       },
-      recent_transactions,
-      acceptance_rate,
-      program_breakdown: supplier_program_breakdown,
+      monthly_volume,
+      status_breakdown,
+      top_counterparties,
+      stale_deals,
+      recent_deals,
     })
   }
 

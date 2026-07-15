@@ -161,6 +161,15 @@ const DEAL_COLUMNS = [
   { key: 'actions',      label: '',              width: 150 },
 ]
 
+interface ImportableErpDeal {
+  erp_reference: string
+  counterparty_name: string
+  amount: number
+  currency: string
+  due_date: string | null
+  invoice_name: string
+}
+
 interface PendingOffer {
   id: string
   status: 'pending' | 'countered'
@@ -185,17 +194,21 @@ export default function DealsPage() {
   const [pendingOffers, setPendingOffers] = useState<PendingOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState<Record<DealTab, number>>({ all: 0, active: 0, negotiating: 0, completed: 0 })
+  const [erpImportable, setErpImportable] = useState<ImportableErpDeal[]>([])
+  const [importingRef, setImportingRef] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
       fetch('/api/deals').then(r => r.ok ? r.json() : { deals: [] }).catch(() => ({ deals: [] })),
       fetch('/api/marketplace/offers').then(r => r.ok ? r.json() : { offers: [] }).catch(() => ({ offers: [] })),
-    ]).then(([dealsData, offersData]) => {
+      fetch('/api/deals/importable').then(r => r.ok ? r.json() : { deals: [] }).catch(() => ({ deals: [] })),
+    ]).then(([dealsData, offersData, importableData]) => {
       const all: DealRow[] = dealsData.deals ?? []
       const offers: PendingOffer[] = offersData.offers ?? []
       setDeals(all)
       setPendingOffers(offers)
+      setErpImportable(importableData.deals ?? [])
       const ACTIVE_STATUSES = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
       setCounts({
         all:         all.length + offers.length,
@@ -205,6 +218,22 @@ export default function DealsPage() {
       })
     }).finally(() => setLoading(false))
   }, [])
+
+  async function importErpDeal(ref: string) {
+    setImportingRef(ref)
+    try {
+      const res = await fetch('/api/deals/import-erp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_reference: ref }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setImportingRef(null); return }
+      router.push(`/deals/${json.deal_id}`)
+    } catch {
+      setImportingRef(null)
+    }
+  }
 
   const ACTIVE_STATUSES_FILTER = ['active', 'confirmed', 'in_preparation', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'financing_requested', 'financing_active']
   const filtered = deals.filter(d => {
@@ -257,6 +286,51 @@ export default function DealsPage() {
             </button>
           ))}
         </div>
+
+        {/* ERP-sourced deals available to import — shown on All and Active tabs */}
+        {!loading && erpImportable.length > 0 && (activeTab === 'all' || activeTab === 'active') && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+              From Your ERP ({erpImportable.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {erpImportable.map(inv => (
+                <div
+                  key={inv.erp_reference}
+                  className="card"
+                  style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}
+                >
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {inv.counterparty_name}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                      Invoice {inv.invoice_name} · Unpaid receivable
+                    </div>
+                  </div>
+
+                  <div style={{ flex: '0 0 auto', textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>
+                      {fmt(inv.amount, inv.currency)}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                      Due {fmtDate(inv.due_date)}
+                    </div>
+                  </div>
+
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ flexShrink: 0 }}
+                    disabled={importingRef === inv.erp_reference}
+                    onClick={() => importErpDeal(inv.erp_reference)}
+                  >
+                    {importingRef === inv.erp_reference ? 'Importing…' : 'Import to Strike →'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Pending Offers section — shown on All and Negotiating tabs */}
         {!loading && pendingOffers.length > 0 && (activeTab === 'all' || activeTab === 'negotiating') && (

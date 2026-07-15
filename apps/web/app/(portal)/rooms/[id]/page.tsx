@@ -48,6 +48,15 @@ interface DealSummary {
   goods_description: string | null
 }
 
+interface ListingSummary {
+  id: string
+  title: string
+  listing_type: string
+  status: string
+  currency: string
+  target_price: number | null
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function initials(name: string | null | undefined): string {
@@ -137,7 +146,7 @@ function SystemMsg({ msg }: { msg: Message }) {
 function AiMsg({ msg }: { msg: Message }) {
   return (
     <div className="room-msg room-msg-ai">
-      <div className="room-msg-avatar room-msg-avatar-ai">⚡</div>
+      <div className="room-msg-avatar room-msg-avatar-ai">✦</div>
       <div className="room-msg-body">
         <div className="room-msg-meta">
           <span className="room-msg-sender room-msg-sender-ai">Strike AI</span>
@@ -274,6 +283,7 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [deal, setDeal] = useState<DealSummary | null>(null)
+  const [listing, setListing] = useState<ListingSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -315,6 +325,7 @@ export default function RoomPage() {
         setParticipants(data.participants ?? [])
         setMessages(data.messages ?? [])
         setDeal(data.deal ?? null)
+        setListing(data.listing ?? null)
         setLoading(false)
       })
       .catch(() => { setError('Failed to load room'); setLoading(false) })
@@ -526,7 +537,7 @@ export default function RoomPage() {
   const onlineCount = participants.filter(p => onlineUsers.has(p.user_id)).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }} data-page-name="Room" data-ai-context={JSON.stringify({ room_name: room.name, room_type: room.room_type, status: room.status, participant_count: participants.length, message_count: messages.length, has_deal: !!deal, deal_id: deal?.id ?? null })}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }} data-page-name="Room" data-ai-context={JSON.stringify({ room_name: room.name, room_type: room.room_type, status: room.status, participant_count: participants.length, message_count: messages.length, has_deal: !!deal, deal_id: deal?.id ?? null, listing_id: listing?.id ?? null })}>
       <Topbar crumbs={crumbs} actions={topbarActions} />
 
       {/* Clean room header (TG.2): name bold · member count · View Members */}
@@ -552,6 +563,31 @@ export default function RoomPage() {
           {showMembers ? 'Hide Members' : 'View Members'}
         </button>
       </div>
+
+      {/* Listing panel — this room is negotiating (or has agreed) a marketplace listing */}
+      {listing && (
+        <div style={{
+          background: 'var(--blue-light)', borderBottom: '1px solid var(--border)',
+          padding: '10px 28px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            {listing.listing_type === 'po_request' ? 'PO Request' : 'Listing'}
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{listing.title}</span>
+          {listing.target_price != null && (
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--gray)' }}>
+              {fmtAmount(listing.target_price, listing.currency)}
+            </span>
+          )}
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
+          >
+            View Listing →
+          </button>
+        </div>
+      )}
 
       {/* Members panel (toggled by "View Members") */}
       {showMembers && (

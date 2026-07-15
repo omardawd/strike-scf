@@ -8,6 +8,7 @@ export interface PassportOrg {
   id: string
   type: string | null
   legal_name: string | null
+  logo_url?: string | null
   doing_business_as: string | null
   business_type: string | null
   state_of_incorporation: string | null

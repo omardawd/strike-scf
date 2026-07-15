@@ -88,7 +88,6 @@ export default function InviteLandingPage() {
           padding: '48px 40px', maxWidth: 400, width: '100%',
           boxShadow: 'var(--shadow-card)', textAlign: 'center',
         }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔗</div>
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
             {data?.reason === 'expired' ? 'Invitation expired' :
              data?.reason === 'already_used' ? 'Invitation already used' :

@@ -145,12 +145,29 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
   const [fetched, setFetched] = useState(false)
 
   useEffect(() => {
-    if (expanded && !fetched && !insight) {
-      fetchInsight()
-    }
+    if (!expanded || fetched || insight) return
+
+    let cacheKey = `strike-ai-insight-inline-${title ?? 'default'}`
+    try {
+      cacheKey += `-${btoa(unescape(encodeURIComponent(JSON.stringify({ prompt, context })))).slice(0, 32)}`
+    } catch {}
+
+    try {
+      const cached = sessionStorage.getItem(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached) as { text: string; expiry: number }
+        if (Date.now() < parsed.expiry && parsed.text) {
+          setInsight(parsed.text)
+          setFetched(true)
+          return
+        }
+      }
+    } catch {}
+
+    fetchInsight(cacheKey)
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function fetchInsight() {
+  async function fetchInsight(cacheKey?: string) {
     setLoading(true)
     setFetched(true)
     try {
@@ -181,7 +198,13 @@ RULES:
         return
       }
       const data = await res.json()
-      setInsight(data.content?.[0]?.text ?? '')
+      const text = data.content?.[0]?.text ?? ''
+      setInsight(text)
+      if (cacheKey && text) {
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ text, expiry: Date.now() + 5 * 60 * 1000 }))
+        } catch {}
+      }
     } catch {
       setInsight('Unable to generate insight.')
     }

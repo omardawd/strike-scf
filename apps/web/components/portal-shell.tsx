@@ -123,34 +123,39 @@ export function NotifBell() {
   }, [])
 
   // Supabase Realtime — append new notifications live
+  // (gracefully degrades if WebSocket is blocked — notifications still load via the initial fetch)
   useEffect(() => {
     const supabase = createClient()
     let userId: string | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       userId = user.id
 
-      const channel = supabase
-        .channel('notif-bell')
-        .on(
-          'postgres_changes',
-          {
-            event:  'INSERT',
-            schema: 'public',
-            table:  'notifications',
-            filter: `user_id=eq.${userId}`,
-          },
-          (payload) => {
-            const n = payload.new as AppNotification
-            setNotifications(prev => [n, ...prev])
-            setUnreadCount(prev => prev + 1)
-          }
-        )
-        .subscribe()
-
-      return () => { supabase.removeChannel(channel) }
+      try {
+        channel = supabase
+          .channel('notif-bell')
+          .on(
+            'postgres_changes',
+            {
+              event:  'INSERT',
+              schema: 'public',
+              table:  'notifications',
+              filter: `user_id=eq.${userId}`,
+            },
+            (payload) => {
+              const n = payload.new as AppNotification
+              setNotifications(prev => [n, ...prev])
+              setUnreadCount(prev => prev + 1)
+            }
+          )
+          .subscribe()
+      } catch { /* realtime unavailable — notifications still work via the initial fetch */ }
     })
+
+    return () => { if (channel) supabase.removeChannel(channel) }
   }, [])
 
   // Close on outside click

@@ -153,10 +153,11 @@ export async function GET(
 
   // Deal summary for private rooms
   let deal = null
+  let listingId: string | null = null
   if (room.room_type === 'private' && room.deal_id) {
     const { data: dealRow } = await adminClient
       .from('deals')
-      .select('id, status, total_value, agreed_currency, buyer_org_id, supplier_org_id, goods_description')
+      .select('id, status, total_value, agreed_currency, buyer_org_id, supplier_org_id, goods_description, listing_id')
       .eq('id', room.deal_id)
       .single()
 
@@ -177,8 +178,31 @@ export async function GET(
           ? (cpOrg.doing_business_as || cpOrg.legal_name)
           : 'Unknown',
       }
+      listingId = dealRow.listing_id ?? null
     }
   }
 
-  return NextResponse.json({ room, participants: enrichedParticipants, messages: enrichedMessages, deal })
+  // A negotiation room created before any deal exists (first counter-offer)
+  // isn't linked via deals.listing_id yet — resolve it via the offer that
+  // points at this room instead.
+  if (!listingId) {
+    const { data: linkedOffer } = await adminClient
+      .from('marketplace_offers')
+      .select('listing_id')
+      .eq('room_id', id)
+      .maybeSingle()
+    listingId = linkedOffer?.listing_id ?? null
+  }
+
+  let listing = null
+  if (listingId) {
+    const { data: listingRow } = await adminClient
+      .from('marketplace_listings')
+      .select('id, title, listing_type, status, currency, target_price')
+      .eq('id', listingId)
+      .maybeSingle()
+    listing = listingRow ?? null
+  }
+
+  return NextResponse.json({ room, participants: enrichedParticipants, messages: enrichedMessages, deal, listing })
 }

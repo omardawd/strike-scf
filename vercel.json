@@ -15,6 +15,14 @@
     {
       "path": "/api/erp/sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/agents/scan",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/agents/tick",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

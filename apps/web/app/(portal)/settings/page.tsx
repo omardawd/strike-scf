@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
@@ -17,9 +17,27 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
-type TabKey = 'profile' | 'org' | 'team' | 'bank-accounts'
+type TabKey = 'profile' | 'org' | 'team' | 'bank-accounts' | 'erp'
 
 interface Alert { kind: 'info' | 'error'; msg: string }
+
+interface ErpConnection {
+  id: string
+  erp_type: string
+  base_url: string
+  status: 'active' | 'error' | 'pending' | 'disconnected'
+  last_synced_at: string | null
+  error_message: string | null
+  dispatch_token: string
+  created_at: string
+}
+
+const ERP_PROVIDERS = [
+  { id: 'erpnext', label: 'ERPNext', badge: 'Free', desc: 'Open-source ERP — free tier on frappe.cloud' },
+  { id: 'odoo', label: 'Odoo', badge: 'Free', desc: 'Open-source ERP — free community or odoo.com' },
+  { id: 'netsuite', label: 'NetSuite', badge: 'Coming Soon', desc: 'Oracle NetSuite (planned)', disabled: true },
+  { id: 'sap', label: 'SAP', badge: 'Coming Soon', desc: 'SAP S/4HANA (planned)', disabled: true },
+]
 
 interface BankAccount {
   id: string
@@ -108,9 +126,10 @@ function fmtDate(s: string) {
 export default function SettingsPage() {
   const portal = usePortal()
   const user   = useUser()
-  const router = useRouter()
+  const searchParams = useSearchParams()
 
-  const [tab, setTab] = useState<TabKey>('profile')
+  const initialTab = (searchParams.get('tab') as TabKey | null)
+  const [tab, setTab] = useState<TabKey>(initialTab && ['profile', 'org', 'team', 'bank-accounts', 'erp'].includes(initialTab) ? initialTab : 'profile')
 
   const isAdmin    = ADMIN_ROLES.includes(user?.role ?? '')
   const isBankUser = BANK_ROLES.includes(user?.role ?? '')
@@ -355,6 +374,112 @@ export default function SettingsPage() {
     await fetchBankAccounts()
   }
 
+  // ── ERP Integration tab ────────────────────────────────────────────────────
+  const [erpConnection, setErpConnection] = useState<ErpConnection | null>(null)
+  const [erpLoading, setErpLoading] = useState(false)
+  const [erpAlert, setErpAlert] = useState<Alert | null>(null)
+  const [erpSyncing, setErpSyncing] = useState(false)
+  const [erpDisconnecting, setErpDisconnecting] = useState(false)
+  const [erpShowToken, setErpShowToken] = useState(false)
+  const [erpCopied, setErpCopied] = useState(false)
+  const [erpProvider, setErpProvider] = useState('erpnext')
+  const [erpBaseUrl, setErpBaseUrl] = useState('')
+  const [erpApiKey, setErpApiKey] = useState('')
+  const [erpApiSecret, setErpApiSecret] = useState('')
+  const [erpDbName, setErpDbName] = useState('')
+  const [erpConnecting, setErpConnecting] = useState(false)
+  const [erpFetched, setErpFetched] = useState(false)
+
+  const fetchErpConnection = useCallback(async () => {
+    setErpLoading(true)
+    try {
+      const res = await fetch('/api/erp/connect')
+      const json = await res.json()
+      setErpConnection(json.connection)
+    } finally {
+      setErpLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'erp' && !erpFetched) {
+      setErpFetched(true)
+      void fetchErpConnection()
+    }
+  }, [tab, erpFetched, fetchErpConnection])
+
+  async function handleErpConnect(e: React.FormEvent) {
+    e.preventDefault()
+    if (!isAdmin) return
+    setErpConnecting(true)
+    setErpAlert(null)
+    try {
+      const res = await fetch('/api/erp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_type: erpProvider, base_url: erpBaseUrl, api_key: erpApiKey, api_secret: erpApiSecret, db_name: erpDbName || undefined }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setErpAlert({ kind: 'error', msg: json.error ?? 'Connection failed' })
+        return
+      }
+      setErpAlert({ kind: 'info', msg: `Connected! ERP user: ${json.erp_user}` })
+      setErpBaseUrl(''); setErpApiKey(''); setErpApiSecret(''); setErpDbName('')
+      await fetchErpConnection()
+    } finally {
+      setErpConnecting(false)
+    }
+  }
+
+  async function handleErpSync() {
+    setErpSyncing(true)
+    setErpAlert(null)
+    try {
+      const res = await fetch('/api/erp/sync', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        setErpAlert({ kind: 'error', msg: json.error ?? 'Sync failed' })
+        return
+      }
+      const errCount = json.errors?.length ?? 0
+      setErpAlert({
+        kind: errCount > 0 ? 'error' : 'info',
+        msg: errCount > 0
+          ? `Sync completed with ${errCount} error(s): ${json.errors.join(', ')}`
+          : 'Sync complete — ERP data is now up to date.',
+      })
+      await fetchErpConnection()
+    } finally {
+      setErpSyncing(false)
+    }
+  }
+
+  async function handleErpDisconnect() {
+    if (!confirm('Disconnect your ERP? Synced data will be preserved but no new syncs will run.')) return
+    setErpDisconnecting(true)
+    try {
+      await fetch('/api/erp/connect', { method: 'DELETE' })
+      setErpConnection(null)
+      setErpAlert({ kind: 'info', msg: 'ERP connection removed.' })
+    } finally {
+      setErpDisconnecting(false)
+    }
+  }
+
+  function copyErpToken() {
+    if (!erpConnection?.dispatch_token) return
+    void navigator.clipboard.writeText(erpConnection.dispatch_token)
+    setErpCopied(true)
+    setTimeout(() => setErpCopied(false), 2000)
+  }
+
+  const erpStatusColor = erpConnection?.status === 'active'
+    ? 'var(--color-green)'
+    : erpConnection?.status === 'error'
+      ? 'var(--color-red)'
+      : 'var(--gray)'
+
   const fetchTeam = useCallback(async () => {
     setTeamLoading(true)
     setTeamError(null)
@@ -506,6 +631,15 @@ export default function SettingsPage() {
           >
             Bank Accounts
           </button>
+          {!isBankUser && (
+            <button
+              type="button"
+              className={`btn btn-sm ${tab === 'erp' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setTab('erp')}
+            >
+              ERP Integration
+            </button>
+          )}
         </div>
 
         {/* ── Tab: My Profile ── */}
@@ -1110,6 +1244,246 @@ export default function SettingsPage() {
             {!canWriteAccounts && bankAccounts.length === 0 && !baLoading && (
               <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
                 Contact your admin to add bank accounts.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab: ERP Integration ── */}
+        {tab === 'erp' && !isBankUser && (
+          <div>
+            {erpAlert && <AlertBox alert={erpAlert} />}
+
+            {erpLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
+            ) : erpConnection ? (
+              /* ── Connected state ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="card">
+                  <div className="card-body">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: erpStatusColor }} />
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                          {ERP_PROVIDERS.find(p => p.id === erpConnection.erp_type)?.label ?? erpConnection.erp_type}
+                        </span>
+                        <span className={`badge ${erpConnection.status === 'active' ? 'badge-active' : 'badge-rejected'}`}>
+                          {erpConnection.status}
+                        </span>
+                      </div>
+                      {isAdmin && (
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void handleErpSync()} disabled={erpSyncing}>
+                            {erpSyncing ? 'Syncing…' : 'Sync Now'}
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-red)' }} onClick={() => void handleErpDisconnect()} disabled={erpDisconnecting}>
+                            {erpDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 13 }}>
+                      <div>
+                        <span style={{ color: 'var(--gray)' }}>URL</span>
+                        <div style={{ color: 'var(--ink)', marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{erpConnection.base_url}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--gray)' }}>Last synced</span>
+                        <div style={{ color: 'var(--ink)', marginTop: 2 }}>
+                          {erpConnection.last_synced_at ? new Date(erpConnection.last_synced_at).toLocaleString() : 'Never — click Sync Now'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {erpConnection.error_message && (
+                      <div style={{ marginTop: 12, fontSize: 13, color: 'var(--color-red)', background: '#FEE2E2', padding: '8px 12px', borderRadius: 8 }}>
+                        {erpConnection.error_message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head">
+                    <h3 className="t-card-head">Dispatch Token</h3>
+                  </div>
+                  <div className="card-body">
+                    <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 14px' }}>
+                      Use this token to send commands to Strike AI from your phone, ERPNext webhooks, or any HTTP client.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{
+                        flex: 1, minWidth: 160, padding: '9px 12px', borderRadius: 'var(--radius-input)',
+                        border: '1px solid var(--border)', background: 'var(--offwhite)',
+                        fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {erpShowToken ? erpConnection.dispatch_token : '•'.repeat(40)}
+                      </div>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setErpShowToken(v => !v)}>
+                        {erpShowToken ? 'Hide' : 'Show'}
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={copyErpToken}>
+                        {erpCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 'var(--radius-input)', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--ink)', overflowX: 'auto' }}>
+                      <div style={{ color: 'var(--gray)', marginBottom: 6, fontFamily: 'var(--font-body)' }}>Example — ERPNext webhook payload:</div>
+                      {`POST https://your-strike-domain.com/api/ai/dispatch\n` +
+                       `Authorization: Bearer ${erpShowToken ? erpConnection.dispatch_token : '<your-dispatch-token>'}\n\n` +
+                       `{ "message": "Inventory is low on SKU-001, create a listing", "source": "erp_webhook" }`}
+                    </div>
+
+                    <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gray)' }}>
+                      Or open the mobile command page:{' '}
+                      <a href={`/dispatch?token=${erpConnection.dispatch_token}`} target="_blank" style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
+                        /dispatch?token=…
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head">
+                    <h3 className="t-card-head">What Strike AI can now do</h3>
+                  </div>
+                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      'Detect low inventory and suggest creating a PO request on Strike Marketplace',
+                      'Identify overdue AR and recommend invoice factoring or early payment financing',
+                      'Flag cash flow stress and suggest reverse factoring programs',
+                      'Match open purchase orders with Strike suppliers automatically',
+                      'Accept commands from your phone via the Dispatch page or ERPNext webhooks',
+                    ].map(text => (
+                      <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--ink-soft)' }}>
+                        <span style={{ color: 'var(--blue)', flexShrink: 0 }}>•</span>
+                        <span>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ── Connect form ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="card">
+                  <div className="card-head">
+                    <h3 className="t-card-head">Connect your ERP</h3>
+                  </div>
+                  <div className="card-body">
+                    <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 18px' }}>
+                      Connecting an ERP gives Strike AI real-time financial signals to act on autonomously.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
+                      {ERP_PROVIDERS.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={p.disabled}
+                          onClick={() => !p.disabled && setErpProvider(p.id)}
+                          style={{
+                            textAlign: 'left', padding: '14px 16px', borderRadius: 'var(--radius-input)',
+                            border: `2px solid ${erpProvider === p.id ? 'var(--blue)' : 'var(--border)'}`,
+                            background: erpProvider === p.id ? 'var(--blue-light)' : 'var(--offwhite)',
+                            cursor: p.disabled ? 'not-allowed' : 'pointer',
+                            opacity: p.disabled ? 0.5 : 1,
+                            transition: 'all .15s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{p.label}</span>
+                            <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 999, background: p.badge === 'Free' ? '#EDFAF4' : 'var(--offwhite)', color: p.badge === 'Free' ? 'var(--color-green)' : 'var(--gray)', fontWeight: 500 }}>{p.badge}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--gray)' }}>{p.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {erpProvider === 'erpnext' && isAdmin && (
+                      <form onSubmit={(e) => void handleErpConnect(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div className="form-field">
+                          <label className="form-label">ERPNext site URL</label>
+                          <input className="form-input" value={erpBaseUrl} onChange={e => setErpBaseUrl(e.target.value)} placeholder="https://your-site.frappe.cloud" required />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div className="form-field">
+                            <label className="form-label">API Key</label>
+                            <input className="form-input" value={erpApiKey} onChange={e => setErpApiKey(e.target.value)} placeholder="API Key" required />
+                          </div>
+                          <div className="form-field">
+                            <label className="form-label">API Secret</label>
+                            <input className="form-input" type="password" value={erpApiSecret} onChange={e => setErpApiSecret(e.target.value)} placeholder="API Secret" required />
+                          </div>
+                        </div>
+                        <div style={{ padding: '12px 14px', background: 'var(--blue-light)', borderRadius: 'var(--radius-input)', fontSize: 12, color: 'var(--blue)' }}>
+                          <strong>Get your credentials:</strong> In ERPNext → Settings → API Access → Generate Keys.
+                          Don&apos;t have an account? Sign up free at <span style={{ fontWeight: 500 }}>frappe.cloud</span>
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={erpConnecting}>
+                          {erpConnecting ? 'Connecting…' : 'Connect ERPNext'}
+                        </button>
+                      </form>
+                    )}
+
+                    {erpProvider === 'odoo' && isAdmin && (
+                      <form onSubmit={(e) => void handleErpConnect(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div className="form-field">
+                          <label className="form-label">Odoo URL</label>
+                          <input className="form-input" value={erpBaseUrl} onChange={e => setErpBaseUrl(e.target.value)} placeholder="https://yourcompany.odoo.com" required />
+                        </div>
+                        <div className="form-field">
+                          <label className="form-label">Database name <span style={{ fontWeight: 400, color: 'var(--gray-soft)' }}>(optional — auto-detected from URL for odoo.com)</span></label>
+                          <input className="form-input" value={erpDbName} onChange={e => setErpDbName(e.target.value)} placeholder="yourcompany" />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div className="form-field">
+                            <label className="form-label">Email / Username</label>
+                            <input className="form-input" type="email" value={erpApiKey} onChange={e => setErpApiKey(e.target.value)} placeholder="you@company.com" required />
+                          </div>
+                          <div className="form-field">
+                            <label className="form-label">API Key / Password</label>
+                            <input className="form-input" type="password" value={erpApiSecret} onChange={e => setErpApiSecret(e.target.value)} placeholder="API Key or password" required />
+                          </div>
+                        </div>
+                        <div style={{ padding: '12px 14px', background: 'var(--blue-light)', borderRadius: 'var(--radius-input)', fontSize: 12, color: 'var(--blue)' }}>
+                          <strong>Get your API key:</strong> In Odoo → Settings → Users → your user → API Keys tab → New API Key.
+                          Don&apos;t have an account? Sign up free at <span style={{ fontWeight: 500 }}>odoo.com</span>
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={erpConnecting}>
+                          {erpConnecting ? 'Connecting…' : 'Connect Odoo'}
+                        </button>
+                      </form>
+                    )}
+
+                    {!isAdmin && (
+                      <div className="alert alert-warn">
+                        <div className="alert-body">Only org admins can connect an ERP system.</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head">
+                    <h3 className="t-card-head">Why connect your ERP?</h3>
+                  </div>
+                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {[
+                      'Strike AI gains real-time visibility into your cash position, AR/AP aging, inventory, and open orders',
+                      'Proactive advisories appear on your dashboard before you ask — low stock, overdue invoices, cash stress',
+                      'AI can autonomously create listings, submit financing requests, and match suppliers to your open POs',
+                      'Command Strike AI from your phone or directly from ERPNext webhooks via the Dispatch API',
+                    ].map(text => (
+                      <div key={text} style={{ display: 'flex', gap: 10, fontSize: 13, color: 'var(--ink-soft)' }}>
+                        <span style={{ color: 'var(--blue)', flexShrink: 0 }}>✓</span>
+                        <span>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

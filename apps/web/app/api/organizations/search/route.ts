@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { sanitizeSearchTerm } from '@/lib/search'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
-  const q = (searchParams.get('q') ?? '').trim()
+  const q = sanitizeSearchTerm(searchParams.get('q') ?? '')
 
   if (q.length < 2) return NextResponse.json({ organizations: [] })
 

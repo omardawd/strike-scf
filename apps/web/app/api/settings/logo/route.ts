@@ -76,12 +76,23 @@ export async function POST(request: Request) {
   }
 
   const { data: { publicUrl } } = adminClient.storage.from(BUCKET).getPublicUrl(path)
+  // Storage path is deterministic per org/bank (upsert:true), so the public URL
+  // is byte-identical across re-uploads — the browser/CDN would keep serving a
+  // cached copy of the previous image. Persist a version-busted URL so every
+  // future read (not just this request) gets a fresh URL after a re-upload.
+  const versionedUrl = `${publicUrl}?v=${Date.now()}`
 
-  if (BANK_ROLES.includes(userData.role)) {
-    await adminClient.from('banks').update({ logo_url: publicUrl }).eq('id', userData.bank_id)
-  } else {
-    await adminClient.from('organizations').update({ logo_url: publicUrl }).eq('id', userData.org_id)
+  // The upload above can succeed even if this write fails (e.g. a schema
+  // mismatch) — check the error so we never report success on a logo that
+  // didn't actually persist.
+  const { error: dbError } = BANK_ROLES.includes(userData.role)
+    ? await adminClient.from('banks').update({ logo_url: versionedUrl }).eq('id', userData.bank_id)
+    : await adminClient.from('organizations').update({ logo_url: versionedUrl }).eq('id', userData.org_id)
+
+  if (dbError) {
+    console.error('Logo DB update error:', dbError)
+    return NextResponse.json({ error: 'Logo uploaded but failed to save: ' + dbError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ logo_url: publicUrl })
+  return NextResponse.json({ logo_url: versionedUrl })
 }

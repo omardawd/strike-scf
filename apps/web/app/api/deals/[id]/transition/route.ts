@@ -505,7 +505,18 @@ export async function POST(
     updates.payment_confirmed_at = now
     updates.payment_confirmed_by = userData.id
   }
-  if (rule.nextStatus === 'completed') updates.completed_at = now
+  if (rule.nextStatus === 'completed') {
+    updates.completed_at = now
+    // Passport "Avg Payment Days" / "On-Time Rate" / Platform Behavior all
+    // depend on this — compute it here since this route is the actual path
+    // every real deal completion goes through (mirrors the same formula used
+    // by the legacy /api/deals/[id]/payment 'seller_confirm' action).
+    if (deal.agreed_at) {
+      const agreedDate = new Date(deal.agreed_at as string)
+      const paidDate = new Date((deal.payment_confirmed_at as string | null) ?? now)
+      updates.payment_days_actual = Math.round((paidDate.getTime() - agreedDate.getTime()) / (1000 * 60 * 60 * 24))
+    }
+  }
   if (rule.nextStatus === 'cancelled') updates.cancelled_at = now
   if (rule.nextStatus === 'in_dispute') updates.disputed_at = now
   if (payload.commercial_invoice_id !== undefined) {

@@ -1,7 +1,9 @@
 import { adminClient } from '../admin'
+import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
 
 export interface SearchMarketplaceListingsInput {
   query: string
+  org_id?: string
   listing_type?: 'po_request' | 'product_service' | 'all'
   category?: string
   max_budget?: number
@@ -27,9 +29,22 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
       listing_line_items(name, quantity, unit, unit_price)
     `)
     .eq('status', 'active')
-    .eq('visibility', 'public')
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  // Without an org_id we can only safely show public listings. With one,
+  // include network_only listings this org is actually entitled to see —
+  // otherwise an agent proposing plans for an org can never discover
+  // network-scoped opportunities it legitimately has access to.
+  if (input.org_id) {
+    const filter = await getVisibilityFilter(adminClient, input.org_id)
+    q = q.or(buildListingVisibilityOr(filter, input.org_id))
+    // Exclude the caller's own listings — this searches for opportunities to
+    // bid/offer on, not a directory of the org's own postings.
+    q = q.neq('org_id', input.org_id)
+  } else {
+    q = q.eq('visibility', 'public')
+  }
 
   if (listingType !== 'all') {
     q = q.eq('listing_type', listingType)

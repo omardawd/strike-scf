@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isListingVisibleToOrg } from '@/lib/networks/visibility'
+import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -111,18 +112,21 @@ export async function GET(
       lineItems = lineItemsRes.data ?? []
     }
 
-    const [{ data: buyer }, { data: supplier }] = await Promise.all([
+    const [{ data: buyer }, { data: supplier }, statsMap] = await Promise.all([
       adminClient.from('organizations')
-        .select('id, legal_name, passport_score, risk_tier, kyb_status, avg_payment_days, dispute_rate_network, performance_tier, years_in_operation, annual_revenue_range')
+        .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, years_in_operation, annual_revenue_range')
         .eq('id', deal.buyer_org_id)
         .single(),
       adminClient.from('organizations')
-        .select('id, legal_name, passport_score, risk_tier, kyb_status, avg_payment_days, dispute_rate_network, performance_tier, years_in_operation, annual_revenue_range')
+        .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, years_in_operation, annual_revenue_range')
         .eq('id', deal.supplier_org_id)
         .single(),
+      // avg_payment_days / dispute_rate_network are never written on
+      // `organizations` — compute live from deals instead (see lib/passport/trade-stats.ts).
+      getOrgsTradeStatsBatch(adminClient, [deal.buyer_org_id, deal.supplier_org_id]),
     ])
-    buyer_passport    = buyer
-    supplier_passport = supplier
+    buyer_passport    = buyer ? { ...buyer, ...statsMap[buyer.id] } : null
+    supplier_passport = supplier ? { ...supplier, ...statsMap[supplier.id] } : null
   }
 
   // Fetch offers

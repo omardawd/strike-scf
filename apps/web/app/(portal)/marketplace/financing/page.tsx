@@ -639,7 +639,7 @@ function DetailPanel({
           <div className="term-kv"><span className="term-kv-k">Amount</span><span className="term-kv-v">{fmt(r.amount_requested, cur)}</span></div>
           <div className="term-kv"><span className="term-kv-k">Preferred Tenor</span><span className="term-kv-v">{r.preferred_tenor_days ? `${r.preferred_tenor_days}d` : '—'}</span></div>
           <div className="term-kv"><span className="term-kv-k">Max Rate</span><span className="term-kv-v">{r.preferred_rate_max != null ? `${r.preferred_rate_max}%` : 'Market'}</span></div>
-          <div className="term-kv"><span className="term-kv-k">Structure</span><span className="term-kv-v">{r.structure_type}</span></div>
+          <div className="term-kv"><span className="term-kv-k">Structure</span><span className="term-kv-v">{r.structure_type.replace(/_/g, ' ')}</span></div>
           <div className="term-kv"><span className="term-kv-k">Offers</span><span className="term-kv-v">{item.all_offers_count}</span></div>
           {r.expires_at && <div className="term-kv"><span className="term-kv-k">Expires</span><span className="term-kv-v">{fmtDate(r.expires_at)}</span></div>}
         </div>

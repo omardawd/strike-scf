@@ -793,7 +793,7 @@ function NewListingPageInner() {
             </div>
 
             <div className="ai-tip-card" style={{ marginTop: 12 }}>
-              <div className="ai-tip-icon">⚡</div>
+              <div className="ai-tip-icon">✦</div>
               <div className="ai-tip-body">
                 <div className="ai-tip-label">Strike AI Tip</div>
                 <div className="ai-tip-text">

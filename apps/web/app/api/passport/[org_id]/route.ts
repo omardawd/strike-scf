@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { getOrgTradeStats } from '@/lib/passport/trade-stats'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,6 +68,7 @@ export async function GET(
     { data: views },
     { count: recentDeals },
     { data: peers },
+    tradeStats,
   ] = await Promise.all([
     adminClient
       .from('passport_peer_reviews')
@@ -99,6 +101,10 @@ export async function GET(
       .eq('network_visible', true)
       .not('passport_score', 'is', null)
       .limit(1000),
+    // organizations.trade_count_total / trade_volume_total / avg_payment_days /
+    // dispute_rate_network are never written by any deal lifecycle path, so
+    // they're computed live here instead of trusted as-is (see lib/passport/trade-stats.ts).
+    getOrgTradeStats(adminClient, org_id),
   ])
 
   // Attach reviewer display names.
@@ -136,10 +142,30 @@ export async function GET(
     else if (v.viewer_org_id && v.viewer_org_id !== org_id) orgViewers.add(v.viewer_org_id)
   }
 
+  // Live trade-activity metrics — computed from the deals table on every
+  // request so they always reflect current activity (see comment above).
+  const tradeCountTotal = tradeStats.trade_count_total
+  const tradeVolumeTotal = tradeStats.trade_volume_total
+  const avgPaymentDays = tradeStats.avg_payment_days
+  const onTimePaymentRate = tradeStats.on_time_payment_rate
+  const disputeRate = tradeStats.dispute_rate_network != null
+    ? Math.round(tradeStats.dispute_rate_network * 100)
+    : null
+
   // Strip sensitive fields; expose a masked EIN to the owning org only.
   const safeOrg: Record<string, unknown> = { ...org }
   for (const f of SENSITIVE_FIELDS) delete safeOrg[f]
   safeOrg.ein_masked = isOwn ? maskEin(org.ein) : null
+  safeOrg.trade_count_total = tradeCountTotal
+  safeOrg.trade_volume_total = tradeVolumeTotal
+  safeOrg.avg_payment_days = avgPaymentDays
+
+  const livePerformance = {
+    ...(performance ?? {}),
+    org_id,
+    on_time_payment_rate: onTimePaymentRate,
+    dispute_rate: disputeRate,
+  }
 
   return NextResponse.json({
     organization: safeOrg,
@@ -147,7 +173,7 @@ export async function GET(
     peer_reviews: reviewList,
     avg_rating: avgRating,
     review_count: reviewList.length,
-    supplier_performance: performance ?? null,
+    supplier_performance: livePerformance,
     recent_deals: recentDeals ?? 0,
     bank_view_count_30d: bankViewers.size,
     org_view_count_30d: orgViewers.size,

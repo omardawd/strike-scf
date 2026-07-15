@@ -5,6 +5,8 @@ import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateListingPayload } from '@strike-scf/types'
 import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { sanitizeSearchTerm } from '@/lib/search'
+import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -80,7 +82,10 @@ export async function GET(request: Request) {
   }
 
   if (search) {
-    query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`)
+    const term = sanitizeSearchTerm(search)
+    if (term.length >= 1) {
+      query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`)
+    }
   }
 
   switch (sort) {
@@ -108,13 +113,18 @@ export async function GET(request: Request) {
   const orgsMap: Record<string, any> = {}
 
   if (orgIds.length > 0) {
-    const { data: orgs } = await adminClient
-      .from('organizations')
-      .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, trade_count_total, trade_volume_total, country_of_origin, description, network_visible')
-      .in('id', orgIds)
+    const [{ data: orgs }, statsMap] = await Promise.all([
+      adminClient
+        .from('organizations')
+        .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, country_of_origin, description, network_visible')
+        .in('id', orgIds),
+      // trade_count_total / trade_volume_total are never written on
+      // `organizations` — compute live from deals instead (see lib/passport/trade-stats.ts).
+      getOrgsTradeStatsBatch(adminClient, orgIds),
+    ])
 
     for (const org of orgs ?? []) {
-      orgsMap[org.id] = org
+      orgsMap[org.id] = { ...org, ...statsMap[org.id] }
     }
   }
 

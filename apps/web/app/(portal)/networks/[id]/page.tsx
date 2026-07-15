@@ -153,7 +153,14 @@ function InviteModal({
 
         {success ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>✅</div>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%', background: 'var(--color-green-bg, #EDFAF4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M4 9.5l3.2 3.2L14 5.5" stroke="var(--color-green)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
             <p style={{ fontWeight: 600, fontSize: 15 }}>{success}</p>
             <button onClick={onClose} style={{
               marginTop: 20, padding: '10px 24px', background: 'var(--blue)',
@@ -228,7 +235,7 @@ function InviteModal({
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{org.legal_name}</div>
                         <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                          {org.country ?? ''} · {org.kyb_status}
+                          {org.country ?? ''} · {org.kyb_status.replace(/_/g, ' ')}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

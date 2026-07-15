@@ -21,9 +21,19 @@ import { submitMarketplaceOffer, type SubmitMarketplaceOfferInput } from './hand
 import { handleSearchWeb } from './handlers/search-web'
 import { getFinancingPrograms, type GetFinancingProgramsInput } from './handlers/get-financing-programs'
 import { getErpData, type GetErpDataInput } from './handlers/get-erp-data'
+import { createFinancingRequest } from './handlers/create-financing-request'
+import { getAgentTasks, type GetAgentTasksInput } from './handlers/get-agent-tasks'
+import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './handlers/counter-marketplace-offer'
+import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './handlers/accept-marketplace-offer'
+import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
 
 export type ToolName =
+  | 'get_agent_tasks'
+  | 'create_financing_request'
   | 'create_marketplace_listing'
+  | 'counter_marketplace_offer'
+  | 'accept_marketplace_offer'
+  | 'reject_marketplace_offer'
   | 'evaluate_supplier_passport'
   | 'find_and_recommend_deals'
   | 'get_pricing_insights'
@@ -48,6 +58,10 @@ export async function executeTool(
   toolInput: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   switch (toolName) {
+    case 'get_agent_tasks':
+      return getAgentTasks(toolInput as unknown as GetAgentTasksInput)
+    case 'create_financing_request':
+      return createFinancingRequest(toolInput as unknown as Parameters<typeof createFinancingRequest>[0])
     case 'create_marketplace_listing':
       return createMarketplaceListing(toolInput as unknown as CreateMarketplaceListingInput)
     case 'evaluate_supplier_passport':
@@ -80,6 +94,12 @@ export async function executeTool(
       return searchMarketplaceListings(toolInput as unknown as SearchMarketplaceListingsInput)
     case 'submit_marketplace_offer':
       return submitMarketplaceOffer(toolInput as unknown as SubmitMarketplaceOfferInput)
+    case 'counter_marketplace_offer':
+      return counterMarketplaceOffer(toolInput as unknown as CounterMarketplaceOfferInput)
+    case 'accept_marketplace_offer':
+      return acceptMarketplaceOffer(toolInput as unknown as AcceptMarketplaceOfferInput)
+    case 'reject_marketplace_offer':
+      return rejectMarketplaceOffer(toolInput as unknown as RejectMarketplaceOfferInput)
     case 'search_web':
       return handleSearchWeb(toolInput)
     case 'get_financing_programs':
@@ -96,6 +116,11 @@ export const BANK_ONLY_TOOLS: ToolName[] = ['proactive_portfolio_alerts']
 
 // Tools that write to the database (subject to agent approval preference)
 export const WRITE_TOOLS: ToolName[] = [
+  'create_financing_request',
   'create_marketplace_listing',
   'score_and_rank_financing_offers',
+  'submit_marketplace_offer',
+  'counter_marketplace_offer',
+  'accept_marketplace_offer',
+  'reject_marketplace_offer',
 ]

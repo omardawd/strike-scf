@@ -104,8 +104,8 @@ function LoadingShimmer({ variant }: { variant: 'banner' | 'compact' | 'floating
 
   if (variant === 'banner') {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: 'var(--color-accent-light)', borderLeft: '3px solid var(--blue)', borderRadius: 8, padding: '14px 18px' }}>
-        <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50%', background: 'var(--blue)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14 }}>S</div>
+      <div className="ai-insight-banner">
+        <div className="ai-insight-banner-icon">✦</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', gap: 3 }}>
             {[0,1,2].map(i => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--blue)', opacity: step % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />)}
@@ -233,10 +233,13 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
     if (loading) return <LoadingShimmer variant="banner" />
     if (!insight) return null
     return (
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, width: '100%', background: 'var(--color-accent-light)', borderLeft: '3px solid var(--blue)', borderRadius: 8, padding: '14px 18px' }}>
-        <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50%', background: 'var(--blue)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14 }}>S</div>
-        <div style={{ flex: 1, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.55 }}>
-          <MarkdownContent text={insight.insight} />
+      <div className="ai-insight-banner" style={{ alignItems: 'flex-start' }}>
+        <div className="ai-insight-banner-icon">✦</div>
+        <div style={{ flex: 1 }}>
+          <div className="ai-insight-banner-label">Strike AI</div>
+          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.55 }}>
+            <MarkdownContent text={insight.insight} />
+          </div>
         </div>
         {insight.actions.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginTop: 2 }}>

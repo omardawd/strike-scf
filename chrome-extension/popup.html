@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Strike AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 340px;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #F5F4F0;
+      color: #0D0D0D;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1428CC 0%, #7C3AED 100%);
+      padding: 20px 20px 18px;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -20px; right: -20px;
+      width: 100px; height: 100px;
+      background: rgba(255,255,255,.07);
+      border-radius: 50%;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -30px; right: 60px;
+      width: 70px; height: 70px;
+      background: rgba(255,255,255,.05);
+      border-radius: 50%;
+    }
+    .logo {
+      width: 40px; height: 40px;
+      background: rgba(255,255,255,.2);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; z-index: 1;
+    }
+    .logo svg { width: 22px; height: 22px; }
+    .header-text { position: relative; z-index: 1; }
+    .header-text h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
+    .header-text p  { font-size: 12px; opacity: .75; margin-top: 2px; font-weight: 500; }
+
+    /* ── Status chip ── */
+    .status-chip {
+      display: none;
+      margin: 16px 20px 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      gap: 8px;
+      align-items: center;
+    }
+    .status-chip.show { display: flex; }
+    .status-chip.connected { background: #EDFAF4; color: #059669; }
+    .status-chip.saved     { background: #EDFAF4; color: #059669; }
+    .status-chip.error     { background: #FEE2E2; color: #DC2626; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+    /* ── Body ── */
+    .body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 0; }
+
+    .field { margin-bottom: 14px; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #6B7280;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .input-wrap { position: relative; }
+    input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid rgba(0,0,0,.1);
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-family: inherit;
+      background: white;
+      color: #0D0D0D;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus {
+      border-color: #1428CC;
+      box-shadow: 0 0 0 3px rgba(20,40,204,.1);
+    }
+    input::placeholder { color: #9CA3AF; }
+    input[type="password"] { font-size: 16px; letter-spacing: .08em; }
+    input[type="password"]::placeholder { font-size: 13.5px; letter-spacing: 0; }
+
+    .toggle-vis {
+      position: absolute;
+      right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      cursor: pointer; color: #9CA3AF;
+      font-size: 13px; padding: 2px 4px;
+      transition: color .12s;
+    }
+    .toggle-vis:hover { color: #6B7280; }
+
+    /* ── Save button ── */
+    .save-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #1428CC 0%, #7C3AED 100%);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      letter-spacing: -0.01em;
+      transition: opacity .15s, transform .12s;
+      box-shadow: 0 4px 16px rgba(20,40,204,.3);
+      margin-top: 4px;
+    }
+    .save-btn:hover  { opacity: .88; }
+    .save-btn:active { transform: scale(.98); }
+
+    /* ── Divider + help ── */
+    .divider { height: 1px; background: rgba(0,0,0,.07); margin: 16px 0; }
+    .help {
+      font-size: 12px;
+      color: #9CA3AF;
+      line-height: 1.6;
+    }
+    .help a { color: #1428CC; text-decoration: none; font-weight: 600; }
+    .help a:hover { text-decoration: underline; }
+
+    /* ── Shimmer animation on save btn ── */
+    .save-btn {
+      position: relative;
+      overflow: hidden;
+    }
+    .save-btn::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+      animation: shimmer 2.4s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0%   { left: -100%; }
+      50%, 100% { left: 160%; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M13 2L4.5 13.5H11.5L11 22L19.5 10.5H12.5L13 2Z" fill="white"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>Strike AI</h1>
+      <p>ERP Assistant Configuration</p>
+    </div>
+  </div>
+
+  <div class="status-chip" id="statusChip">
+    <div class="status-dot"></div>
+    <span id="statusText"></span>
+  </div>
+
+  <div class="body">
+    <div class="field">
+      <label for="strikeUrl">Strike Platform URL</label>
+      <input id="strikeUrl" type="url" placeholder="https://app.strikescf.com" autocomplete="off" />
+    </div>
+
+    <div class="field">
+      <label for="token">Dispatch Token</label>
+      <div class="input-wrap">
+        <input id="token" type="password" placeholder="Paste your dispatch token" autocomplete="off" />
+        <button class="toggle-vis" id="toggleVis" type="button" title="Show/hide token">👁</button>
+      </div>
+    </div>
+
+    <button class="save-btn" id="saveBtn">Save Configuration</button>
+
+    <div class="divider"></div>
+    <div class="help">
+      Get your dispatch token from <a href="#" id="settingsLink">Strike → Settings → ERP Integration</a>.
+      The token authenticates this extension as your organisation on the platform.
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

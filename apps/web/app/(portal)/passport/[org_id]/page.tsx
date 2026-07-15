@@ -47,7 +47,16 @@ function initials(name: string | null): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-function OrgAvatar({ name }: { name: string | null }) {
+function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | null }) {
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name ?? 'Organization logo'}
+        style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 8, objectFit: 'contain', background: 'var(--white)', border: '1px solid var(--border)' }}
+      />
+    )
+  }
   return (
     <div
       style={{
@@ -172,7 +181,7 @@ function ReviewedToast({ onDismiss }: { onDismiss: () => void }) {
     <div
       style={{
         position: 'fixed',
-        bottom: 32,
+        top: 24,
         right: 32,
         zIndex: 100,
         background: 'var(--color-green)',
@@ -341,7 +350,7 @@ export default function PublicPassportPage() {
                   This organization&apos;s Strike Passport
                 </div>
                 <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <OrgAvatar name={org.legal_name} />
+                  <OrgAvatar name={org.legal_name} logoUrl={org.logo_url} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}

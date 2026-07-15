@@ -21,16 +21,26 @@ const STRIKE_AI_IDENTITY =
 
 const DISPATCH_SYSTEM =
   STRIKE_AI_IDENTITY +
-  'You are operating in DISPATCH mode — a message was sent externally (from a phone or ERP system). ' +
-  'Act immediately and autonomously. Analyze any data signals provided in the context, ' +
-  'call the appropriate tools to take action, and return a clear summary of what you did or found. ' +
-  'Be concise. If no specific action is requested, scan the org\'s ERP signals and report any advisories.'
+  'You are operating in DISPATCH mode — accessible from a phone or ERP system. ' +
+  'Respond naturally to whatever the user says. If they greet you, greet them back and ask how you can help. ' +
+  'Only call tools when the user asks about their finances, ERP data, deals, inventory, or wants to take an action. ' +
+  'Never proactively dump ERP data unless the user asks for it. Keep responses concise and conversational.'
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+}
 
 export async function POST(req: NextRequest) {
   // Verify dispatch token
   const authHeader = req.headers.get('Authorization') ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
-  if (!token) return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401 })
+  if (!token) return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401, headers: CORS_HEADERS })
 
   const { data: conn } = await adminClient
     .from('erp_connections')
@@ -39,7 +49,7 @@ export async function POST(req: NextRequest) {
     .eq('status', 'active')
     .single()
 
-  if (!conn) return NextResponse.json({ error: 'Invalid or inactive dispatch token' }, { status: 401 })
+  if (!conn) return NextResponse.json({ error: 'Invalid or inactive dispatch token' }, { status: 401, headers: CORS_HEADERS })
 
   const orgId = conn.org_id
 
@@ -59,8 +69,9 @@ export async function POST(req: NextRequest) {
     .single()
 
   const body = await req.json().catch(() => ({}))
-  const userMessage: string = body.message ?? 'Check my ERP data and report any advisories or actions I should take.'
+  const userMessage: string = body.message ?? 'Hi'
   const source: string = body.source ?? 'api'
+  const history: Array<{ role: string; content: string }> = body.history ?? []
 
   const portal = org?.type === 'anchor' ? 'anchor' : 'supplier'
   const portalTools = getToolsForPortal(portal)
@@ -70,7 +81,9 @@ export async function POST(req: NextRequest) {
     `Org context: ${org?.doing_business_as ?? org?.legal_name ?? orgId} (${portal} portal, org_id: ${orgId}). ` +
     `Message source: ${source}.`
 
+  // Build messages: prior conversation history + current message
   const messages: Array<{ role: string; content: unknown }> = [
+    ...history.map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ]
 
@@ -101,7 +114,7 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const err = await response.json()
       console.error('[Dispatch] Anthropic error:', err)
-      return NextResponse.json({ error: 'AI service error' }, { status: 502 })
+      return NextResponse.json({ error: 'AI service error' }, { status: 502, headers: CORS_HEADERS })
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,7 +144,6 @@ export async function POST(req: NextRequest) {
 
         // Audit log (fire-and-forget)
         void adminClient.from('agent_actions').insert({
-          user_id: adminUser?.id ?? null,
           org_id: orgId,
           action_type: block.name,
           entity_type: 'ai_dispatch',
@@ -139,7 +151,7 @@ export async function POST(req: NextRequest) {
           output_summary: JSON.stringify(result).slice(0, 500),
           outcome: 'error' in result ? 'error' : 'success',
           model,
-          reasoning: `Dispatched from ${source}`,
+          reasoning: `Dispatched from ${adminUser?.id ?? 'unknown'} — ${source}`,
         })
 
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
@@ -182,5 +194,5 @@ export async function POST(req: NextRequest) {
     model,
     tokens: totalInputTokens + totalOutputTokens,
     source,
-  })
+  }, { headers: CORS_HEADERS })
 }

@@ -75,9 +75,14 @@ export async function GET(request: Request) {
 
   const enriched = (deals ?? []).map(d => {
     const counterpartyId = d.buyer_org_id === userData.org_id ? d.supplier_org_id : d.buyer_org_id
+    // Imported deals with an off-platform counterparty have no org row to join —
+    // fall back to the free-text name captured at import time.
+    const counterparty = orgsMap[counterpartyId] ?? (d.external_counterparty_name
+      ? { id: '', legal_name: d.external_counterparty_name as string, passport_score: null, risk_tier: null }
+      : null)
     return {
       ...d,
-      counterparty: orgsMap[counterpartyId] ?? null,
+      counterparty,
       user_role: d.buyer_org_id === userData.org_id ? 'buyer' : 'supplier',
       financing_request: d.financing_request_id ? (finMap[d.financing_request_id] ?? null) : null,
     }

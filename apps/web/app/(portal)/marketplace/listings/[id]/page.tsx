@@ -924,20 +924,26 @@ export default function ListingDetailPage() {
   }, [id])
 
   // Realtime: re-fetch when offers change on this listing
+  // (gracefully degrades if WebSocket is blocked — listing still loads via fetchData)
   const realtimeRef = useRef<ReturnType<typeof createClient> | null>(null)
   useEffect(() => {
-    const supabase = createClient()
-    realtimeRef.current = supabase
-    const channel = supabase
-      .channel(`listing-offers:${id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'marketplace_offers',
-        filter: `listing_id=eq.${id}`,
-      }, () => { fetchData() })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    let supabase: ReturnType<typeof createClient> | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null
+    try {
+      supabase = createClient()
+      realtimeRef.current = supabase
+      channel = supabase
+        .channel(`listing-offers:${id}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'marketplace_offers',
+          filter: `listing_id=eq.${id}`,
+        }, () => { fetchData() })
+        .subscribe()
+    } catch { /* realtime unavailable — page still works without live updates */ }
+    return () => { if (supabase && channel) supabase.removeChannel(channel) }
   }, [id, fetchData])
 
   async function handleOpenRoom(offerId: string) {
@@ -1566,7 +1572,10 @@ export default function ListingDetailPage() {
                         color: 'var(--ink)',
                       }}
                     >
-                      <span style={{ fontSize: 18 }}>📄</span>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: 'var(--gray)' }} aria-hidden="true">
+                        <path d="M4 1.5h5.5L12 4v10a.5.5 0 01-.5.5h-7A.5.5 0 014 14V1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                        <path d="M9.5 1.5V4h2.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                      </svg>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {doc.name}

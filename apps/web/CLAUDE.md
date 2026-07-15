@@ -89,10 +89,13 @@ apps/web/
 │   ├── deals/ActionPanel.tsx     ← Deal action buttons (receives FinancingContext as props)
 │   ├── deals/DealRoadmap.tsx     ← Deal timeline/roadmap (receives FinancingContext as props; steps: Agreed → Contract → In Business → Shipped → Received → Accepted → Paid → Completed)
 │   ├── deals/FinancingManagementCard.tsx ← Financing-request lifecycle UI (contract sign → disbursement → confirm receipt); prop-driven, no internal fetching; shared by marketplace/financing/[id] (requester view) and deals/[id] (bank view)
-│   ├── ai-overlay.tsx            ← Global AI overlay (hover-pill + draggable cluster); mounted on every page except /ai
+│   ├── ai-overlay.tsx            ← Global AI overlay (hover-pill + draggable cluster); mounted on every page except /ai;
+│   │                                web search + get_financing_programs tools enabled; reads data-ai-context from DOM
 │   ├── ai-insight-card.tsx       ← Contextual AI insight banner/compact/floating → /api/ai/insight
 │   ├── ai-insight.tsx            ← Inline collapsible AI insight widget → /api/ai/chat
 │   ├── ai-panel.tsx              ← DEPRECATED/ORPHANED — old sliding panel, replaced by ai-overlay.tsx
+│   ├── strike-ai-panel.tsx       ← Collapsible right-side AI context panel (300px); reads page data-ai-context;
+│   │                                localStorage key: strike-ai-panel-open; defined but not yet imported anywhere
 │   ├── doc-generator.tsx         ← Document export (template picker + /api/ai/documents)
 │   ├── bulk-invite-modal.tsx     ← Modal for bulk-inviting suppliers to a program
 │   ├── create-program-flow.tsx   ← Multi-step program creation wizard component
@@ -515,6 +518,26 @@ export default function MyPage() {
 }
 ```
 
+### AI context injection (required on every portal page)
+
+Every portal page must set `data-page-name` and `data-ai-context` on its outermost container so
+the AI overlay and `StrikeAIPanel` have full context for responses:
+
+```tsx
+<div
+  data-page-name="My Page Name"
+  data-ai-context={JSON.stringify({
+    /* structured data relevant to the page — deals, listings, org info, etc. */
+    portal,
+    user_role: user?.role,
+    // ... page-specific fields
+  })}
+>
+```
+
+The `ai-overlay.tsx` reads these via `document.querySelector('[data-page-name]')`. Always use
+`JSON.stringify(...)` — plain strings are silently dropped. Every portal page in the app sets this.
+
 ---
 
 ## Design system (2026 "soft / curved / premium" redesign)
@@ -543,14 +566,33 @@ Conventions: cards = `--radius-card` + `--shadow-card`; buttons & badges = full 
 
 ## AI features
 
-Surfaces:
-- `app/(portal)/ai/page.tsx` (+ `ai/layout.tsx`) — the dedicated **Strike AI** page: localStorage
-  conversation history, per-portal quick prompts, agentic "wants to execute an action"
-  confirmation card. Sends `model: 'sonnet'` to `/api/ai/chat`. Linked from the sidebar (`/ai`).
+### Surfaces
+
+- `app/(portal)/ai/page.tsx` (+ `ai/layout.tsx`) — the dedicated **Strike AI** page. Features:
+  - localStorage conversation history, per-portal quick prompts
+  - Agentic "wants to execute an action" confirmation card
+  - **File upload / document attachment**: paperclip button → `POST /api/ai/upload` → extracted text
+    prepended to message as `[Attached document: "filename"]\n\n{text}\n\n---\n\n{user message}`.
+    Supports PDF (Claude reads via `document` block), images (Claude reads via `image` block),
+    plain text / CSV / JSON / Markdown (decoded directly), DOCX/DOC/XLSX (printable-text extraction).
+    Max 20 MB. Attachment pill shown in message bubble; content truncated from display after `---`.
+  - Sends `model: 'sonnet'` to `/api/ai/chat`. Linked from the sidebar (`/ai`).
+  - **Agentic tool use**: `/api/ai/chat` returns `tool_use` blocks → UI shows a confirmation card;
+    on confirm, calls `POST /api/ai/tools/execute` → result injected as next `tool_result` message.
+
 - `components/ai-overlay.tsx` — global overlay mounted in `portal-shell.tsx` on every page **except**
   `/ai`: a hover-pill at the bottom edge + a draggable floating cluster after the first message.
-  Reads page context from the `data-page-name` / `data-ai-context` DOM attributes; listens for the
-  `strike-ai-prompt` CustomEvent (dispatched by insight cards).
+  Reads page context from the `data-page-name` / `data-ai-context` DOM attributes set on the
+  main container; listens for the `strike-ai-prompt` CustomEvent (dispatched by insight cards).
+  Has web search enabled (passes `search_web` + `get_financing_programs` tools for overlay sessions).
+  Every portal page sets `data-ai-context` with structured JSON for fully contextual responses.
+
+- `components/strike-ai-panel.tsx` — `StrikeAIPanel`: collapsible right-side AI context panel
+  (300px width). Open/closed state persisted in localStorage `strike-ai-panel-open`. On open,
+  fetches a contextual insight via `/api/ai/insight` using the current page's `data-page-name` /
+  `data-ai-context`. Clears history on route change. Currently defined but not imported into any
+  layout (standalone component, available for future integration).
+
 - `components/ai-insight-card.tsx` — contextual insight banner/compact/floating cards → `/api/ai/insight`
   (session-cached, 5-min TTL). Wired into dashboard (bank), programs, transactions.
 - `components/ai-insight.tsx` — inline collapsible insight widget → `/api/ai/chat`.
@@ -560,20 +602,73 @@ Surfaces:
   template upload → `/api/ai/documents`, with a markdown preview modal and Download PDF / .md.
 - `components/ai-panel.tsx` — **deprecated/orphaned** (old sliding panel, replaced by `ai-overlay.tsx`).
 
-Routes:
+### Routes
+
 - `/api/ai/chat` — chat. Model routing: `model: 'sonnet'` → `claude-sonnet-4-6`, otherwise
   `claude-haiku-4-5-20251001`. Passes through optional `tools` / `tool_choice`.
 - `/api/ai/insight` — insight-card JSON (haiku, 256 tokens; fail-soft).
 - `/api/ai/documents` — document generation (sonnet, 4096 tokens). `custom` accepts
   `context.templateText` (fill an uploaded template) or `context.instructions`.
 - `/api/ai/usage` — usage/limits for the current scope.
+- `/api/ai/upload` — **multipart file upload** for Strike AI context extraction. Accepts `file` field
+  (max 20 MB). Returns `{ filename, text }`. PDF/image → Claude Haiku reads content; plain text/CSV/
+  JSON/MD → decoded directly; DOCX/DOC/XLSX → printable-text extraction. Usage logged to `ai_usage`
+  (feature: `'insight'`). Called from `app/(portal)/ai/page.tsx` before sending message.
+- `/api/ai/tools/execute` — **AI agentic tool executor**. Accepts `{ tool_name, tool_input }`.
+  Auth → user row → ghost check (orgs) → bank-only gate → agent-approval preference check →
+  `executeTool()` dispatch → logs to `agent_actions`. Returns `{ tool_name, result, duration_ms }`.
+  On `requires_approval_for_actions` pref: returns `202 { status:'requires_approval', ... }`.
 
-Limits & logging:
-- Daily limits come from `ai_limits` table (scope: user|org|bank|global), fallback hardcoded in route
+### AI Agentic Tools system (`lib/ai/tools/`)
+
+All tools are defined in `lib/ai/tools/definitions.ts` (Claude `tool_use` schema format) and
+dispatched in `lib/ai/tools/execute.ts`. Handlers live in `lib/ai/tools/handlers/`.
+`lib/ai/tools/admin.ts` provides a shared service-role client for handlers.
+
+```
+ToolName (18 tools total):
+
+READ tools (no approval gate):
+  lookup_entities            — resolve name/keyword to org/deal/financing_request UUIDs; query:"all" lists recent
+  get_active_deals           — list non-completed/non-cancelled deals for an org
+  evaluate_supplier_passport — evaluate org trust using KYB/financials/deals/reviews; writes PassportScore back
+  find_and_recommend_deals   — match + score buyer-supplier pairing; returns suggested terms
+  get_pricing_insights       — benchmark product price vs platform data + LME/CME/FAO indices
+  summarize_deal_negotiation — full negotiation history: events, amendments, messages, next steps
+  score_and_rank_financing_offers — rank bank offers by rate/amount/tenor/bank reputation
+  detect_deal_risk_signals   — fraud, risk flags, tariff exposure, payment anomalies, concentration
+  recommend_suppliers_for_buyer  — best-match suppliers by product/location/PassportScore/delivery
+  generate_deal_term_sheet   — structured term sheet (parties, goods, pricing, delivery, financing)
+  evaluate_listing_offers    — rank offers by price/delivery speed/counterparty trust
+  get_passport_advice        — explain PassportScore drivers + specific improvement actions
+  search_marketplace_listings — search public listings; emits [LISTING_CARD:{id}] for each result
+  search_web                 — Brave/DuckDuckGo search for market prices, regulations, benchmarks
+  get_financing_programs     — fetch financing programs available to an org (overlay tool)
+
+WRITE tools (subject to agent_preferences require_approval_for_actions gate):
+  create_marketplace_listing — create listing with line items; DOCUMENT MODE: extracts all fields from
+                               attached doc automatically. Emits [LISTING_CARD:{id}] on success.
+  submit_marketplace_offer   — submit/bid on a listing by listing_id
+
+BANK_ONLY tools:
+  proactive_portfolio_alerts — scan bank's full portfolio for risk concentration, overdue, anomalies
+```
+
+**LISTING_CARD directive**: when a tool emits `[LISTING_CARD:{listing_id}]` on its own line,
+the Strike AI page UI renders a clickable card linking to `/marketplace/listings/{listing_id}`.
+
+**Document-mode tool calling** (create_marketplace_listing): when the user attaches a document
+and asks to create a listing, the AI extracts all fields from the document and calls the tool
+immediately without asking follow-up questions. The `[Attached document: "filename"]` prefix in
+the message signals document mode to the AI system prompt.
+
+### AI limits & logging
+
+- Daily limits from `ai_limits` table (scope: user|org|bank|global), fallback hardcoded in route
 - Limits: chat=50, insight=200, document=20, scoring=500
 - Usage logged to `ai_usage` table (fail-soft if the table is absent)
-- Default model `claude-haiku-4-5-20251001` (cost-sensitive); the dedicated AI page and document
-  generation route to `claude-sonnet-4-6`.
+- Tool executions logged to `agent_actions` (action_type = tool_name; fail-soft)
+- Default model `claude-haiku-4-5-20251001` (cost-sensitive); dedicated AI page + doc gen → `claude-sonnet-4-6`
 
 ---
 
@@ -621,6 +716,9 @@ Vercel crons (`vercel.json`):
 - `/api/risk/refresh-signals` — daily 00:00 UTC (gated by `CRON_SECRET` in middleware)
 - `/api/deals/check-overdue` — daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
 
+**External packages** (`next.config.js` `serverExternalPackages`): `pdfkit` is excluded from
+webpack bundling. Any route using PDFKit must use `export const runtime = 'nodejs'`.
+
 ---
 
 ## Dev seed accounts
@@ -652,6 +750,7 @@ Atlas Bank's id is `NEXT_PUBLIC_DEV_BANK_ID` (ff1a209f-aa2a-471c-95c8-9d01018cde
 - **Never** install an ORM (Prisma, Drizzle) — Supabase JS client only
 - **Never** use `getSession()` in API routes — use `getUser()` (more secure)
 - **Never** create a `proxy.ts` — it was renamed to `middleware.ts` (T1.1); Next.js only auto-runs `middleware.ts`. Edit the existing `apps/web/middleware.ts`.
+- **Never** import `pdfkit` in a Webpack bundle — it is listed in `serverExternalPackages` in `next.config.js` (added to prevent bundling). Always `export const runtime = 'nodejs'` in routes that use it.
 - **Never** gate features on `organizations.status = 'active'` — use `org.network_visible && org.kyb_status !== 'not_started'` (the platform-unlock check). `status = 'active'` is only set post-approval, which is no longer required for feature access.
 - **Never** add new env vars without updating `.env.production.example`
 - **Don't** create Supabase clients inline in page files — import from `lib/supabase/`
@@ -725,6 +824,10 @@ anon client for reads with RLS). Key routes:
 - /api/deals/[id]/dispute — Submit evidence (action=submit_evidence) or Strike Admin resolves (action=resolve)
 - /api/deals/[id]/upload-document — Multipart upload to deal-documents bucket; G7 duplicate invoice check
 - /api/deals/[id]/events — GET deal_events audit log (party members only)
+- /api/deals/[id]/documents — GET list of documents attached to a deal
+- /api/deals/[id]/download-document — GET (with ?doc_id=); generates a signed PDF via PDFKit for
+  contract documents. Uses `bufferPages:true` for page count. Falls back to document lookup if
+  preview param set. Returns `application/pdf` stream.
 - /api/deals/check-overdue — Vercel cron (daily 08:00 UTC); moves overdue deals to payment_overdue; G9 grace period for pending financing
 - /api/deals/[id]/transition — POST; canonical route for ALL deal status changes; action + payload; returns updated deal + financing_context
 - /api/deals/[id]/available-actions — GET; returns {actions, financing_context, deal_status, user_role} for UI + AI agent
@@ -732,13 +835,19 @@ anon client for reads with RLS). Key routes:
 - /api/deals/[id]/dd-offer — POST; anchor (buyer) presents Dynamic Discounting early payment offer to supplier
 - /api/deals/[id]/dd-respond — POST; supplier accepts ({accepted:true}) or declines ({accepted:false}) DD offer
 - /api/marketplace/financing/[id]/reject — Close financing request without activation; structure-aware revert (IF clears NOA, PO blocked post-conversion)
+- /api/marketplace/financing/[id]/upload-document — POST; multipart upload for financing request documents
 - /api/rooms — Room list + create public room
 - /api/rooms/[id]/messages — Send message + AI moderation
 - /api/passport/[org_id] — Full passport profile
 - /api/passport/recalculate — PassportScore recomputation
 - /api/passport/reviews — Peer review submission
 - /api/passport/reviews/check — GET ?deal_id={id} → { already_reviewed: boolean }
-- /api/settings/agent — Agent preferences CRUD
+- /api/passport/[org_id]/narrative — GET; AI-generated 2-3 sentence Passport narrative (Sonnet; 7-day
+  TTL cache on the org row). Also returns AI CFO-grade assessment vs network medians.
+- /api/passport/[org_id]/documents — GET; list KYB/Passport documents for an org's public profile
+- /api/passport/[org_id]/view — POST; record a passport view (viewer_org_id/bank_id, context)
+- /api/settings/agent — Agent preferences CRUD (preference_type: `require_approval_for_actions`; value: `{enabled:bool}`)
+- /api/risk/signals — GET; market_signals table (country_risk type); ?country_code= for single country or all
 - /api/notifications — Notification center
 - /api/admin/* — Strike admin actions
 - /api/organizations/search — Network-visible org search
@@ -758,6 +867,7 @@ anon client for reads with RLS). Key routes:
 Four financing structures are a **lens** over the deal flow — steps don't change, but rendering/amounts/recipient/gates do. All logic lives in one place:
 
 - **`lib/deals/financing-context.ts`** — `getFinancingContext(deal, txn, program, bankOrg, supplierOrg)` is the single source of truth. Returns `FinancingContext` with all UI-relevant fields. Pure function, no imports from component files. Import from here; never compute financing logic elsewhere.
+- **`lib/deals/fees.ts`** — Fee calculation utilities for deal financing structures.
   - `DealFinancingStructure` = `'reverse_factoring' | 'invoice_factoring' | 'po_financing' | 'dynamic_discounting' | null` (local type — do NOT confuse with `FinancingStructure` from `packages/types/index.ts` which is `'preset'|'custom'|'open'`)
   - DB uses `type: 'factoring'` for IF; `mapStructure()` normalizes both to `'invoice_factoring'`
 - **`lib/deals/transitions.ts`** — `PERMITTED_TRANSITIONS` map; `getPermittedTransition(status, action, role, fc)` returns the rule or null.

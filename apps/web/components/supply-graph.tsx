@@ -438,7 +438,7 @@ function GraphCanvas({ graphData, expanded }: { graphData: GraphData; expanded: 
                 fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase',
                 color: selectedNode.kyb_status === 'approved' ? 'var(--color-green)' : 'var(--gray)',
               }}>
-                KYB: {selectedNode.kyb_status}
+                KYB: {selectedNode.kyb_status.replace(/_/g, ' ')}
               </div>
             )}
           </div>
