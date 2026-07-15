@@ -712,9 +712,17 @@ CRON_SECRET              ← required; middleware gates /api/risk/refresh-signal
 NEXT_PUBLIC_DEV_BANK_ID=ff1a209f-aa2a-471c-95c8-9d01018cdecd
 ```
 
-Vercel crons (`vercel.json`):
-- `/api/risk/refresh-signals` — daily 00:00 UTC (gated by `CRON_SECRET` in middleware)
-- `/api/deals/check-overdue` — daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
+Cron-gated routes (all check `x-cron-secret` against `CRON_SECRET`; NOT declared in
+`vercel.json` — Vercel Hobby caps cron jobs at 2/day and we have 5, one needing 5-minute
+frequency, so native Vercel Cron isn't usable on Hobby. On Pro, re-add a `crons` array to
+`vercel.json` with the schedules below; on Hobby, trigger each route on schedule from an
+external scheduler, e.g. cron-job.org or a scheduled GitHub Action, POSTing/GETting the
+path with header `x-cron-secret: $CRON_SECRET`):
+- `/api/risk/refresh-signals` — intended daily 00:00 UTC
+- `/api/deals/check-overdue` — intended daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
+- `/api/erp/sync` — intended daily 06:00 UTC
+- `/api/agents/scan` — intended daily 07:00 UTC
+- `/api/agents/tick` — intended every 5 minutes (the autonomous negotiation loop; see `lib/ai/agent-tick.ts`) — does nothing until this is scheduled somehow
 
 **External packages** (`next.config.js` `serverExternalPackages`): `pdfkit` is excluded from
 webpack bundling. Any route using PDFKit must use `export const runtime = 'nodejs'`.

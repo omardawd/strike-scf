@@ -2,27 +2,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/risk/refresh-signals",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/deals/check-overdue",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/erp/sync",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/agents/scan",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/agents/tick",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
