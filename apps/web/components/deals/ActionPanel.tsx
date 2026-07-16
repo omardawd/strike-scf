@@ -249,16 +249,43 @@ function DDRespondForm({ fc, onAccept, onDecline, loading }: {
 
 // ── Generic Action Form ───────────────────────────────────────────────────────
 
-function GenericActionForm({ action, onSubmit, loading, error }: {
+function GenericActionForm({ action, dealId, onSubmit, loading, error }: {
   action: AvailableAction
+  dealId: string
   onSubmit: (payload: Record<string, unknown>) => Promise<void>
   loading: boolean
   error: string | null
 }) {
   const [values, setValues] = useState<Record<string, string | boolean>>({})
+  const [uploadingField, setUploadingField] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadedNames, setUploadedNames] = useState<Record<string, string>>({})
 
   function setValue(name: string, value: string | boolean) {
     setValues(prev => ({ ...prev, [name]: value }))
+  }
+
+  // "document" fields (e.g. commercial invoice) must upload a real file and
+  // store the resulting document UUID — a bare text input here would send
+  // whatever the user typed straight into a uuid column and fail the update.
+  async function handleFileSelect(fieldName: string, file: File | null) {
+    if (!file) return
+    setUploadError(null)
+    setUploadingField(fieldName)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('document_kind', fieldName)
+      const res = await fetch(`/api/deals/${dealId}/upload-document`, { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { setUploadError(json.error ?? 'Upload failed'); return }
+      setValue(fieldName, json.document.id as string)
+      setUploadedNames(prev => ({ ...prev, [fieldName]: file.name }))
+    } catch {
+      setUploadError('Upload failed')
+    } finally {
+      setUploadingField(null)
+    }
   }
 
   function buildPayload(): Record<string, unknown> {
@@ -280,6 +307,7 @@ function GenericActionForm({ action, onSubmit, loading, error }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {error && <div className="alert alert-error" style={{ fontSize: 12 }}>{error}</div>}
+      {uploadError && <div className="alert alert-error" style={{ fontSize: 12 }}>{uploadError}</div>}
       {action.requiredFields.map(field => (
         <div key={field.name} className="form-field">
           <label className="field-label">{field.label}{field.required ? ' *' : ''}</label>
@@ -304,6 +332,19 @@ function GenericActionForm({ action, onSubmit, loading, error }: {
             <input className="input" type="date" value={values[field.name] as string ?? ''} onChange={e => setValue(field.name, e.target.value)} />
           ) : field.type === 'number' ? (
             <input className="input" type="number" step="0.01" value={values[field.name] as string ?? ''} onChange={e => setValue(field.name, e.target.value)} />
+          ) : field.type === 'document' ? (
+            <div>
+              <input
+                className="input"
+                type="file"
+                disabled={uploadingField === field.name}
+                onChange={e => handleFileSelect(field.name, e.target.files?.[0] ?? null)}
+              />
+              {uploadingField === field.name && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>Uploading…</div>}
+              {uploadedNames[field.name] && uploadingField !== field.name && (
+                <div style={{ fontSize: 11, color: 'var(--color-green)', marginTop: 4 }}>✓ {uploadedNames[field.name]}</div>
+              )}
+            </div>
           ) : (
             <input className="input" value={values[field.name] as string ?? ''} onChange={e => setValue(field.name, e.target.value)} placeholder={field.label} />
           )}
@@ -311,7 +352,7 @@ function GenericActionForm({ action, onSubmit, loading, error }: {
       ))}
       <button
         className={`btn btn-sm ${action.isDestructive ? 'btn-danger' : 'btn-primary'}`}
-        disabled={loading || !canSubmit}
+        disabled={loading || !canSubmit || uploadingField !== null}
         onClick={() => onSubmit(buildPayload())}
       >
         {loading ? 'Processing…' : action.label}
@@ -709,6 +750,7 @@ export function ActionPanel({
                 ) : (
                   <GenericActionForm
                     action={action}
+                    dealId={dealId}
                     onSubmit={p => handleSubmit(action.action, p)}
                     loading={loading}
                     error={error}

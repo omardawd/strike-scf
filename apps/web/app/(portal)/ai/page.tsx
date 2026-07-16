@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
+import { SkeletonCard } from '@/components/motion'
 
 // ============== Types ==============
 interface Message {
@@ -437,7 +438,7 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function AgentPanel({ orgId }: { orgId: string }) {
+function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTaskId?: string | null }) {
   void orgId
   const router = useRouter()
   const [tasks, setTasks]         = useState<AgentTask[]>([])
@@ -447,6 +448,11 @@ function AgentPanel({ orgId }: { orgId: string }) {
   const [scanRunning, setScanRunning] = useState(false)
   const [scanMsg, setScanMsg]     = useState<string | null>(null)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
+
+  // A sidebar click on an agent-originated thread jumps straight here.
+  useEffect(() => {
+    if (initialOpenTaskId) setOpenTaskId(initialOpenTaskId)
+  }, [initialOpenTaskId])
 
   const loadTasks = useCallback(async () => {
     try {
@@ -532,17 +538,20 @@ function AgentPanel({ orgId }: { orgId: string }) {
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>Loading tasks…</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          {[0, 1, 2].map((i) => <SkeletonCard key={i} height={110} />)}
+        </div>
       ) : tasks.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--gray)' }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No tasks yet</div>
           <div style={{ fontSize: 13 }}>Run a scan to let your agent analyse your ERP data and propose actions.</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+        <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {tasks.map((task) => (
             <button
               key={task.id}
+              className="card-interactive"
               onClick={() => setOpenTaskId(task.active_task_id ?? task.id)}
               style={{
                 textAlign: 'left',
@@ -635,7 +644,7 @@ function MessageBubble({ role, content }: { role: TaskThreadMessage['role']; con
   const isUser = role === 'user'
   return (
     <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-      <div style={{
+      <div className="fade-in" style={{
         maxWidth: '80%',
         padding: '10px 14px',
         borderRadius: 14,
@@ -655,20 +664,20 @@ function MessageBubble({ role, content }: { role: TaskThreadMessage['role']; con
 // What to show while a proposed action is actually executing — keyed by
 // tool_name so the preview reads like real activity, not a generic spinner.
 const WORKING_LABELS: Record<string, string> = {
-  create_marketplace_listing: '📝 Posting your listing to Strike Place…',
-  submit_marketplace_offer: '🤝 Submitting your offer…',
-  counter_marketplace_offer: '💬 Sending your counter-offer…',
-  accept_marketplace_offer: '✅ Finalizing the deal…',
-  reject_marketplace_offer: '✋ Rejecting the offer…',
-  create_financing_request: '💰 Submitting your financing request…',
-  search_marketplace_listings: '🔍 Searching the marketplace…',
-  get_active_deals: '📂 Reviewing active deals…',
-  get_agent_tasks: '🗂️ Checking agent tasks…',
+  create_marketplace_listing: 'Posting your listing to Strike Place…',
+  submit_marketplace_offer: 'Submitting your offer…',
+  counter_marketplace_offer: 'Sending your counter-offer…',
+  accept_marketplace_offer: 'Finalizing the deal…',
+  reject_marketplace_offer: 'Rejecting the offer…',
+  create_financing_request: 'Submitting your financing request…',
+  search_marketplace_listings: 'Searching the marketplace…',
+  get_active_deals: 'Reviewing active deals…',
+  get_agent_tasks: 'Checking agent tasks…',
 }
 
 function describeWorking(toolName: string | undefined): string {
-  if (!toolName) return '⚙️ Working…'
-  return WORKING_LABELS[toolName] ?? `⚙️ Running ${toolName.replace(/_/g, ' ')}…`
+  if (!toolName) return 'Working…'
+  return WORKING_LABELS[toolName] ?? `Running ${toolName.replace(/_/g, ' ')}…`
 }
 
 function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void }) {
@@ -805,7 +814,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{rootTask.title}</div>
 
         {isNegotiating && rootTask.negotiation && (
-          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--blue-light)', borderRadius: 'var(--radius-sm)' }}>
+          <div className="ai-sheen" style={{ marginTop: 10, padding: '10px 12px', background: 'var(--blue-light)', borderRadius: 'var(--radius-sm)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               {rootTask.negotiation.status === 'active' && !rootTask.negotiation.halt_requested && (
                 <span style={{
@@ -878,7 +887,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
           <WorkingBubble label={describeWorking(currentTask.proposed_action?.tool_name)} />
         )}
         {sending && !acting && (
-          <WorkingBubble label="💭 Thinking…" />
+          <WorkingBubble label="Thinking…" />
         )}
         {currentTask.status === 'completed' && (() => {
           const outcome = describeOutcome(currentTask)
@@ -897,7 +906,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
         <div style={{ display: 'flex', gap: 8, padding: '0 24px 14px' }}>
           {isAwaitingApproval && (
             <>
-              <button className="btn btn-primary btn-sm" onClick={approve} disabled={acting} style={{ minWidth: 96 }}>
+              <button className="btn btn-primary btn-sm shine" onClick={approve} disabled={acting} style={{ minWidth: 96 }}>
                 {acting ? 'Executing…' : '✓ Approve'}
               </button>
               <button className="btn btn-ghost btn-sm" onClick={reject} disabled={acting}>Reject</button>
@@ -952,6 +961,8 @@ function AIWorkspaceInner() {
   const [pendingAction, setPendingAction] = useState<{ text: string; description: string } | null>(null)
   const [attachment, setAttachment] = useState<{ filename: string; text: string } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [agentThreads, setAgentThreads] = useState<AgentTask[]>([])
+  const [jumpToTaskId, setJumpToTaskId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -964,6 +975,28 @@ function AIWorkspaceInner() {
       setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1')
     } catch {}
   }, [])
+
+  // ── Agent-originated threads for the sidebar — the agent's own proposals/
+  // negotiations are real conversations too, not just entries under the Agent tab. ──
+  useEffect(() => {
+    if (!user?.org_id) return
+    let cancelled = false
+    const load = () => {
+      fetch('/api/agents/tasks?limit=8')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (!cancelled && d?.tasks) setAgentThreads(d.tasks) })
+        .catch(() => {})
+    }
+    load()
+    const t = setInterval(load, 20000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [user?.org_id])
+
+  function openAgentThread(taskId: string) {
+    setJumpToTaskId(taskId)
+    setActiveTab('agent')
+    router.replace('/ai?tab=agent', { scroll: false })
+  }
 
   // ── Cycle loading phrases while the agent is working ──
   const LOADING_PHRASES = [
@@ -1211,6 +1244,48 @@ function AIWorkspaceInner() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+            {agentThreads.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{
+                  padding: '4px 12px 6px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em',
+                  textTransform: 'uppercase', color: 'var(--blue)',
+                }}>
+                  Agent
+                </div>
+                {[...agentThreads]
+                  .sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime())
+                  .map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="strike-ai-convo card-interactive"
+                      onClick={() => openAgentThread(t.id)}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '10px 12px',
+                        borderRadius: 8, cursor: 'pointer', border: 'none',
+                        borderLeft: '2px solid transparent', background: 'transparent',
+                        marginBottom: 2, display: 'flex', alignItems: 'flex-start', gap: 8,
+                      }}
+                    >
+                      <span className="ai-breathe" style={{
+                        width: 6, height: 6, marginTop: 5, borderRadius: '50%',
+                        background: 'var(--gradient-ai)', flexShrink: 0,
+                      }} />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          fontSize: 13, color: 'var(--ink)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {t.title}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
+                          {relativeTime(t.updated_at ?? t.created_at)}
+                        </div>
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            )}
             {conversations.length === 0 ? (
               <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
                 No conversations yet
@@ -1323,7 +1398,7 @@ function AIWorkspaceInner() {
 
           {/* Agent tab */}
           {activeTab === 'agent' && user?.org_id && (
-            <AgentPanel orgId={user.org_id} />
+            <AgentPanel orgId={user.org_id} initialOpenTaskId={jumpToTaskId} />
           )}
 
           {/* Chat tab — messages + input */}
@@ -1332,20 +1407,22 @@ function AIWorkspaceInner() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {messages.length === 0 && !loading && !pendingAction ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 6 }}>
-                <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 8px 32px rgba(20,40,204,0.22)',
-                }}>
-                  <svg width="30" height="30" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
-                    <path d="M16 4.5v2M15 5.5h2" />
-                  </svg>
+                <div className="reveal" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 8px 32px rgba(20,40,204,0.22)',
+                  }}>
+                    <svg width="30" height="30" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8z" />
+                      <path d="M16 4.5v2M15 5.5h2" />
+                    </svg>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', marginTop: 8 }}>Strike AI</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>Your autonomous supply chain finance agent</div>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', marginTop: 8 }}>Strike AI</div>
-                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>Your autonomous supply chain finance agent</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxWidth: 480, width: '100%' }}>
+                <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxWidth: 480, width: '100%' }}>
                   {quickPrompts.map((p, i) => (
                     <button
                       key={i}
@@ -1366,7 +1443,7 @@ function AIWorkspaceInner() {
             ) : (
               <>
                 {messages.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', gap: 3, animation: 'strike-ai-in 0.2s ease' }}>
+                  <div key={i} className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', gap: 3 }}>
                     {m.role === 'user' ? (
                       <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                         {m.attachmentName && (
@@ -1422,9 +1499,9 @@ function AIWorkspaceInner() {
 
                 {/* Agentic confirmation card */}
                 {pendingAction && (
-                  <div style={{
+                  <div className="ai-sheen fade-in" style={{
                     background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 12,
-                    padding: 16, animation: 'strike-ai-in 0.2s ease', maxWidth: '92%',
+                    padding: 16, maxWidth: '92%',
                   }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>
                       Strike AI wants to execute an action

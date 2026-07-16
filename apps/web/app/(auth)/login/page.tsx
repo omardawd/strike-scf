@@ -111,7 +111,7 @@ export default function LoginPage() {
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65, margin: '0 0 36px', maxWidth: 320 }}>
             From invoice submission to early payment — Strike automates the entire SCF workflow.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {([
               ['Get paid early', 'Submit invoices and receive advances in days, not weeks.'],
               ['AI-powered intelligence', 'Smart risk scoring and recommendations at every step.'],
@@ -145,7 +145,7 @@ export default function LoginPage() {
 
       {/* Right form panel */}
       <div className="login-v2-card">
-        <div className="login-v2-card-inner">
+        <div className="login-v2-card-inner reveal">
           {/* Heading */}
           <div style={{ marginBottom: 36 }}>
             <h1 style={{

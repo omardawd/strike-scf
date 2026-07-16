@@ -2,14 +2,15 @@ import type { Metadata } from 'next'
 import './globals.css'
 import './marketplace.css'
 
+// Favicon is handled solely by the app/icon.png file convention — Next.js
+// generates the <link rel="icon"> tag for it automatically. Do not also set
+// metadata.icons or a manual <link> here: having more than one declaration
+// makes Next.js emit conflicting icon tags, and which one a browser honors
+// becomes inconsistent across routes/navigations (the reported "sometimes
+// shows the Vercel icon" bug).
 export const metadata: Metadata = {
   title: 'Strike SCF',
   description: 'Supply Chain Finance Platform',
-  icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/favicon.png',
-  },
 }
 
 export default function RootLayout({
@@ -20,9 +21,6 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="light">
       <head>
-        <link rel="icon" href="/favicon.png" type="image/png" />
-        <link rel="shortcut icon" href="/favicon.png" />
-        <link rel="apple-touch-icon" href="/favicon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

@@ -34,19 +34,24 @@ export async function GET(request: Request) {
   const { data: deals, error } = await query
   if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
 
-  // Gather counterparty org IDs
+  // Gather counterparty org IDs — buyer/supplier_org_id is null for externally-
+  // imported deals (off-platform counterparty), and passing null into .in() as
+  // an array member breaks the entire query (silently, since the error below
+  // was never checked), wiping out every counterparty name on the page, not
+  // just the one with no org.
   const orgIds = new Set<string>()
   for (const d of deals ?? []) {
-    if (d.buyer_org_id !== userData.org_id) orgIds.add(d.buyer_org_id)
-    if (d.supplier_org_id !== userData.org_id) orgIds.add(d.supplier_org_id)
+    if (d.buyer_org_id && d.buyer_org_id !== userData.org_id) orgIds.add(d.buyer_org_id)
+    if (d.supplier_org_id && d.supplier_org_id !== userData.org_id) orgIds.add(d.supplier_org_id)
   }
 
   let orgsMap: Record<string, { id: string; legal_name: string | null; passport_score: number | null; risk_tier: string | null }> = {}
   if (orgIds.size > 0) {
-    const { data: orgs } = await adminClient
+    const { data: orgs, error: orgsError } = await adminClient
       .from('organizations')
       .select('id, legal_name, passport_score, risk_tier')
       .in('id', Array.from(orgIds))
+    if (orgsError) console.error('[api/deals] org lookup failed:', orgsError)
     for (const o of orgs ?? []) orgsMap[o.id] = o
   }
 

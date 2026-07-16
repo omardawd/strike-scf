@@ -8,6 +8,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 import { CreateProgramFlow } from '@/components/create-program-flow'
+import { SkeletonCard } from '@/components/motion'
 import type { FinancingRequest } from '@strike-scf/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -46,13 +47,14 @@ interface DealSummary {
 }
 
 interface BankRequestItem {
-  request:           FinancingRequest
-  deal:              DealSummary | null
-  buyer_passport:    OrgPassport | null
-  supplier_passport: OrgPassport | null
-  requesting_org_id: string | null
-  my_offer:          any | null
-  all_offers_count:  number
+  request:            FinancingRequest
+  deal:               DealSummary | null
+  buyer_passport:     OrgPassport | null
+  supplier_passport:  OrgPassport | null
+  requestor_passport: OrgPassport | null
+  requesting_org_id:  string | null
+  my_offer:           any | null
+  all_offers_count:   number
 }
 
 interface OrgRequestItem extends FinancingRequest {
@@ -189,14 +191,14 @@ function TradingTerminal({
   const geoOptions = useMemo(() => {
     const set = new Set<string>()
     for (const i of items) {
-      const g = i.supplier_passport?.country_of_origin ?? i.buyer_passport?.country_of_origin
+      const g = i.requestor_passport?.country_of_origin ?? i.supplier_passport?.country_of_origin ?? i.buyer_passport?.country_of_origin
       if (g) set.add(g)
     }
     return [...set].sort()
   }, [items])
 
   function reqGeo(i: BankRequestItem): string | null {
-    return i.supplier_passport?.country_of_origin ?? i.buyer_passport?.country_of_origin ?? null
+    return i.requestor_passport?.country_of_origin ?? i.supplier_passport?.country_of_origin ?? i.buyer_passport?.country_of_origin ?? null
   }
   function reqScore(i: BankRequestItem): number | null {
     // floor = the lower of the two counterparties' scores (worst-case)
@@ -499,7 +501,7 @@ function TradingTerminal({
                 const r = item.request
                 const tm = typeMeta(r)
                 const sc = reqScore(item)
-                const cp = item.supplier_passport ?? item.buyer_passport
+                const cp = item.requestor_passport ?? item.supplier_passport ?? item.buyer_passport
                 const isNew = newIds.has(r.id)
                 return (
                   <tr
@@ -762,6 +764,11 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
   if (items.length === 0) {
     return (
       <div className="mp-empty-state">
+        <div className="mp-empty-icon float-slow">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
+          </svg>
+        </div>
         <div className="mp-empty-title">No financing requests yet</div>
         <div className="mp-empty-sub">
           Go to your deals to request financing from competing banks.{' '}
@@ -772,9 +779,9 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
   }
 
   return (
-    <div className="mp-listing-feed">
+    <div className="mp-listing-feed reveal-stagger">
       {items.map(item => (
-        <div key={item.id} className="listing-card" onClick={() => router.push(`/marketplace/financing/${item.id}`)}>
+        <div key={item.id} className="listing-card card-interactive" onClick={() => router.push(`/marketplace/financing/${item.id}`)}>
           <div className="listing-card-head">
             <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
               {fmt(item.amount_requested, item.currency)}
@@ -914,7 +921,7 @@ export default function FinancingMarketplacePage() {
           </h1>
         </div>
         {loading ? (
-          <div className="mp-listing-feed">{[0, 1, 2].map(i => <div key={i} className="mp-skeleton-card" />)}</div>
+          <div className="mp-listing-feed">{[0, 1, 2].map(i => <SkeletonCard key={i} height={220} />)}</div>
         ) : (
           <OrgList items={items} />
         )}

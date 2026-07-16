@@ -29,6 +29,48 @@ interface ActionBody {
   offer_items?: unknown[]
 }
 
+// GET a single offer — used by the deal detail page to show the actual
+// negotiated line-item breakdown (the listing's own line items are the
+// pre-negotiation starting point, not what was actually agreed).
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: offerId } = await params
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: userData } = await adminClient
+    .from('users')
+    .select('id, org_id')
+    .eq('id', user.id)
+    .single()
+  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  const { data: offer } = await adminClient
+    .from('marketplace_offers')
+    .select('id, listing_id, from_org_id, offered_price, offer_rounds, current_round, marketplace_listings(org_id)')
+    .eq('id', offerId)
+    .single()
+
+  if (!offer) return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
+
+  const listingRel = offer.marketplace_listings as unknown as { org_id: string } | { org_id: string }[] | null
+  const listingOrgId = Array.isArray(listingRel) ? listingRel[0]?.org_id : listingRel?.org_id
+  const isParticipant = userData.org_id === offer.from_org_id || userData.org_id === listingOrgId
+  if (!isParticipant) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+
+  return NextResponse.json({
+    id: offer.id,
+    listing_id: offer.listing_id,
+    offered_price: offer.offered_price,
+    current_round: offer.current_round,
+    offer_rounds: offer.offer_rounds,
+  })
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

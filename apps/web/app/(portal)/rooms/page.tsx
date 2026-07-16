@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
+import { SkeletonCard } from '@/components/motion'
 
 const CATEGORIES = [
   'Steel Trading',
@@ -104,11 +105,15 @@ export default function RoomsPage() {
           {loadingPublic ? (
             <div className="rooms-grid">
               {[1, 2, 3].map(i => (
-                <div key={i} className="mp-skeleton-card" style={{ height: 120 }} />
+                <SkeletonCard key={i} height={120} />
               ))}
             </div>
           ) : filteredPublic.length === 0 ? (
             <div className="rooms-empty">
+              <svg className="float-slow" width="32" height="32" viewBox="0 0 20 20" fill="none" stroke="var(--gray-soft)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 12px', display: 'block' }} aria-hidden="true">
+                <path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 12 6.5V10a1.5 1.5 0 0 1-1.5 1.5H7L4.5 13.5V11A1.5 1.5 0 0 1 3 9.5z" />
+                <path d="M9 8.5h5A1.5 1.5 0 0 1 15.5 10v2A1.5 1.5 0 0 1 14 13.5h-.5l2 2.5v-2.5" />
+              </svg>
               <p className="rooms-empty-text">
                 {activeCategory
                   ? `No public rooms in ${activeCategory} yet. Use “New Room” to create one.`
@@ -116,9 +121,9 @@ export default function RoomsPage() {
               </p>
             </div>
           ) : (
-            <div className="rooms-grid">
+            <div className="rooms-grid reveal-stagger">
               {filteredPublic.map(room => (
-                <div key={room.id} className="room-card">
+                <div key={room.id} className="room-card card-interactive">
                   <div className="room-card-head">
                     <span className="room-card-name">{room.name}</span>
                     {room.category && (

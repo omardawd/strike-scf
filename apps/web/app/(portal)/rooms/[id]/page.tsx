@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
+import { Skeleton } from '@/components/motion'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 
@@ -135,7 +136,7 @@ function DateDivider({ label }: { label: string }) {
 
 function SystemMsg({ msg }: { msg: Message }) {
   return (
-    <div className="room-msg-system">
+    <div className="room-msg-system fade-in">
       <div className="room-msg-system-line" />
       <span className="room-msg-system-text">{msg.content}</span>
       <div className="room-msg-system-line" />
@@ -145,9 +146,10 @@ function SystemMsg({ msg }: { msg: Message }) {
 
 function AiMsg({ msg }: { msg: Message }) {
   return (
-    <div className="room-msg room-msg-ai">
+    <div className="room-msg room-msg-ai fade-in">
       <div className="room-msg-avatar room-msg-avatar-ai">✦</div>
-      <div className="room-msg-body">
+      {/* .ai-sheen — animated gradient border so agent reasoning visually reads as AI */}
+      <div className="room-msg-body ai-sheen" style={{ borderRadius: 10, padding: '8px 10px' }}>
         <div className="room-msg-meta">
           <span className="room-msg-sender room-msg-sender-ai">Strike AI</span>
           <span className="room-msg-time">{formatTime(msg.created_at)}</span>
@@ -163,7 +165,7 @@ function DocumentMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean })
   const fileName = (meta.file_name as string) ?? 'Document'
   const fileSize = (meta.file_size as string) ?? ''
   return (
-    <div className="room-msg">
+    <div className="room-msg fade-in">
       <div className="room-msg-avatar" style={{ visibility: hideAvatar ? 'hidden' : 'visible' }}>
         {initials(msg.sender_name)}
       </div>
@@ -208,7 +210,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
   if (meta.proposed_delivery_date) terms.push(new Date(meta.proposed_delivery_date as string).toLocaleDateString([], { month: 'short', day: 'numeric' }))
 
   return (
-    <div className="room-msg">
+    <div className="room-msg fade-in">
       <div className="room-msg-avatar" style={{ visibility: hideAvatar ? 'hidden' : 'visible' }}>
         {initials(msg.sender_name)}
       </div>
@@ -250,7 +252,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
 // sender hide the avatar/sender label and tighten the bubble corner.
 function BubbleMsg({ msg, isOwn, hideAvatar }: { msg: Message; isOwn: boolean; hideAvatar: boolean }) {
   return (
-    <div className={`room-msg-row${isOwn ? ' room-msg-row-own' : ''}${hideAvatar ? ' room-msg-row-grouped' : ''}`}>
+    <div className={`room-msg-row fade-in${isOwn ? ' room-msg-row-own' : ''}${hideAvatar ? ' room-msg-row-grouped' : ''}`}>
       {!isOwn && (
         hideAvatar
           ? <div className="room-msg-bubble-avatar-spacer" />
@@ -509,11 +511,18 @@ export default function RoomPage() {
   ]
 
   if (loading) {
+    // Chat-bubble-shaped skeletons of varying widths, alternating alignment,
+    // in place of a bare "Loading…" string.
+    const bubbleWidths = [62, 40, 55, 34, 48]
     return (
       <>
         <Topbar crumbs={[{ label: 'Rooms', onClick: () => router.push('/rooms') }, { label: '…' }]} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '60vh' }}>
-          <span style={{ color: 'var(--gray)', fontSize: 13 }}>Loading room…</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, padding: '28px 28px', overflow: 'hidden' }}>
+          {bubbleWidths.map((w, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: i % 2 === 0 ? 'flex-start' : 'flex-end' }}>
+              <Skeleton width={`${w}%`} height={38} radius={16} />
+            </div>
+          ))}
         </div>
       </>
     )
@@ -566,7 +575,7 @@ export default function RoomPage() {
 
       {/* Listing panel — this room is negotiating (or has agreed) a marketplace listing */}
       {listing && (
-        <div style={{
+        <div className="reveal" style={{
           background: 'var(--blue-light)', borderBottom: '1px solid var(--border)',
           padding: '10px 28px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap',
         }}>
@@ -689,7 +698,7 @@ export default function RoomPage() {
             maxLength={2000}
           />
           <button
-            className="room-composer-send"
+            className="room-composer-send shine"
             disabled={sendDisabled}
             title={lastPendingReview ? 'Moderation in progress' : 'Send'}
             aria-label="Send message"

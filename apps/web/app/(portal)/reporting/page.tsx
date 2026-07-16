@@ -5,8 +5,7 @@ import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
 import { AIInsight } from '@/components/ai-insight'
-
-const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
+import { CountUp, SkeletonCard } from '@/components/motion'
 
 // ── Bank types ────────────────────────────────────────────────────────────────
 interface MonthlyBucket { label: string; count: number; volume: number }
@@ -142,12 +141,12 @@ function HeroBand({
   primaryLabel, primaryValue, stats, footnote,
 }: {
   primaryLabel: string
-  primaryValue: string
-  stats: { label: string; value: string; tint?: string }[]
+  primaryValue: React.ReactNode
+  stats: { label: string; value: React.ReactNode; tint?: string }[]
   footnote?: string
 }) {
   return (
-    <div style={{
+    <div className="reveal" style={{
       position: 'relative', overflow: 'hidden',
       background: 'linear-gradient(120deg, #0D1B4C 0%, #1428CC 46%, #5B21B6 100%)',
       borderRadius: 'var(--radius-card)',
@@ -161,7 +160,7 @@ function HeroBand({
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.72 }}>{primaryLabel}</div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.05, marginTop: 4 }}>{primaryValue}</div>
         </div>
-        <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap', flex: 1 }}>
+        <div className="reveal-stagger" style={{ display: 'flex', gap: 40, flexWrap: 'wrap', flex: 1 }}>
           {stats.map(s => (
             <div key={s.label}>
               <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.62 }}>{s.label}</div>
@@ -231,11 +230,11 @@ function StatusDonut({ segments }: { segments: { status: string; count: number }
 // ── Ranked counterparty bars ──────────────────────────────────────────────────
 function RankBars({ rows, emptyLabel }: { rows: { id: string; name: string; deal_count: number; total_volume: number }[]; emptyLabel: string }) {
   if (rows.length === 0) {
-    return <div style={{ padding: '20px 16px', fontSize: 13, color: 'var(--gray)' }}>{emptyLabel}</div>
+    return <div className="float-slow" style={{ padding: '20px 16px', fontSize: 13, color: 'var(--gray)' }}>{emptyLabel}</div>
   }
   const max = Math.max(...rows.map(r => r.total_volume), 1)
   return (
-    <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="card-body reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {rows.map((r, i) => (
         <div key={r.id}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 5 }}>
@@ -243,7 +242,9 @@ function RankBars({ rows, emptyLabel }: { rows: { id: string; name: string; deal
               <span style={{ color: 'var(--gray-soft)', fontSize: 11, marginRight: 7, fontFamily: 'var(--font-mono)' }}>{i + 1}</span>
               {r.name}
             </span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtCurrency(r.total_volume)}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              <CountUp value={r.total_volume} format={fmtCurrency} />
+            </span>
           </div>
           <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${Math.max((r.total_volume / max) * 100, 3)}%`, borderRadius: 999, background: 'linear-gradient(90deg, var(--blue), var(--color-purple))', transition: 'width 0.5s ease' }} />
@@ -308,7 +309,7 @@ export default function ReportingPage() {
       />
 
       <div className="page" data-page-name="Reporting" data-ai-context={JSON.stringify({ role: (user as any)?.role, has_data: !!data, ...(data ? { summary: data } : {}) })}>
-        <div className="page-header">
+        <div className="page-header reveal">
           <h1 className="t-page-title">Reporting</h1>
         </div>
 
@@ -318,10 +319,17 @@ export default function ReportingPage() {
           </div>
         )}
 
-        <style>{PULSE_KF}</style>
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ height: 80, background: 'var(--offwhite)', borderRadius: 6, animation: 'chart-pulse 1.5s infinite' }} />
+            <SkeletonCard height={140} />
+            <div className="kpi-strip-4">
+              {[1, 2, 3, 4].map(i => <SkeletonCard key={i} height={90} />)}
+            </div>
+            <SkeletonCard height={220} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <SkeletonCard height={180} />
+              <SkeletonCard height={180} />
+            </div>
           </div>
         ) : data?.role === 'bank' ? (
           <>
@@ -340,29 +348,29 @@ export default function ReportingPage() {
             />
 
             {/* ── KPI strip ── */}
-            <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
+            <div className="kpi-strip-4 reveal-stagger" style={{ marginBottom: 24 }}>
               <div className="kpi-card-spark">
                 <div className="kpi-label">Total Transactions</div>
-                <div className="kpi-value">{data.portfolio.total_transactions}</div>
+                <div className="kpi-value"><CountUp value={data.portfolio.total_transactions} /></div>
               </div>
               <div className="kpi-card-spark">
                 <div className="kpi-label">Active Deals</div>
-                <div className="kpi-value">{data.portfolio.active_deals}</div>
+                <div className="kpi-value"><CountUp value={data.portfolio.active_deals} /></div>
               </div>
               <div className="kpi-card-spark">
                 <div className="kpi-label">Outstanding Balance</div>
-                <div className="kpi-value">{fmtCurrency(data.portfolio.outstanding_balance)}</div>
+                <div className="kpi-value"><CountUp value={data.portfolio.outstanding_balance} format={fmtCurrency} /></div>
               </div>
               <div className="kpi-card-spark">
                 <div className="kpi-label">Avg. Financing Rate</div>
                 <div className="kpi-value">
-                  {data.portfolio.avg_rate != null ? `${data.portfolio.avg_rate}%` : '—'}
+                  <CountUp value={data.portfolio.avg_rate ?? NaN} format={(n) => `${n}%`} />
                 </div>
               </div>
             </div>
 
             {/* ── Monthly volume chart ── */}
-            <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card reveal" style={{ marginBottom: 20 }}>
               <div className="card-head">
                 <h3 className="t-card-head">Volume (last 6 months)</h3>
                 <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
@@ -375,14 +383,14 @@ export default function ReportingPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
               {/* ── Top suppliers ── */}
               <div className="card">
                 <div className="card-head">
                   <h3 className="t-card-head">Top suppliers</h3>
                 </div>
                 {data.top_suppliers.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
+                  <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No supplier data yet.
                   </div>
                 ) : (
@@ -394,7 +402,7 @@ export default function ReportingPage() {
                         <th style={{ textAlign: 'right' }}>Total financed</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="reveal-stagger">
                       {data.top_suppliers.map((s, i) => (
                         <tr key={s.id}>
                           <td style={{ fontSize: 13 }}>
@@ -420,11 +428,11 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Status breakdown</h3>
                 </div>
                 {data.status_breakdown.length === 0 ? (
-                  <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
+                  <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
                     No transactions yet.
                   </div>
                 ) : (
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="card-body reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {data.status_breakdown.map(row => {
                       const pct = totalStatusCount > 0
                         ? Math.round((row.count / totalStatusCount) * 100)
@@ -466,27 +474,27 @@ export default function ReportingPage() {
                 <h3 className="t-card-head">Portfolio summary</h3>
               </div>
               <div className="card-body">
-                <div className="kv-rows">
+                <div className="kv-rows reveal-stagger">
                   <div className="kv-row">
                     <span className="k">Total transactions</span>
-                    <span className="v">{data.portfolio.total_transactions}</span>
+                    <span className="v"><CountUp value={data.portfolio.total_transactions} /></span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Active deals</span>
-                    <span className="v">{data.portfolio.active_deals}</span>
+                    <span className="v"><CountUp value={data.portfolio.active_deals} /></span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Outstanding balance</span>
-                    <span className="v">{fmtCurrencyFull(data.portfolio.outstanding_balance)}</span>
+                    <span className="v"><CountUp value={data.portfolio.outstanding_balance} format={fmtCurrencyFull} /></span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Total repaid (completed)</span>
-                    <span className="v">{fmtCurrencyFull(data.portfolio.total_repaid)}</span>
+                    <span className="v"><CountUp value={data.portfolio.total_repaid} format={fmtCurrencyFull} /></span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Average financing rate</span>
                     <span className="v">
-                      {data.portfolio.avg_rate != null ? `${data.portfolio.avg_rate}% APR` : '—'}
+                      <CountUp value={data.portfolio.avg_rate ?? NaN} format={(n) => `${n}% APR`} />
                     </span>
                   </div>
                 </div>
@@ -499,13 +507,13 @@ export default function ReportingPage() {
             {/* ── Hero band ── */}
             <HeroBand
               primaryLabel={data.role === 'anchor' ? 'Total Trade Volume' : 'Total Volume Sold'}
-              primaryValue={fmtCurrency(data.kpis.total_trade_volume)}
+              primaryValue={<CountUp value={data.kpis.total_trade_volume} format={fmtCurrency} />}
               stats={[
-                { label: 'Active Value', value: fmtCurrency(data.kpis.active_volume) },
-                { label: 'Completed', value: fmtCurrency(data.kpis.completed_volume) },
-                { label: 'Active Deals', value: String(data.kpis.active_deals) },
-                { label: 'Avg. Completed Cycle', value: data.kpis.avg_deal_cycle_days != null ? `${data.kpis.avg_deal_cycle_days}d` : '—' },
-                { label: 'Avg. Pipeline Age', value: data.kpis.avg_pipeline_age_days != null ? `${data.kpis.avg_pipeline_age_days}d` : '—' },
+                { label: 'Active Value', value: <CountUp value={data.kpis.active_volume} format={fmtCurrency} /> },
+                { label: 'Completed', value: <CountUp value={data.kpis.completed_volume} format={fmtCurrency} /> },
+                { label: 'Active Deals', value: <CountUp value={data.kpis.active_deals} /> },
+                { label: 'Avg. Completed Cycle', value: <CountUp value={data.kpis.avg_deal_cycle_days ?? NaN} format={(n) => `${n}d`} /> },
+                { label: 'Avg. Pipeline Age', value: <CountUp value={data.kpis.avg_pipeline_age_days ?? NaN} format={(n) => `${n}d`} /> },
               ]}
               footnote={data.kpis.avg_deal_cycle_days == null ? 'No completed deals yet — cycle time will appear once a deal finishes. Pipeline age reflects current active deals.' : undefined}
             />
@@ -525,8 +533,8 @@ export default function ReportingPage() {
             />
 
             {/* ── Deal volume chart + status donut ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
-              <div className="card">
+            <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
+              <div className="card reveal">
                 <div className="card-head">
                   <h3 className="t-card-head">Deal volume</h3>
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
@@ -551,7 +559,7 @@ export default function ReportingPage() {
             </div>
 
             {/* ── Top counterparties + financing ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="card">
                 <div className="card-head">
                   <h3 className="t-card-head">{data.role === 'anchor' ? 'Top suppliers by volume' : 'Top buyers by volume'}</h3>
@@ -564,18 +572,18 @@ export default function ReportingPage() {
                   <h3 className="t-card-head">Financing</h3>
                 </div>
                 <div className="card-body">
-                  <div className="fs-grid">
+                  <div className="fs-grid reveal-stagger">
                     <div className="fs-cell">
                       <div className="fs-label">Pending requests</div>
-                      <div className="fs-value">{data.kpis.pending_financing_requests}</div>
+                      <div className="fs-value"><CountUp value={data.kpis.pending_financing_requests} /></div>
                     </div>
                     <div className="fs-cell">
                       <div className="fs-label">Requested (open)</div>
-                      <div className="fs-value">{fmtCurrency(data.kpis.total_financing_requested)}</div>
+                      <div className="fs-value"><CountUp value={data.kpis.total_financing_requested} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
                       <div className="fs-label">{data.role === 'anchor' ? 'Financed' : 'Secured'}</div>
-                      <div className="fs-value">{fmtCurrency(data.kpis.total_financed)}</div>
+                      <div className="fs-value"><CountUp value={data.kpis.total_financed} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
                       <div className="fs-label">Rate range</div>
@@ -596,23 +604,23 @@ export default function ReportingPage() {
                 <h3 className="t-card-head">Audit &amp; Risk</h3>
               </div>
               <div className="card-body">
-                <div className="fs-grid">
+                <div className="fs-grid reveal-stagger">
                   <div className="fs-cell">
                     <div className="fs-label">Dispute rate</div>
                     <div className="fs-value" style={{ color: (data.kpis.dispute_rate ?? 0) > 10 ? 'var(--color-red)' : undefined }}>
-                      {data.kpis.dispute_rate != null ? `${data.kpis.dispute_rate}%` : '—'}
+                      <CountUp value={data.kpis.dispute_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
                   </div>
                   <div className="fs-cell">
                     <div className="fs-label">Cancellation rate</div>
                     <div className="fs-value">
-                      {data.kpis.cancellation_rate != null ? `${data.kpis.cancellation_rate}%` : '—'}
+                      <CountUp value={data.kpis.cancellation_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
                   </div>
                   <div className="fs-cell">
                     <div className="fs-label">Counterparty concentration</div>
                     <div className="fs-value" style={{ color: (data.kpis.concentration_risk ?? 0) > 40 ? 'var(--color-amber)' : undefined }}>
-                      {data.kpis.concentration_risk != null ? `${data.kpis.concentration_risk}%` : '—'}
+                      <CountUp value={data.kpis.concentration_risk ?? NaN} format={(n) => `${n}%`} />
                       {(data.kpis.concentration_risk ?? 0) > 40 && (
                         <span className="badge" style={{ marginLeft: 8, background: 'var(--color-amber-bg, #FEF3C7)', color: 'var(--color-amber)', fontSize: 10.5 }}>
                           Concentrated
@@ -623,7 +631,7 @@ export default function ReportingPage() {
                   <div className="fs-cell">
                     <div className="fs-label">Contract completion rate</div>
                     <div className="fs-value">
-                      {data.kpis.contract_completion_rate != null ? `${data.kpis.contract_completion_rate}%` : '—'}
+                      <CountUp value={data.kpis.contract_completion_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
                   </div>
                 </div>
@@ -632,7 +640,7 @@ export default function ReportingPage() {
 
             {/* ── Stale deals ── */}
             {data.stale_deals.length > 0 && (
-              <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card reveal" style={{ marginBottom: 16 }}>
                 <div className="card-head">
                   <h3 className="t-card-head">Stale Deals</h3>
                   <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>14+ days without progressing</span>
@@ -645,9 +653,9 @@ export default function ReportingPage() {
                       <th style={{ textAlign: 'right' }}>Days stale</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="reveal-stagger">
                     {data.stale_deals.map(d => (
-                      <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${d.id}`)}>
+                      <tr key={d.id} className="card-interactive" onClick={() => router.push(`/deals/${d.id}`)}>
                         <td style={{ fontSize: 13 }}>{d.counterparty_name}</td>
                         <td>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ink)' }}>
@@ -664,13 +672,13 @@ export default function ReportingPage() {
             )}
 
             {/* ── Recent deals ── */}
-            <div className="card">
+            <div className="card reveal">
               <div className="card-head">
                 <h3 className="t-card-head">Recent deals</h3>
                 <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
               </div>
               {data.recent_deals.length === 0 ? (
-                <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
+                <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
                   <p style={{ marginBottom: 12 }}>No deals yet.</p>
                   <button
                     className="btn btn-primary btn-sm"
@@ -690,11 +698,11 @@ export default function ReportingPage() {
                       <th>Date</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="reveal-stagger">
                     {data.recent_deals.map(d => (
                       <tr
                         key={d.id}
-                        style={{ cursor: 'pointer' }}
+                        className="card-interactive"
                         onClick={() => router.push(`/deals/${d.id}`)}
                       >
                         <td style={{ fontSize: 13 }}>{d.counterparty_name}</td>

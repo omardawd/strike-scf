@@ -1,5 +1,6 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
+import { SkeletonText } from '@/components/motion'
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
@@ -82,49 +83,12 @@ function MarkdownContent({ text }: { text: string }) {
   return <>{nodes}</>
 }
 
-// ── Cycling loading messages ──────────────────────────────────────────────────
-
-const LOADING_STEPS = [
-  'Reading context data…',
-  'Analyzing key metrics…',
-  'Cross-referencing indicators…',
-  'Synthesizing insight…',
-  'Finalizing response…',
-]
+// ── Loading placeholder ────────────────────────────────────────────────────────
 
 function LoadingState() {
-  const [step, setStep] = useState(0)
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    ref.current = setInterval(() => {
-      setStep(s => (s + 1) % LOADING_STEPS.length)
-    }, 1600)
-    return () => { if (ref.current) clearInterval(ref.current) }
-  }, [])
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0' }}>
-      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-        {[0, 1, 2].map(i => (
-          <div
-            key={i}
-            style={{
-              width: 5, height: 5, borderRadius: '50%',
-              background: 'var(--blue)',
-              opacity: 0.3 + (step % 3 === i ? 0.7 : 0),
-              transition: 'opacity 0.3s ease',
-            }}
-          />
-        ))}
-      </div>
-      <span style={{
-        fontFamily: 'var(--font-body)', fontSize: 12,
-        color: 'var(--blue)', letterSpacing: '0.01em',
-        transition: 'opacity 0.3s ease',
-      }}>
-        {LOADING_STEPS[step]}
-      </span>
+    <div style={{ padding: '6px 0' }}>
+      <SkeletonText lines={2} widths={['94%', '66%']} gap={8} />
     </div>
   )
 }
@@ -212,7 +176,7 @@ RULES:
   }
 
   return (
-    <div style={{
+    <div className="ai-sheen" style={{
       border: '1px solid rgba(20,40,204,0.2)',
       background: 'rgba(20,40,204,0.02)',
       borderRadius: 'var(--radius-card)',
@@ -247,7 +211,7 @@ RULES:
           {loading ? (
             <LoadingState />
           ) : (
-            <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink)', paddingTop: 10 }}>
+            <div className="fade-in" style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink)', paddingTop: 10 }}>
               <MarkdownContent text={insight} />
             </div>
           )}

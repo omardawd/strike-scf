@@ -297,7 +297,7 @@ function NewListingPageInner() {
             <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => submit(true)}>
               {loading ? 'Saving…' : 'Save Draft'}
             </button>
-            <button className="btn btn-blue btn-sm" disabled={loading} onClick={() => submit(false)}>
+            <button className="btn btn-blue btn-sm shine" disabled={loading} onClick={() => submit(false)}>
               {loading ? 'Publishing…' : 'Publish Listing'}
             </button>
           </div>
@@ -314,7 +314,7 @@ function NewListingPageInner() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
           {/* Left — Form */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="reveal" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* Listing type toggle */}
             <div className="card">
@@ -454,7 +454,7 @@ function NewListingPageInner() {
               </div>
 
               {uploadedFile && (
-                <div style={{ margin: '0 20px', padding: '8px 12px', background: 'var(--offwhite)', borderRadius: 8, fontSize: 12, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)' }}>
+                <div className="ai-sheen" style={{ margin: '0 20px', padding: '8px 12px', background: 'var(--offwhite)', borderRadius: 8, fontSize: 12, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)' }}>
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 2zM9 2v4h4"/>
                   </svg>
@@ -731,7 +731,7 @@ function NewListingPageInner() {
 
             <div style={{ display: 'flex', gap: 8, paddingBottom: 32 }}>
               <button
-                className="btn btn-blue"
+                className="btn btn-blue shine"
                 style={{ flex: 1, height: 44, fontSize: 14 }}
                 disabled={loading}
                 onClick={() => submit(false)}

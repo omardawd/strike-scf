@@ -6,6 +6,7 @@ import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { usePortal } from '@/lib/portal-context'
 import { FinancingManagementCard, type ManagementTransaction, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
+import { CountUp, Reveal, Skeleton, SkeletonText } from '@/components/motion'
 import type { FinancingRequest, FinancingRequestOffer, FinancingType } from '@strike-scf/types'
 import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 
@@ -412,7 +413,7 @@ function BankOfferForm({
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" className="btn btn-blue" disabled={loading} style={{ flex: 1 }}>
+            <button type="submit" className="btn btn-blue shine" disabled={loading} style={{ flex: 1 }}>
               {loading ? 'Submitting…' : existingOffer ? 'Update Offer' : 'Submit Offer'}
             </button>
             {existingOffer && (
@@ -451,7 +452,7 @@ function OrgOffersList({
   }
 
   return (
-    <div className="mp-listing-feed">
+    <div className="mp-listing-feed reveal-stagger">
       {sorted.map(offer => {
         const isTop      = offer.id === topOfferId && offers.length > 1
         const isAccepted = offer.status === 'accepted'
@@ -550,7 +551,7 @@ function OrgOffersList({
               <div className="mp-offer-actions">
                 {canAccept && (
                   <button
-                    className="btn btn-blue btn-sm"
+                    className="btn btn-blue btn-sm shine"
                     disabled={accepting !== null}
                     onClick={() => onAccept(offer.id)}
                   >
@@ -633,12 +634,28 @@ export default function FinancingDetailPage() {
           { label: 'Loading…' },
         ]} />
         <div className="page" style={{ maxWidth: 1280 }}>
+          {/* Hero band skeleton */}
+          <div className="page-header" style={{ marginBottom: 24 }}>
+            <Skeleton width={180} height={28} style={{ marginBottom: 8 }} />
+            <Skeleton width={260} height={13} />
+          </div>
           <div className="split-panel">
             <div className="split-panel-main">
-              {[0, 1].map(i => <div key={i} className="card" style={{ height: 180, animation: 'skeleton-pulse 1.8s ease infinite' }} />)}
+              {[0, 1].map(i => (
+                <div key={i} className="card" style={{ padding: 20, minHeight: 180 }}>
+                  <SkeletonText lines={4} widths={['35%', '100%', '85%', '55%']} />
+                </div>
+              ))}
             </div>
             <div className="split-panel-aside">
-              <div className="card" style={{ height: 240, animation: 'skeleton-pulse 1.8s ease infinite' }} />
+              {/* Two passport asides — buyer + supplier */}
+              {[0, 1].map(i => (
+                <div key={i} className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <Skeleton circle width={48} height={48} />
+                  <Skeleton width={120} height={13} />
+                  <div style={{ width: '100%' }}><SkeletonText lines={2} /></div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -748,7 +765,7 @@ export default function FinancingDetailPage() {
         {/* Request header */}
         <div className="page-header" style={{ marginBottom: 24 }}>
           <div className="page-id-title">
-            <span className="id-text">{fmt(request.amount_requested, currency)}</span>
+            <span className="id-text"><CountUp value={request.amount_requested ?? NaN} format={n => fmt(n, currency)} /></span>
             <span className={statusBadge(request.status)}>{request.status.replace(/_/g, ' ')}</span>
             {request.financing_type && (
               <span className="badge badge-draft">{request.financing_type.replace(/_/g, ' ')}</span>
@@ -934,8 +951,8 @@ export default function FinancingDetailPage() {
             {[
               { passport: buyer_passport,    role: 'Buyer',    isRequester: deal?.buyer_org_id === request.requesting_org_id },
               { passport: supplier_passport, role: 'Supplier', isRequester: deal?.supplier_org_id === request.requesting_org_id },
-            ].map(({ passport, role, isRequester }) => passport && (
-              <div className="card" key={role}>
+            ].map(({ passport, role, isRequester }, i) => passport && (
+              <Reveal delay={i * 90} className="card" key={role}>
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {role}
                   {isRequester && (
@@ -983,7 +1000,7 @@ export default function FinancingDetailPage() {
                     View Full Passport →
                   </Link>
                 </div>
-              </div>
+              </Reveal>
             ))}
 
             {/* Request stats */}

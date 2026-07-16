@@ -1796,6 +1796,25 @@
 }
 
 /* =====================================================
+   Quiet Intelligence additions — shared empty-state icon
+   (Strike Place listings + financing request empty states).
+   Animated via .float-slow (see globals.css motion system);
+   respects prefers-reduced-motion through that shared rule.
+   ===================================================== */
+.mp-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--offwhite);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray);
+  margin: 0 auto 12px;
+}
+
+/* =====================================================
    2026 redesign — soft-corner & polish pass (additive).
    Strike Place / Deals / Rooms / Passport surfaces.
    These classes previously relied on the removed global

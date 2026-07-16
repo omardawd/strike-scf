@@ -94,9 +94,18 @@ Include: parties, financing terms, obligations, payment routing, governing law. 
       })
       generatedContent = result.text
 
+      const storagePath = `financing_requests/${requestId}/contract-${Date.now()}.txt`
+      const { error: uploadError } = await adminClient.storage
+        .from('deal-documents')
+        .upload(storagePath, generatedContent, { contentType: 'text/plain', upsert: false })
+      if (uploadError) {
+        console.error('[financing/contract] Storage upload failed:', uploadError)
+        return NextResponse.json({ error: 'Failed to save the generated contract. Please try again.' }, { status: 502 })
+      }
+
       const { data: doc } = await adminClient.from('documents').insert({
         name: `Financing Agreement - Request #${shortId}`,
-        storage_path: `financing_requests/${requestId}/contract.txt`,
+        storage_path: storagePath,
         mime_type: 'text/plain',
         file_size_bytes: generatedContent.length,
         entity_type: 'financing_request',

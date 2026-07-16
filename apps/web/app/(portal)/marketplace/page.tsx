@@ -6,6 +6,7 @@ import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 import { useGhost } from '@/lib/use-ghost'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { SkeletonCard, Skeleton, SkeletonText } from '@/components/motion'
 import type { ListingWithPassport } from '@strike-scf/types'
 
 interface OwnPassport {
@@ -98,7 +99,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
 
   return (
     <div
-      className="listing-card"
+      className="listing-card card-interactive"
       onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
     >
       <div className="listing-card-head">
@@ -361,7 +362,7 @@ export default function MarketplacePage() {
             } : null,
           })),
         })}>
-        <div className="mp-tabs">
+        <div className="mp-tabs reveal">
           <button
             className={`mp-tab${mainTab === 'marketplace' ? ' mp-tab-active' : ''}`}
             onClick={() => setMainTab('marketplace')}
@@ -398,7 +399,7 @@ export default function MarketplacePage() {
               </div>
 
               {/* Filters */}
-              <div className="mp-filter-row">
+              <div className="mp-filter-row reveal">
                 <select
                   className="mp-filter-select"
                   value={category}
@@ -452,14 +453,10 @@ export default function MarketplacePage() {
               )}
 
               {/* Feed */}
-              <div className="mp-listing-feed">
+              <div className="mp-listing-feed reveal-stagger">
                 {loading
                   ? skeletons.map((_, i) => (
-                      <div
-                        key={i}
-                        className="mp-skeleton-card"
-                        style={{ opacity: 1 - i * 0.2, animationDelay: `${i * 0.2}s` }}
-                      />
+                      <SkeletonCard key={i} height={220} />
                     ))
                   : listings.map((item) => (
                       <ListingCard key={item.listing.id} item={item} />
@@ -468,6 +465,11 @@ export default function MarketplacePage() {
 
               {!loading && listings.length === 0 && (
                 <div className="mp-empty-state" style={{ marginTop: 20 }}>
+                  <div className="mp-empty-icon float-slow">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
+                    </svg>
+                  </div>
                   <p className="mp-empty-title">No listings yet</p>
                   <p className="mp-empty-sub">
                     {committedSearch || category || typeFilter !== 'all'
@@ -522,7 +524,11 @@ export default function MarketplacePage() {
                     Your account is not linked to an organization.
                   </div>
                 ) : passportLoading ? (
-                  <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--gray)', textAlign: 'center' }}>Loading…</div>
+                  <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                    <Skeleton circle width={48} height={48} />
+                    <Skeleton width={110} height={12} />
+                    <div style={{ width: '100%' }}><SkeletonText lines={1} widths={['60%']} /></div>
+                  </div>
                 ) : ownPassport && !ownPassport.network_visible ? (
                   <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center' }}>
                     <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel pendingLabel="Passport Inactive" />
@@ -596,11 +602,18 @@ export default function MarketplacePage() {
                 </button>
               </div>
               {myListingsLoading ? (
-                Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="mp-skeleton-card" style={{ opacity: 1 - i * 0.3 }} />
-                ))
+                <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <SkeletonCard key={i} height={220} />
+                  ))}
+                </div>
               ) : myListings.length === 0 ? (
                 <div className="mp-empty-state">
+                  <div className="mp-empty-icon float-slow">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
+                    </svg>
+                  </div>
                   <p className="mp-empty-title">No listings yet</p>
                   <p className="mp-empty-sub">Post your first listing to appear on Strike Place.</p>
                   <button
@@ -612,7 +625,7 @@ export default function MarketplacePage() {
                   </button>
                 </div>
               ) : (
-                <div className="mp-listing-feed">
+                <div className="mp-listing-feed reveal-stagger">
                   {myListings.map((item) => (
                     <ListingCard key={item.listing.id} item={item} isOwn />
                   ))}

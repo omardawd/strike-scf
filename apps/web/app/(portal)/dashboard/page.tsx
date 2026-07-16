@@ -7,6 +7,7 @@ import { AIInsight } from '@/components/ai-insight'
 import { AIInsightCard } from '@/components/ai-insight-card'
 import { SupplyGraph } from '@/components/supply-graph'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { CountUp, Skeleton, SkeletonCard } from '@/components/motion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface BankData {
@@ -348,29 +349,10 @@ function NotifBell() {
   )
 }
 
-// ─── Skeleton primitives ──────────────────────────────────────────────────────
-function SkeletonBlock({ height = 80, width = '100%' }: { height?: number; width?: string | number }) {
-  return (
-    <div style={{
-      background: 'var(--border)', height, width,
-      animation: 'skeleton-pulse 1.8s ease infinite',
-    }} />
-  )
-}
-
-function SkeletonCard({ height = 120 }: { height?: number }) {
-  return (
-    <div style={{
-      background: 'var(--white)', border: '1px solid var(--border)',
-      height, animation: 'skeleton-pulse 1.8s ease infinite',
-    }} />
-  )
-}
-
 // ─── Dashboard Header (gradient hero) ─────────────────────────────────────────
 function DashboardHeader({ eyebrow, title, subtitle }: { eyebrow?: string; title: string; subtitle: React.ReactNode }) {
   return (
-    <div className="page-header" style={{
+    <div className="page-header reveal" style={{
       position: 'relative', overflow: 'hidden',
       background: 'linear-gradient(120deg, rgba(20,40,204,0.05) 0%, rgba(124,58,237,0.05) 60%, transparent 100%)',
       border: '1px solid rgba(20,40,204,0.08)',
@@ -411,17 +393,18 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
   if (visible.length === 0) return null
 
   return (
-    <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+    <div className="reveal-stagger" style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
       {visible.map((card, i) => (
         <button
           key={i}
           type="button"
+          className="card-interactive"
           onClick={() => router.push(card.href)}
           style={{
             flex: '1 1 180px', minWidth: 0,
             background: 'var(--white)', border: '1px solid var(--border)',
             borderLeft: `3px solid ${card.color}`,
-            padding: '12px 16px', cursor: 'pointer',
+            padding: '12px 16px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             gap: 10, textAlign: 'left', fontFamily: 'inherit',
           }}
@@ -431,7 +414,7 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
             fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700,
             letterSpacing: '-0.02em', color: card.color, flexShrink: 0,
           }}>
-            {card.count}
+            <CountUp value={card.count} />
           </span>
         </button>
       ))}
@@ -441,7 +424,15 @@ function ActionQueueStrip({ cards, loading }: { cards: ActionCard[]; loading: bo
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
 type KpiIconName = 'deals' | 'volume' | 'financing' | 'listings' | 'programs' | 'balance' | 'rate' | 'org'
-interface KpiItem { label: string; value: string; sub?: string; valueColor?: string; icon?: KpiIconName; tint?: string }
+interface KpiItem {
+  label: string
+  value: number | null
+  format?: (n: number) => string
+  sub?: string
+  valueColor?: string
+  icon?: KpiIconName
+  tint?: string
+}
 
 const KPI_ICON_PATHS: Record<KpiIconName, React.ReactNode> = {
   deals:     <path d="M4 9l3-3 3 3M7 6v9M17 8l-3 3-3-3M14 11V2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
@@ -470,7 +461,7 @@ function KpiIcon({ name, tint }: { name: KpiIconName; tint: string }) {
 
 function KpiStrip({ kpis, loading }: { kpis: KpiItem[]; loading: boolean }) {
   return (
-    <div className="kpi-strip-4" style={{ marginBottom: 24 }}>
+    <div className="kpi-strip-4 reveal-stagger" style={{ marginBottom: 24 }}>
       {kpis.map((k, i) => (
         <div key={i} className="kpi-card-spark" style={{ background: 'var(--white)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
@@ -478,12 +469,14 @@ function KpiStrip({ kpis, loading }: { kpis: KpiItem[]; loading: boolean }) {
             {k.icon && <KpiIcon name={k.icon} tint={k.tint ?? 'var(--blue)'} />}
           </div>
           {loading ? (
-            <div style={{ marginTop: 4, marginBottom: 4 }}><SkeletonBlock height={24} width={80} /></div>
+            <div style={{ marginTop: 4, marginBottom: 4 }}><Skeleton height={24} width={80} /></div>
           ) : (
             <div className="kpi-value" style={{
               fontFamily: 'var(--font-display)', fontSize: 24, letterSpacing: '-0.02em',
               color: k.valueColor ?? 'var(--ink)',
-            }}>{k.value}</div>
+            }}>
+              <CountUp value={k.value ?? NaN} format={k.format} />
+            </div>
           )}
           {k.sub && <div className="kpi-delta kpi-delta-mut">{k.sub}</div>}
         </div>
@@ -509,7 +502,7 @@ function PassportBanner({
   // ("—", "Passport Inactive") with a nudge to activate (TD.2).
   if (!passport || !passport.organization.passport_score) {
     return (
-      <div style={{
+      <div className="reveal" style={{
         marginBottom: 24, background: 'var(--white)',
         border: '1px solid var(--border)',
         borderLeft: '3px solid var(--color-amber)',
@@ -537,7 +530,7 @@ function PassportBanner({
   const score = org.passport_score
 
   return (
-    <div style={{
+    <div className="reveal" style={{
       marginBottom: 24, background: 'var(--white)',
       border: '1px solid var(--border)',
       borderLeft: '3px solid var(--teal)',
@@ -549,15 +542,17 @@ function PassportBanner({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <span className={`badge ${scoreTierClass(score)}`}>{scoreTierLabel(score)}</span>
         </div>
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div className="reveal-stagger" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           {[
-            { label: 'Total Trades', value: String(org.trade_count_total) },
-            { label: 'Total Volume', value: fmtCurrency(org.trade_volume_total) },
-            ...(org.avg_payment_days != null ? [{ label: 'On-Time Rate', value: `${org.avg_payment_days}d avg` }] : []),
+            { label: 'Total Trades', value: org.trade_count_total, format: undefined as ((n: number) => string) | undefined },
+            { label: 'Total Volume', value: org.trade_volume_total, format: fmtCurrency },
+            ...(org.avg_payment_days != null ? [{ label: 'On-Time Rate', value: org.avg_payment_days, format: (n: number) => `${n}d avg` }] : []),
           ].map(stat => (
             <div key={stat.label}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{stat.label}</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{stat.value}</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+                <CountUp value={stat.value} format={stat.format} />
+              </div>
             </div>
           ))}
         </div>
@@ -570,6 +565,90 @@ function PassportBanner({
   )
 }
 
+// ─── Live Agent Activity ticker ────────────────────────────────────────────────
+// Ambient strip surfacing what the org's autonomous agent has actually been
+// doing — the agent's work otherwise lives entirely inside the Agent tab.
+interface AgentActivityItem {
+  id: string
+  text: string
+  outcome: string
+  created_at: string
+}
+
+function timeAgoShort(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+function AgentActivityTicker() {
+  const router = useRouter()
+  const [items, setItems] = useState<AgentActivityItem[]>([])
+  const [index, setIndex] = useState(0)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/agents/activity?limit=6')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d?.items) setItems(d.items) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoaded(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (items.length < 2) return
+    const t = setInterval(() => setIndex(i => (i + 1) % items.length), 4500)
+    return () => clearInterval(t)
+  }, [items.length])
+
+  if (!loaded || items.length === 0) return null
+  const current = items[index]!
+
+  return (
+    <div
+      className="ai-sheen card-interactive reveal"
+      onClick={() => router.push('/ai?tab=agent')}
+      style={{
+        marginBottom: 24, background: 'var(--white)', borderRadius: 'var(--radius-card)',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', cursor: 'pointer',
+      }}
+    >
+      <span className="ai-breathe" style={{
+        width: 8, height: 8, borderRadius: '50%', background: 'var(--gradient-ai)', flexShrink: 0,
+      }} />
+      <span style={{
+        fontFamily: 'var(--font-body)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em',
+        textTransform: 'uppercase', color: 'var(--blue)', flexShrink: 0,
+      }}>
+        Your agent
+      </span>
+      <span key={current.id} className="fade-in" style={{
+        fontSize: 13, color: 'var(--ink)', flex: 1, minWidth: 0,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {current.text}
+      </span>
+      <span style={{ fontSize: 12, color: 'var(--gray)', flexShrink: 0 }}>{timeAgoShort(current.created_at)}</span>
+      {items.length > 1 && (
+        <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          {items.map((it, i) => (
+            <span key={it.id} style={{
+              width: 4, height: 4, borderRadius: '50%',
+              background: i === index ? 'var(--blue)' : 'var(--border-strong)',
+            }} />
+          ))}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── Deal Table (shared by anchor + supplier) ─────────────────────────────────
 function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
   deals: DealItem[]
@@ -578,6 +657,7 @@ function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
   emptySub: string
   emptyCta: React.ReactNode
 }) {
+  const router = useRouter()
   const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status)).slice(0, 5)
 
   if (loading) {
@@ -590,7 +670,7 @@ function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
 
   if (activeDeals.length === 0) {
     return (
-      <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+      <div className="float-slow" style={{ padding: '32px 24px', textAlign: 'center' }}>
         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>{emptyTitle}</div>
         <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>{emptySub}</div>
         {emptyCta}
@@ -609,9 +689,9 @@ function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
           <th style={{ width: '11%' }}></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody className="reveal-stagger">
         {activeDeals.map(deal => (
-          <tr key={deal.id}>
+          <tr key={deal.id} className="card-interactive" onClick={() => router.push(`/deals/${deal.id}`)}>
             <td>
               <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {deal.counterparty?.legal_name ?? 'Unknown'}
@@ -630,7 +710,7 @@ function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta }: {
             <td className="amount">{deal.total_value ? fmtCurrency(deal.total_value) : '—'}</td>
             <td><span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span></td>
             <td className="row-actions">
-              <a href={`/deals/${deal.id}`} className="btn btn-sm btn-ghost">View</a>
+              <a href={`/deals/${deal.id}`} className="btn btn-sm btn-ghost" onClick={(e) => e.stopPropagation()}>View</a>
             </td>
           </tr>
         ))}
@@ -667,7 +747,7 @@ function PassportOverviewWidget({
       </div>
       <div className="card-body" style={{ padding: 16 }}>
         {loading ? (
-          <SkeletonBlock height={48} />
+          <Skeleton height={48} />
         ) : !dist || total === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
             No counterparties in your portfolio yet.
@@ -681,7 +761,7 @@ function PassportOverviewWidget({
                   Avg PassportScore
                 </div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
-                  {dist.avg_score ?? '—'}
+                  <CountUp value={dist.avg_score ?? NaN} />
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>{total} counterpart{total === 1 ? 'y' : 'ies'}</div>
               </div>
@@ -694,12 +774,14 @@ function PassportOverviewWidget({
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+            <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
               {segments.map(s => (
                 <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
                   <span style={{ color: 'var(--gray)', flex: 1 }}>{s.label}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>
+                    <CountUp value={s.value} />
+                  </span>
                 </div>
               ))}
             </div>
@@ -712,6 +794,7 @@ function PassportOverviewWidget({
 
 function BankDashboard() {
   const user = useUser()
+  const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
   const [loading, setLoading] = useState(true)
   const [dashData, setDashData] = useState<BankData | null>(null)
@@ -744,10 +827,10 @@ function BankDashboard() {
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Programs',    value: loading ? '—' : String(dashData?.active_program_count ?? 0), sub: dashData ? `${dashData.program_count} total` : undefined, icon: 'programs', tint: 'var(--blue)' },
-    { label: 'Outstanding Balance', value: loading ? '—' : fmtCurrency(dashData?.outstanding_balance ?? 0), valueColor: 'var(--blue)', icon: 'balance', tint: 'var(--blue)' },
-    { label: 'Avg Financing Rate', value: loading ? '—' : (dashData?.avg_rate != null ? `${dashData.avg_rate}%` : '—'), icon: 'rate', tint: 'var(--color-purple)' },
-    { label: 'Enrolled Orgs',     value: loading ? '—' : String(dashData?.enrolled_org_count ?? 0), icon: 'org', tint: 'var(--color-green)' },
+    { label: 'Active Programs',    value: dashData?.active_program_count ?? 0, sub: dashData ? `${dashData.program_count} total` : undefined, icon: 'programs', tint: 'var(--blue)' },
+    { label: 'Outstanding Balance', value: dashData?.outstanding_balance ?? 0, format: fmtCurrency, valueColor: 'var(--blue)', icon: 'balance', tint: 'var(--blue)' },
+    { label: 'Avg Financing Rate', value: dashData?.avg_rate ?? null, format: (n) => `${n}%`, icon: 'rate', tint: 'var(--color-purple)' },
+    { label: 'Enrolled Orgs',     value: dashData?.enrolled_org_count ?? 0, icon: 'org', tint: 'var(--color-green)' },
   ]
 
   const bankAiContext = JSON.stringify({
@@ -778,7 +861,7 @@ function BankDashboard() {
           eyebrow={`${dashData?.bank_name ?? 'Bank'} · Command Center`}
           title={`Good ${greeting()}, ${firstName}`}
           subtitle={
-            loading ? 'Loading…'
+            loading ? <Skeleton height={14} width={180} />
               : attentionCount > 0
               ? `${attentionCount} item${attentionCount !== 1 ? 's' : ''} need your attention · ${todayFull()}`
               : `Everything is up to date · ${todayFull()}`
@@ -812,7 +895,7 @@ function BankDashboard() {
         <KpiStrip kpis={kpis} loading={loading} />
 
         {/* 4. Two-column */}
-        <div className="split-65" style={{ marginBottom: 24 }}>
+        <div className="split-65 reveal-stagger" style={{ marginBottom: 24 }}>
 
           {/* LEFT — Strike Place */}
           <div className="card">
@@ -825,25 +908,29 @@ function BankDashboard() {
                 {[1, 2, 3].map(i => <SkeletonCard key={i} height={96} />)}
               </div>
             ) : financing.length === 0 ? (
-              <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+              <div className="float-slow" style={{ padding: '36px 24px', textAlign: 'center' }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>No open financing requests right now</div>
                 <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>Check back soon or browse Strike Place.</div>
                 <a href="/marketplace/financing" className="btn btn-sm btn-ghost">Browse Strike Place →</a>
               </div>
             ) : (
-              <div>
+              <div className="reveal-stagger">
                 {financing.map((item) => (
-                  <div key={item.request.id} style={{
-                    padding: '16px 20px',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex', flexDirection: 'column', gap: 10,
-                  }}>
+                  <div
+                    key={item.request.id}
+                    className="card-interactive"
+                    onClick={() => router.push(`/marketplace/financing/${item.request.id}`)}
+                    style={{
+                      padding: '16px 20px',
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
                       <span style={{
                         fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600,
                         letterSpacing: '-0.02em', color: 'var(--ink)',
                       }}>
-                        {fmtCurrency(item.request.amount_requested)}
+                        <CountUp value={item.request.amount_requested} format={fmtCurrency} />
                       </span>
                       <span className={`badge ${structureBadgeClass(item.request.structure_type)}`}>
                         {fmtStructureType(item.request.structure_type)}
@@ -869,7 +956,7 @@ function BankDashboard() {
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <a href={`/marketplace/financing/${item.request.id}`} className="btn btn-sm btn-blue">Submit Offer</a>
+                      <a href={`/marketplace/financing/${item.request.id}`} className="btn btn-sm btn-blue" onClick={(e) => e.stopPropagation()}>Submit Offer</a>
                     </div>
                   </div>
                 ))}
@@ -889,14 +976,14 @@ function BankDashboard() {
               </div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[1, 2, 3].map(i => <SkeletonBlock key={i} height={12} />)}
+                  {[1, 2, 3].map(i => <Skeleton key={i} height={12} />)}
                 </div>
               ) : notifications.length === 0 ? (
-                <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
+                <div className="float-slow" style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
                   No recent activity
                 </div>
               ) : (
-                <div className="dash-activity">
+                <div className="dash-activity reveal-stagger">
                   {notifications.map(n => (
                     <div key={n.id} className="dash-act-row">
                       <div className={`dash-act-dot ${n.read ? '' : 'tone-blue'}`} style={{ flexShrink: 0 }} />
@@ -941,6 +1028,7 @@ function BankDashboard() {
 // ─── ANCHOR (BUYER) DASHBOARD ────────────────────────────────────────────────
 function AnchorDashboard() {
   const user = useUser()
+  const router = useRouter()
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'
   const [loading, setLoading] = useState(true)
   const [dashData, setDashData] = useState<AnchorData | null>(null)
@@ -998,10 +1086,10 @@ function AnchorDashboard() {
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',         value: loading ? '—' : String(activeDeals.length), icon: 'deals', tint: 'var(--blue)' },
-    { label: 'Trade Volume',         value: loading ? '—' : fmtCurrency(tradeVolume), sub: completedDealCount > 0 ? `${completedDealCount} completed` : 'Active + completed', valueColor: tradeVolume > 0 ? 'var(--color-green)' : undefined, icon: 'volume', tint: 'var(--color-green)' },
-    { label: 'Financing Active',     value: loading ? '—' : fmtCurrency(financingActiveAmt), valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined, icon: 'financing', tint: 'var(--color-purple)' },
-    { label: 'Strike Place Listings', value: loading ? '—' : String(listings.length), icon: 'listings', tint: 'var(--color-amber)' },
+    { label: 'Active Deals',         value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
+    { label: 'Trade Volume',         value: tradeVolume, format: fmtCurrency, sub: completedDealCount > 0 ? `${completedDealCount} completed` : 'Active + completed', valueColor: tradeVolume > 0 ? 'var(--color-green)' : undefined, icon: 'volume', tint: 'var(--color-green)' },
+    { label: 'Financing Active',     value: financingActiveAmt, format: fmtCurrency, valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined, icon: 'financing', tint: 'var(--color-purple)' },
+    { label: 'Strike Place Listings', value: listings.length, icon: 'listings', tint: 'var(--color-amber)' },
   ]
 
   const anchorAiContext = JSON.stringify({
@@ -1059,6 +1147,7 @@ function AnchorDashboard() {
 
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="md" />
+        <AgentActivityTicker />
 
         {/* 3. Action queue */}
         <ActionQueueStrip cards={actionCards} loading={loading} />
@@ -1067,7 +1156,7 @@ function AnchorDashboard() {
         <KpiStrip kpis={kpis} loading={loading} />
 
         {/* 5. Two-column */}
-        <div className="split-65" style={{ marginBottom: 24 }}>
+        <div className="split-65 reveal-stagger" style={{ marginBottom: 24 }}>
 
           {/* LEFT — My Deals */}
           <div className="card">
@@ -1099,17 +1188,21 @@ function AnchorDashboard() {
               </div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[1, 2].map(i => <SkeletonBlock key={i} height={14} />)}
+                  {[1, 2].map(i => <Skeleton key={i} height={14} />)}
                 </div>
               ) : listings.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No listings yet</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No listings yet</div>
               ) : (
-                <div>
+                <div className="reveal-stagger">
                   {listings.map(item => (
-                    <div key={item.listing.id} style={{
-                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                      display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
+                    <div
+                      key={item.listing.id}
+                      className="card-interactive"
+                      onClick={() => router.push(`/marketplace/listings/${item.listing.id}`)}
+                      style={{
+                        padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
                       <div style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                         {item.listing.title}
                       </div>
@@ -1129,18 +1222,24 @@ function AnchorDashboard() {
             <div className="card">
               <div className="card-head"><span>Financing Requests</span></div>
               {loading ? (
-                <div style={{ padding: 16 }}><SkeletonBlock height={14} /></div>
+                <div style={{ padding: 16 }}><Skeleton height={14} /></div>
               ) : financing.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests yet</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests yet</div>
               ) : (
-                <div>
+                <div className="reveal-stagger">
                   {financing.map(f => (
-                    <div key={f.id} style={{
-                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                    }}>
+                    <div
+                      key={f.id}
+                      className="card-interactive"
+                      onClick={() => router.push(`/marketplace/financing/${f.id}`)}
+                      style={{
+                        padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      }}>
                       <div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                          <CountUp value={f.amount_requested} format={fmtCurrency} />
+                        </div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{fmtStructureType(f.structure_type)}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -1230,10 +1329,10 @@ function SupplierDashboard() {
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',    value: loading ? '—' : String(activeDeals.length), icon: 'deals', tint: 'var(--blue)' },
-    { label: 'Total Financed',  value: loading ? '—' : fmtCurrency(totalFinanced), valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined, icon: 'financing', tint: 'var(--color-green)' },
-    { label: 'Completed Deals', value: loading ? '—' : String(completedDeals), sub: 'Track record', icon: 'volume', tint: 'var(--color-purple)' },
-    { label: 'Bank Views',      value: loading ? '—' : String(passport?.bank_view_count_30d ?? 0), sub: 'Last 30 days', icon: 'org', tint: 'var(--color-amber)' },
+    { label: 'Active Deals',    value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
+    { label: 'Total Financed',  value: totalFinanced, format: fmtCurrency, valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined, icon: 'financing', tint: 'var(--color-green)' },
+    { label: 'Completed Deals', value: completedDeals, sub: 'Track record', icon: 'volume', tint: 'var(--color-purple)' },
+    { label: 'Bank Views',      value: passport?.bank_view_count_30d ?? 0, sub: 'Last 30 days', icon: 'org', tint: 'var(--color-amber)' },
   ]
 
   const passportExtras = passport ? (
@@ -1306,6 +1405,7 @@ function SupplierDashboard() {
 
         {/* 2. PassportScore banner */}
         <PassportBanner passport={passport} loading={loading} size="lg" extras={passportExtras} />
+        <AgentActivityTicker />
 
         {/* 2b. Network Invitations widget (hidden when no pending invites) */}
         {!loading && pendingNetworks.length > 0 && (
@@ -1316,28 +1416,30 @@ function SupplierDashboard() {
                 View all ({pendingNetworks.length}) →
               </a>
             </div>
-            {pendingNetworks.slice(0, 2).map((item: any) => (
-              <div key={item.membership.id} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 0', borderBottom: '1px solid var(--border)', gap: 12,
-              }}>
-                <div style={{ fontSize: 13 }}>
-                  <strong>{item.anchor?.legal_name ?? 'A buyer'}</strong> invited you to{' '}
-                  <em>"{item.network?.name}"</em>
+            <div className="reveal-stagger">
+              {pendingNetworks.slice(0, 2).map((item: any) => (
+                <div key={item.membership.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 0', borderBottom: '1px solid var(--border)', gap: 12,
+                }}>
+                  <div style={{ fontSize: 13 }}>
+                    <strong>{item.anchor?.legal_name ?? 'A buyer'}</strong> invited you to{' '}
+                    <em>"{item.network?.name}"</em>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => router.push('/networks')}
+                      style={{
+                        padding: '6px 12px', fontSize: 12, borderRadius: 'var(--radius-button)',
+                        background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600,
+                      }}
+                    >
+                      View
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={() => router.push('/networks')}
-                    style={{
-                      padding: '6px 12px', fontSize: 12, borderRadius: 'var(--radius-button)',
-                      background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600,
-                    }}
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -1348,7 +1450,7 @@ function SupplierDashboard() {
         <KpiStrip kpis={kpis} loading={loading} />
 
         {/* 5. Two-column */}
-        <div className="split-65" style={{ marginBottom: 24 }}>
+        <div className="split-65 reveal-stagger" style={{ marginBottom: 24 }}>
 
           {/* LEFT — My Deals */}
           <div className="card">
@@ -1371,18 +1473,24 @@ function SupplierDashboard() {
             <div className="card">
               <div className="card-head"><span>Active Financing</span></div>
               {loading ? (
-                <div style={{ padding: 16 }}><SkeletonBlock height={14} /></div>
+                <div style={{ padding: 16 }}><Skeleton height={14} /></div>
               ) : financing.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests</div>
               ) : (
-                <div>
+                <div className="reveal-stagger">
                   {financing.map(f => (
-                    <div key={f.id} style={{
-                      padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                    }}>
+                    <div
+                      key={f.id}
+                      className="card-interactive"
+                      onClick={() => router.push(`/marketplace/financing/${f.id}`)}
+                      style={{
+                        padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      }}>
                       <div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{fmtCurrency(f.amount_requested)}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                          <CountUp value={f.amount_requested} format={fmtCurrency} />
+                        </div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{fmtStructureType(f.structure_type)}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -1401,21 +1509,21 @@ function SupplierDashboard() {
               <div className="card-head"><span>Passport Activity</span></div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[1, 2, 3].map(i => <SkeletonBlock key={i} height={12} />)}
+                  {[1, 2, 3].map(i => <Skeleton key={i} height={12} />)}
                 </div>
               ) : !passport ? (
                 <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
                   No passport data yet
                 </div>
               ) : (
-                <div className="kv-rows">
+                <div className="kv-rows reveal-stagger">
                   <div className="kv-row">
                     <span className="k">Org views · 30d</span>
-                    <span className="v">{passport.org_view_count_30d}</span>
+                    <span className="v"><CountUp value={passport.org_view_count_30d} /></span>
                   </div>
                   <div className="kv-row">
                     <span className="k">Bank views · 30d</span>
-                    <span className="v">{passport.bank_view_count_30d}</span>
+                    <span className="v"><CountUp value={passport.bank_view_count_30d} /></span>
                   </div>
                   {passport.avg_rating != null && (
                     <div className="kv-row">

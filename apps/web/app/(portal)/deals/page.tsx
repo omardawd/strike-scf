@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { SkeletonCard, CountUp } from '@/components/motion'
 
 type DealTab = 'all' | 'active' | 'negotiating' | 'completed'
 
@@ -282,7 +283,7 @@ export default function DealsPage() {
               {tab === 'active' && 'Active'}
               {tab === 'negotiating' && 'Negotiating'}
               {tab === 'completed' && 'Completed'}
-              <span className="deals-tab-count">{counts[tab]}</span>
+              <span className="deals-tab-count"><CountUp value={counts[tab]} /></span>
             </button>
           ))}
         </div>
@@ -293,7 +294,7 @@ export default function DealsPage() {
             <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
               From Your ERP ({erpImportable.length})
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {erpImportable.map(inv => (
                 <div
                   key={inv.erp_reference}
@@ -338,13 +339,13 @@ export default function DealsPage() {
             <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
               Pending Offers ({pendingOffers.length})
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {pendingOffers.map(offer => {
                 const isCounted = offer.status === 'countered'
                 return (
                   <div
                     key={offer.id}
-                    className="card"
+                    className="card card-interactive"
                     style={{ cursor: 'pointer', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}
                     onClick={() => router.push(`/marketplace/listings/${offer.listing_id}`)}
                   >
@@ -429,22 +430,20 @@ export default function DealsPage() {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="reveal-stagger">
               {loading ? (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={i}>
-                    {DEAL_COLUMNS.map(col => (
-                      <td key={col.key}>
-                        <div style={{ height: 14, background: 'var(--border)', animation: 'skeleton-pulse 1.8s ease infinite', width: col.key === 'counterparty' ? '70%' : '80%' }} />
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                <tr>
+                  <td colSpan={DEAL_COLUMNS.length} style={{ padding: '16px 20px', border: 'none' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} height={56} />)}
+                    </div>
+                  </td>
+                </tr>
               ) : filtered.length === 0 && !(activeTab === 'negotiating' && pendingOffers.length > 0) ? (
                 <tr>
                   <td colSpan={DEAL_COLUMNS.length} style={{ padding: 0, border: 'none' }}>
                     <div className="deals-empty">
-                      <div className="deals-empty-icon">
+                      <div className="deals-empty-icon float-slow">
                         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
                         </svg>
@@ -477,7 +476,7 @@ export default function DealsPage() {
                   const fin = deal.financing_request
                   const financeable = isFinanceable(deal)
                   return (
-                    <tr key={deal.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
+                    <tr key={deal.id} className="card-interactive" style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
                       <td>
                         {deal.marketplace_listings?.title ? (
                           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{deal.marketplace_listings.title}</span>

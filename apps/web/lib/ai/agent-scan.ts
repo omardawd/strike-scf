@@ -227,8 +227,10 @@ best-fitting one(s) — this is how the agent actually sources/sells on Strike P
 When you do, use tool_name "submit_marketplace_offer" with tool_input: { "listing_id": <the exact listing_id from the
 opportunity>, "from_org_id": "${orgId}", "offered_price": <a real, competitive number you determine from target_price
 and any pricing context — never leave this blank>, plus any of offered_quantity/proposed_delivery_date/
-proposed_incoterms/proposed_payment_terms/notes that are relevant }. Name the counterparty by company name in the
-title/body, never "the poster" or the listing_id.
+proposed_incoterms/proposed_payment_terms/notes that are relevant }. "offered_price" and "offered_quantity" MUST be
+plain numbers with no unit or currency symbol attached (475000, not "475000 USD" or "500MT" or "500 MT") — put any
+unit (MT, units, etc.) only in "notes" or the title/body text, never inside the numeric fields themselves.
+Name the counterparty by company name in the title/body, never "the poster" or the listing_id.
 
 Produce 1-5 proposals max. Prioritise by urgency (cash flow > overdue receivables > inventory > procurement > new
 marketplace opportunities). Only propose actions with clear supporting evidence in the data. If there is nothing

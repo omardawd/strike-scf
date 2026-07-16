@@ -82,12 +82,16 @@ export async function GET() {
         }
       }
 
-      const buyerIds   = [...new Set((deals ?? []).map((d: any) => d.buyer_org_id as string))]
-      const supplierIds = [...new Set((deals ?? []).map((d: any) => d.supplier_org_id as string))]
+      // buyer_org_id/supplier_org_id is null for externally-imported deals — a
+      // null in the .in() array breaks the whole query silently (no error was
+      // ever checked here), which wipes out every counterparty name on the
+      // page, not just the one with no org.
+      const buyerIds   = [...new Set((deals ?? []).map((d: any) => d.buyer_org_id as string).filter(Boolean))]
+      const supplierIds = [...new Set((deals ?? []).map((d: any) => d.supplier_org_id as string).filter(Boolean))]
       const allOrgIds = [...new Set([...buyerIds, ...supplierIds])]
 
       if (allOrgIds.length > 0) {
-        const [{ data: orgs }, statsMap] = await Promise.all([
+        const [{ data: orgs, error: orgsError }, statsMap] = await Promise.all([
           adminClient
             .from('organizations')
             .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, country_of_origin')
@@ -96,6 +100,7 @@ export async function GET() {
           // `organizations` — compute live from deals instead (see lib/passport/trade-stats.ts).
           getOrgsTradeStatsBatch(adminClient, allOrgIds),
         ])
+        if (orgsError) console.error('[api/marketplace/financing] org lookup failed:', orgsError)
 
         for (const org of orgs ?? []) {
           const enriched = { ...org, ...statsMap[org.id] }
@@ -123,6 +128,26 @@ export async function GET() {
             dealsMap[d.id] = { ...dealsMap[d.id], line_items: lineItemsMap[d.listing_id] }
           }
         }
+      }
+    }
+
+    // The "Requestor" column must show whoever actually requested financing —
+    // deriving it from deal.buyer/supplier picks the wrong side whenever the
+    // requester is the buyer, and shows nothing at all for requests whose
+    // deal has no buyer_org_id (externally-imported AR). Fetch requester orgs
+    // directly instead of routing through the deal's buyer/supplier maps.
+    const requestorOrgIds = [...new Set((requests ?? []).map((r: any) => r.requesting_org_id as string).filter(Boolean))]
+    const requestorOrgsMap: Record<string, any> = {}
+    if (requestorOrgIds.length > 0) {
+      const [{ data: reqOrgs }, reqStatsMap] = await Promise.all([
+        adminClient
+          .from('organizations')
+          .select('id, legal_name, passport_score, risk_tier, kyb_status, performance_tier, country_of_origin')
+          .in('id', requestorOrgIds),
+        getOrgsTradeStatsBatch(adminClient, requestorOrgIds),
+      ])
+      for (const org of reqOrgs ?? []) {
+        requestorOrgsMap[org.id] = { ...org, ...reqStatsMap[org.id] }
       }
     }
 
@@ -167,6 +192,7 @@ export async function GET() {
         } : null,
         buyer_passport:    deal ? (buyerOrgsMap[deal.buyer_org_id] ?? null) : null,
         supplier_passport: deal ? (supplierOrgsMap[deal.supplier_org_id] ?? null) : null,
+        requestor_passport: requestorOrgsMap[req.requesting_org_id] ?? null,
         requesting_org_id: req.requesting_org_id,
         my_offer:          myOffersMap[req.id] ?? null,
         all_offers_count:  offerCountsMap[req.id] ?? 0,

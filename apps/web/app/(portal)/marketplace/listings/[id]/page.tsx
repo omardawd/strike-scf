@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { CountUp, Reveal, Skeleton, SkeletonText } from '@/components/motion'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 import type { MarketplaceListing, MarketplaceOffer } from '@strike-scf/types'
@@ -276,7 +277,7 @@ function OfferForm({
 
         {error && <p className="field-error">{error}</p>}
 
-        <button className="btn btn-blue" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
+        <button className="btn btn-blue shine" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
           {submitting ? 'Submitting…' : `Submit Offer${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
         </button>
       </div>
@@ -595,7 +596,7 @@ function OfferCard({
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Negotiation History
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {(rounds as any[]).map((r, idx) => {
               const sentByOwner = r.by_org_id !== offer.from_org_id
               const senderName = sentByOwner ? posterOrgName : offerorName
@@ -1049,8 +1050,29 @@ export default function ListingDetailPage() {
           { label: 'Strike Place', onClick: () => router.push('/marketplace') },
           { label: 'Listing' },
         ]} />
-        <div className="page">
-          <div className="mp-skeleton-card" style={{ height: 320 }} />
+        <div className="page mp-page">
+          <div className="split-panel">
+            <div className="split-panel-main">
+              <div className="card" style={{ padding: 20, minHeight: 360 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <Skeleton width={90} height={20} radius={999} />
+                  <Skeleton width={70} height={20} radius={999} />
+                </div>
+                <Skeleton width="60%" height={26} style={{ marginBottom: 20 }} />
+                <SkeletonText lines={4} widths={['100%', '95%', '88%', '60%']} />
+              </div>
+            </div>
+            <aside className="split-panel-aside">
+              <div className="card" style={{ padding: 20, minHeight: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <Skeleton circle width={64} height={64} />
+                <Skeleton width={140} height={14} />
+                <Skeleton width={90} height={11} />
+                <div style={{ width: '100%', marginTop: 8 }}>
+                  <SkeletonText lines={3} />
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
       </>
     )
@@ -1211,7 +1233,7 @@ export default function ListingDetailPage() {
         <div className="split-panel">
 
           {/* ── Main panel ── */}
-          <div className="split-panel-main">
+          <div className="split-panel-main reveal-stagger">
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1242,9 +1264,7 @@ export default function ListingDetailPage() {
                 <div className="kv-row">
                   <span className="k">{isTotal ? 'Total Value' : 'Target Price'}</span>
                   <span className="v" style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
-                    {displayPrice != null
-                      ? displayPrice.toLocaleString()
-                      : '—'}&nbsp;
+                    <CountUp value={displayPrice ?? NaN} format={n => n.toLocaleString()} />&nbsp;
                     <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--gray)' }}>
                       {listing.currency}{!isTotal && listing.unit ? ` / ${listing.unit}` : ''}
                     </span>
@@ -1467,7 +1487,7 @@ export default function ListingDetailPage() {
 
             {/* Poster passport */}
             {poster_org && (
-              <div className="card">
+              <Reveal delay={0} className="card">
                 <div className="card-head">Listing Posted By</div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px 16px' }}>
                   <PassportScoreRing
@@ -1523,11 +1543,11 @@ export default function ListingDetailPage() {
                     View Passport →
                   </button>
                 </div>
-              </div>
+              </Reveal>
             )}
 
             {/* About this listing */}
-            <div className="card">
+            <Reveal delay={80} className="card">
               <div className="card-head">About This Listing</div>
               <div style={{ padding: '0 0 8px' }}>
                 <div className="kv-row">
@@ -1549,11 +1569,11 @@ export default function ListingDetailPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </Reveal>
 
             {/* Documents */}
             {documents.length > 0 && (
-              <div className="card">
+              <Reveal delay={160} className="card">
                 <div className="card-head">Documents</div>
                 <div style={{ padding: '4px 0 8px' }}>
                   {documents.map((doc: any) => (
@@ -1588,7 +1608,7 @@ export default function ListingDetailPage() {
                     </a>
                   ))}
                 </div>
-              </div>
+              </Reveal>
             )}
 
           </aside>

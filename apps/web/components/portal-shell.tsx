@@ -82,7 +82,8 @@ export function Topbar({
           <Icon name="back" size={12} /> Back
         </button>
       )}
-      <div className="breadcrumb">
+      {/* key={pathname} forces a remount on route change so .fade-in replays for the new crumbs */}
+      <div className="breadcrumb fade-in" key={pathname}>
         {crumbs.map((c, i) => (
           <React.Fragment key={i}>
             {i > 0 && <span className="crumb-sep">›</span>}

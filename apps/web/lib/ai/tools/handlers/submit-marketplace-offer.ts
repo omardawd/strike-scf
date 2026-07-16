@@ -1,4 +1,5 @@
 import { adminClient } from '../admin'
+import { coerceNumber } from '@/lib/numeric'
 
 export interface SubmitMarketplaceOfferInput {
   listing_id: string
@@ -11,7 +12,15 @@ export interface SubmitMarketplaceOfferInput {
   notes?: string
 }
 
-export async function submitMarketplaceOffer(input: SubmitMarketplaceOfferInput) {
+export async function submitMarketplaceOffer(rawInput: SubmitMarketplaceOfferInput) {
+  // The AI proposal path sometimes writes a unit onto a numeric field (e.g.
+  // "500MT") — coerce before it ever reaches the numeric DB columns.
+  const input: SubmitMarketplaceOfferInput = {
+    ...rawInput,
+    offered_price: coerceNumber(rawInput.offered_price) ?? undefined,
+    offered_quantity: coerceNumber(rawInput.offered_quantity) ?? undefined,
+  }
+
   // Verify the listing exists and is active
   const { data: listing, error: listingErr } = await adminClient
     .from('marketplace_listings')

@@ -1,6 +1,7 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { SkeletonText } from '@/components/motion'
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
@@ -82,46 +83,24 @@ function MarkdownContent({ text, clamp }: { text: string; clamp?: number }) {
   return <>{nodes}</>
 }
 
-// ── Cycling loading messages ──────────────────────────────────────────────────
-
-const LOADING_STEPS = [
-  'Reading context data…',
-  'Analyzing key metrics…',
-  'Cross-referencing indicators…',
-  'Synthesizing insight…',
-]
+// ── Loading placeholder ────────────────────────────────────────────────────────
 
 function LoadingShimmer({ variant }: { variant: 'banner' | 'compact' | 'floating' }) {
-  const [step, setStep] = useState(0)
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    ref.current = setInterval(() => {
-      setStep(s => (s + 1) % LOADING_STEPS.length)
-    }, 1800)
-    return () => { if (ref.current) clearInterval(ref.current) }
-  }, [])
-
   if (variant === 'banner') {
     return (
-      <div className="ai-insight-banner">
-        <div className="ai-insight-banner-icon">✦</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 3 }}>
-            {[0,1,2].map(i => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--blue)', opacity: step % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />)}
-          </div>
-          <span style={{ fontSize: 13, color: 'var(--blue)' }}>{LOADING_STEPS[step]}</span>
+      <div className="ai-insight-banner ai-sheen">
+        <div className="ai-insight-banner-icon ai-breathe">✦</div>
+        <div style={{ flex: 1 }}>
+          <div className="ai-insight-banner-label">Strike AI</div>
+          <SkeletonText lines={2} widths={['92%', '64%']} gap={7} />
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 0' }}>
-      <div style={{ display: 'flex', gap: 3 }}>
-        {[0,1,2].map(i => <div key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--blue)', opacity: step % 3 === i ? 1 : 0.3, transition: 'opacity 0.3s' }} />)}
-      </div>
-      <span style={{ fontSize: 12, color: 'var(--blue)' }}>{LOADING_STEPS[step]}</span>
+    <div style={{ padding: '4px 0' }}>
+      <SkeletonText lines={2} widths={['95%', '68%']} gap={7} />
     </div>
   )
 }
@@ -233,11 +212,11 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
     if (loading) return <LoadingShimmer variant="banner" />
     if (!insight) return null
     return (
-      <div className="ai-insight-banner" style={{ alignItems: 'flex-start' }}>
-        <div className="ai-insight-banner-icon">✦</div>
+      <div className="ai-insight-banner ai-sheen" style={{ alignItems: 'flex-start' }}>
+        <div className="ai-insight-banner-icon ai-breathe">✦</div>
         <div style={{ flex: 1 }}>
           <div className="ai-insight-banner-label">Strike AI</div>
-          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.55 }}>
+          <div className="fade-in" style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.55 }}>
             <MarkdownContent text={insight.insight} />
           </div>
         </div>
@@ -258,14 +237,14 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
   // ── COMPACT ──
   if (variant === 'compact') {
     if (loading) return (
-      <div style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+      <div className="ai-sheen" style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
         <LoadingShimmer variant="compact" />
       </div>
     )
     if (!insight) return null
     return (
-      <div style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
-        <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
+      <div className="ai-sheen" style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+        <div className="fade-in" style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
           <MarkdownContent text={insight.insight} clamp={2} />
         </div>
         <button
@@ -287,16 +266,16 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
   if (loading || !insight) return null
   const firstAction = insight.actions[0]
   return (
-    <div style={{ position: 'fixed', bottom: 24, right: 24, width: 320, zIndex: 170, background: 'var(--white)', boxShadow: 'var(--shadow-elevated)', borderRadius: 16, padding: 16, transform: visible ? 'translateY(0)' : 'translateY(20px)', opacity: visible ? 1 : 0, transition: 'transform 0.3s ease, opacity 0.3s ease' }}>
+    <div className="ai-sheen" style={{ position: 'fixed', bottom: 24, right: 24, width: 320, zIndex: 170, background: 'var(--white)', boxShadow: 'var(--shadow-elevated)', borderRadius: 16, padding: 16, transform: visible ? 'translateY(0)' : 'translateY(20px)', opacity: visible ? 1 : 0, transition: 'transform 0.3s ease, opacity 0.3s ease' }}>
       <button type="button" onClick={dismissFloating} aria-label="Dismiss"
         style={{ position: 'absolute', top: 10, right: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: 18, lineHeight: 1, padding: 0 }}>
         ×
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--blue)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 11 }}>S</div>
+        <div className="ai-breathe" style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--blue)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 11 }}>S</div>
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Strike AI</span>
       </div>
-      <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5, paddingRight: 8 }}>
+      <div className="fade-in" style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5, paddingRight: 8 }}>
         <MarkdownContent text={insight.insight} />
       </div>
       {firstAction && (

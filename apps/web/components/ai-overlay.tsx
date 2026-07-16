@@ -237,9 +237,6 @@ export function AIOverlay() {
   return (
     <>
       <style>{`
-        @keyframes strike-window-in { from { opacity: 0; transform: scale(0.95) translateY(6px) } to { opacity: 1; transform: scale(1) translateY(0) } }
-        @keyframes strike-bubble-in { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes strike-thinking { 0%,100% { opacity: 0.35 } 50% { opacity: 1 } }
         .strike-pill-input::placeholder { color: var(--gray-soft) }
         .strike-pill-input:focus { outline: none }
         .strike-send-btn:hover:not(:disabled) { background: var(--blue-hover) !important }
@@ -252,6 +249,7 @@ export function AIOverlay() {
       {isOpen && (
         <div
           data-chat-window
+          className="reveal"
           style={{
             position: 'fixed',
             ...windowStyle,
@@ -264,7 +262,6 @@ export function AIOverlay() {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            animation: 'strike-window-in 0.2s ease',
             border: '1px solid var(--border)',
           }}
         >
@@ -330,21 +327,19 @@ export function AIOverlay() {
             )}
             {messages.map((m, i) => (
               m.role === 'user' ? (
-                <div key={i} style={{
+                <div key={i} className="fade-in" style={{
                   alignSelf: 'flex-end', maxWidth: '80%',
                   padding: '9px 13px',
                   background: 'var(--blue)', color: '#fff',
                   borderRadius: '16px 16px 4px 16px',
                   fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
-                  animation: 'strike-bubble-in 0.15s ease',
                 }}>
                   {m.content}
                 </div>
               ) : (
-                <div key={i} style={{
+                <div key={i} className="fade-in" style={{
                   alignSelf: 'flex-start', maxWidth: '90%',
                   display: 'flex', gap: 6,
-                  animation: 'strike-bubble-in 0.15s ease',
                 }}>
                   <div style={{
                     width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginTop: 2,
@@ -383,8 +378,8 @@ export function AIOverlay() {
                 }}>
                   {[0, 1, 2].map(d => (
                     <div key={d} style={{
-                      width: 5, height: 5, borderRadius: '50%', background: 'var(--gray)',
-                      animation: `strike-thinking 1.2s ease ${d * 0.18}s infinite`,
+                      width: 5, height: 5, borderRadius: '50%', background: 'var(--blue)',
+                      animation: `ai-dot-pulse 1.2s ease-in-out ${d * 0.15}s infinite`,
                     }} />
                   ))}
                 </div>
@@ -443,7 +438,7 @@ export function AIOverlay() {
           padding: '6px 6px 6px 14px',
           border: '1px solid var(--border)',
         }}>
-          <div style={{
+          <div className="ai-breathe" style={{
             width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
             background: 'linear-gradient(135deg, var(--blue) 0%, #7C3AED 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
@@ -470,7 +465,7 @@ export function AIOverlay() {
           />
           <button
             type="button"
-            className="strike-send-btn"
+            className="strike-send-btn shine"
             onClick={() => { if (input.trim()) { setIsOpen(true); sendMessage(input) } }}
             disabled={!input.trim()}
             style={{

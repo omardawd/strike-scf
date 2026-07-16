@@ -68,6 +68,17 @@ async function canAccessDocument(
     return !!listing && !!me.org_id && listing.org_id === me.org_id
   }
 
+  if (entity_type === 'financing_request') {
+    const { data: financingReq } = await adminClient
+      .from('financing_requests')
+      .select('requesting_org_id, accepted_bank_id')
+      .eq('id', entity_id).single()
+    if (!financingReq) return false
+    if (me.org_id && me.org_id === financingReq.requesting_org_id) return true
+    if (BANK_ROLES.includes(me.role) && me.bank_id && me.bank_id === financingReq.accepted_bank_id) return true
+    return false
+  }
+
   return false
 }
 
@@ -99,7 +110,7 @@ export async function GET(
   }
 
   // Deal documents may be in deal-documents bucket; everything else in kyb-documents
-  const bucket = doc.entity_type === 'deal' ? 'deal-documents' : 'kyb-documents'
+  const bucket = (doc.entity_type === 'deal' || doc.entity_type === 'financing_request') ? 'deal-documents' : 'kyb-documents'
 
   const { data: signed, error } = await adminClient.storage
     .from(bucket)

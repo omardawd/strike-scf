@@ -22,7 +22,7 @@ const LOOKUP_ENTITIES = {
 
 const CREATE_MARKETPLACE_LISTING = {
   name: 'create_marketplace_listing',
-  description: 'Create a marketplace listing (product/service or PO request) with line items. DOCUMENT MODE: When the user\'s message contains an [Attached document:] section, extract every listing field directly from that document (title, line items with quantities/units/prices, incoterms, payment terms, delivery date, delivery location, currency). Use org_id from context. Infer listing_type from portal: anchor/buyer → po_request, supplier → product_service. Call the tool immediately with all extracted fields — do not ask for info already present in the document. Only ask if a required field is genuinely absent. NO DOCUMENT: Ask for incoterms, payment terms, and visibility (public vs network_only) before calling. After success, always emit [LISTING_CARD:{listing_id}] on its own line.',
+  description: 'Create a marketplace listing (product/service or PO request) with line items. DOCUMENT MODE: When the user\'s message contains an [Attached document:] section, extract every listing field directly from that document (title, line items with quantities/units/prices, incoterms, shipping_cost, payment terms, delivery date, delivery location, currency). Use org_id from context. Infer listing_type from portal: anchor/buyer → po_request, supplier → product_service. Call the tool immediately with all extracted fields — do not ask for info already present in the document. Only ask if a required field is genuinely absent. NO DOCUMENT: Ask for incoterms, payment terms, and visibility (public vs network_only) before calling. If incoterms is one that puts shipping cost on the seller (CFR, CIF, CPT, CIP, DAP, DPU, or DDP), also ask for shipping_cost up front — don\'t leave it to be figured out later during offer negotiation. After success, always emit [LISTING_CARD:{listing_id}] on its own line.',
   input_schema: {
     type: 'object',
     properties: {
@@ -35,6 +35,7 @@ const CREATE_MARKETPLACE_LISTING = {
       delivery_deadline: { type: 'string', format: 'date', description: 'YYYY-MM-DD. Always use the current year unless user specifies otherwise.' },
       delivery_location: { type: 'string' },
       incoterms: { type: 'string', description: 'e.g. CIF, FOB, EXW, DDP — always ask if not provided' },
+      shipping_cost: { type: 'number', description: 'Required when incoterms puts shipping on the seller: CFR, CIF, CPT, CIP, DAP, DPU, or DDP. Always ask for this at listing creation for those incoterms — never leave it to be set later.' },
       payment_terms: { type: 'string', description: 'e.g. Net 30, LC at sight, CAD — always ask if not provided' },
       expires_at: { type: 'string', format: 'date-time' },
       min_passport_score: { type: 'number', description: 'Minimum PassportScore to submit an offer (0–100)' },

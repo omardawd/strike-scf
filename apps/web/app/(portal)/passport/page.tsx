@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { Topbar, NotifBell } from '@/components/portal-shell'
+import { Skeleton, SkeletonText, SkeletonCard, CountUp } from '@/components/motion'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import {
   PassportSections,
@@ -168,7 +169,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
               fontFamily: 'var(--font-display)', fontSize: 52, fontWeight: 700, lineHeight: 1,
               color: analysis.total_score >= 70 ? 'var(--color-green)' : analysis.total_score >= 45 ? 'var(--color-amber)' : 'var(--color-red)',
             }}>
-              {analysis.total_score}
+              <CountUp value={analysis.total_score} />
             </div>
             <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>out of 100</div>
             {analysis.documents_analyzed.length > 0 && (
@@ -614,8 +615,29 @@ export default function MyPassportPage() {
             </div>
           </div>
         ) : loading ? (
-          <div className="card">
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>
+          <div className="split-60">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="card">
+                <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <Skeleton width={52} height={52} circle />
+                  <div style={{ flex: 1 }}>
+                    <SkeletonText lines={2} widths={['55%', '30%']} />
+                  </div>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 28, paddingBottom: 24 }}>
+                  <Skeleton width={120} height={120} circle />
+                  <SkeletonText lines={1} widths={['40%']} />
+                </div>
+              </div>
+              <SkeletonCard height={140} />
+              <SkeletonCard height={180} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <SkeletonCard height={110} />
+              <SkeletonCard height={90} />
+            </div>
           </div>
         ) : error ? (
           <div className="card" style={{ padding: 20, color: 'var(--color-red)' }}>{error}</div>
@@ -624,7 +646,7 @@ export default function MyPassportPage() {
         ) : (data && org) ? (
           <div className="split-60">
             {/* LEFT — main passport content */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {isUnderReview && <UnderReviewBanner />}
 
               {/* Header card */}
@@ -691,7 +713,7 @@ export default function MyPassportPage() {
             </div>
 
             {/* RIGHT — slim sticky panel */}
-            <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="reveal-stagger" style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Run / Re-run AI Analysis button */}
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -721,14 +743,14 @@ export default function MyPassportPage() {
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
-                      {data.bank_view_count_30d}
+                      <CountUp value={data.bank_view_count_30d} />
                     </span>{' '}
                     bank{data.bank_view_count_30d === 1 ? '' : 's'} viewed your Passport this month
                   </div>
                   <div style={{ height: 1, background: 'var(--border)' }} />
                   <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
-                      {data.org_view_count_30d}
+                      <CountUp value={data.org_view_count_30d} />
                     </span>{' '}
                     organization{data.org_view_count_30d === 1 ? '' : 's'} viewed your Passport this month
                   </div>
@@ -744,7 +766,7 @@ export default function MyPassportPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>
-                        {Math.round(data.network_passport_score_median)}
+                        <CountUp value={data.network_passport_score_median} />
                       </span>
                       {org.passport_score !== null && (
                         <span style={{

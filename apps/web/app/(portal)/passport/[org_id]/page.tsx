@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { Topbar, NotifBell } from '@/components/portal-shell'
+import { Skeleton, SkeletonText, SkeletonCard, CountUp } from '@/components/motion'
 import {
   PassportSections,
   type PassportOrg,
@@ -322,8 +323,29 @@ export default function PublicPassportPage() {
       />
       <div className="page" data-page-name="Passport" data-ai-context={JSON.stringify({ org_name: org?.legal_name ?? null, org_type: org?.type ?? null, org_id: orgId, review_count: data?.review_count ?? null, avg_rating: data?.avg_rating ?? null, recent_deals: data?.recent_deals ?? null, bank_views_30d: data?.bank_view_count_30d ?? null })}>
         {loading ? (
-          <div className="card">
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>
+          <div className="split-60">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="card">
+                <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <Skeleton width={52} height={52} circle />
+                  <div style={{ flex: 1 }}>
+                    <SkeletonText lines={2} widths={['55%', '30%']} />
+                  </div>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 28, paddingBottom: 24 }}>
+                  <Skeleton width={120} height={120} circle />
+                  <SkeletonText lines={1} widths={['40%']} />
+                </div>
+              </div>
+              <SkeletonCard height={140} />
+              <SkeletonCard height={180} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <SkeletonCard height={130} />
+              <SkeletonCard height={90} />
+            </div>
           </div>
         ) : error ? (
           <div className="card" style={{ padding: 20 }}>
@@ -332,7 +354,7 @@ export default function PublicPassportPage() {
         ) : (data && org) ? (
           <div className="split-60">
             {/* LEFT — passport content */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Header */}
               <div className="card">
                 <div
@@ -390,6 +412,7 @@ export default function PublicPassportPage() {
 
             {/* RIGHT — sticky AI assessment panel */}
             <div
+              className="reveal-stagger"
               style={{
                 position: 'sticky',
                 top: 62,
@@ -419,7 +442,7 @@ export default function PublicPassportPage() {
                         color: 'var(--ink)',
                       }}
                     >
-                      {data.bank_view_count_30d}
+                      <CountUp value={data.bank_view_count_30d} />
                     </span>{' '}
                     bank{data.bank_view_count_30d === 1 ? '' : 's'} viewed this Passport this month
                   </div>
@@ -433,7 +456,7 @@ export default function PublicPassportPage() {
                         color: 'var(--ink)',
                       }}
                     >
-                      {data.org_view_count_30d}
+                      <CountUp value={data.org_view_count_30d} />
                     </span>{' '}
                     organization
                     {data.org_view_count_30d === 1 ? '' : 's'} viewed this Passport this month
@@ -454,7 +477,7 @@ export default function PublicPassportPage() {
                           Network median PassportScore™:{' '}
                           <strong style={{ color: 'var(--ink)' }}>
                             {narrativeData.medians.passport_score != null
-                              ? Math.round(narrativeData.medians.passport_score)
+                              ? <CountUp value={narrativeData.medians.passport_score} />
                               : '—'}
                           </strong>{' '}
                           across {narrativeData.medians.peer_count} verified{' '}

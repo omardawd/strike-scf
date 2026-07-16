@@ -14,5 +14,15 @@ jobs:
     steps:
       - name: Call /api/agents/tick
         run: |
-          curl -fsS -X GET "${{ secrets.APP_BASE_URL }}/api/agents/tick" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+          if [ -z "${{ secrets.APP_BASE_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::error::APP_BASE_URL or CRON_SECRET repo secret is not set (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X GET "${{ secrets.APP_BASE_URL }}/api/agents/tick" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}")
+          echo "HTTP status: $status"
+          cat /tmp/resp.json
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Request failed with HTTP $status — check CRON_SECRET matches the Vercel env var, and APP_BASE_URL points at the live deployment."
+            exit 1
+          fi

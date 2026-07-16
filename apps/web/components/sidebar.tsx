@@ -391,12 +391,14 @@ export function Sidebar() {
 
       {/* Unified navigation */}
       <nav className="nav-section" style={{ marginTop: 4 }}>
-        {/* Strike AI — first nav item */}
+        {/* Strike AI — first nav item; .shine adds a hover sweep highlight (no
+            existing shimmer animation is applied to this pill, so no double effect). */}
         <Link
           href="/ai"
-          className={`nav-item${aiActive ? ' active' : ''}`}
+          className={`nav-item shine${aiActive ? ' active' : ''}`}
           title={collapsed ? 'Strike AI' : undefined}
           aria-label="Strike AI"
+          style={{ transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)` }}
         >
           <NavIcon name="ai" size={18} />
           {!collapsed && <span>Strike AI</span>}
@@ -420,7 +422,13 @@ export function Sidebar() {
                   key={`${item.label}-${item.href}`}
                   href={item.href}
                   className={`nav-item ${active ? 'active' : ''}`}
-                  style={{ textDecoration: 'none' }}
+                  // Ease the active-pill background/color change instead of snapping
+                  // (overrides the CSS class's 0.15s linear transition with the
+                  // shared motion tokens for a slightly softer curve).
+                  style={{
+                    textDecoration: 'none',
+                    transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)`,
+                  }}
                   // TA.2 — native tooltip surfaces the label when collapsed (icons-only).
                   title={collapsed ? item.label : undefined}
                   aria-label={badge ? `${item.label} (${badge} unread)` : item.label}

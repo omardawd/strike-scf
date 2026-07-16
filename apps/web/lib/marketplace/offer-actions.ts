@@ -6,6 +6,7 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { coerceNumber } from '@/lib/numeric'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -123,7 +124,15 @@ export async function counterOffer(params: {
   terms: CounterTerms
   maxRounds?: number
 }): Promise<{ offer: Record<string, unknown>; roomId: string | null }> {
-  const { offerId, actingOrgId, terms, maxRounds } = params
+  const { offerId, actingOrgId, maxRounds } = params
+  // The AI negotiation path sometimes writes a unit onto a numeric field
+  // (e.g. "500MT") — coerce before it ever reaches the numeric DB columns.
+  const terms: CounterTerms = {
+    ...params.terms,
+    offered_price: coerceNumber(params.terms.offered_price) ?? params.terms.offered_price,
+    offered_quantity: coerceNumber(params.terms.offered_quantity) ?? undefined,
+    shipping_cost: coerceNumber(params.terms.shipping_cost) ?? undefined,
+  }
   const { offer, listing, listingOrgId, offerorOrgId } = await loadOfferWithListing(offerId)
 
   if (!['pending', 'countered'].includes(offer.status)) {

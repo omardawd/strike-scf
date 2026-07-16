@@ -8,6 +8,7 @@ import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
 import { FinancingManagementCard, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
+import { CountUp, Skeleton, SkeletonText } from '@/components/motion'
 import { createClient } from '@/lib/supabase/client'
 import {
   getFinancingContext,
@@ -404,6 +405,7 @@ export default function DealDetailPage() {
   const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [listingLineItems, setListingLineItems] = useState<any[]>([])
+  const [negotiatedOffer, setNegotiatedOffer] = useState<{ offer_rounds: any[] } | null>(null)
   const [listingDocs, setListingDocs] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -507,6 +509,45 @@ export default function DealDetailPage() {
       if (docData?.documents) setListingDocs(docData.documents)
     }).catch(() => {})
   }, [(data?.deal as any)?.listing_id])
+
+  // The listing's own line items are the pre-negotiation starting point, not
+  // what was actually agreed — fetch the accepted offer's round history so
+  // the displayed breakdown reflects the real negotiated terms.
+  useEffect(() => {
+    const oid = (data?.deal as any)?.offer_id as string | undefined
+    if (!oid) return
+    fetch(`/api/marketplace/offers/${oid}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.offer_rounds) setNegotiatedOffer({ offer_rounds: d.offer_rounds }) })
+      .catch(() => {})
+  }, [(data?.deal as any)?.offer_id])
+
+  // Final negotiated line items: take quantities/descriptions from the last
+  // round that actually itemized them, then scale unit prices so they sum to
+  // the deal's true agreed total (later rounds often re-price the whole deal
+  // as a lump sum without re-itemizing every line).
+  const negotiatedLineItems = React.useMemo(() => {
+    const rounds = negotiatedOffer?.offer_rounds ?? []
+    let lastItemized: any[] | null = null
+    for (let i = rounds.length - 1; i >= 0; i--) {
+      const items = rounds[i]?.offer_items
+      if (Array.isArray(items) && items.length > 0) { lastItemized = items; break }
+    }
+    if (!lastItemized) return listingLineItems
+
+    const agreedTotal = Number((data?.deal as any)?.total_value ?? (data?.deal as any)?.agreed_price ?? 0)
+    const originalSum = lastItemized.reduce((sum: number, it: any) => sum + Number(it.quantity ?? 0) * Number(it.unit_price ?? 0), 0)
+    const scale = originalSum > 0 && agreedTotal > 0 ? agreedTotal / originalSum : 1
+
+    return lastItemized.map((it: any) => ({
+      id: it.listing_item_id ?? it.name,
+      name: it.name,
+      quantity: it.quantity,
+      unit: it.unit,
+      unit_price: it.unit_price != null ? Number(it.unit_price) * scale : null,
+      currency: it.currency,
+    }))
+  }, [negotiatedOffer, listingLineItems, (data?.deal as any)?.total_value, (data?.deal as any)?.agreed_price])
 
   // ── Action router — maps action names to the right API endpoints ──────────
 
@@ -624,8 +665,30 @@ export default function DealDetailPage() {
       <>
         <Topbar crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: 'Loading…' }]} />
         <div className="page" style={{ maxWidth: 1280 }}>
-          <div style={{ display: 'flex', gap: 20 }}>
-            {[0, 1].map(i => <div key={i} className="card" style={{ flex: i === 0 ? 1 : '0 0 340px', height: 400, animation: 'skeleton-pulse 1.8s ease infinite' }} />)}
+          <div className="page-header" style={{ marginBottom: 24 }}>
+            <Skeleton width={150} height={24} style={{ marginBottom: 8 }} />
+            <Skeleton width={220} height={13} />
+          </div>
+          <div className="split-panel">
+            <div className="split-panel-main">
+              <div className="card" style={{ padding: 20, minHeight: 160 }}>
+                <SkeletonText lines={3} widths={['30%', '100%', '70%']} />
+              </div>
+              <div className="card" style={{ padding: 20, minHeight: 160 }}>
+                <SkeletonText lines={4} widths={['40%', '100%', '90%', '60%']} />
+              </div>
+            </div>
+            <div className="split-panel-aside">
+              <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <Skeleton circle width={56} height={56} />
+                <Skeleton width={140} height={14} />
+                <div style={{ width: '100%' }}><SkeletonText lines={2} /></div>
+              </div>
+              <div className="card" style={{ padding: '20px 24px 8px', textAlign: 'center' }}>
+                <Skeleton width={130} height={30} style={{ margin: '0 auto 10px' }} />
+                <Skeleton width={90} height={11} style={{ margin: '0 auto' }} />
+              </div>
+            </div>
           </div>
         </div>
       </>
@@ -756,8 +819,8 @@ export default function DealDetailPage() {
     payment_terms: deal.agreed_payment_terms ?? null,
     delivery_date: deal.agreed_delivery_date ?? null,
     currency,
-    line_items: listingLineItems.length > 0
-      ? listingLineItems.map((item: any) => ({
+    line_items: negotiatedLineItems.length > 0
+      ? negotiatedLineItems.map((item: any) => ({
           name: item.name,
           description: item.description ?? null,
           quantity: item.quantity ?? null,
@@ -817,9 +880,9 @@ export default function DealDetailPage() {
 
         <div className="split-panel">
           {/* ── Main panel ── */}
-          <div className="split-panel-main">
+          <div className="split-panel-main reveal-stagger">
             {/* Roadmap — G4.1 */}
-            <div className="card">
+            <div className="card reveal">
               <div className="card-head">Deal Progress</div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
                 <DealRoadmap
@@ -1010,7 +1073,7 @@ export default function DealDetailPage() {
                 {deal.payment_due_date && <div className="kv-row"><span className="k">Payment Due</span><span className="v">{fmtDate(deal.payment_due_date)}</span></div>}
                 {deal.import_notes && <div className="kv-row"><span className="k">Notes</span><span className="v plain" style={{ fontSize: 12 }}>{deal.import_notes}</span></div>}
               </div>
-              {listingLineItems.length > 0 ? (
+              {negotiatedLineItems.length > 0 ? (
                 <div style={{ padding: '0 24px 20px' }}>
                   <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>Item Breakdown</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '6px 16px', fontSize: 12 }}>
@@ -1018,7 +1081,7 @@ export default function DealDetailPage() {
                     <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Qty</span>
                     <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Unit</span>
                     <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Unit Price</span>
-                    {listingLineItems.map((item: any) => (
+                    {negotiatedLineItems.map((item: any) => (
                       <React.Fragment key={item.id}>
                         <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{item.name ?? item.description ?? '—'}</span>
                         <span style={{ textAlign: 'right', fontFamily: 'var(--font-display)', fontWeight: 500 }}>{item.quantity ?? '—'}</span>
@@ -1299,7 +1362,9 @@ export default function DealDetailPage() {
             <div className="card">
               <div className="card-head">Deal Value</div>
               <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px 8px' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>{fmt(dealValue, currency)}</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>
+                  <CountUp value={dealValue ?? NaN} format={n => fmt(n, currency)} />
+                </div>
                 <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · Goods Value</div>
                 {financingContext.isActive && financingContext.structure !== 'dynamic_discounting' && (
                   <div style={{ marginTop: 8, fontSize: 11, color: 'var(--blue)' }}>
