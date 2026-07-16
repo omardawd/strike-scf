@@ -473,6 +473,37 @@ function OfferCard({
       }, 0)
     : null
 
+  // Per-item price breakdown for the CURRENT total. AI-driven counters only
+  // ever decide a lump-sum offered_price (the tool schema has no per-item
+  // field), so lastRoundItems is often empty even though an earlier round —
+  // or the listing itself — has real line items. Reuse the last round that
+  // actually had itemized pricing and scale it to match the current total,
+  // same approach used for negotiatedLineItems on the deal detail page.
+  const displayItems = React.useMemo(() => {
+    let sourceItems: any[] | null = null
+    for (let i = rounds.length - 1; i >= 0; i--) {
+      const items = (rounds[i] as any)?.offer_items
+      if (Array.isArray(items) && items.length > 0) { sourceItems = items; break }
+    }
+    const currentTotal = offerTotal ?? (Number(offer.offered_price) || 0)
+    if (!sourceItems && listingLineItems.length === 1) {
+      // No round has ever been itemized, but there's exactly one listing
+      // line item — safe to attribute the whole offered price to it.
+      const li = listingLineItems[0]
+      const qty = Number(li.quantity) || 0
+      return [{ name: li.name, unit: li.unit ?? null, quantity: li.quantity, unit_price: qty > 0 ? currentTotal / qty : null }]
+    }
+    if (!sourceItems) return null
+    const sourceTotal = sourceItems.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+    const scale = sourceTotal > 0 && currentTotal > 0 ? currentTotal / sourceTotal : 1
+    return sourceItems.map((it: any) => ({
+      name: it.name,
+      unit: it.unit ?? null,
+      quantity: it.quantity,
+      unit_price: it.unit_price != null ? Number(it.unit_price) * scale : null,
+    }))
+  }, [rounds, offerTotal, offer.offered_price, listingLineItems])
+
   // Helper: compute total from a round's offer_items
   function roundTotal(r: any): number | null {
     const items: any[] = r?.offer_items ?? []
@@ -512,6 +543,20 @@ function OfferCard({
             {listing.currency}
           </span>
         </div>
+        {displayItems && displayItems.length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {displayItems.map((it: any, idx: number) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--gray)' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {it.quantity ?? '—'}{it.unit ? ` ${it.unit}` : ''} {it.name ?? ''}
+                </span>
+                <span style={{ flexShrink: 0, color: 'var(--ink-soft, var(--ink))' }}>
+                  {it.unit_price != null ? `@ ${it.unit_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}/${it.unit ?? 'unit'}` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Offered by ── */}
