@@ -13,7 +13,11 @@ export async function getActiveDeals(input: GetActiveDealsInput) {
       'buyer_org_id, supplier_org_id, ' +
       'payment_due_date, payment_currency, payment_amount, ' +
       'financing_payment_active, ' +
-      'marketplace_listings(title, listing_type, category), ' +
+      // marketplace_listings has two FK paths to/from deals (deals.listing_id
+      // and marketplace_listings.matched_deal_id) — PostgREST can't pick one
+      // without an explicit hint, or it throws "more than one relationship
+      // was found" and this entire query returns nothing.
+      'marketplace_listings!deals_listing_id_fkey(title, listing_type, category), ' +
       'buyer:organizations!deals_buyer_org_id_fkey(id, legal_name, doing_business_as, passport_score, risk_tier), ' +
       'supplier:organizations!deals_supplier_org_id_fkey(id, legal_name, doing_business_as, passport_score, risk_tier)'
     )

@@ -92,6 +92,7 @@ export async function POST(
       deal_id: id,
       anchor_id: deal.buyer_org_id,
       supplier_id: deal.supplier_org_id,
+      source: 'marketplace',
       type: 'dynamic_discounting',
       status: 'draft',
       invoice_amount: invoiceAmount,

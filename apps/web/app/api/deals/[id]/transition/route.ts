@@ -496,7 +496,21 @@ export async function POST(
   if (rule.nextStatus === 'in_preparation') updates.in_preparation_at = now
   if (rule.nextStatus === 'shipped') updates.shipped_at = now
   if (rule.nextStatus === 'goods_received') updates.goods_received_at = now
-  if (rule.nextStatus === 'delivery_confirmed' && action === 'confirm_goods') updates.goods_confirmed_at = now
+  if (rule.nextStatus === 'delivery_confirmed') {
+    if (action === 'confirm_goods') updates.goods_confirmed_at = now
+    // Calculate payment due date from agreed_payment_terms (e.g. "Net 30") —
+    // this is the only place it's ever set, since this route is the single
+    // entry point for all deal transitions (the older app/api/deals/[id]/
+    // delivery/route.ts that used to do this is orphaned; no caller left).
+    // Without it, dynamic discounting and the overdue cron can never act on
+    // this deal.
+    const netMatch = String(deal.agreed_payment_terms ?? '').match(/net\s*(\d+)/i)
+    if (netMatch?.[1]) {
+      const due = new Date()
+      due.setDate(due.getDate() + parseInt(netMatch[1], 10))
+      updates.payment_due_date = due.toISOString().split('T')[0]
+    }
+  }
   if (rule.nextStatus === 'payment_info_sent') {
     updates.payment_info_sent_at = now
     updates.payment_info_sent_by = userData.id

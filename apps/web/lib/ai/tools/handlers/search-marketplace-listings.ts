@@ -68,8 +68,11 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
     return { error: `Search failed: ${error.message}` }
   }
 
-  // Client-side keyword filter on title + description + category
-  const keyword = input.query.toLowerCase()
+  // Client-side keyword filter on title + description + category.
+  // query is required by the tool schema, but agent-scan's freeform JSON
+  // proposals aren't schema-validated before being stored, so a proposal
+  // can still reach here without one — fall back to "all" rather than crash.
+  const keyword = (input.query || 'all').toLowerCase()
   const filtered = (listings ?? []).filter((l: any) => {
     if (keyword === 'all' || keyword === '') return true
     return (
