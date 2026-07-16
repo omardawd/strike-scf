@@ -1,11 +1,15 @@
 name: Cron - Agent Negotiation Tick
 
-# Runs the autonomous negotiation tick loop every 5 minutes. Requires repo
-# secrets APP_BASE_URL (e.g. https://app.strikescf.com) and CRON_SECRET
-# (must match the CRON_SECRET env var set on the Vercel deployment).
+# Runs the autonomous negotiation tick loop every 2 minutes (GitHub's own
+# scheduler is best-effort and frequently delays/skips schedules more
+# frequent than hourly — see the note in apps/web/CLAUDE.md's cron section.
+# Use workflow_dispatch or the in-app "Run tick now" trigger for anything
+# time-sensitive). Requires repo secrets APP_BASE_URL (e.g.
+# https://app.strikescf.com) and CRON_SECRET (must match the CRON_SECRET env
+# var set on the Vercel deployment).
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/2 * * * *'
   workflow_dispatch: {}
 
 jobs:

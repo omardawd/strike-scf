@@ -230,6 +230,8 @@ export default function AgentSettingsPage() {
   const [agentSaved,  setAgentSaved]  = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [scanResult,  setScanResult]  = useState<string | null>(null)
+  const [tickLoading, setTickLoading] = useState(false)
+  const [tickResult,  setTickResult]  = useState<string | null>(null)
 
   const updatePref = (type: PrefType, partial: Partial<PrefState>) =>
     setPrefs((p) => ({ ...p, [type]: { ...p[type], ...partial } }))
@@ -284,6 +286,24 @@ export default function AgentSettingsPage() {
       setScanResult(json.message ?? 'Scan complete.')
     } catch { setScanResult('Scan failed — check console.') }
     finally { setScanLoading(false) }
+  }
+
+  // Runs the negotiation tick loop for this org only, right now — bypasses
+  // the GitHub Actions cron entirely (org_admin session auth, see
+  // app/api/agents/tick/route.ts POST branch), so it works even if the cron
+  // secrets were never configured or the schedule hasn't fired yet.
+  async function runTick() {
+    setTickLoading(true)
+    setTickResult(null)
+    try {
+      const res = await fetch('/api/agents/tick', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { setTickResult(json.error ?? 'Tick failed.'); return }
+      if (!json.processed) { setTickResult('No active negotiations to act on right now.'); return }
+      const summary = (json.results ?? []).map((r: { outcome: string }) => r.outcome).join(', ')
+      setTickResult(`Processed ${json.processed} negotiation(s): ${summary}`)
+    } catch { setTickResult('Tick failed — check console.') }
+    finally { setTickLoading(false) }
   }
 
   const loadPrefs = useCallback(async () => {
@@ -471,6 +491,15 @@ export default function AgentSettingsPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
+                    onClick={runTick}
+                    disabled={tickLoading}
+                    title="Advance any active negotiations immediately, instead of waiting for the scheduled cron"
+                  >
+                    {tickLoading ? 'Ticking…' : 'Run Negotiation Tick Now'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
                     onClick={() => router.push('/ai?tab=agent')}
                   >
                     View Task Queue →
@@ -479,6 +508,11 @@ export default function AgentSettingsPage() {
                 {scanResult && (
                   <div style={{ fontSize: 13, color: 'var(--color-green)', padding: '8px 12px', background: '#EDFAF4', borderRadius: 'var(--radius-sm)' }}>
                     {scanResult}
+                  </div>
+                )}
+                {tickResult && (
+                  <div style={{ fontSize: 13, color: 'var(--color-green)', padding: '8px 12px', background: '#EDFAF4', borderRadius: 'var(--radius-sm)' }}>
+                    {tickResult}
                   </div>
                 )}
               </div>
