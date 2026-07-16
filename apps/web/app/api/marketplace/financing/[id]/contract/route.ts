@@ -63,11 +63,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single()
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
 
-  const body = await req.json().catch(() => ({})) as { generate?: boolean; contract_document_id?: string }
+  const body = await req.json().catch(() => ({})) as { generate?: boolean; preview?: boolean; contract_document_id?: string }
   let docId = body.contract_document_id ?? null
   let generatedContent: string | null = null
 
-  if (body.generate) {
+  if (body.generate || body.preview) {
     try {
       const [requesterRes, bankRes] = await Promise.all([
         adminClient.from('organizations').select('legal_name').eq('id', financingReq.requesting_org_id).single(),
@@ -113,6 +113,14 @@ Include: parties, financing terms, obligations, payment routing, governing law. 
         document_kind: 'financing_contract',
       }).select().single()
       if (doc) docId = doc.id
+
+      // preview-only: return the draft without attaching it to the transaction
+      // or advancing anything — mirrors the deal-level trade contract flow
+      // (app/api/deals/[id]/contract/route.ts), which always shows the AI
+      // draft to the buyer before it's sent to the counterparty.
+      if (body.preview) {
+        return NextResponse.json({ document_id: docId, content: generatedContent })
+      }
     } catch (err) {
       console.error('[financing/contract] AI generation failed:', err)
       return NextResponse.json({ error: 'Failed to generate the financing contract. Please try again.' }, { status: 502 })

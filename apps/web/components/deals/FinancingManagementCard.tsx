@@ -117,6 +117,9 @@ export function FinancingManagementCard({
   const [contractMode, setContractMode] = useState<'ai' | 'upload'>('ai')
   const [contractFile, setContractFile] = useState<File | null>(null)
   const [uploading, setUploading]     = useState(false)
+  const [previewText, setPreviewText]   = useState<string>('')
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null)
+  const [submittingPreview, setSubmittingPreview] = useState(false)
   const [signature, setSignature]     = useState('')
   const [signing, setSigning]         = useState(false)
   const [reference, setReference]     = useState('')
@@ -163,10 +166,30 @@ export function FinancingManagementCard({
       finally { setUploading(false) }
       return
     }
+    // AI mode — generate a draft and show it before it's actually sent to the
+    // borrower, same as the buyer/supplier trade contract flow on the deal page.
     setGenerating(true)
-    try { await postContract({ generate: true }) }
-    catch { setError('Network error — failed to submit contract') }
+    try {
+      const res = await fetch(`/api/marketplace/financing/${requestId}/contract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preview: true }),
+      })
+      const json = await readJsonSafe<{ document_id?: string; content?: string }>(res)
+      if (!res.ok) { setError(json.error ?? 'Failed to generate contract'); return }
+      setPreviewText(json.content ?? '')
+      setPreviewDocId(json.document_id ?? null)
+    } catch { setError('Network error — failed to generate contract') }
     finally { setGenerating(false) }
+  }
+
+  async function confirmPreview() {
+    if (!previewDocId) return
+    setSubmittingPreview(true)
+    try {
+      const ok = await postContract({ contract_document_id: previewDocId })
+      if (ok) { setPreviewText(''); setPreviewDocId(null) }
+    } finally { setSubmittingPreview(false) }
   }
 
   async function signContract() {
@@ -273,30 +296,50 @@ export function FinancingManagementCard({
 
             {!transaction?.esign_document_id ? (
               isBank ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button type="button" className={`btn btn-sm ${contractMode === 'ai' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('ai')}>
-                      AI Generate
-                    </button>
-                    <button type="button" className={`btn btn-sm ${contractMode === 'upload' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('upload')}>
-                      Upload PDF
+                previewDocId ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Contract Preview</span>
+                      <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', padding: '14px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
+                      {previewText}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-blue btn-sm" disabled={submittingPreview} onClick={confirmPreview}>
+                        {submittingPreview ? 'Sending…' : 'Send to Borrower'}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={submittingPreview} onClick={() => { setPreviewText(''); setPreviewDocId(null) }}>
+                        Discard & Regenerate
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className={`btn btn-sm ${contractMode === 'ai' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('ai')}>
+                        AI Generate
+                      </button>
+                      <button type="button" className={`btn btn-sm ${contractMode === 'upload' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('upload')}>
+                        Upload PDF
+                      </button>
+                    </div>
+                    {contractMode === 'ai' ? (
+                      <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--gray)' }}>
+                        Strike AI will draft a financing agreement from this request's terms. You'll see a full preview before it's sent to the borrower.
+                      </div>
+                    ) : (
+                      <div className="form-field">
+                        <label className="field-label">Contract Document</label>
+                        <input className="input" type="file" accept=".pdf,.doc,.docx,.txt" style={{ paddingTop: 6 }} onChange={e => setContractFile(e.target.files?.[0] ?? null)} />
+                        {contractFile && <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>{contractFile.name}</div>}
+                      </div>
+                    )}
+                    <button className="btn btn-blue btn-sm" disabled={generating || uploading || (contractMode === 'upload' && !contractFile)} onClick={submitContract} style={{ alignSelf: 'flex-start' }}>
+                      {uploading ? 'Uploading…' : generating ? 'Generating…' : contractMode === 'ai' ? 'Generate Preview' : 'Submit Contract'}
                     </button>
                   </div>
-                  {contractMode === 'ai' ? (
-                    <div style={{ padding: '10px 14px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--gray)' }}>
-                      Strike AI will draft a financing agreement from this request's terms. The borrower will receive it to review and sign.
-                    </div>
-                  ) : (
-                    <div className="form-field">
-                      <label className="field-label">Contract Document</label>
-                      <input className="input" type="file" accept=".pdf,.doc,.docx,.txt" style={{ paddingTop: 6 }} onChange={e => setContractFile(e.target.files?.[0] ?? null)} />
-                      {contractFile && <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>{contractFile.name}</div>}
-                    </div>
-                  )}
-                  <button className="btn btn-blue btn-sm" disabled={generating || uploading || (contractMode === 'upload' && !contractFile)} onClick={submitContract} style={{ alignSelf: 'flex-start' }}>
-                    {uploading ? 'Uploading…' : generating ? 'Generating…' : 'Submit Contract'}
-                  </button>
-                </div>
+                )
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--gray)', fontStyle: 'italic' }}>Waiting for the bank to issue the financing contract.</div>
               )
