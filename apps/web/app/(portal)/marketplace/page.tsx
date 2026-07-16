@@ -211,6 +211,15 @@ export default function MarketplacePage() {
   const [ownPassport, setOwnPassport] = useState<OwnPassport | null>(null)
   const [passportLoading, setPassportLoading] = useState(false)
 
+  const [quickStats, setQuickStats] = useState<{ active_deals: number; orgs: number; volume: number } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/marketplace/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setQuickStats(d) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     const orgId = user?.org_id
     if (!orgId) return
@@ -504,15 +513,15 @@ export default function MarketplacePage() {
                   </div>
                   <div className="mp-stat-cell">
                     <span className="mp-stat-label">Active Deals</span>
-                    <span className="mp-stat-value">—</span>
+                    <span className="mp-stat-value">{quickStats ? quickStats.active_deals : '—'}</span>
                   </div>
                   <div className="mp-stat-cell">
                     <span className="mp-stat-label">Orgs</span>
-                    <span className="mp-stat-value">—</span>
+                    <span className="mp-stat-value">{quickStats ? quickStats.orgs : '—'}</span>
                   </div>
                   <div className="mp-stat-cell">
                     <span className="mp-stat-label">Volume</span>
-                    <span className="mp-stat-value">—</span>
+                    <span className="mp-stat-value">{quickStats ? formatVolume(quickStats.volume) : '—'}</span>
                   </div>
                 </div>
               </div>

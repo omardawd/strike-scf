@@ -12,13 +12,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call /api/agents/scan
+        env:
+          RAW_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "${{ secrets.APP_BASE_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then
+          if [ -z "$RAW_BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "::error::APP_BASE_URL or CRON_SECRET repo secret is not set (Settings > Secrets and variables > Actions)."
             exit 1
           fi
-          status=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "${{ secrets.APP_BASE_URL }}/api/agents/scan" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}")
+          BASE_URL=$(echo "$RAW_BASE_URL" | sed -e 's/^[[:space:]"'"'"']*//' -e 's/[[:space:]"'"'"']*$//' -e 's:/*$::')
+          if ! echo "$BASE_URL" | grep -Eq '^https?://'; then
+            BASE_URL="https://$BASE_URL"
+          fi
+          if ! echo "$BASE_URL" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+            echo "::error::APP_BASE_URL doesn't look like a valid base URL after sanitizing (got: '$BASE_URL' from secret). It should be just the origin, e.g. https://your-app.vercel.app — no path, no trailing slash, no quotes."
+            exit 1
+          fi
+          echo "Using base URL: $BASE_URL"
+          status=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$BASE_URL/api/agents/scan" \
+            -H "x-cron-secret: $CRON_SECRET")
           echo "HTTP status: $status"
           cat /tmp/resp.json
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
