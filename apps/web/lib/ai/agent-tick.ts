@@ -195,7 +195,34 @@ async function tickOne(neg: Row): Promise<string> {
       current_round: newRound,
       last_seen_offer_round: newRound,
     }).eq('id', claimed.id)
-    await postSystemMessage(claimed.agent_task_id, `Round ${newRound}: countered at ${price} ${listing.currency}. ${decision.reasoning}`.trim())
+
+    // Round N-1 (counterparty) vs round N (us) as a comparison block — reads
+    // as an actual negotiation exchange in the task thread, not just a price.
+    const fmtPrice = (v: unknown) => v != null ? `${Number(v).toLocaleString()} ${listing.currency}` : '—'
+    const comparison = {
+      type: 'comparison',
+      title: `Round ${newRound}`,
+      left: {
+        label: `Their offer (Round ${newRound - 1})`,
+        items: [
+          { label: 'Price', value: fmtPrice(lastRound?.offered_price) },
+          { label: 'Incoterms', value: lastRound?.proposed_incoterms || '—' },
+          { label: 'Payment Terms', value: lastRound?.proposed_payment_terms || '—' },
+        ],
+      },
+      right: {
+        label: 'Our counter',
+        items: [
+          { label: 'Price', value: fmtPrice(decision.input.offered_price) },
+          { label: 'Incoterms', value: decision.input.proposed_incoterms || lastRound?.proposed_incoterms || '—' },
+          { label: 'Payment Terms', value: decision.input.proposed_payment_terms || lastRound?.proposed_payment_terms || '—' },
+        ],
+      },
+    }
+    await postSystemMessage(
+      claimed.agent_task_id,
+      `Round ${newRound}: countered at ${price} ${listing.currency}.\n\n[[STRIKE_BLOCK:${JSON.stringify(comparison)}]]\n\n${decision.reasoning}`.trim()
+    )
     return 'countered'
   }
 

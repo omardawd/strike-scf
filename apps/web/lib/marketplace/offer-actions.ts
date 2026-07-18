@@ -238,9 +238,37 @@ export async function counterOffer(params: {
     const orgName = counteringOrg?.legal_name ?? 'A party'
     const headline = `Round ${newRound} — ${orgName} has countered at ${terms.offered_price} ${listing.currency}.`
 
+    let content = headline
+    if (isAutonomous) {
+      // Round N-1 vs round N as a comparison block — the room becomes a real
+      // negotiation transcript instead of a stream of bare price updates.
+      const fmt = (v: unknown) => v != null ? `${Number(v).toLocaleString()} ${listing.currency}` : '—'
+      const comparison = {
+        type: 'comparison',
+        title: `Round ${newRound}`,
+        left: {
+          label: `Previous (Round ${newRound - 1})`,
+          items: [
+            { label: 'Price', value: fmt(lastRound?.offered_price) },
+            { label: 'Incoterms', value: lastRound?.proposed_incoterms || '—' },
+            { label: 'Payment Terms', value: lastRound?.proposed_payment_terms || '—' },
+          ],
+        },
+        right: {
+          label: `${orgName}'s counter`,
+          items: [
+            { label: 'Price', value: fmt(terms.offered_price) },
+            { label: 'Incoterms', value: terms.proposed_incoterms || lastRound?.proposed_incoterms || '—' },
+            { label: 'Payment Terms', value: terms.proposed_payment_terms || lastRound?.proposed_payment_terms || '—' },
+          ],
+        },
+      }
+      content = `${headline}\n\n[[STRIKE_BLOCK:${JSON.stringify(comparison)}]]${terms.notes ? `\n\n${terms.notes}` : ''}`
+    }
+
     await adminClient.from('room_messages').insert({
       room_id: roomId,
-      content: isAutonomous && terms.notes ? `${headline}\n\n${terms.notes}` : headline,
+      content,
       message_type: isAutonomous ? 'ai_suggestion' : 'system',
       status: 'visible',
     })

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { Skeleton } from '@/components/motion'
+import { renderTextWithStrikeBlocks } from '@/components/ai-blocks'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 
@@ -154,7 +155,7 @@ function AiMsg({ msg }: { msg: Message }) {
           <span className="room-msg-sender room-msg-sender-ai">Strike AI</span>
           <span className="room-msg-time">{formatTime(msg.created_at)}</span>
         </div>
-        <div className="room-msg-content">{msg.content}</div>
+        <div className="room-msg-content">{msg.content.includes('[[STRIKE_BLOCK:') ? renderTextWithStrikeBlocks(msg.content) : msg.content}</div>
       </div>
     </div>
   )

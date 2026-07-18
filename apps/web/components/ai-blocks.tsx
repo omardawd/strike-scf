@@ -1,4 +1,5 @@
 'use client'
+import type React from 'react'
 // Structured response blocks Strike AI can render inline in its chat replies —
 // the same mechanism the [LISTING_CARD:{id}] directive already used, generalized.
 // Claude picks a block TYPE and supplies DATA via a directive in its own text;
@@ -129,4 +130,26 @@ export function StrikeBlockFromJson({ raw, keyProp }: { raw: string; keyProp: st
     case 'alert': return <Alert key={keyProp} block={data} />
     default: return null
   }
+}
+
+/**
+ * Splits plain (non-markdown) text on [[STRIKE_BLOCK:...]] directives —
+ * for surfaces like Strike Rooms that render message content as-is rather
+ * than through a markdown pipeline. Text segments keep whitespace via
+ * white-space: pre-wrap instead of being handed to a markdown renderer.
+ */
+export function renderTextWithStrikeBlocks(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  STRIKE_BLOCK_RE.lastIndex = 0
+  while ((m = STRIKE_BLOCK_RE.exec(text)) !== null) {
+    const before = text.slice(last, m.index).trim()
+    if (before) out.push(<span key={`t-${last}`} style={{ whiteSpace: 'pre-wrap' }}>{before}</span>)
+    out.push(<StrikeBlockFromJson key={`b-${m.index}`} keyProp={`b-${m.index}`} raw={m[1]!} />)
+    last = m.index + m[0].length
+  }
+  const remainder = text.slice(last).trim()
+  if (remainder) out.push(<span key={`t-${last}`} style={{ whiteSpace: 'pre-wrap' }}>{remainder}</span>)
+  return out
 }

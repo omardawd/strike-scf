@@ -658,6 +658,11 @@ function WorkingBubble({ label }: { label: string }) {
 
 function MessageBubble({ role, content }: { role: TaskThreadMessage['role']; content: string }) {
   if (role === 'system') {
+    // Negotiation-round narration carries a [[STRIKE_BLOCK:...]] comparison —
+    // too wide for the narrow centered pill below, render it as a real card.
+    if (content.includes('[[STRIKE_BLOCK:')) {
+      return <div style={{ margin: '8px 0', fontSize: 13, color: 'var(--ink-soft, var(--ink))' }}>{renderMarkdownWithBlocks(content, `sys-${content.length}`)}</div>
+    }
     return (
       <div style={{ textAlign: 'center', margin: '4px 0' }}>
         <span style={{

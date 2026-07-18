@@ -877,8 +877,18 @@ direct agent-to-agent RPC — it falls out of both sides running the same loop a
 ### Known gaps (don't assume otherwise without checking)
 - The scheduled `cron-agents-tick.yml` GitHub Actions workflow is **unreliable for sub-hourly
   cadences** even with `APP_BASE_URL`/`CRON_SECRET` repo secrets correctly set — GitHub's own
-  scheduler has been observed firing hours apart despite a `*/2 * * * *` expression. Never rely
-  on it for a live demo; use the manual tick trigger above.
+  scheduler has been observed firing hours apart despite a `*/2 * * * *` expression.
+- **The actually-reliable path**: a `pg_cron` job (`agent-negotiation-tick`, jobid 1, schedule
+  `* * * * *`) runs directly inside the Supabase Postgres instance via `pg_net`'s async HTTP
+  client, calling `https://app.strikescf.com/api/agents/tick` with the `x-cron-secret` header
+  every minute. Set up because a live demo can't depend on GitHub's scheduler — confirmed via
+  `cron.job_run_details` / `net._http_response` firing exactly 60s apart with real HTTP 200s.
+  Check `select * from cron.job_run_details where jobid=1 order by start_time desc limit 10;`
+  and `select * from net._http_response order by created desc limit 10;` to verify it's alive.
+  This and the GitHub Actions workflow can safely run concurrently — the tick loop's atomic
+  row-claiming (`last_tick_at`, 4-minute window) means a negotiation is never double-acted on,
+  a redundant caller just gets `skipped_claimed_elsewhere`. The manual "Run Negotiation Tick Now"
+  button still exists as a third, on-demand path for testing a specific org immediately.
 - No tool today synthesizes cash position + outstanding exposure + concentration risk into one
   call — `/api/reporting` computes the right aggregate numbers but isn't registered as an AI tool.
 
