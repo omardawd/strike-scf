@@ -427,6 +427,20 @@ const GET_ERP_DATA = {
   },
 }
 
+const GET_CAPITAL_POSITION = {
+  name: 'get_capital_position',
+  description: 'Synthesize an organization\'s cash position, receivables/payables aging (from ERP if connected), and deal-book concentration risk into one view. Use this whenever the user asks a strategic question like "should we take this deal", "can we afford this", or "what does this do to our risk concentration" — it is the single call that answers cash + risk together instead of chaining several narrower tools. Pass hypothetical_deal_value (and hypothetical_counterparty_org_id if known) to model taking on ONE more deal on top of the current book.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string', description: 'Organization ID to assess (use org_id from context)' },
+      hypothetical_deal_value: { type: 'number', description: 'Value of a deal being considered, to model its effect on cash/concentration alongside the current position' },
+      hypothetical_counterparty_org_id: { type: 'string', description: 'org_id of the counterparty on the hypothetical deal, if known — sharpens the concentration-risk delta' },
+    },
+    required: ['org_id'],
+  },
+}
+
 const GET_AGENT_TASKS = {
   name: 'get_agent_tasks',
   description: 'List the AI agent\'s pending proposals and recent task history for an org. Use when the user asks what their agent is doing, what proposals are waiting, or to review agent activity.',
@@ -484,6 +498,7 @@ const SUPPLIER_TOOLS = [
   DETECT_DEAL_RISK_SIGNALS,
   GENERATE_DEAL_TERM_SHEET,
   GET_ERP_DATA,
+  GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
   PROACTIVE_PORTFOLIO_ALERTS,
 ]
@@ -508,6 +523,7 @@ const ANCHOR_TOOLS = [
   DETECT_DEAL_RISK_SIGNALS,
   GET_PASSPORT_ADVICE,
   GET_ERP_DATA,
+  GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
 ]
 
@@ -552,6 +568,7 @@ export const STRIKE_TOOLS = [
   GET_PASSPORT_ADVICE,
   PROACTIVE_PORTFOLIO_ALERTS,
   GET_ERP_DATA,
+  GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
 ] as const
 

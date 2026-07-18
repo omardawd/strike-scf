@@ -21,6 +21,7 @@ import { submitMarketplaceOffer, type SubmitMarketplaceOfferInput } from './hand
 import { handleSearchWeb } from './handlers/search-web'
 import { getFinancingPrograms, type GetFinancingProgramsInput } from './handlers/get-financing-programs'
 import { getErpData, type GetErpDataInput } from './handlers/get-erp-data'
+import { getCapitalPosition, type GetCapitalPositionInput } from './handlers/get-capital-position'
 import { createFinancingRequest } from './handlers/create-financing-request'
 import { getAgentTasks, type GetAgentTasksInput } from './handlers/get-agent-tasks'
 import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './handlers/counter-marketplace-offer'
@@ -52,6 +53,7 @@ export type ToolName =
   | 'search_web'
   | 'get_financing_programs'
   | 'get_erp_data'
+  | 'get_capital_position'
 
 export async function executeTool(
   toolName: ToolName,
@@ -106,6 +108,8 @@ export async function executeTool(
       return getFinancingPrograms(toolInput as unknown as GetFinancingProgramsInput)
     case 'get_erp_data':
       return getErpData(toolInput as unknown as GetErpDataInput)
+    case 'get_capital_position':
+      return getCapitalPosition(toolInput as unknown as GetCapitalPositionInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
