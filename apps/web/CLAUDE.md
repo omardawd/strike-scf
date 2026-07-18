@@ -88,7 +88,8 @@ apps/web/
 │   ├── ghost-lock.tsx            ← GhostLock: the locked-state card shown inside ghost-gated pages
 │   ├── deals/ActionPanel.tsx     ← Deal action buttons (receives FinancingContext as props)
 │   ├── deals/DealRoadmap.tsx     ← Deal timeline/roadmap (receives FinancingContext as props; steps: Agreed → Contract → In Business → Shipped → Received → Accepted → Paid → Completed)
-│   ├── deals/FinancingManagementCard.tsx ← Financing-request lifecycle UI (contract sign → disbursement → confirm receipt); prop-driven, no internal fetching; shared by marketplace/financing/[id] (requester view) and deals/[id] (bank view)
+│   ├── deals/FinancingManagementCard.tsx ← Financing-request lifecycle UI (contract sign → disbursement → confirm receipt); prop-driven, no internal fetching; shared by marketplace/financing/[id] (requester view) and deals/[id] (bank view). Bank's AI-generate contract path is preview-before-send (generate → review full text → "Send to Borrower"/"Discard & Regenerate"), mirroring the buyer/supplier trade-contract flow in ActionPanel.tsx — do not reintroduce an immediate generate-and-submit path.
+│   ├── motion.tsx                ← `CountUp`/`Reveal`/`Skeleton`/`SkeletonText`/`SkeletonCard` — see "Motion system" below
 │   ├── ai-overlay.tsx            ← Global AI overlay (hover-pill + draggable cluster); mounted on every page except /ai;
 │   │                                web search + get_financing_programs tools enabled; reads data-ai-context from DOM
 │   ├── ai-insight-card.tsx       ← Contextual AI insight banner/compact/floating → /api/ai/insight
@@ -370,18 +371,59 @@ passport_peer_reviews       -- peer reviews (NOT 'passport_reviews')
 passport_views              -- viewer_org_id, viewer_bank_id, viewed_org_id, context
 
 agent_actions               -- THE AI action/audit log (use this; do NOT create ai_actions_log).
-                            -- action_type, entity_type, entity_id, reasoning, input_summary,
-                            -- output_summary, outcome, requires_approval, human_approved,
-                            -- approved_by_user_id, approved_at, model, tokens_used
+                            -- action_type (enum — extended by migration 024 with negotiation_*
+                            --   values + create_marketplace_listing/create_financing_request/
+                            --   submit_marketplace_offer), entity_type, entity_id, reasoning,
+                            --   input_summary, output_summary, outcome, requires_approval,
+                            --   human_approved, approved_by_user_id, approved_at, model, tokens_used
 agent_preferences           -- org-level AI hard limits/rules: org_id, preference_type,
                             -- value(jsonb), label, is_active, set_by_user_id
-ai_negotiation_state        -- per-deal: deal_id(unique), current_round, last_offer_snapshot,
-                            -- negotiation_history, agent_recommendation, agent_confidence,
-                            -- market_context, suggested_counter
+                            -- Loaded via lib/ai/agent-preferences.ts (getAgentPreferences(orgId)),
+                            -- used both to bound what agent-scan.ts proposes and as the enforced
+                            -- guardrails in the tick loop.
+ai_negotiation_state        -- CONFIRMED ORPHANED — zero reads/writes anywhere in the app. Do not
+                            -- use; `agent_negotiations` (below) is the real table for this.
+
+-- ── Autonomous Agent Manager + Two-Gate Negotiation (see dedicated section below) ──
+org_agents                  -- one per org, opt-in; id, org_id(unique), name, persona, is_active,
+                            -- goals(jsonb), created_at, updated_at. Toggled via /api/agents/activate.
+agent_tasks                 -- the single "human decision" record — root of a negotiation thread
+                            -- OR a single-shot proposal. id, org_id, type, title, body,
+                            -- proposed_action(jsonb: {tool_name, tool_input}),
+                            -- status (awaiting_approval|approved|executing|rejected|completed|failed),
+                            -- result(jsonb), approved_by_user_id, approved_at, rejected_reason,
+                            -- plan(jsonb — negotiation-capable proposals only: {price_floor,
+                            --   price_ceiling, max_rounds, deadline_at, guardrails_configured,
+                            --   preferences_snapshot}; NULL for single-shot proposals),
+                            -- root_task_id (FK → agent_tasks.id; NULL if this task IS the thread
+                            --   root; follow-ups — negotiation_escalation, negotiation_ready_to_finalize —
+                            --   always point back at the GATE-1 task that started the thread)
+agent_negotiations          -- the stateful negotiation *process* that runs after GATE 1 is approved,
+                            -- deliberately kept separate from agent_tasks. id, agent_task_id, org_id,
+                            -- listing_id, offer_id (UNIQUE, nullable), deal_id (set once a deal exists),
+                            -- status (active|awaiting_finalization|halted_by_user|halted_guardrail|
+                            --   completed_accepted|completed_rejected|completed_withdrawn|
+                            --   completed_deadline|failed), current_round, last_seen_offer_round,
+                            -- last_tick_at (idempotency — see tick loop below), history(jsonb array),
+                            -- halt_requested/halt_requested_by (the "Stop negotiation" button), outcome_summary
+agent_task_messages         -- per-thread chat log. agent_task_id ALWAYS points at the thread's ROOT
+                            -- task (never a follow-up task's own id), so reading a thread is one
+                            -- simple query regardless of how many agent_tasks rows it has produced.
+                            -- id, agent_task_id, role(user|assistant|system), content, created_at
+
+-- ── ERP integration (REAL, live connectors — not a stub) ──────────────────────
+erp_connections              -- one per org (UNIQUE org_id). erp_type (erpnext|netsuite|sap|oracle|
+                            -- dynamics|odoo), base_url, api_key, api_secret, dispatch_token,
+                            -- status (pending|active|error|disconnected), last_synced_at, error_message
+erp_sync_data                -- UNIQUE(org_id, data_type). data_type (cash_position|ar_aging|ap_aging|
+                            -- inventory_levels|open_orders|payment_terms|production_capacity),
+                            -- period_start/end, data(jsonb — shape varies per data_type), fetched_at
 ```
 
-> NOT yet in the live schema (planned for Track 2): `erp_connections`,
-> `erp_sync_data`, `ai_signals`, `ai_signal_resolutions`.
+> `ai_signals` / `ai_signal_resolutions` genuinely do not exist anywhere in the schema or codebase
+> (confirmed via grep) — still just an idea, not built. Do NOT confuse this with `erp_connections`/
+> `erp_sync_data`, which ARE fully built and live (migrations 018/019) — an earlier version of this
+> file incorrectly listed those as "not yet in schema" too.
 
 bank_accounts
   id, entity_type (bank|organization), entity_id (FK → banks.id or organizations.id),
@@ -407,6 +449,25 @@ bank_accounts
 - `00000000000009_deal_flow_update.sql` — deal flow update
 - `00000000000010_bank_accounts.sql` — `bank_accounts` table + RLS (entity_type: bank|organization)
 - `00000000000011_procurement_flow_v2.sql` — `listing_line_items` table; `bank_account_id` + `offer_items` on `marketplace_offers`; `deal_status` enum value `contract_pending`; deal columns for contract/invoice/bank-contract lifecycle (see below)
+- `00000000000012_shipping_cost.sql` — `shipping_cost` on listings/offers
+- `00000000000013_document_entity_type_listing.sql` — `documents.entity_type` gains `listing`
+- `00000000000014_passport_ai_evaluated_at.sql` — `organizations.passport_ai_evaluated_at`
+- `00000000000015_passport_score_reasoning.sql` — `organizations.passport_score_reasoning`
+- `00000000000016_listing_min_passport_score.sql` — `marketplace_listings.min_passport_score`
+- `00000000000017_passport_expert_analysis.sql` — `organizations.passport_expert_analysis` (AI CFO-grade narrative)
+- `00000000000018_erp_integration.sql` — `erp_connections` + `erp_sync_data` tables (ERPNext/NetSuite/SAP/Oracle/Dynamics)
+- `00000000000019_erp_odoo.sql` — expands `erp_connections.erp_type` to add `'odoo'`
+- `00000000000021_agents.sql` — `org_agents` + `agent_tasks` tables (single-shot agent proposal queue; **020 does not exist, not a gap**)
+- `00000000000022_deals_erp_reference.sql` — links a deal back to its originating ERP record
+- `00000000000023_organizations_logo_url.sql` — `organizations.logo_url`
+- `00000000000024_agent_action_type_negotiation.sql` — extends `agent_actions.action_type` enum with `negotiation_*` values + `create_marketplace_listing`/`create_financing_request`/`submit_marketplace_offer` (separate migration — `ALTER TYPE ... ADD VALUE` can't share a transaction with a statement referencing the new value)
+- `00000000000025_agent_tasks_plan_status.sql` — `agent_tasks.status` gains `'executing'`; adds `agent_tasks.plan` (negotiation guardrails snapshot)
+- `00000000000026_agent_negotiations.sql` — `agent_negotiations` table (the stateful negotiation process — see dedicated section below)
+- `00000000000027_agent_negotiations_offer_uniqueness_per_org.sql` — uniqueness fix on `agent_negotiations.offer_id`
+- `00000000000028_agent_task_threads.sql` — `agent_tasks.root_task_id` + `agent_task_messages` table (per-thread chat)
+- `00000000000029_marketplace_offers_room_id.sql` — `marketplace_offers.room_id`
+- `00000000000030_marketplace_offers_deal_id.sql` — `marketplace_offers.deal_id`
+- `00000000000031_transactions_dd_nullable.sql` — `transactions.bank_id` / `financing_amount_requested` made nullable (Dynamic Discounting transactions are direct anchor-to-supplier with no bank — the NOT NULL constraints were inherited from the bank-financing-only original design and broke every DD offer)
 
 ---
 
@@ -562,6 +623,26 @@ Tokens in `app/globals.css` (+ `app/marketplace.css` for Strike Place/Rooms/Pass
 
 Conventions: cards = `--radius-card` + `--shadow-card`; buttons & badges = full pill (999px); inputs = 12px; sidebar active nav = `--blue-light` pill (no left-border accent). No `transform: translateY` hover lifts. No Shadcn, no Tailwind, no MUI — all hand-built CSS; check existing classes first.
 
+### Motion system ("Quiet Intelligence")
+
+Second layer on top of the base tokens, in `app/globals.css` + `components/motion.tsx`. Check
+these before writing new loading/reveal/emphasis CSS — most needs are already covered.
+
+```
+--ease-out / --ease-spring, --dur-1/2/3    -- timing tokens
+--gradient-ai, --glow-ai                    -- AI-surface-specific gradient/glow tokens
+.reveal / .reveal-stagger                   -- fade+rise on mount; -stagger has 14 nth-child delay rules
+.skeleton / .skeleton-circle / .skeleton-text -- loading placeholders
+.card-interactive                           -- hover/press feedback for clickable cards
+.ai-sheen                                   -- animated sheen sweep (@property --sheen-angle) for AI surfaces
+.ai-breathe                                 -- subtle pulse, used on active/"thinking" AI indicators
+.shine, .float-slow, .fade-in, .count-tabular -- misc accent animations
+```
+
+`components/motion.tsx` exports `CountUp`, `Reveal`, `Skeleton`, `SkeletonText`, `SkeletonCard`
+React wrappers around the above classes. A `prefers-reduced-motion` kill-switch block disables
+all of it. Used throughout dashboards, marketplace, deals, rooms, passport, auth, and AI surfaces.
+
 ---
 
 ## AI features
@@ -626,7 +707,9 @@ dispatched in `lib/ai/tools/execute.ts`. Handlers live in `lib/ai/tools/handlers
 `lib/ai/tools/admin.ts` provides a shared service-role client for handlers.
 
 ```
-ToolName (18 tools total):
+ToolName (24 tools registered in definitions.ts + get_agent_tasks/get_erp_data — grep
+`name: '` in lib/ai/tools/definitions.ts for the current authoritative list, this file
+will drift again):
 
 READ tools (no approval gate):
   lookup_entities            — resolve name/keyword to org/deal/financing_request UUIDs; query:"all" lists recent
@@ -641,21 +724,57 @@ READ tools (no approval gate):
   generate_deal_term_sheet   — structured term sheet (parties, goods, pricing, delivery, financing)
   evaluate_listing_offers    — rank offers by price/delivery speed/counterparty trust
   get_passport_advice        — explain PassportScore drivers + specific improvement actions
-  search_marketplace_listings — search public listings; emits [LISTING_CARD:{id}] for each result
+  search_marketplace_listings — search public listings; emits [LISTING_CARD:{id}] for each result.
+                               query is schema-required but agent-scan's freeform proposals aren't
+                               schema-validated before being stored — the handler falls back to "all"
+                               if a stored proposal ever omits it, rather than crashing.
   search_web                 — Brave/DuckDuckGo search for market prices, regulations, benchmarks
   get_financing_programs     — fetch financing programs available to an org (overlay tool)
+  get_agent_tasks            — list an org's pending + recent agent_tasks (chat/dispatch-facing read)
+  get_erp_data               — read erp_sync_data for a connected org (data_type: ar_aging|ap_aging|
+                               cash_position|inventory_levels|open_orders|all); returns
+                               {connected:false, message:'...'} if no active erp_connections row
 
 WRITE tools (subject to agent_preferences require_approval_for_actions gate):
   create_marketplace_listing — create listing with line items; DOCUMENT MODE: extracts all fields from
                                attached doc automatically. Emits [LISTING_CARD:{id}] on success.
-  submit_marketplace_offer   — submit/bid on a listing by listing_id
+  submit_marketplace_offer   — submit/bid on a listing by listing_id. Does NOT accept offer_items
+                               (no per-item pricing) — only a lump-sum offered_price/offered_quantity.
+  create_financing_request   — request financing against a deal's receivable
+
+NEGOTIATION tools — only ever offered to Claude inside the tick loop (NEGOTIATION_TOOLS in
+definitions.ts), never in general chat. See "Autonomous Agent Manager" section below.
+  counter_marketplace_offer  — propose improved terms; same offer_items limitation as submit above
+  reject_marketplace_offer   — decline outright, ends the negotiation
+  recommend_finalization     — SIGNAL-ONLY, not a real action. Calling it does nothing on its own —
+                               the tick loop intercepts the tool_use block directly (NOT registered
+                               in execute.ts/ToolName) and turns it into a negotiation_ready_to_finalize
+                               agent_tasks row for GATE 2. This is HOW the agent recommends accepting
+                               without ever being able to accept itself.
+
+Signal-only tool for per-task plan chats (app/api/agents/tasks/[id]/messages/route.ts), also
+NOT registered in execute.ts/ToolName:
+  revise_proposed_action     — Claude calls this when a human asks it to change a pending proposal's
+                               terms; the route intercepts the tool_use block and merges `patch` into
+                               proposed_action.tool_input directly.
+
+Intentionally NEVER given a schema in any portal's tool set: accept_marketplace_offer. Accepting
+an offer creates a binding deal, so per the two-gate design this only ever executes via a human
+explicitly approving a negotiation_ready_to_finalize agent_tasks row
+(app/api/agents/tasks/[id]/approve/route.ts) — never via ad-hoc chat, never via the tick loop.
 
 BANK_ONLY tools:
   proactive_portfolio_alerts — scan bank's full portfolio for risk concentration, overdue, anomalies
+
+Orphaned handler — file exists (lib/ai/tools/handlers/get-importable-erp-deals.ts) but is NOT
+registered in definitions.ts or execute.ts. Don't assume get_importable_erp_deals is callable
+without checking again; it silently isn't today.
 ```
 
 **LISTING_CARD directive**: when a tool emits `[LISTING_CARD:{listing_id}]` on its own line,
 the Strike AI page UI renders a clickable card linking to `/marketplace/listings/{listing_id}`.
+This is the general pattern for letting a tool result render as a rich UI element instead of
+plain text — see it before inventing a new mechanism for AI-controlled response layout.
 
 **Document-mode tool calling** (create_marketplace_listing): when the user attaches a document
 and asks to create a listing, the AI extracts all fields from the document and calls the tool
@@ -669,6 +788,121 @@ the message signals document mode to the AI system prompt.
 - Usage logged to `ai_usage` table (fail-soft if the table is absent)
 - Tool executions logged to `agent_actions` (action_type = tool_name; fail-soft)
 - Default model `claude-haiku-4-5-20251001` (cost-sensitive); dedicated AI page + doc gen → `claude-sonnet-4-6`
+
+---
+
+## Autonomous Agent Manager & Two-Gate Negotiation
+
+The org-level AI agent (`org_agents`, opt-in per org) can discover opportunities, draft a plan,
+and — once a human approves that plan **once** — run a multi-round negotiation autonomously,
+only coming back to a human again at the moment a deal would actually be finalized. This is the
+core safety invariant, non-negotiable: **negotiation rounds run autonomously within guardrails,
+but accepting an offer always requires a second, explicit human approval showing the final
+terms.** The agent never finalizes anything a human hasn't seen.
+
+```
+GATE 1 (human approves the PLAN once)
+   → agent_tasks.status: 'awaiting_approval' → 'approved' → 'executing'
+   → an agent_negotiations row is created, status = 'active'
+   → Autonomous tick loop (every ~2–5 min, see below):
+        - counter within price_floor/price_ceiling/max_rounds/deadline → autonomous, no approval
+        - terms outside guardrails, or guardrails were never configured → ESCALATE:
+              new agent_tasks row (root_task_id = the GATE-1 task), type
+              'negotiation_escalation', status 'awaiting_approval' — same approve/reject UI,
+              no new UI needed
+        - terms look acceptable → do NOT auto-accept. Set agent_negotiations.status =
+              'awaiting_finalization', create a 'negotiation_ready_to_finalize' agent_tasks row
+        - clearly bad offer → autonomous reject is allowed (declining commits to nothing)
+GATE 2 (human approves finalization) → the ONLY place accept_marketplace_offer ever executes
+```
+
+### Key files
+- **`lib/ai/agent-scan.ts`** — daily cron (`/api/agents/scan`) + manual trigger. Reads ERP
+  signals + active deals + recommendations + the org's own listings, asks Claude for 1–5
+  structured proposals, inserts as `agent_tasks`, notifies org_admins. For negotiation-capable
+  proposal types (`create_marketplace_listing`/`submit_marketplace_offer`), also populates
+  `plan` with guardrails from `agent-preferences.ts` at proposal time.
+- **`lib/ai/agent-tick.ts`** (`runAgentTick(orgId?)`) — the autonomous execution engine, called by
+  `/api/agents/tick`. For every `agent_negotiations` row with `status='active'`:
+  1. **Atomically claims the row first** — `UPDATE ... SET last_tick_at = now() WHERE id = $1
+     AND status='active' AND (last_tick_at IS NULL OR last_tick_at < now() - interval '4 minutes')
+     RETURNING *` — prevents two overlapping invocations from double-acting on the same negotiation.
+  2. Halts immediately if `org_agents.is_active=false` (the global kill switch), `halt_requested=true`
+     (the per-negotiation "Stop" button), or the deadline has passed (hard platform-wide cap:
+     `negotiation-constants.ts`'s `HARD_MAX_ROUNDS`/`HARD_MAX_DEADLINE_DAYS`, enforced no matter
+     what the plan says — a safety backstop, not a business guardrail).
+  3. If the last offer round wasn't made by us, calls Claude with `NEGOTIATION_TOOLS` bounded by
+     a system prompt stating the plan's hard limits, plus recent room conversation for context.
+  4. **Validates Claude's chosen terms server-side against the plan before executing anything**
+     (`checkPriceGuardrail`) — a prompt is advisory, not a guardrail; out-of-bounds always escalates,
+     never executes.
+  5. Logs every action to `agent_actions`, posts a system-narration message into the task thread
+     (`agent-task-chat.ts`'s `postSystemMessage`), and — critically — posts into the shared Strike
+     Room too (`message_type: 'ai_suggestion'`) so the counterparty (human or their own agent) sees
+     the reasoning, not just a new number.
+- **`lib/marketplace/offer-actions.ts`** — shared `counterOffer`/`acceptOffer`/`rejectOffer`/
+  `ensureRoom` functions. Both the human-facing route (`app/api/marketplace/offers/[id]/route.ts`)
+  and the agent tool handlers call these same functions — one implementation of turn-order/
+  room-creation/deal-creation logic, not two parallel ones.
+- **`lib/ai/agent-preferences.ts`** — `getAgentPreferences(orgId)`, the one shared loader for the
+  org's price floor/ceiling/max deal value/etc. Used both to bound proposals at scan time and as
+  the enforced guardrails at tick time.
+- **`lib/ai/agent-task-chat.ts`** — per-thread chat + system narration. `agent_task_messages` rows
+  are always keyed to the thread's ROOT `agent_tasks.id` (via `root_task_id`), so the entire
+  lineage of a negotiation (GATE-1 task → escalations → GATE-2 task) reads as one conversation.
+- **`lib/ai/negotiation-constants.ts`** — the hard platform-wide caps (`HARD_MAX_ROUNDS`,
+  `HARD_MAX_DEADLINE_DAYS`) that apply regardless of what an org's plan configures.
+
+### Agent-to-agent negotiation — emergent, not special-cased
+If both counterparties on a listing/offer have active agents, each org's *own* independent tick
+loop reacts to the other's moves via the shared `marketplace_offers`/`rooms` tables. There is no
+direct agent-to-agent RPC — it falls out of both sides running the same loop against shared state.
+
+### UI
+- **`app/(portal)/ai/page.tsx`**'s Agent tab renders `agent_tasks` as a card grid (root tasks only,
+  `root_task_id IS NULL`), each opening a per-thread chat view combining `agent_task_messages` +
+  the negotiation's live progress (round N of max M, guardrail-missing warning if
+  `plan.guardrails_configured=false`, "Stop negotiation" button).
+- **`app/(portal)/settings/agent/page.tsx`** — activation toggle, name/persona/goals, "Run Scan Now"
+  (`POST /api/agents/scan`) and **"Run Negotiation Tick Now"** (`POST /api/agents/tick`, org-scoped
+  via session auth — bypasses the cron secret entirely, so it works even if the scheduled cron
+  isn't configured or hasn't fired yet; use this for demos rather than waiting on cron).
+- **`app/(portal)/rooms/[id]/page.tsx`** — deal/listing side panel showing negotiation context
+  alongside the room thread; agent reasoning appears as real `ai_suggestion` chat messages, not a
+  separate summary — this is deliberately the more visceral "two negotiators talking" surface.
+- Dashboard **Live Agent Activity ticker** (`AgentActivityTicker` in `dashboard/page.tsx`, backed
+  by `/api/agents/activity`) — rotating feed of recent `agent_actions` across the org, ambient
+  "this is happening even when you're not looking" surface.
+
+### Known gaps (don't assume otherwise without checking)
+- The scheduled `cron-agents-tick.yml` GitHub Actions workflow is **unreliable for sub-hourly
+  cadences** even with `APP_BASE_URL`/`CRON_SECRET` repo secrets correctly set — GitHub's own
+  scheduler has been observed firing hours apart despite a `*/2 * * * *` expression. Never rely
+  on it for a live demo; use the manual tick trigger above.
+- No tool today synthesizes cash position + outstanding exposure + concentration risk into one
+  call — `/api/reporting` computes the right aggregate numbers but isn't registered as an AI tool.
+
+---
+
+## ERP integration (real, live connectors — not a mock)
+
+`erp_connections` + `erp_sync_data` (migrations 018/019) back a genuine external integration,
+not a demo stub — `app/api/erp/sync/route.ts` speaks real Odoo XML-RPC and ERPNext REST APIs
+(SSRF-guarded on `base_url`), fetching AR/AP aging, cash position, inventory levels, open orders,
+and production capacity, and upserting into `erp_sync_data` (`UNIQUE(org_id, data_type)`).
+
+- **`app/api/erp/connect/route.ts`** — org_admin connects an ERPNext/Odoo instance (base URL, API
+  key/secret); UI at Settings → ERP Integration tab (`app/(portal)/settings/page.tsx`, `tab='erp'`).
+- **`app/api/erp/sync/route.ts`** — daily cron (`cron-erp-sync.yml`, 06:00 UTC) + manual "Sync Now".
+- **`lib/ai/tools/handlers/get-erp-data.ts`** (`get_erp_data` tool) — chat/dispatch-facing read;
+  returns `{connected:false, message:'...'}` if no active connection, or the synced `data_type`
+  rows otherwise.
+- No seed data exists anywhere for `erp_sync_data` — a fresh demo org has zero ERP context until
+  either a real Odoo/ERPNext sandbox is connected and synced, or rows are hand-inserted directly.
+- `lib/ai/agent-scan.ts`'s own ERP query only sees data once the sort-column bug is fixed (it was
+  ordering by a column, `synced_at`, that doesn't exist on `erp_sync_data` — the real column is
+  `fetched_at` — which silently zeroed out the daily scan's ERP context even for connected,
+  synced orgs; `get_erp_data` was never affected, only the background scan was).
 
 ---
 
@@ -727,7 +961,11 @@ upgrading to Vercel Pro, delete the `.github/workflows/cron-*.yml` files and re-
 - `cron-deals-check-overdue.yml` → `/api/deals/check-overdue` — daily 08:00 UTC (moves overdue deals to `payment_overdue`; 2-business-day grace if financing still pending)
 - `cron-erp-sync.yml` → `/api/erp/sync` — daily 06:00 UTC
 - `cron-agents-scan.yml` → `/api/agents/scan` — daily 07:00 UTC
-- `cron-agents-tick.yml` → `/api/agents/tick` — every 5 minutes (the autonomous negotiation loop; see `lib/ai/agent-tick.ts`)
+- `cron-agents-tick.yml` → `/api/agents/tick` — schedule expression `*/2 * * * *`, but treat this as
+  best-effort only: GitHub's own scheduler has been observed firing hours apart regardless of the
+  expression, even with secrets correctly configured. For anything time-sensitive (demos, testing),
+  use the "Run Negotiation Tick Now" button in Settings → Agent instead (org-scoped session auth,
+  bypasses GitHub Actions and the cron secret entirely) or `workflow_dispatch` via `gh workflow run`.
 
 **External packages** (`next.config.js` `serverExternalPackages`): `pdfkit` is excluded from
 webpack bundling. Any route using PDFKit must use `export const runtime = 'nodejs'`.
@@ -748,6 +986,17 @@ admin@strikescf.com     / DevPass123! → strike_admin         (Strike platform)
 ```
 
 Atlas Bank's id is `NEXT_PUBLIC_DEV_BANK_ID` (ff1a209f-aa2a-471c-95c8-9d01018cdecd).
+
+**Also live in the dev database, created via `/signup` during agent-negotiation testing — NOT in
+`seed.sql`, so a fresh `supabase db reset` will NOT bring these back:**
+```
+jfurner@walmart.com     / DevPass123! → org_admin (Walmart Inc., anchor)      org_id 23945f06-58b7-48d2-86af-6b584edc536a
+ahmedd2004@gmail.com    / DevPass123! → org_admin (Rocket Corp, anchor)       org_id b8d9a8db-9c68-49f9-b8e8-c5f9a24afebd
+sarah@atlasbank.dev is the same Atlas Bank account above — used as the bank counterparty for
+these orgs' financing throughout agent-negotiation testing.
+```
+This Walmart/Rocket Corp pair is what the two-window live negotiation demo scenario is built
+around — both orgs have `org_agents.is_active=true` and real negotiation history between them.
 
 ---
 
@@ -830,8 +1079,11 @@ anon client for reads with RLS). Key routes:
 - /api/deals/[id]/generate-documents — AI doc generation (Haiku)
 - /api/deals/[id]/payment-instructions — Seller sets bank details; advances agreed→documents_pending
 - /api/deals/[id]/ship — Seller marks shipped (tracking ref, carrier, optional invoice upload)
-- /api/deals/[id]/delivery — Buyer confirms delivery or raises dispute (action=confirm|dispute)
-- /api/deals/[id]/payment — Buyer confirms payment sent (action=buyer_confirm); seller confirms receipt (action=seller_confirm)
+- /api/deals/[id]/delivery — CONFIRMED ORPHANED, zero callers in the frontend. All real transitions
+  (including delivery confirmation) go through /api/deals/[id]/transition. Do not add logic here —
+  it will never run. This route is where payment_due_date used to be calculated; that logic now
+  lives in transition/route.ts's `nextStatus === 'delivery_confirmed'` branch. (Its sibling,
+  the equally-orphaned /api/deals/[id]/payment, was already deleted — this one wasn't, yet.)
 - /api/deals/[id]/cancel — Cancel with server-enforced policy (blocked ≥ shipped or financing_payment_active)
 - /api/deals/[id]/amendment — POST propose / PATCH respond; locked when financing_payment_active
 - /api/deals/[id]/dispute — Submit evidence (action=submit_evidence) or Strike Admin resolves (action=resolve)
@@ -874,6 +1126,24 @@ anon client for reads with RLS). Key routes:
 - /api/networks/supplier — GET (supplier's own network memberships; never includes other members)
 - /api/invite/[token] — GET (public; returns anchor/network info for landing page)
 - /api/invite/[token]/accept — POST (called after Tier 0 signup via invite link; auto-activates membership)
+- /api/agents/config — GET/PATCH org's agent config (name, persona, goals)
+- /api/agents/activate — POST toggle `org_agents.is_active` (the global kill switch)
+- /api/agents/scan — POST manual scan trigger (also called by cron)
+- /api/agents/tick — GET (cron, `x-cron-secret`) or POST (cron secret OR org_admin session, scoped
+  to their own org — the reliable manual-trigger path, see Autonomous Agent Manager section)
+- /api/agents/tasks — GET root-level agent_tasks (root_task_id IS NULL) for the auth'd org
+- /api/agents/tasks/[id]/approve — POST; executes proposed_action, or for a negotiation-capable
+  proposal, flips to 'executing' + creates the agent_negotiations row (GATE 1)
+- /api/agents/tasks/[id]/reject — POST with optional reason
+- /api/agents/tasks/[id]/retry — POST; resets a failed/rejected task back to awaiting_approval
+- /api/agents/tasks/[id]/halt — POST org_admin-only; sets agent_negotiations.halt_requested=true
+- /api/agents/tasks/[id]/messages — GET/POST per-thread chat (see agent-task-chat.ts)
+- /api/erp/connect — GET/POST/DELETE the org's erp_connections row
+- /api/erp/sync — GET/POST; pulls live data from the connected Odoo/ERPNext instance into erp_sync_data
+- /api/marketplace/offers/[id] — GET (added; the PATCH-only route gained a read path) + PATCH
+- /api/marketplace/stats — GET; Strike Place Quick Stats (active_deals/orgs/volume — previously hardcoded placeholders)
+- /api/documents/[id]/url — GET; signed URL resolution, `canAccessDocument()` now also handles
+  `entity_type==='financing_request'` (previously a permanent 403 for everyone on financing contracts)
 
 ### Financing-structure-aware deal flow (DEAL-FLOW implementation)
 
@@ -979,7 +1249,9 @@ On the deals page, `canFinance` (the "Request Financing" CTA gate) requires `use
   (contract_pending is optional — only entered if the buyer submits a trade contract at 'agreed')
 - financing_payment_active: bool on deals — set true when bank advance disbursed;
   blocks amendments, cancellation, and changes buyer's payment target to the bank
-- payment_due_date: calculated from agreed_payment_terms (Net\d+ regex) on delivery confirmation
+- payment_due_date: calculated from agreed_payment_terms (Net\d+ regex) on delivery confirmation —
+  this happens inside /api/deals/[id]/transition/route.ts's `nextStatus === 'delivery_confirmed'`
+  branch (the ONLY place it's set); do not add a second implementation elsewhere
 - amendment_history: JSONB array (AmendmentRecord[]); only one pending at a time;
   server rejects if financing_payment_active or status not in confirmed/in_preparation/active
 - Cancellation: server-enforced; cancellable only at negotiating/agreed/documents_pending/

@@ -63,7 +63,7 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
     .from('erp_sync_data')
     .select('data_type, data')
     .eq('org_id', orgId)
-    .order('synced_at', { ascending: false })
+    .order('fetched_at', { ascending: false })
     .limit(20)
 
   const erpSnapshot = (erpRows ?? []).reduce<Record<string, unknown>>((acc, row) => {
