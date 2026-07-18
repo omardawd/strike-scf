@@ -9,6 +9,8 @@ import { executeTool } from './tools/execute'
 import { NEGOTIATION_TOOLS } from './tools/definitions'
 import { HARD_MAX_ROUNDS, HARD_MAX_DEADLINE_DAYS } from './negotiation-constants'
 import { postSystemMessage } from './agent-task-chat'
+import { getAgentPreferences } from './agent-preferences'
+import { isShippingCostRequired } from '@/lib/deals/fees'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,6 +51,179 @@ export async function runAgentTick(orgId?: string): Promise<{ processed: number;
     }
   }
   return { processed: results.length, results }
+}
+
+// ── Listing defense: the OTHER half of "autonomous negotiation" ────────────
+// runAgentTick above only ever drives negotiations for the org that got a
+// plan through GATE 1 (agent_tasks -> agent_negotiations). It does nothing
+// for the LISTING OWNER's side — agent_negotiations.offer_id is unique, so
+// the counterparty can never get their own row on the same offer through the
+// normal flow. Without this, "agent-to-agent negotiation" only ever actually
+// moves on one side; the other party (human or not) has to counter manually.
+// This function is the counterparty-side equivalent: for every org with an
+// active agent, find offers on THEIR OWN listings where it's their turn, and
+// react the same way tickOne does — using their standing agent_preferences
+// as guardrails (there's no per-negotiation plan to approve here, since
+// responding on a listing you already chose to post is lower-commitment than
+// proposing a brand new deal). GATE 2 still applies identically: a good offer
+// creates a negotiation_ready_to_finalize agent_tasks row, never an auto-accept.
+export async function runListingDefenseTick(orgId?: string): Promise<{ processed: number; results: TickResult[] }> {
+  let orgQuery = adminClient.from('org_agents').select('org_id').eq('is_active', true)
+  if (orgId) orgQuery = orgQuery.eq('org_id', orgId)
+  const { data: activeOrgs } = await orgQuery
+  const ownerOrgIds = (activeOrgs ?? []).map((r: Row) => r.org_id as string)
+  if (ownerOrgIds.length === 0) return { processed: 0, results: [] }
+
+  const { data: listings } = await adminClient
+    .from('marketplace_listings')
+    .select('id, org_id, title, listing_type, currency, target_price')
+    .in('org_id', ownerOrgIds)
+    .eq('status', 'active')
+  if (!listings?.length) return { processed: 0, results: [] }
+
+  const listingById = new Map(listings.map((l: Row) => [l.id, l]))
+  const { data: offers } = await adminClient
+    .from('marketplace_offers')
+    .select('*')
+    .in('listing_id', listings.map((l: Row) => l.id))
+    .in('status', ['pending', 'countered'])
+
+  const results: TickResult[] = []
+  for (const offer of offers ?? []) {
+    try {
+    const listing = listingById.get(offer.listing_id)
+    if (!listing) continue
+    const listingOrgId = listing.org_id as string
+
+    const rounds: Row[] = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
+    const lastRound = rounds[rounds.length - 1]
+    // No rounds yet, or we made the last move — not our turn.
+    if (!lastRound || lastRound.by_org_id === listingOrgId) continue
+
+    // If a real GATE-1 negotiation already owns this offer for us (shouldn't
+    // normally happen given the unique constraint, but check defensively),
+    // let the main tick loop handle it instead of double-acting.
+    const { data: existingNeg } = await adminClient
+      .from('agent_negotiations')
+      .select('id')
+      .eq('offer_id', offer.id)
+      .eq('org_id', listingOrgId)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (existingNeg) continue
+
+    // Don't re-escalate every tick while a human decision is already pending
+    // for this exact offer.
+    const { data: pendingEscalations } = await adminClient
+      .from('agent_tasks')
+      .select('id, plan')
+      .eq('org_id', listingOrgId)
+      .eq('status', 'awaiting_approval')
+      .in('type', ['negotiation_escalation', 'negotiation_ready_to_finalize'])
+    const alreadyEscalated = (pendingEscalations ?? []).some((t: Row) => (t.plan as (Plan & { offer_id?: string }) | null)?.offer_id === offer.id)
+    if (alreadyEscalated) { results.push({ negotiation_id: offer.id, outcome: 'awaiting_human_decision' }); continue }
+
+    const prefs = await getAgentPreferences(listingOrgId)
+    const plan: Plan & { offer_id: string } = {
+      price_ceiling: prefs.max_deal_value_auto,
+      guardrails_configured: prefs.hasPriceGuardrails,
+      max_rounds: HARD_MAX_ROUNDS,
+      deadline_at: new Date(Date.now() + HARD_MAX_DEADLINE_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+      offer_id: offer.id,
+    }
+
+    const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: listingOrgId })
+    if (!decision) { results.push({ negotiation_id: offer.id, outcome: 'no_decision' }); continue }
+
+    if (decision.tool === 'recommend_finalization') {
+      await adminClient.from('agent_tasks').insert({
+        org_id: listingOrgId,
+        type: 'negotiation_ready_to_finalize',
+        title: `Finalize negotiation on "${listing.title}"`.slice(0, 200),
+        body: decision.reasoning || 'The agent recommends accepting the counterparty\'s current terms.',
+        proposed_action: { tool_name: 'accept_marketplace_offer', tool_input: { offer_id: offer.id, acting_org_id: listingOrgId } },
+        plan,
+        status: 'awaiting_approval',
+      })
+      await notifyOrgAdmins(listingOrgId, `Finalize negotiation on "${listing.title}"`, decision.reasoning || '')
+      await logAction(listingOrgId, 'negotiation_ready_to_finalize', offer.id, decision.input, { reasoning: decision.reasoning })
+      results.push({ negotiation_id: offer.id, outcome: 'escalated_for_finalization' })
+      continue
+    }
+
+    if (decision.tool === 'reject_marketplace_offer') {
+      const result = await executeTool('reject_marketplace_offer', {
+        offer_id: offer.id, acting_org_id: listingOrgId,
+        reason: decision.input.reason || decision.reasoning || undefined,
+      })
+      await logAction(listingOrgId, 'negotiation_rejected', offer.id, decision.input, result)
+      results.push({ negotiation_id: offer.id, outcome: result.error ? 'failed' : 'rejected' })
+      continue
+    }
+
+    if (decision.tool === 'counter_marketplace_offer') {
+      const price = Number(decision.input.offered_price)
+      const violation = checkPriceGuardrail(price, plan)
+      if (violation) {
+        await adminClient.from('agent_tasks').insert({
+          org_id: listingOrgId,
+          type: 'negotiation_escalation',
+          title: `Approval needed: counter outside guardrails on "${listing.title}"`.slice(0, 200),
+          body: `${decision.reasoning ? decision.reasoning + ' ' : ''}This counter (${price} ${listing.currency}) is ${violation}. Approving will submit exactly this counter; rejecting will stop the negotiation.`,
+          proposed_action: { tool_name: 'counter_marketplace_offer', tool_input: { ...decision.input, offer_id: offer.id, acting_org_id: listingOrgId, max_rounds: plan.max_rounds } },
+          plan,
+          status: 'awaiting_approval',
+        })
+        await notifyOrgAdmins(listingOrgId, `Approval needed: counter outside guardrails on "${listing.title}"`, decision.reasoning || '')
+        await logAction(listingOrgId, 'negotiation_escalated', offer.id, decision.input, { reason: violation })
+        results.push({ negotiation_id: offer.id, outcome: 'escalated_guardrail' })
+        continue
+      }
+
+      const result = await executeTool('counter_marketplace_offer', {
+        ...decision.input,
+        notes: decision.input.notes || decision.reasoning || undefined,
+        // Belt-and-suspenders: the prompt now demands shipping_cost explicitly
+        // when required, but if Claude still omits it, fall back to whatever
+        // the offer's current value is rather than hard-failing the counter
+        // with nobody around to retry it.
+        shipping_cost: decision.input.shipping_cost ?? offer.shipping_cost ?? undefined,
+        offer_id: offer.id,
+        acting_org_id: listingOrgId,
+        max_rounds: plan.max_rounds,
+      })
+      await logAction(listingOrgId, 'negotiation_countered', offer.id, decision.input, result)
+      results.push({ negotiation_id: offer.id, outcome: result.error ? 'failed' : 'countered' })
+      continue
+    }
+
+    results.push({ negotiation_id: offer.id, outcome: 'unrecognized_decision' })
+    } catch (err) {
+      results.push({ negotiation_id: offer.id, outcome: `error: ${err instanceof Error ? err.message : 'unknown'}` })
+    }
+  }
+
+  return { processed: results.length, results }
+}
+
+async function notifyOrgAdmins(orgId: string, title: string, body: string): Promise<void> {
+  const { data: admins } = await adminClient
+    .from('users')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('role', 'org_admin')
+    .eq('is_active', true)
+  if (admins?.length) {
+    await adminClient.from('notifications').insert(
+      admins.map((u: { id: string }) => ({
+        user_id: u.id,
+        event: 'agent_proposal',
+        title: title.slice(0, 200),
+        body: body.slice(0, 200),
+        deep_link: '/ai?tab=agent',
+      }))
+    )
+  }
 }
 
 async function tickOne(neg: Row): Promise<string> {
@@ -140,7 +315,7 @@ async function tickOne(neg: Row): Promise<string> {
   const alreadyEscalated = (pendingEscalations ?? []).some((t) => (t.plan as Plan | null)?.negotiation_id === claimed.id)
   if (alreadyEscalated) return 'awaiting_human_decision'
 
-  const decision = await getNegotiationDecision({ offer, listing, plan })
+  const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: claimed.org_id })
   if (!decision) return 'no_decision'
 
   if (decision.tool === 'recommend_finalization') {
@@ -183,6 +358,7 @@ async function tickOne(neg: Row): Promise<string> {
     const result = await executeTool('counter_marketplace_offer', {
       ...decision.input,
       notes: decision.input.notes || decision.reasoning || undefined,
+      shipping_cost: decision.input.shipping_cost ?? offer.shipping_cost ?? undefined,
       offer_id: offerId,
       acting_org_id: claimed.org_id,
       max_rounds: maxRounds,
@@ -334,10 +510,22 @@ interface Decision {
   reasoning: string
 }
 
-async function getNegotiationDecision(args: { offer: Row; listing: Row; plan: Plan }): Promise<Decision | null> {
-  const { offer, listing, plan } = args
+async function getNegotiationDecision(args: { offer: Row; listing: Row; plan: Plan; actingOrgId: string }): Promise<Decision | null> {
+  const { offer, listing, plan, actingOrgId } = args
   const rounds: Row[] = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
   const lastRound = rounds[rounds.length - 1]
+
+  // Whoever plays supplier bears main carriage under CFR/CIF/CPT/CIP/DAP/DPU/DDP
+  // and MUST supply shipping_cost on counter_marketplace_offer — offer-actions.ts
+  // hard-rejects the whole counter otherwise, which is fatal in an unattended
+  // loop (no human around to retry). Claude reliably omits this unless told
+  // explicitly, so state it as a hard requirement, not a schema hint.
+  const isListingOwner = actingOrgId === listing.org_id
+  const actingIsSupplier = isListingOwner
+    ? listing.listing_type === 'product_service'
+    : listing.listing_type === 'po_request'
+  const effectiveIncoterms = lastRound?.proposed_incoterms as string | undefined
+  const shippingCostWillBeRequired = actingIsSupplier && isShippingCostRequired(effectiveIncoterms)
 
   // Pull the recent conversation in the shared deal room (if one exists yet)
   // so the agent can react to anything the counterparty's agent — or a human
@@ -378,6 +566,9 @@ ${plan.guardrails_configured
     : '- No price guardrails are configured for this org — use your own commercial judgment, staying reasonable relative to the listing\'s target price.'}
 - Max negotiation rounds: ${plan.max_rounds}
 - Deadline: ${plan.deadline_at}
+
+You are the ${actingIsSupplier ? 'SUPPLIER' : 'BUYER'} in this deal.
+${shippingCostWillBeRequired ? `You MUST include a "shipping_cost" number in your counter_marketplace_offer call. Incoterm ${effectiveIncoterms} puts main carriage on the supplier (you) — omitting shipping_cost will make the counter fail outright, with no human able to retry it. Estimate a realistic freight cost from the goods, quantity, and route if one isn't already specified in the listing or prior rounds; do not leave it blank.` : ''}
 
 You must call exactly one tool to make your decision:
 - counter_marketplace_offer — propose improved terms back to the counterparty. Always fill in "notes" with 1-2 sentences of real reasoning — this is posted into the shared deal room so the counterparty (their agent or a human) can see WHY you countered, not just the number.
