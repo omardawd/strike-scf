@@ -229,8 +229,13 @@ async function notifyOrgAdmins(orgId: string, title: string, body: string): Prom
 async function tickOne(neg: Row): Promise<string> {
   // Atomic claim — prevents two overlapping cron invocations double-acting on
   // the same negotiation. A row is claimable if it's never been ticked, or its
-  // last tick was more than 4 minutes ago (ticks run every 5 minutes).
-  const claimBefore = new Date(Date.now() - 4 * 60 * 1000).toISOString()
+  // last tick was more than 90s ago. This is the actual round-to-round cadence
+  // ceiling for this side of a negotiation — keep it a few multiples above the
+  // real tick interval (pg_cron fires every 60s, see CLAUDE.md) so overlapping
+  // invocations still can't double-claim, without making a demo wait 4+ minutes
+  // between rounds the way the original 4-minute window (sized for a 5-minute
+  // GitHub Actions cadence) did.
+  const claimBefore = new Date(Date.now() - 90 * 1000).toISOString()
   const { data: claimed } = await adminClient
     .from('agent_negotiations')
     .update({ last_tick_at: new Date().toISOString() })
