@@ -853,10 +853,38 @@ GATE 2 (human approves finalization) → the ONLY place accept_marketplace_offer
 - **`lib/ai/negotiation-constants.ts`** — the hard platform-wide caps (`HARD_MAX_ROUNDS`,
   `HARD_MAX_DEADLINE_DAYS`) that apply regardless of what an org's plan configures.
 
-### Agent-to-agent negotiation — emergent, not special-cased
-If both counterparties on a listing/offer have active agents, each org's *own* independent tick
-loop reacts to the other's moves via the shared `marketplace_offers`/`rooms` tables. There is no
-direct agent-to-agent RPC — it falls out of both sides running the same loop against shared state.
+### Agent-to-agent negotiation — needs BOTH tick functions, not just one
+`agent_negotiations.offer_id` is UNIQUE, so only the org that went through GATE 1
+(`runAgentTick`/`tickOne`) can ever get a row tracking a given offer. Confirmed by a full live
+demo run: the counterparty — the org that actually posted the listing — had zero autonomous
+presence on the same offer, meaning every "agent-to-agent" counter in earlier testing was
+actually a human manually countering through the UI form. **"Agent-to-agent" only actually
+works because `/api/agents/tick` calls BOTH `runAgentTick` (the GATE-1 side) AND
+`runListingDefenseTick` (the listing-owner side, `lib/ai/agent-tick.ts`) on every invocation.**
+`runListingDefenseTick` finds offers on an active-agent org's OWN listings where it's their turn
+and reacts using their standing `agent_preferences` as guardrails — no per-negotiation plan
+needed, since responding on a listing you already chose to post is lower-commitment than
+proposing a new deal. GATE 2 is identical either way: a good offer only ever creates a
+`negotiation_ready_to_finalize` task, never an auto-accept. If you ever see a listing owner not
+responding to a fresh counter, check `runListingDefenseTick` is still wired into both the GET
+and POST handlers in `app/api/agents/tick/route.ts` before assuming it's an LLM/prompt issue.
+
+**Also found in the same session**: `counter_marketplace_offer` calls from the tick loop
+reliably failed with `"shipping_cost is required for incoterm CIF"` whenever the acting org was
+the supplier under a seller-pays-freight incoterm (CFR/CIF/CPT/CIP/DAP/DPU/DDP) — Claude wasn't
+filling the field even though the tool schema asks for it. Fixed by stating it as an explicit,
+unmissable requirement in `getNegotiationDecision`'s system prompt (which now knows whether the
+acting org is playing supplier or buyer) plus a code-level fallback to the offer's current
+`shipping_cost` value so a single omission can never hard-fail an unattended round.
+
+**Ad-hoc Strike AI chat does NOT enter the autonomous loop.** Asking Strike AI in the regular
+Chat tab to "submit an offer" executes `submit_marketplace_offer` immediately (per the system
+prompt's "execute immediately, don't ask for confirmation" instruction) but creates a bare
+`marketplace_offers` row with no `agent_negotiations` row — nothing will ever autonomously
+counter it afterward. Only proposals that go through the Agent tab's scan → GATE-1-approve flow
+(which populates `agent_tasks.plan`) get picked up by the tick loop. If a demo needs the "then it
+negotiates on its own" payoff, the initial offer must be sourced via Settings → Agent → Run Scan
+Now (or the daily cron) and approved from the Agent tab — not typed into ad-hoc chat.
 
 ### UI
 - **`app/(portal)/ai/page.tsx`**'s Agent tab renders `agent_tasks` as a card grid (root tasks only,
