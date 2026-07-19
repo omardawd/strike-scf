@@ -363,11 +363,39 @@ const REVISE_PROPOSED_ACTION = {
   },
 }
 
+// Signal-only "tool" for per-task plan chats. Not a real action — it never
+// touches marketplace_offers/agent_negotiations, and it can NEVER cause an
+// offer to be accepted. It only lets a human adjust the standing guardrails
+// (price_ceiling/price_floor/max_rounds) on an ALREADY-EXECUTING negotiation
+// via chat — e.g. "get more aggressive, ceiling is now $420k" — mid-round.
+// The tick loop (lib/ai/agent-tick.ts) reads agent_tasks.plan fresh on every
+// tick, so a revision here takes effect on the negotiation's next tick with
+// no extra wiring. GATE 2 (a human approving the exact final terms before
+// accept_marketplace_offer ever runs) is completely unaffected by this tool —
+// it cannot be used to pre-authorize an accept, only to change what the
+// autonomous loop is allowed to counter with.
+const REVISE_NEGOTIATION_PLAN = {
+  name: 'revise_negotiation_plan',
+  description: 'Update the standing guardrails (price ceiling, price floor, max rounds) on a negotiation that is CURRENTLY EXECUTING autonomously. Use this when the human asks to change how aggressive/permissive the agent should be mid-negotiation. This never accepts or finalizes anything — a human still approves the exact final terms separately before any deal is created.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      price_ceiling: { type: 'number', description: 'New max price the agent may counter up to / accept-recommend at (buyer side), omit to leave unchanged' },
+      price_floor: { type: 'number', description: 'New min price the agent may counter down to / accept-recommend at (seller side), omit to leave unchanged' },
+      max_rounds: { type: 'number', description: 'New cap on negotiation rounds (still bounded by the platform-wide hard max), omit to leave unchanged' },
+      summary: { type: 'string', description: 'One sentence describing what changed, shown to the human in the thread' },
+    },
+    required: ['summary'],
+  },
+}
+
 // Bounded tool set for per-task plan chats — lets Strike AI look things up while
-// discussing a pending proposal, and revise its terms, but never execute
-// anything directly (approve/reject in the UI still own execution).
+// discussing a pending proposal, revise its terms, or adjust guardrails on a
+// live negotiation, but never execute anything directly (approve/reject in
+// the UI still own execution, and GATE 2 always owns finalization).
 export const TASK_CHAT_TOOLS = [
   REVISE_PROPOSED_ACTION,
+  REVISE_NEGOTIATION_PLAN,
   LOOKUP_ENTITIES,
   GET_ACTIVE_DEALS,
   SEARCH_MARKETPLACE_LISTINGS,
