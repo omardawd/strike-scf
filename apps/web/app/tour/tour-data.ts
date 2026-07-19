@@ -17,91 +17,120 @@ export interface NegotiationRound {
   reasoning: string
 }
 
-export type TourScene =
-  | {
-      kind: 'title'
-      id: string
-      eyebrow: string
-      title: string
-      subtitle: string
-      cta: string
-    }
-  | {
-      kind: 'dashboard'
-      id: string
-      sceneLabel: string
-      heading: string
-      subheading: string
-      insight: { tone: TourTone; title: string; body: string }
-      kpis: { label: string; value: string }[]
-    }
-  | {
-      kind: 'gate'
-      id: string
-      sceneLabel: string
-      badge: string
-      title: string
-      body: string
-      toolName: string
-      summaryLine: string
-      guardrailLine?: string
-      approveLabel: string
-      footer: string
-    }
-  | {
-      kind: 'negotiation'
-      id: string
-      sceneLabel: string
-      listingTitle: string
-      buyerName: string
-      supplierName: string
-      youAre: 'buyer' | 'supplier'
-      currency: string
-      rounds: NegotiationRound[]
-    }
-  | {
-      kind: 'room'
-      id: string
-      sceneLabel: string
-      roomTitle: string
-      messages: {
-        author: string
-        isAI: boolean
-        content: string
-        block?: Record<string, unknown>
-      }[]
-    }
-  | {
-      kind: 'financing'
-      id: string
-      sceneLabel: string
-      heading: string
-      body: string
-      offers: {
-        bankName: string
-        rate: string
-        tenor: string
-        recommended?: boolean
-      }[]
-    }
-  | {
-      kind: 'chat'
-      id: string
-      sceneLabel: string
-      messages: {
-        role: 'user' | 'assistant'
-        content: string
-        block?: Record<string, unknown>
-      }[]
-    }
-  | {
-      kind: 'capstone'
-      id: string
-      heading: string
-      body: string
-      ctaLabel: string
-      ctaHref: string
-    }
+export interface TourGuide {
+  title: string
+  body: string
+}
+
+interface SceneBase {
+  id: string
+  guide: TourGuide
+}
+
+export type TourScene = SceneBase &
+  (
+    | {
+        kind: 'title'
+        eyebrow: string
+        title: string
+        subtitle: string
+        cta: string
+      }
+    | {
+        kind: 'dashboard'
+        sceneLabel: string
+        heading: string
+        subheading: string
+        insight: { tone: TourTone; title: string; body: string }
+        kpis: { label: string; value: string }[]
+      }
+    | {
+        kind: 'erp'
+        sceneLabel: string
+        heading: string
+        body: string
+        connection: { system: string; status: string; lastSync: string }
+        inventory: { sku: string; onHand: number; reserved: number; tone: TourTone }[]
+        stats: { label: string; value: string }[]
+      }
+    | {
+        kind: 'gate'
+        sceneLabel: string
+        badge: string
+        title: string
+        body: string
+        toolName: string
+        summaryLine: string
+        guardrailLine?: string
+        approveLabel: string
+        footer: string
+      }
+    | {
+        kind: 'negotiation'
+        sceneLabel: string
+        listingTitle: string
+        buyerName: string
+        supplierName: string
+        youAre: 'buyer' | 'supplier'
+        currency: string
+        rounds: NegotiationRound[]
+      }
+    | {
+        kind: 'room'
+        sceneLabel: string
+        roomTitle: string
+        messages: {
+          author: string
+          isAI: boolean
+          content: string
+          block?: Record<string, unknown>
+        }[]
+      }
+    | {
+        kind: 'financing'
+        sceneLabel: string
+        heading: string
+        body: string
+        offers: {
+          bankName: string
+          rate: string
+          tenor: string
+          recommended?: boolean
+        }[]
+      }
+    | {
+        kind: 'chat'
+        sceneLabel: string
+        messages: {
+          role: 'user' | 'assistant'
+          content: string
+          block?: Record<string, unknown>
+        }[]
+      }
+    | {
+        kind: 'capstone'
+        heading: string
+        body: string
+        ctaLabel: string
+        ctaHref: string
+      }
+  )
+
+// Sidebar nav labels the tour chrome shows, and which scene id clicking each
+// one jumps to. A few real nav items (Networks, Strike Passport, Analytics)
+// don't have a dedicated scene in this simplified tour, so they route to the
+// closest thematic scene rather than dead-ending.
+export const TOUR_NAV: { label: string; icon: string; sceneId: string }[] = [
+  { label: 'Strike AI', icon: 'ai', sceneId: 'chat' },
+  { label: 'Dashboard', icon: 'dashboard', sceneId: 'dashboard' },
+  { label: 'Strike Place', icon: 'marketplace', sceneId: 'negotiation' },
+  { label: 'My Deals', icon: 'deals', sceneId: 'gate2' },
+  { label: 'Financing', icon: 'financing', sceneId: 'financing' },
+  { label: 'Networks', icon: 'networks', sceneId: 'erp' },
+  { label: 'Strike Rooms', icon: 'rooms', sceneId: 'room' },
+  { label: 'Strike Passport', icon: 'passport', sceneId: 'chat' },
+  { label: 'Analytics', icon: 'analytics', sceneId: 'chat' },
+]
 
 export const TOUR_SCENES: TourScene[] = [
   {
@@ -112,6 +141,10 @@ export const TOUR_SCENES: TourScene[] = [
     subtitle:
       'A guided walkthrough of sourcing, autonomous negotiation, financing, and capital reasoning — on real product screens. No login, no scheduled call.',
     cta: 'Begin the tour',
+    guide: {
+      title: 'Welcome',
+      body: "I'll walk you through a real trade — sourcing, negotiating, financing, and reasoning about your books. Click Begin whenever you're ready.",
+    },
   },
   {
     kind: 'dashboard',
@@ -130,6 +163,32 @@ export const TOUR_SCENES: TourScene[] = [
       { label: 'Avg PassportScore', value: '75' },
       { label: 'Open Financing', value: '$680K' },
     ],
+    guide: {
+      title: 'This is your dashboard',
+      body: 'I keep watch on your ERP and open deals around the clock. I already flagged something below — take a look, then hit Next.',
+    },
+  },
+  {
+    kind: 'erp',
+    id: 'erp',
+    sceneLabel: 'Settings — ERP',
+    heading: 'Connected to your ERP',
+    body: "This is the live signal behind that dashboard alert — Strike AI reads inventory, cash, and receivables directly from Walmart's ERP, on a schedule, without anyone exporting a spreadsheet.",
+    connection: { system: 'NetSuite', status: 'Connected', lastSync: '4 minutes ago' },
+    inventory: [
+      { sku: 'STEEL-HRC-500', onHand: 12, reserved: 45, tone: 'bad' },
+      { sku: 'ALU-SHEET-200', onHand: 340, reserved: 120, tone: 'good' },
+      { sku: 'COPPER-WIRE-90', onHand: 88, reserved: 60, tone: 'default' },
+    ],
+    stats: [
+      { label: 'Cash Position', value: '$2.1M' },
+      { label: 'AR (30d)', value: '$860K' },
+      { label: 'AP (30d)', value: '$410K' },
+    ],
+    guide: {
+      title: "Here's the data behind that",
+      body: "This is the ERP connection I'm reading from — inventory, cash, and receivables, synced automatically. It's why I noticed the shortage before anyone had to look for it.",
+    },
   },
   {
     kind: 'gate',
@@ -144,6 +203,10 @@ export const TOUR_SCENES: TourScene[] = [
     approveLabel: 'Approve & Submit',
     footer:
       "Once approved, Strike AI negotiates the rest on its own — you'll only be asked again before anything is finalized.",
+    guide: {
+      title: 'I found a match',
+      body: 'I scanned Strike Place and found a supplier that solves your shortage. I drafted an offer — approve the plan once, and I take it from here.',
+    },
   },
   {
     kind: 'negotiation',
@@ -209,6 +272,10 @@ export const TOUR_SCENES: TourScene[] = [
           'Market data confirms US Midwest HRC is trading at $1,193/MT as of mid-July — still 36% above year-ago levels — with constrained mill spot availability. At $422,000 (~$836/MT all-in), bridging meaningfully toward your position while staying grounded in real cost-of-goods and freight.',
       },
     ],
+    guide: {
+      title: 'Watching this live',
+      body: "This negotiation is actually running — both sides are countering on their own, a few seconds apart. Give it a moment to finish before moving on — you'll see it happen.",
+    },
   },
   {
     kind: 'gate',
@@ -221,6 +288,10 @@ export const TOUR_SCENES: TourScene[] = [
     summaryLine: 'Final terms: $422,000 · CFR · Net 30 · Shipping $18,500 · Delivery Jul 31, 2026',
     approveLabel: 'Approve & Finalize',
     footer: 'This is the only moment Strike AI ever creates a binding deal — and it always waits for you.',
+    guide: {
+      title: 'Your call to finalize',
+      body: 'The negotiation settled on good terms. I never create a deal on my own — I need your explicit approval on the exact final numbers first.',
+    },
   },
   {
     kind: 'room',
@@ -271,6 +342,10 @@ export const TOUR_SCENES: TourScene[] = [
         content: 'Deal agreed. Both parties have confirmed terms.',
       },
     ],
+    guide: {
+      title: 'The human view',
+      body: "Here's that same negotiation as a real conversation in Strike Rooms — Strike AI's reasoning, visible the whole way through, not hidden in a log somewhere.",
+    },
   },
   {
     kind: 'financing',
@@ -283,6 +358,10 @@ export const TOUR_SCENES: TourScene[] = [
       { bankName: 'Second National', rate: '6.4%', tenor: '45 days' },
       { bankName: 'Meridian Capital', rate: '7.1%', tenor: '90 days' },
     ],
+    guide: {
+      title: 'Financing, handled',
+      body: 'The moment the deal closed, I drafted a financing request and ranked the incoming bank offers — Atlas Bank comes out ahead on rate and speed.',
+    },
   },
   {
     kind: 'chat',
@@ -305,6 +384,10 @@ export const TOUR_SCENES: TourScene[] = [
         },
       },
     ],
+    guide: {
+      title: 'Ask me anything',
+      body: "Try the input below — I reason from your live capital position, not just this one deal. Ask about cash, concentration risk, or what to do next.",
+    },
   },
   {
     kind: 'capstone',
@@ -313,5 +396,9 @@ export const TOUR_SCENES: TourScene[] = [
     body: 'It sources. It negotiates — autonomously, round after round. It finances. It reasons about your balance sheet before you even ask. And it never commits you to anything without your say-so.',
     ctaLabel: 'Visit strikescf.com',
     ctaHref: 'https://strikescf.com',
+    guide: {
+      title: "That's the whole loop",
+      body: 'Sourcing to financing to strategy — with you in control of every commitment. Reach out whenever you want to see it running on your own data.',
+    },
   },
 ]

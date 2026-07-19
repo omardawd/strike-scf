@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NegotiationRound, TourScene } from '../tour-data'
 
-const ROUND_INTERVAL_MS = 2400
+const ROUND_INTERVAL_MS = 2600
 
 function RoundRow({ round, prev, currency, highlight }: { round: NegotiationRound; prev: NegotiationRound | null; currency: string; highlight: boolean }) {
   const delta = prev ? round.price - prev.price : null
@@ -93,26 +93,59 @@ function Panel({
   )
 }
 
-export default function NegotiationSplitScene({ scene }: { scene: Extract<TourScene, { kind: 'negotiation' }> }) {
-  const [visibleCount, setVisibleCount] = useState(scene.rounds.length > 0 ? 1 : 0)
+export default function NegotiationSplitScene({
+  scene,
+  onProgress,
+}: {
+  scene: Extract<TourScene, { kind: 'negotiation' }>
+  onProgress: (info: { done: boolean }) => void
+}) {
+  const total = scene.rounds.length
+  const [visibleCount, setVisibleCount] = useState(total > 0 ? 1 : 0)
+  const [msLeft, setMsLeft] = useState(ROUND_INTERVAL_MS)
+  const nextAtRef = useRef<number>(Date.now() + ROUND_INTERVAL_MS)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    setVisibleCount(scene.rounds.length > 0 ? 1 : 0)
+    setVisibleCount(total > 0 ? 1 : 0)
+    nextAtRef.current = Date.now() + ROUND_INTERVAL_MS
+
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       setVisibleCount((c) => {
-        if (c >= scene.rounds.length) {
+        if (c >= total) {
           if (timerRef.current) clearInterval(timerRef.current)
           return c
         }
+        nextAtRef.current = Date.now() + ROUND_INTERVAL_MS
         return c + 1
       })
     }, ROUND_INTERVAL_MS)
+
+    if (tickRef.current) clearInterval(tickRef.current)
+    tickRef.current = setInterval(() => {
+      setMsLeft(Math.max(0, nextAtRef.current - Date.now()))
+    }, 200)
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
+      if (tickRef.current) clearInterval(tickRef.current)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene.rounds])
+
+  const done = visibleCount >= total
+  useEffect(() => {
+    onProgress({ done })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done])
+
+  function skipAhead() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (tickRef.current) clearInterval(tickRef.current)
+    setVisibleCount(total)
+  }
 
   const nextRound = scene.rounds[visibleCount]
   const buyerTyping = !!nextRound && scene.buyerName === nextRound.byOrgName
@@ -120,8 +153,54 @@ export default function NegotiationSplitScene({ scene }: { scene: Extract<TourSc
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--gray)', marginBottom: 4 }}>
-        {scene.listingTitle}
+      <style>{'@keyframes tourLivePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.75); } } .tour-live-dot { animation: tourLivePulse 1.1s ease-in-out infinite; }'}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 4 }}>
+        <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--gray)' }}>{scene.listingTitle}</div>
+        {!done ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="tour-live-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-red)' }} />
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-red)' }}>
+                Live
+              </span>
+            </span>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
+              Round {visibleCount} of {total} · next in {Math.ceil(msLeft / 1000)}s
+            </span>
+            <button
+              onClick={skipAhead}
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 11.5,
+                fontWeight: 600,
+                color: 'var(--blue)',
+                background: 'var(--blue-light)',
+                border: 'none',
+                borderRadius: 999,
+                padding: '4px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              Skip ahead
+            </button>
+          </div>
+        ) : (
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'var(--color-green)',
+              background: '#EDFAF4',
+              borderRadius: 999,
+              padding: '4px 10px',
+            }}
+          >
+            Settled — Round {total}
+          </span>
+        )}
       </div>
       <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray-soft, var(--gray))', marginBottom: 16 }}>
         Two agents, negotiating on their own — each side is a separate org, watching the same live thread.
