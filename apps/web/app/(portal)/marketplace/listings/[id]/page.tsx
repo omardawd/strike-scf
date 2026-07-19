@@ -518,6 +518,42 @@ function OfferCard({
     return lump > 0 ? lump : null
   }
 
+  // Scale a set of real itemized prices so they sum to `currentTotal`,
+  // keeping quantities fixed and adjusting unit_price proportionally — same
+  // approach as displayItems above, factored out so every round in the
+  // negotiation history can get its own itemized breakdown, not just the
+  // current one.
+  function scaleItemsToTotal(sourceItems: any[], currentTotal: number): any[] {
+    const sourceTotal = sourceItems.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+    const scale = sourceTotal > 0 && currentTotal > 0 ? currentTotal / sourceTotal : 1
+    return sourceItems.map((it: any) => ({
+      name: it.name,
+      unit: it.unit ?? null,
+      quantity: it.quantity,
+      listing_item_id: it.listing_item_id,
+      unit_price: it.unit_price != null ? Number(it.unit_price) * scale : null,
+    }))
+  }
+
+  // Itemized breakdown for round `idx`. AI-driven rounds never carry real
+  // offer_items (the negotiation tool schema is lump-sum only), so reuse the
+  // nearest earlier round that DID have real items — or, failing that, the
+  // listing's own line items if there's exactly one — scaled to this round's
+  // total. Returns [] (falls back to total-only display) when neither exists.
+  function itemsForRound(idx: number, total: number | null): any[] {
+    if (total == null) return []
+    for (let i = idx; i >= 0; i--) {
+      const roundItems = (rounds[i] as any)?.offer_items
+      if (Array.isArray(roundItems) && roundItems.length > 0) return scaleItemsToTotal(roundItems, total)
+    }
+    if (listingLineItems.length === 1) {
+      const li = listingLineItems[0]
+      const qty = Number(li.quantity) || 0
+      return [{ name: li.name, unit: li.unit ?? null, quantity: li.quantity, unit_price: qty > 0 ? total / qty : null }]
+    }
+    return []
+  }
+
   const offerorName = (offeror_org?.doing_business_as as string | null) || (offeror_org?.legal_name as string | null) || 'Offeror'
 
   const score = (offeror_org?.passport_score as number | null) ?? null
@@ -656,8 +692,8 @@ function OfferCard({
               const prev = idx > 0 ? roundTotal(rounds[idx - 1]) : null
               const delta = total != null && prev != null ? total - prev : null
               const isCurrent = idx === rounds.length - 1
-              const items: any[] = r.offer_items ?? []
-              const prevItems: any[] = idx > 0 ? ((rounds[idx - 1] as any).offer_items ?? []) : []
+              const items: any[] = itemsForRound(idx, total)
+              const prevItems: any[] = idx > 0 ? itemsForRound(idx - 1, prev) : []
 
               return (
                 <div key={idx} style={{
