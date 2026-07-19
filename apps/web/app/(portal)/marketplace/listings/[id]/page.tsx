@@ -504,12 +504,18 @@ function OfferCard({
     }))
   }, [rounds, offerTotal, offer.offered_price, listingLineItems])
 
-  // Helper: compute total from a round's offer_items
+  // Helper: compute total from a round's offer_items, falling back to the
+  // round's own lump-sum offered_price — AI-driven counters (agent-tick.ts /
+  // counter_marketplace_offer) only ever set offered_price, never offer_items,
+  // so without this fallback every autonomously-negotiated round showed "—".
   function roundTotal(r: any): number | null {
     const items: any[] = r?.offer_items ?? []
-    if (items.length === 0) return null
-    const t = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
-    return t > 0 ? t : null
+    if (items.length > 0) {
+      const t = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+      if (t > 0) return t
+    }
+    const lump = Number(r?.offered_price)
+    return lump > 0 ? lump : null
   }
 
   const offerorName = (offeror_org?.doing_business_as as string | null) || (offeror_org?.legal_name as string | null) || 'Offeror'
@@ -741,6 +747,18 @@ function OfferCard({
                           </div>
                         )
                       })}
+                    </div>
+                  )}
+
+                  {/* Per-round terms — each round can propose different incoterms/payment/delivery/shipping.
+                      Skip the current round: the "Trade terms pills" strip below the history already
+                      shows the current offer's terms, so repeating them here would just be noise. */}
+                  {!isCurrent && (
+                    <div style={{ marginLeft: 30, marginTop: items.length > 0 ? 6 : 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {r.proposed_incoterms && <span className="mp-offer-term-pill">{r.proposed_incoterms}</span>}
+                      {r.proposed_payment_terms && <span className="mp-offer-term-pill">{r.proposed_payment_terms}</span>}
+                      {r.proposed_delivery_date && <span className="mp-offer-term-pill">Delivery: {fmtDate(r.proposed_delivery_date)}</span>}
+                      {r.shipping_cost != null && <span className="mp-offer-term-pill">Shipping: {Number(r.shipping_cost).toLocaleString()} {listing.currency}</span>}
                     </div>
                   )}
                 </div>
