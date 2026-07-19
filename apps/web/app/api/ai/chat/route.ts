@@ -3,6 +3,9 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getToolsForPortal, OVERLAY_TOOLS } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
+import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
+
+const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer']
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -211,6 +214,25 @@ export async function POST(req: NextRequest) {
           result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>)
         } catch (err) {
           result = { error: err instanceof Error ? err.message : 'Tool execution failed' }
+        }
+
+        // Ad-hoc chat bypasses the Agent tab's scan -> GATE-1-approve flow, so a
+        // submitted/countered offer would otherwise sit there forever with nothing
+        // ever countering it back. If the org has an active agent, start the same
+        // autonomous tick-loop tracking a scan-sourced proposal would get, and tell
+        // Claude so it can mention it in its reply.
+        if (!('error' in result) && userRow.org_id && NEGOTIATION_FOLLOW_THROUGH_TOOLS.includes(block.name)) {
+          try {
+            const followThrough = await startAutonomousFollowThrough({
+              orgId: userRow.org_id,
+              toolName: block.name as 'submit_marketplace_offer' | 'counter_marketplace_offer',
+              toolInput: block.input as Record<string, unknown>,
+              result,
+            })
+            result.autonomous_follow_through = followThrough
+          } catch (err) {
+            console.error('[AI] startAutonomousFollowThrough error:', err)
+          }
         }
 
         // Fire-and-forget audit log — never blocks the response.

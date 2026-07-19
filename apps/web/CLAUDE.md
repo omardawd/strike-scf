@@ -877,14 +877,21 @@ unmissable requirement in `getNegotiationDecision`'s system prompt (which now kn
 acting org is playing supplier or buyer) plus a code-level fallback to the offer's current
 `shipping_cost` value so a single omission can never hard-fail an unattended round.
 
-**Ad-hoc Strike AI chat does NOT enter the autonomous loop.** Asking Strike AI in the regular
-Chat tab to "submit an offer" executes `submit_marketplace_offer` immediately (per the system
-prompt's "execute immediately, don't ask for confirmation" instruction) but creates a bare
-`marketplace_offers` row with no `agent_negotiations` row — nothing will ever autonomously
-counter it afterward. Only proposals that go through the Agent tab's scan → GATE-1-approve flow
-(which populates `agent_tasks.plan`) get picked up by the tick loop. If a demo needs the "then it
-negotiates on its own" payoff, the initial offer must be sourced via Settings → Agent → Run Scan
-Now (or the daily cron) and approved from the Agent tab — not typed into ad-hoc chat.
+**Ad-hoc Strike AI chat DOES enter the autonomous loop, if the org's agent is active.**
+`lib/ai/agent-negotiation-setup.ts`'s `startAutonomousFollowThrough()` is called from
+`app/api/ai/chat/route.ts` and `app/api/ai/dispatch/route.ts` right after a successful
+`submit_marketplace_offer`/`counter_marketplace_offer` tool call (the third, orphaned entry
+point `app/api/ai/tools/execute/route.ts` also has the same call for parity, but nothing
+currently invokes that route — chat and dispatch call `executeTool()` in-process). It checks
+`org_agents.is_active`, builds a `plan` from `getAgentPreferences()` (same pattern as
+`runListingDefenseTick`, since there's no scan-time plan for a one-off chat request), and inserts
+the same `agent_tasks` (`status:'executing'`, `approved_at` set — the direct chat request *is*
+the approval) + `agent_negotiations` (`status:'active'`) pair the Agent-tab approve route creates.
+From there the tick loop treats it identically to a scan-sourced proposal — GATE 2 still applies.
+If the org's agent is inactive, chat-submitted offers stay one-shot as before (no behavior change).
+Verified live: a single chat message ("submit an offer on listing X for $495k...") ran 5
+autonomous counter-rounds with real market-based reasoning down to $422k, with zero manual
+intervention after the initial message.
 
 ### UI
 - **`app/(portal)/ai/page.tsx`**'s Agent tab renders `agent_tasks` as a card grid (root tasks only,

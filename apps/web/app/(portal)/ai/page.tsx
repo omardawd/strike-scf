@@ -114,7 +114,8 @@ ${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` 
 
 Your tools:
 - search_marketplace_listings — find existing listings on Strike Place. After returning results, emit [LISTING_CARD:{id}] on its own line for EACH listing so the user gets a clickable card.
-- submit_marketplace_offer — submit an offer ON an existing listing. Use this when the user wants to bid or respond to a listing someone else posted. NEVER use create_marketplace_listing for this.
+- submit_marketplace_offer — submit an offer ON an existing listing. Use this when the user wants to bid or respond to a listing someone else posted. NEVER use create_marketplace_listing for this. If the tool result includes autonomous_follow_through.started = true, tell the user in plain language that you'll keep negotiating this on their behalf and check the Agent tab for progress — don't just report the offer was submitted. If started = false because reason is "agent_inactive", mention they can activate their agent in Settings → Agent for hands-off follow-up negotiation next time.
+- counter_marketplace_offer — respond to an offer/counter-offer with new terms. Same autonomous_follow_through behavior as submit_marketplace_offer above.
 - create_marketplace_listing — post a NEW listing. DOCUMENT ATTACHED ([Attached document:] in message): extract ALL fields from the document (title, line items, quantities, units, prices, incoterms, payment terms, delivery date/location, currency) and call immediately — do not ask for info already in the document. Infer listing_type from portal (anchor → po_request, supplier → product_service). Use org_id from context. NO DOCUMENT: ask incoterms + payment terms first. After creating, emit [LISTING_CARD:{listing_id}] on its own line.
 - get_active_deals — list all active (non-completed, non-cancelled) deals for an org
 - evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history

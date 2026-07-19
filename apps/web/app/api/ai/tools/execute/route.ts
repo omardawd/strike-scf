@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { executeTool, BANK_ONLY_TOOLS, WRITE_TOOLS, type ToolName } from '@/lib/ai/tools/execute'
+import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
+
+const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer'] as const
 
 // Used only for auth/user-row lookups and agent_actions logging in this route.
 // Tool handlers own their own adminClient via lib/ai/tools/admin.ts.
@@ -112,10 +115,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error, tool_name }, { status: 422 })
   }
 
+  // 9. Same autonomous follow-through as app/api/ai/chat/route.ts and
+  // app/api/ai/dispatch/route.ts — see lib/ai/agent-negotiation-setup.ts.
+  let autonomousFollowThrough: { started: boolean; reason?: string } | undefined
+  if (
+    userData.org_id &&
+    (NEGOTIATION_FOLLOW_THROUGH_TOOLS as readonly string[]).includes(tool_name)
+  ) {
+    try {
+      autonomousFollowThrough = await startAutonomousFollowThrough({
+        orgId: userData.org_id,
+        toolName: tool_name as 'submit_marketplace_offer' | 'counter_marketplace_offer',
+        toolInput: tool_input,
+        result,
+      })
+    } catch (err) {
+      console.error('[AI Tool] startAutonomousFollowThrough error:', err)
+      autonomousFollowThrough = { started: false, reason: 'task_insert_failed' }
+    }
+  }
+
   return NextResponse.json({
     tool_name,
     result,
     duration_ms: durationMs,
+    ...(autonomousFollowThrough ? { autonomous_follow_through: autonomousFollowThrough } : {}),
   })
 }
 
