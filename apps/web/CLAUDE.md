@@ -468,6 +468,8 @@ bank_accounts
 - `00000000000029_marketplace_offers_room_id.sql` — `marketplace_offers.room_id`
 - `00000000000030_marketplace_offers_deal_id.sql` — `marketplace_offers.deal_id`
 - `00000000000031_transactions_dd_nullable.sql` — `transactions.bank_id` / `financing_amount_requested` made nullable (Dynamic Discounting transactions are direct anchor-to-supplier with no bank — the NOT NULL constraints were inherited from the bank-financing-only original design and broke every DD offer)
+- `00000000000032_agent_action_type_all_tools.sql` — extends `agent_actions.action_type` with the ~22 real `ToolName` values that were never added (see "AI limits & logging" below — this was silently breaking most of the audit trail)
+- `00000000000033_enable_realtime_publication_tables.sql` — adds `room_messages`, `agent_task_messages`, `marketplace_offers`, `marketplace_listings`, `deals`, `financing_requests`, `financing_request_offers` to the `supabase_realtime` publication (see "Key design decisions" below — Realtime was silently a no-op platform-wide before this)
 
 ---
 
@@ -734,12 +736,18 @@ READ tools (no approval gate):
   get_erp_data               — read erp_sync_data for a connected org (data_type: ar_aging|ap_aging|
                                cash_position|inventory_levels|open_orders|all); returns
                                {connected:false, message:'...'} if no active erp_connections row
+  get_capital_position       — cash + AR/AP + deal-book concentration risk in one call; accepts
+                               hypothetical_deal_value(+counterparty) to model "should we take this
+                               deal" questions. lib/ai/tools/handlers/get-capital-position.ts.
 
 WRITE tools (subject to agent_preferences require_approval_for_actions gate):
   create_marketplace_listing — create listing with line items; DOCUMENT MODE: extracts all fields from
                                attached doc automatically. Emits [LISTING_CARD:{id}] on success.
   submit_marketplace_offer   — submit/bid on a listing by listing_id. Does NOT accept offer_items
                                (no per-item pricing) — only a lump-sum offered_price/offered_quantity.
+                               If the org's agent is active, this also starts autonomous tick-loop
+                               follow-through — see lib/ai/agent-negotiation-setup.ts and the
+                               "Autonomous Agent Manager" section below.
   create_financing_request   — request financing against a deal's receivable
 
 NEGOTIATION tools — only ever offered to Claude inside the tick loop (NEGOTIATION_TOOLS in
@@ -752,11 +760,19 @@ definitions.ts), never in general chat. See "Autonomous Agent Manager" section b
                                agent_tasks row for GATE 2. This is HOW the agent recommends accepting
                                without ever being able to accept itself.
 
-Signal-only tool for per-task plan chats (app/api/agents/tasks/[id]/messages/route.ts), also
-NOT registered in execute.ts/ToolName:
-  revise_proposed_action     — Claude calls this when a human asks it to change a pending proposal's
-                               terms; the route intercepts the tool_use block and merges `patch` into
-                               proposed_action.tool_input directly.
+Signal-only tools for per-task plan chats (app/api/agents/tasks/[id]/messages/route.ts →
+lib/ai/agent-task-chat.ts), also NOT registered in execute.ts/ToolName:
+  revise_proposed_action     — Claude calls this when a human asks it to change a PENDING proposal's
+                               terms; merges `patch` into proposed_action.tool_input directly.
+  revise_negotiation_plan    — Claude calls this when a human asks it to change guardrails
+                               (price_ceiling/price_floor/max_rounds) on an ALREADY-EXECUTING
+                               negotiation (e.g. "raise the ceiling to $420k"). Patches the ROOT
+                               task's `plan` (agent_negotiations.agent_task_id always points at the
+                               root, not whichever follow-up task is "current" in the thread — see
+                               the doc comment in agent-task-chat.ts) — the tick loop reads it fresh
+                               every round, so no extra wiring is needed for it to take effect. Can
+                               NEVER accept/finalize anything; the system prompt explicitly refuses
+                               "auto-accept the next counter" and explains GATE 2 instead.
 
 Intentionally NEVER given a schema in any portal's tool set: accept_marketplace_offer. Accepting
 an offer creates a binding deal, so per the two-gate design this only ever executes via a human
@@ -786,7 +802,11 @@ the message signals document mode to the AI system prompt.
 - Daily limits from `ai_limits` table (scope: user|org|bank|global), fallback hardcoded in route
 - Limits: chat=50, insight=200, document=20, scoring=500
 - Usage logged to `ai_usage` table (fail-soft if the table is absent)
-- Tool executions logged to `agent_actions` (action_type = tool_name; fail-soft)
+- Tool executions logged to `agent_actions` (action_type = tool_name; fail-soft). Was silently
+  dropping ~22 of ~26 real tool names until migration 032 (2026-07-19) — the enum only ever had a
+  hand-picked subset of tool names, so most inserts hit `22P02 invalid input value for enum` and
+  were swallowed by the fail-soft catch. If you add a new tool, add its name to the
+  `agent_action_type` enum in the same PR or its calls will silently vanish from the audit trail.
 - Default model `claude-haiku-4-5-20251001` (cost-sensitive); dedicated AI page + doc gen → `claude-sonnet-4-6`
 
 ---
@@ -921,11 +941,18 @@ intervention after the initial message.
   Check `select * from cron.job_run_details where jobid=1 order by start_time desc limit 10;`
   and `select * from net._http_response order by created desc limit 10;` to verify it's alive.
   This and the GitHub Actions workflow can safely run concurrently — the tick loop's atomic
-  row-claiming (`last_tick_at`, 4-minute window) means a negotiation is never double-acted on,
-  a redundant caller just gets `skipped_claimed_elsewhere`. The manual "Run Negotiation Tick Now"
-  button still exists as a third, on-demand path for testing a specific org immediately.
-- No tool today synthesizes cash position + outstanding exposure + concentration risk into one
-  call — `/api/reporting` computes the right aggregate numbers but isn't registered as an AI tool.
+  row-claiming (`last_tick_at`, **90s window** — sized just above pg_cron's 60s cadence, not the
+  4-minute window this used originally, which was sized for the unreliable 5-minute GitHub Actions
+  cadence and became the actual bottleneck once pg_cron took over) means a negotiation is never
+  double-acted on, a redundant caller just gets `skipped_claimed_elsewhere`. The manual "Run
+  Negotiation Tick Now" button still exists as a third, on-demand path for testing a specific org
+  immediately.
+- `get_capital_position` (see "AI Agentic Tools system" above) now covers cash + outstanding
+  exposure + concentration risk in one call — this used to be a real gap, it isn't anymore.
+- `supabase_realtime` had zero tables registered until 2026-07-19 (migration 033) — every
+  `postgres_changes` subscription in the app was a silent no-op. If something you're touching
+  subscribes to a new table, add it to that publication or it will have this exact failure mode
+  (connects fine, throws no errors, never receives a broadcast).
 
 ---
 
@@ -1245,6 +1272,17 @@ Counter-offers are bidirectional. Turn is tracked via `offer_rounds[last].by_org
 
 Backend enforces this in `app/api/marketplace/offers/[id]/route.ts`.
 Frontend reflects it in `app/(portal)/marketplace/listings/[id]/page.tsx` (Counter button hidden when it's not your turn; Accept always shown).
+
+**Per-round itemized pricing is reconstructed client-side, not stored.** `submit_marketplace_offer`/
+`counter_marketplace_offer`'s tool schemas have no per-item field — AI-driven rounds only ever carry
+a lump-sum `offered_price`, never `offer_items`. Rather than teaching the AI to split a price across
+line items (real surgery on negotiation-critical tool schemas), `OfferCard` in that same file derives
+a display-only itemized breakdown per round: `itemsForRound(idx, total)` scans backward for the
+nearest round that DID have real `offer_items` (or falls back to the listing's own line item if
+there's exactly one) and scales its unit prices to match that round's total via `scaleItemsToTotal`.
+`roundTotal(r)` similarly falls back to `r.offered_price` when `offer_items` is empty. A listing with
+2+ real line items where every round was AI-negotiated genuinely has no defensible per-item split —
+those correctly still show total-only rather than a guessed breakdown.
 
 ### Financing acceptance must NOT change deal status
 
