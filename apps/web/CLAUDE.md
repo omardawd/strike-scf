@@ -1280,8 +1280,15 @@ On the deals page, `canFinance` (the "Request Financing" CTA gate) requires `use
 
 ### Key design decisions
 - deal_source: 'marketplace' | 'imported' | 'direct' on deals table
-- Supabase Realtime on: room_messages, notifications,
-  marketplace_offers, financing_request_offers, deals
+- Frontend code subscribes to Supabase Realtime (`postgres_changes`) on: room_messages,
+  agent_task_messages, marketplace_offers, marketplace_listings, deals, financing_requests,
+  financing_request_offers. **This silently did nothing until 2026-07-19** — the
+  `supabase_realtime` publication had zero tables registered, so every one of these
+  subscriptions connected cleanly and threw no errors, but no change was ever broadcast.
+  Every surface using it was actually running on its poll/refetch fallback (or a manual
+  reload) the whole time, not realtime. Fixed via `supabase/migrations/00000000000033_...`
+  (adds all 7 tables to the publication). If you add a new `postgres_changes` subscription,
+  add the table to that publication too, or it will have this exact silent-no-op failure mode.
 - All AI calls use claude-haiku-4-5-20251001 (cost-sensitive)
 - PassportScore recalculates on: deal completion, peer review received
 - Private rooms auto-create on first counter-offer

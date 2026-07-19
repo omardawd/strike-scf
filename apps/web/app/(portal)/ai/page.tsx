@@ -7,6 +7,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { SkeletonCard } from '@/components/motion'
 import { STRIKE_BLOCK_RE, StrikeBlockFromJson } from '@/components/ai-blocks'
+import { createClient } from '@/lib/supabase/client'
 
 // ============== Types ==============
 interface Message {
@@ -740,14 +741,47 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
 
   // While a negotiation is actively being monitored by the tick loop, poll
   // gently so a counter/escalation/finalization that lands in the background
-  // (cron fires every 5 minutes regardless of whether this tab is open)
-  // appears here without the user needing to back out and reopen the thread.
+  // (cron fires every minute regardless of whether this tab is open) appears
+  // here without the user needing to back out and reopen the thread. This is
+  // a backstop for the realtime subscription below (missed events, WebSocket
+  // blocked), not the primary update path — see that effect's comment.
   const negotiationIsLive = rootTask?.negotiation?.status === 'active'
   useEffect(() => {
     if (!negotiationIsLive) return
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
   }, [negotiationIsLive, load])
+
+  // Supabase Realtime subscription — same pattern as Strike Rooms
+  // (app/(portal)/rooms/[id]/page.tsx). Without this, a round that lands via
+  // the tick loop only appears here after the next 15s poll, while the same
+  // round shows up instantly in the deal's Strike Room (which is realtime).
+  // All messages in a thread (root task + escalation/finalization follow-ups)
+  // are stored under the root task's id (see postSystemMessage in
+  // lib/ai/agent-task-chat.ts), so filtering on taskId alone covers the
+  // whole thread. Refetches the full thread rather than patching state in
+  // place, since a new message often also means currentTask/negotiation
+  // fields changed (round count, status) — not just the message list.
+  useEffect(() => {
+    if (!taskId) return
+    let supabase: ReturnType<typeof createClient> | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let channel: any = null
+    try {
+      supabase = createClient()
+      channel = supabase
+        .channel(`agent-task-thread:${taskId}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'agent_task_messages', filter: `agent_task_id=eq.${taskId}` },
+          () => { load() }
+        )
+        .subscribe()
+    } catch {
+      // Realtime unavailable (e.g. WebSocket blocked); thread still works via the poll above
+    }
+    return () => { if (supabase && channel) supabase.removeChannel(channel) }
+  }, [taskId, load])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
