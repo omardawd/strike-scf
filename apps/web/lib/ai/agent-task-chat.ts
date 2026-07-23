@@ -45,8 +45,8 @@ export async function getThread(rootTaskId: string): Promise<{
   messages: Row[]
 }> {
   const [{ data: rootTaskRow }, { data: allTasksRows }, { data: messages }] = await Promise.all([
-    adminClient.from('agent_tasks').select('*, agent_negotiations(id, status, current_round, last_tick_at, halt_requested, outcome_summary)').eq('id', rootTaskId).maybeSingle(),
-    adminClient.from('agent_tasks').select('*, agent_negotiations(id, status, current_round, last_tick_at, halt_requested, outcome_summary)').or(`id.eq.${rootTaskId},root_task_id.eq.${rootTaskId}`).order('created_at', { ascending: true }),
+    adminClient.from('agent_tasks').select('*, agent_negotiations(id, status, current_round, last_tick_at, halt_requested, outcome_summary, deal_id)').eq('id', rootTaskId).maybeSingle(),
+    adminClient.from('agent_tasks').select('*, agent_negotiations(id, status, current_round, last_tick_at, halt_requested, outcome_summary, deal_id)').or(`id.eq.${rootTaskId},root_task_id.eq.${rootTaskId}`).order('created_at', { ascending: true }),
     adminClient.from('agent_task_messages').select('*').eq('agent_task_id', rootTaskId).order('created_at', { ascending: true }),
   ])
 
@@ -66,6 +66,11 @@ function buildSystemPrompt(rootTask: Row, currentTask: Row, plan: Row | null): s
   const proposedAction = currentTask.proposed_action as { tool_name?: string; tool_input?: Row } | null
   const pending = currentTask.status === 'awaiting_approval'
   const negotiationLive = currentTask.negotiation?.status === 'active'
+  // agent_negotiations.agent_task_id always points at the ROOT task, so the
+  // negotiation/deal_id relation is only ever populated on rootTask, never on
+  // a follow-up (escalation/finalize) task row — read it from rootTask here,
+  // not currentTask, or a completed deal's id would never be found.
+  const dealId = rootTask.negotiation?.deal_id as string | undefined
 
   return `You are Strike AI, discussing one specific proposed action with the human controller before they decide what to do with it.
 
@@ -86,6 +91,7 @@ ${pending
     : negotiationLive
       ? 'If the human asks you to change the standing price ceiling/floor/max rounds this negotiation is running under (e.g. "raise the ceiling to $420k", "be more aggressive"), call revise_negotiation_plan with only the fields that should change. This does NOT accept anything — it only changes what the autonomous loop is allowed to counter with on its next round. Otherwise just answer their question or discuss.'
       : 'Just answer their question or discuss — there is no pending action to revise.'}
+${dealId ? `\nThis negotiation finished as a real deal (deal_id: ${dealId}). If the human asks you to submit a financing request for it, call create_financing_request with org_id: "${rootTask.org_id}", deal_id: "${dealId}", and an amount you infer from the deal (ask them to confirm the amount and any rate/tenor preference first if it isn't obvious from the conversation).` : ''}
 
 You may use lookup_entities, get_active_deals, search_marketplace_listings, get_pricing_insights, or evaluate_listing_offers if you need more information before answering. Keep responses concise and written for a business reader (treasurer, CFO, ops controller) — no jargon, no raw IDs, no tool names.`
 }

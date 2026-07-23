@@ -411,20 +411,6 @@ const REVISE_NEGOTIATION_PLAN = {
   },
 }
 
-// Bounded tool set for per-task plan chats — lets Strike AI look things up while
-// discussing a pending proposal, revise its terms, or adjust guardrails on a
-// live negotiation, but never execute anything directly (approve/reject in
-// the UI still own execution, and GATE 2 always owns finalization).
-export const TASK_CHAT_TOOLS = [
-  REVISE_PROPOSED_ACTION,
-  REVISE_NEGOTIATION_PLAN,
-  LOOKUP_ENTITIES,
-  GET_ACTIVE_DEALS,
-  SEARCH_MARKETPLACE_LISTINGS,
-  GET_PRICING_INSIGHTS,
-  EVALUATE_LISTING_OFFERS,
-]
-
 const SEARCH_WEB = {
   name: 'search_web',
   description: 'Search the internet for current market prices, commodity rates, trade regulations, incoterms guidance, industry benchmarks, or any real-world factual information. Use when the user asks about market rates, current pricing, trade standards, or anything that requires up-to-date external data.',
@@ -526,6 +512,21 @@ const CREATE_FINANCING_REQUEST = {
     required: ['org_id', 'amount'],
   },
 }
+
+// Bounded tool set for per-task plan chats — lets Strike AI look things up while
+// discussing a pending proposal, revise its terms, or adjust guardrails on a
+// live negotiation, but never execute anything directly (approve/reject in
+// the UI still own execution, and GATE 2 always owns finalization).
+export const TASK_CHAT_TOOLS = [
+  REVISE_PROPOSED_ACTION,
+  REVISE_NEGOTIATION_PLAN,
+  LOOKUP_ENTITIES,
+  GET_ACTIVE_DEALS,
+  SEARCH_MARKETPLACE_LISTINGS,
+  GET_PRICING_INSIGHTS,
+  EVALUATE_LISTING_OFFERS,
+  CREATE_FINANCING_REQUEST,
+]
 
 // Portal-specific tool sets — only send what each role can actually use.
 // Fewer tools = fewer input tokens on every request.

@@ -12,7 +12,6 @@ import {
   type PassportReview,
   type PassportDoc,
 } from '@/components/passport-sections'
-import { AIInsight } from '@/components/ai-insight'
 
 // ── Expert Analysis types ─────────────────────────────────────────────────────
 
@@ -127,7 +126,7 @@ function confLabel(c: string) {
 
 function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: ExpertAnalysis; onRerun?: () => void; rerunning?: boolean }) {
   const [openDim, setOpenDim] = useState<string | null>(null)
-  const [openSection, setOpenSection] = useState<'strengths' | 'flags' | 'actions' | null>('strengths')
+  const [openSection, setOpenSection] = useState<'strengths' | 'actions' | null>('strengths')
   const tc = tierColor(analysis.risk_tier)
   const cc = confLabel(analysis.analyst_confidence)
 
@@ -277,31 +276,6 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
                     <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingTop: i === 0 ? 10 : 0 }}>
                       <div style={{ width: 4, height: 4, background: 'var(--color-green)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
                       <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.55 }}>{s}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Risk flags */}
-          {analysis.risk_flags.length > 0 && (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-              <button type="button" onClick={() => setOpenSection(openSection === 'flags' ? null : 'flags')}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-red)', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-red)' }}>Risk Flags</span>
-                <span style={{ fontSize: 11, color: 'var(--color-red)', background: 'var(--color-red-bg, #FEE2E2)', padding: '2px 8px', borderRadius: 999 }}>
-                  {analysis.risk_flags.length}
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--gray)' }}>{openSection === 'flags' ? '▲' : '▼'}</span>
-              </button>
-              {openSection === 'flags' && (
-                <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--border)' }}>
-                  {analysis.risk_flags.map((f, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingTop: i === 0 ? 10 : 0 }}>
-                      <div style={{ width: 4, height: 4, background: 'var(--color-red)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
-                      <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.55 }}>{f}</span>
                     </div>
                   ))}
                 </div>
@@ -685,30 +659,6 @@ export default function MyPassportPage() {
                 onUploadDocument={file => uploadPassportFile(file, 'document')}
                 onUploadCertification={file => uploadPassportFile(file, 'certification')}
                 onDeleteDocument={deletePassportDoc}
-                afterScore={
-                  <AIInsight
-                    title="Passport Insight"
-                    prompt="Analyse this business's Strike Passport. Comment on their score, risk tier, KYB status, financial health, and what they should prioritise to improve their standing on the network. Use **bold** for key figures, bullet points for recommendations, and a 'Recommended action:' line at the end. Do NOT use # headings."
-                    context={{
-                      org_id: org.id,
-                      legal_name: org.legal_name,
-                      type: org.type,
-                      kyb_status: org.kyb_status,
-                      passport_score: org.passport_score,
-                      risk_tier: org.risk_tier,
-                      annual_revenue_range: org.annual_revenue_range,
-                      years_in_operation: org.years_in_operation,
-                      industry_naics: org.industry_naics,
-                      performance_tier: org.performance_tier,
-                      peer_review_count: data.review_count,
-                      avg_peer_rating: data.avg_rating,
-                      recent_deals: data.recent_deals,
-                      expert_analysis_total: expertAnalysis?.total_score ?? null,
-                      expert_risk_tier: expertAnalysis?.risk_tier ?? null,
-                      expert_confidence: expertAnalysis?.analyst_confidence ?? null,
-                    }}
-                  />
-                }
               />
             </div>
 

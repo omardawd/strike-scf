@@ -225,11 +225,14 @@ export async function runExpertPassportScoring(
   if (!org) return null
 
   // 2. Fetch all documents for this org (entity_type = 'organization')
-  const { data: docs } = await adminClient
+  const { data: docs, error: docsError } = await adminClient
     .from('documents')
-    .select('id, document_kind, name, storage_path, mime_type, size_bytes')
+    .select('id, document_kind, name, storage_path, mime_type')
     .eq('entity_type', 'organization')
     .eq('entity_id', orgId)
+  if (docsError) {
+    console.error(`[passport] documents query failed for org ${orgId}:`, docsError)
+  }
   if (!docs || docs.length === 0) {
     console.warn(`[passport] no documents found for org ${orgId}`)
   }
@@ -347,12 +350,13 @@ Please analyze all documents thoroughly and produce the expert PassportScore JSO
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        // Was 2048 — confirmed live to truncate mid-JSON specifically for orgs
-        // with zero uploaded documents (the "cannot verify from any primary
-        // source" hedging repeated across all 4 rubric sections is longer than
-        // a normal document-grounded response), which broke extractJson and
-        // silently downgraded scoring to the weaker formula fallback below.
-        max_tokens: 4096,
+        // Was 2048, then 4096 — both confirmed live to truncate mid-JSON: 2048
+        // broke on zero-document orgs (verbose "cannot verify" hedging across
+        // all 4 rubric sections), and 4096 broke once the documents.size_bytes
+        // fix below started actually feeding real documents in — per-document
+        // findings across 4 dimensions run well past 4096 tokens. 8192 gives
+        // real multi-document analyses headroom without still truncating.
+        max_tokens: 8192,
         // EXPERT_SYSTEM has zero interpolation — identical across every org's
         // scoring call — so it's cacheable byte-for-byte via the content-block
         // form (no tools array on this call to hang cache_control off instead).

@@ -334,6 +334,31 @@ export default function RoomPage() {
       .catch(() => { setError('Failed to load room'); setLoading(false) })
   }, [id])
 
+  // Poll as a backstop alongside Realtime — negotiation rounds and agent
+  // narration arrive from server-side (service-role) inserts, and Realtime
+  // delivery for those can be inconsistent depending on network/proxy
+  // conditions. This guarantees a new message shows up within a few seconds
+  // even if the Realtime channel below silently never fires, instead of
+  // requiring a manual page reload. Merges by id so it never fights with
+  // messages Realtime already delivered.
+  useEffect(() => {
+    if (!id) return
+    const interval = setInterval(() => {
+      fetch(`/api/rooms/${id}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error || !Array.isArray(data.messages)) return
+          setMessages(prev => {
+            const byId = new Map(prev.map((m: Message) => [m.id, m]))
+            for (const m of data.messages as Message[]) byId.set(m.id, { ...byId.get(m.id), ...m })
+            return Array.from(byId.values()).sort((a, b) => a.created_at.localeCompare(b.created_at))
+          })
+        })
+        .catch(() => { /* Realtime may still be delivering; try again next tick */ })
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [id])
+
   // Auto-scroll to bottom on new messages, and mark the room read once the
   // freshly-loaded/arrived messages are pinned to the bottom.
   useEffect(() => {
