@@ -11,6 +11,7 @@ import { HARD_MAX_ROUNDS, HARD_MAX_DEADLINE_DAYS } from './negotiation-constants
 import { postSystemMessage } from './agent-task-chat'
 import { getAgentPreferences } from './agent-preferences'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { counterOffer as counterOfferDirect, TurnOrderError, InvalidStateError, GuardrailError } from '@/lib/marketplace/offer-actions'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,11 +95,27 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
     const listing = listingById.get(offer.listing_id)
     if (!listing) continue
     const listingOrgId = listing.org_id as string
+    const offerorName = await getOrgDisplayName(offer.from_org_id as string)
 
     const rounds: Row[] = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
     const lastRound = rounds[rounds.length - 1]
-    // No rounds yet, or we made the last move — not our turn.
-    if (!lastRound || lastRound.by_org_id === listingOrgId) continue
+    if (!lastRound) continue
+    if (lastRound.by_org_id === listingOrgId) {
+      // We made the last formal move — normally we'd wait for a real counter.
+      // But if the counterparty has no agent of their own, they may be
+      // negotiating purely through Strike Room chat instead of the counter-
+      // offer form — a chat message never changes offer_rounds, so without
+      // this check we'd wait forever for a "formal" counter that never comes.
+      // Treat a fresh chat message from them as their move and react for real.
+      // Compare against offer.updated_at, not lastRound.at — every real action
+      // (a counter, or just answering a question) bumps updated_at, so a
+      // question that's already been answered doesn't look "fresh" forever
+      // and trigger a repeated answer on every subsequent tick.
+      const hasFreshChat = offer.room_id
+        ? await hasNewCounterpartyMessage(offer.room_id, listingOrgId, offer.updated_at as string)
+        : false
+      if (!hasFreshChat) continue
+    }
 
     // If a real GATE-1 negotiation already owns this offer for us (shouldn't
     // normally happen given the unique constraint, but check defensively),
@@ -132,22 +149,29 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
       offer_id: offer.id,
     }
 
-    const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: listingOrgId })
+    const chatDrivenTurn = lastRound.by_org_id === listingOrgId
+    const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: listingOrgId, chatDrivenTurn })
     if (!decision) { results.push({ negotiation_id: offer.id, outcome: 'no_decision' }); continue }
 
     if (decision.tool === 'recommend_finalization') {
       await adminClient.from('agent_tasks').insert({
         org_id: listingOrgId,
         type: 'negotiation_ready_to_finalize',
-        title: `Finalize negotiation on "${listing.title}"`.slice(0, 200),
+        title: `Finalize negotiation on "${listing.title}" with ${offerorName}`.slice(0, 200),
         body: decision.reasoning || 'The agent recommends accepting the counterparty\'s current terms.',
         proposed_action: { tool_name: 'accept_marketplace_offer', tool_input: { offer_id: offer.id, acting_org_id: listingOrgId } },
         plan,
         status: 'awaiting_approval',
       })
-      await notifyOrgAdmins(listingOrgId, `Finalize negotiation on "${listing.title}"`, decision.reasoning || '')
+      await notifyOrgAdmins(listingOrgId, `Finalize negotiation on "${listing.title}" with ${offerorName}`, decision.reasoning || '')
       await logAction(listingOrgId, 'negotiation_ready_to_finalize', offer.id, decision.input, { reasoning: decision.reasoning })
       results.push({ negotiation_id: offer.id, outcome: 'escalated_for_finalization' })
+      continue
+    }
+
+    if (decision.tool === 'answer_question') {
+      await postAnswerAndTouchOffer(offer.id, offer.room_id as string | null, listingOrgId, decision.input.answer as string)
+      results.push({ negotiation_id: offer.id, outcome: 'answered_question' })
       continue
     }
 
@@ -168,19 +192,19 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
         await adminClient.from('agent_tasks').insert({
           org_id: listingOrgId,
           type: 'negotiation_escalation',
-          title: `Approval needed: counter outside guardrails on "${listing.title}"`.slice(0, 200),
+          title: `Approval needed: counter outside guardrails on "${listing.title}" from ${offerorName}`.slice(0, 200),
           body: `${decision.reasoning ? decision.reasoning + ' ' : ''}This counter (${price} ${listing.currency}) is ${violation}. Approving will submit exactly this counter; rejecting will stop the negotiation.`,
           proposed_action: { tool_name: 'counter_marketplace_offer', tool_input: { ...decision.input, offer_id: offer.id, acting_org_id: listingOrgId, max_rounds: plan.max_rounds } },
           plan,
           status: 'awaiting_approval',
         })
-        await notifyOrgAdmins(listingOrgId, `Approval needed: counter outside guardrails on "${listing.title}"`, decision.reasoning || '')
+        await notifyOrgAdmins(listingOrgId, `Approval needed: counter outside guardrails on "${listing.title}" from ${offerorName}`, decision.reasoning || '')
         await logAction(listingOrgId, 'negotiation_escalated', offer.id, decision.input, { reason: violation })
         results.push({ negotiation_id: offer.id, outcome: 'escalated_guardrail' })
         continue
       }
 
-      const result = await executeTool('counter_marketplace_offer', {
+      const result = await execCounter({
         ...decision.input,
         notes: decision.input.notes || decision.reasoning || undefined,
         // Belt-and-suspenders: the prompt now demands shipping_cost explicitly
@@ -191,7 +215,7 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
         offer_id: offer.id,
         acting_org_id: listingOrgId,
         max_rounds: plan.max_rounds,
-      })
+      }, chatDrivenTurn)
       await logAction(listingOrgId, 'negotiation_countered', offer.id, decision.input, result)
       results.push({ negotiation_id: offer.id, outcome: result.error ? 'failed' : 'countered' })
       continue
@@ -203,7 +227,228 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
     }
   }
 
+  // ── Multi-counterparty synthesis ──────────────────────────────────────────
+  // The loop above reacts to each offer independently — this is a separate,
+  // additive pass that groups by listing_id and, only when 2+ offers on the
+  // SAME listing are all sitting in "awaiting our review", produces ONE
+  // comparison task instead of N separately-titled ones. No-ops entirely for
+  // the (much more common) single-offer-per-listing case.
+  const offersByListing = new Map<string, Row[]>()
+  for (const offer of offers ?? []) {
+    const arr = offersByListing.get(offer.listing_id as string) ?? []
+    arr.push(offer)
+    offersByListing.set(offer.listing_id as string, arr)
+  }
+  for (const [listingId, listingOffers] of offersByListing) {
+    const listing = listingById.get(listingId)
+    if (!listing) continue
+    try {
+      await synthesizeListingOffers(listing.org_id as string, listing, listingOffers)
+    } catch (err) {
+      console.error('[agent-tick] synthesizeListingOffers failed:', err)
+    }
+  }
+
   return { processed: results.length, results }
+}
+
+async function getOrgDisplayName(orgId: string | null | undefined): Promise<string> {
+  if (!orgId) return 'a counterparty'
+  const { data } = await adminClient.from('organizations').select('legal_name, doing_business_as').eq('id', orgId).single()
+  return (data?.doing_business_as as string | undefined) ?? (data?.legal_name as string | undefined) ?? 'a counterparty'
+}
+
+// Lets the tick loop re-engage a counterparty who has no agent of their own
+// and is negotiating purely through Strike Room chat rather than the formal
+// counter-offer form — a chat message alone never changes offer_rounds, so
+// the normal "wait for their formal counter" check would otherwise never
+// fire again once we've made the last structured move. message_type='message'
+// excludes the agent's own 'ai_suggestion' narration, so this only ever
+// triggers on genuine human input, never the agent reacting to itself.
+// Normal counters go through executeTool (the same path a Claude tool_use
+// block would hit — allowRepeatTurn is never part of that tool's schema, so
+// there's no way for a model or a human chat request to set it). Chat-driven
+// turns bypass the generic dispatcher and call counterOffer directly with
+// allowRepeatTurn — the ONLY place in the codebase that flag is ever set —
+// so it's never reachable from ad-hoc chat/dispatch, only from here.
+async function execCounter(
+  input: Record<string, unknown> & { offer_id: string; acting_org_id: string; max_rounds?: number },
+  allowRepeatTurn: boolean
+): Promise<Record<string, unknown>> {
+  if (!allowRepeatTurn) {
+    return executeTool('counter_marketplace_offer', input)
+  }
+  try {
+    const { offer, roomId } = await counterOfferDirect({
+      offerId: input.offer_id,
+      actingOrgId: input.acting_org_id,
+      terms: {
+        offered_price: Number(input.offered_price),
+        offered_quantity: input.offered_quantity as number | undefined,
+        proposed_delivery_date: input.proposed_delivery_date as string | undefined,
+        proposed_incoterms: input.proposed_incoterms as string | undefined,
+        proposed_payment_terms: input.proposed_payment_terms as string | undefined,
+        shipping_cost: input.shipping_cost as number | undefined,
+        notes: input.notes as string | undefined,
+        offer_items: input.offer_items as unknown[] | undefined,
+      },
+      maxRounds: input.max_rounds,
+      allowRepeatTurn: true,
+    })
+    return { offer_id: input.offer_id, status: offer.status, current_round: offer.current_round, room_id: roomId }
+  } catch (err) {
+    if (err instanceof TurnOrderError) return { error: `Not this org's turn to counter: ${err.message}` }
+    if (err instanceof GuardrailError) return { error: `Guardrail violation: ${err.message}` }
+    if (err instanceof InvalidStateError) return { error: err.message }
+    return { error: err instanceof Error ? err.message : 'Failed to submit counter-offer' }
+  }
+}
+
+async function hasNewCounterpartyMessage(roomId: string, selfOrgId: string, sinceIso: string): Promise<boolean> {
+  const { data } = await adminClient
+    .from('room_messages')
+    .select('id')
+    .eq('room_id', roomId)
+    .eq('message_type', 'message')
+    .neq('org_id', selfOrgId)
+    .gt('created_at', sinceIso)
+    .limit(1)
+  return !!(data && data.length > 0)
+}
+
+// Posts an answer_question response into the shared Room and bumps the
+// offer's updated_at — deliberately does NOT touch offer_rounds/status, so a
+// pure Q&A exchange never advances round count or resets negotiation state.
+// Bumping updated_at is what makes hasNewCounterpartyMessage's freshness
+// check stop treating an already-answered question as still "new" on the
+// next tick (see the comments at both call sites above).
+async function postAnswerAndTouchOffer(offerId: string, roomId: string | null, actingOrgId: string, answer: string): Promise<void> {
+  await adminClient.from('marketplace_offers').update({ updated_at: new Date().toISOString() }).eq('id', offerId)
+  if (!roomId || !answer) return
+  try {
+    const orgName = await getOrgDisplayName(actingOrgId)
+    await adminClient.from('room_messages').insert({
+      room_id: roomId,
+      content: `${orgName}: ${answer}`,
+      message_type: 'ai_suggestion',
+      status: 'visible',
+    })
+  } catch { /* non-fatal */ }
+}
+
+interface ComparisonDecision {
+  recommended_offer_id: string
+  body: string
+}
+
+async function getComparisonDecision(
+  listing: Row,
+  offers: Array<{ offer_id: string; org_name: string; price: unknown; incoterms: unknown; payment_terms: unknown }>
+): Promise<ComparisonDecision | null> {
+  const system = `You are Strike AI, comparing ${offers.length} competing offers on the same marketplace listing for a human decision-maker. Write a 2-4 sentence comparison naming each company and its terms, then recommend one. Respond with ONLY valid JSON: {"recommended_offer_id": "<one of the offer_ids below>", "body": "<your 2-4 sentence comparison, ending with the exact sentence 'Approving will accept {company}'s offer at {price}.'>"}`
+  const user = `Listing: "${listing.title}" (${listing.listing_type}), currency ${listing.currency}, target price ${listing.target_price ?? 'not specified'}.\n\nCompeting offers:\n${offers.map((o) => `- offer_id: ${o.offer_id}, company: ${o.org_name}, price: ${o.price}, incoterms: ${o.incoterms ?? 'n/a'}, payment terms: ${o.payment_terms ?? 'n/a'}`).join('\n')}`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 512,
+        system,
+        messages: [{ role: 'user', content: user }],
+      }),
+    })
+    if (!res.ok) return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await res.json()
+    try {
+      await adminClient.from('ai_usage').insert({
+        feature: 'negotiation_synthesis',
+        tokens_input: data.usage?.input_tokens ?? 0,
+        tokens_output: data.usage?.output_tokens ?? 0,
+        tokens_total: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
+        model: MODEL,
+      })
+    } catch { /* never let logging failure block a synthesis decision */ }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const text = data.content?.find((b: any) => b.type === 'text')?.text ?? ''
+    const start = text.indexOf('{')
+    const end = text.lastIndexOf('}')
+    if (start === -1 || end === -1) return null
+    const parsed = JSON.parse(text.slice(start, end + 1))
+    if (!parsed.recommended_offer_id || !parsed.body) return null
+    if (!offers.some((o) => o.offer_id === parsed.recommended_offer_id)) return null
+    return parsed as ComparisonDecision
+  } catch {
+    return null
+  }
+}
+
+// Compares N simultaneous counterparty offers on ONE listing into a single
+// GATE-2 task, instead of each escalating separately with no cross-offer
+// awareness. Deliberately reuses the existing 'negotiation_ready_to_finalize'
+// type + 'accept_marketplace_offer' proposed_action shape — it flows through
+// the same unmodified approve route/UI/executeTool call the single-offer path
+// already uses. This function NEVER calls accept_marketplace_offer itself; it
+// only picks which offer_id goes into a task a human must still approve.
+async function synthesizeListingOffers(listingOrgId: string, listing: Row, offers: Row[]): Promise<void> {
+  const relevantOffers = offers.filter((o) => ['pending', 'countered'].includes(o.status as string))
+  if (relevantOffers.length < 2) return // nothing to compare — no-op for the single-offer path
+
+  const { data: existing } = await adminClient
+    .from('agent_tasks')
+    .select('id, plan')
+    .eq('org_id', listingOrgId)
+    .eq('status', 'awaiting_approval')
+    .eq('type', 'negotiation_ready_to_finalize')
+  const alreadySynthesized = (existing ?? []).some(
+    (t: Row) => (t.plan as Row | null)?.listing_id === listing.id && (t.plan as Row | null)?.is_synthesis
+  )
+  if (alreadySynthesized) return
+
+  // Only synthesize once every open offer is awaiting OUR review — mirrors the
+  // per-offer turn check in the main loop above.
+  const allAwaitingOurReview = relevantOffers.every((o) => {
+    const rounds: Row[] = Array.isArray(o.offer_rounds) ? o.offer_rounds : []
+    const last = rounds[rounds.length - 1]
+    return last && last.by_org_id !== listingOrgId
+  })
+  if (!allAwaitingOurReview) return
+
+  const withNames = await Promise.all(relevantOffers.map(async (o) => {
+    const rounds: Row[] = Array.isArray(o.offer_rounds) ? o.offer_rounds : []
+    const last = rounds[rounds.length - 1]
+    return {
+      offer_id: o.id as string,
+      org_name: await getOrgDisplayName(o.from_org_id as string),
+      price: last?.offered_price ?? o.offered_price,
+      incoterms: last?.proposed_incoterms ?? null,
+      payment_terms: last?.proposed_payment_terms ?? null,
+    }
+  }))
+
+  const decision = await getComparisonDecision(listing, withNames)
+  if (!decision) return
+
+  await adminClient.from('agent_tasks').insert({
+    org_id: listingOrgId,
+    type: 'negotiation_ready_to_finalize',
+    title: `Compare ${relevantOffers.length} offers on "${listing.title}"`.slice(0, 200),
+    body: decision.body,
+    proposed_action: {
+      tool_name: 'accept_marketplace_offer',
+      tool_input: { offer_id: decision.recommended_offer_id, acting_org_id: listingOrgId },
+    },
+    plan: { is_synthesis: true, listing_id: listing.id, offer_ids: relevantOffers.map((o) => o.id) },
+    status: 'awaiting_approval',
+  })
+  await notifyOrgAdmins(listingOrgId, `Compare ${relevantOffers.length} offers on "${listing.title}"`, decision.body)
+  await logAction(listingOrgId, 'negotiation_ready_to_finalize', decision.recommended_offer_id, { offer_ids: relevantOffers.map((o) => o.id) }, { reasoning: decision.body })
 }
 
 async function notifyOrgAdmins(orgId: string, title: string, body: string): Promise<void> {
@@ -302,12 +547,23 @@ async function tickOne(neg: Row): Promise<string> {
   const rounds: Row[] = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
   const lastRound = rounds[rounds.length - 1]
 
-  if (!lastRound || lastRound.by_org_id === claimed.org_id) {
-    // We made the last move — waiting on the counterparty. Nothing changed.
-    await adminClient.from('agent_negotiations').update({
-      last_seen_offer_round: offer.current_round ?? 1,
-    }).eq('id', claimed.id)
-    return 'waiting_on_counterparty'
+  if (!lastRound) return 'no_decision'
+  if (lastRound.by_org_id === claimed.org_id) {
+    // We made the last formal move. If the counterparty has no agent of
+    // their own, they may be negotiating purely through Strike Room chat —
+    // a message there never changes offer_rounds, so check for one before
+    // parking; see the matching comment in runListingDefenseTick above.
+    // Compared against offer.updated_at, not lastRound.at, so an
+    // already-answered question doesn't look "fresh" forever.
+    const hasFreshChat = offer.room_id
+      ? await hasNewCounterpartyMessage(offer.room_id, claimed.org_id, offer.updated_at as string)
+      : false
+    if (!hasFreshChat) {
+      await adminClient.from('agent_negotiations').update({
+        last_seen_offer_round: offer.current_round ?? 1,
+      }).eq('id', claimed.id)
+      return 'waiting_on_counterparty'
+    }
   }
 
   // Don't re-escalate every tick while a human decision is already pending.
@@ -320,18 +576,32 @@ async function tickOne(neg: Row): Promise<string> {
   const alreadyEscalated = (pendingEscalations ?? []).some((t) => (t.plan as Plan | null)?.negotiation_id === claimed.id)
   if (alreadyEscalated) return 'awaiting_human_decision'
 
-  const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: claimed.org_id })
+  const chatDrivenTurn = lastRound.by_org_id === claimed.org_id
+  const decision = await getNegotiationDecision({ offer, listing, plan, actingOrgId: claimed.org_id, chatDrivenTurn })
   if (!decision) return 'no_decision'
+
+  // Whichever org isn't us on this offer is the counterparty — covers both the
+  // "we submitted this offer" case (from_org_id === us, counterparty is the
+  // listing owner) and the "tracking an incoming offer on our own listing"
+  // case (from_org_id is already the counterparty).
+  const counterpartyOrgId = (offer.from_org_id as string) === claimed.org_id ? (listing.org_id as string) : (offer.from_org_id as string)
+  const counterpartyName = await getOrgDisplayName(counterpartyOrgId)
 
   if (decision.tool === 'recommend_finalization') {
     await createFollowUpTask(claimed, 'negotiation_ready_to_finalize', {
-      title: `Finalize negotiation on "${listing.title}"`,
+      title: `Finalize negotiation on "${listing.title}" with ${counterpartyName}`,
       body: decision.reasoning || 'The agent recommends accepting the counterparty\'s current terms.',
       tool_name: 'accept_marketplace_offer',
       tool_input: { offer_id: offerId, acting_org_id: claimed.org_id },
     }, plan)
     await logAction(claimed.org_id, 'negotiation_ready_to_finalize', offerId, decision.input, { reasoning: decision.reasoning })
     return 'escalated_for_finalization'
+  }
+
+  if (decision.tool === 'answer_question') {
+    await postAnswerAndTouchOffer(offerId as string, offer.room_id as string | null, claimed.org_id, decision.input.answer as string)
+    await postSystemMessage(claimed.agent_task_id, decision.input.answer as string)
+    return 'answered_question'
   }
 
   if (decision.tool === 'reject_marketplace_offer') {
@@ -351,7 +621,7 @@ async function tickOne(neg: Row): Promise<string> {
 
     if (violation) {
       await createFollowUpTask(claimed, 'negotiation_escalation', {
-        title: `Approval needed: counter outside guardrails on "${listing.title}"`,
+        title: `Approval needed: counter outside guardrails on "${listing.title}" from ${counterpartyName}`,
         body: `${decision.reasoning ? decision.reasoning + ' ' : ''}This counter (${price} ${listing.currency}) is ${violation}. Approving will submit exactly this counter; rejecting will stop the negotiation.`,
         tool_name: 'counter_marketplace_offer',
         tool_input: { ...decision.input, offer_id: offerId, acting_org_id: claimed.org_id, max_rounds: maxRounds },
@@ -360,14 +630,14 @@ async function tickOne(neg: Row): Promise<string> {
       return 'escalated_guardrail'
     }
 
-    const result = await executeTool('counter_marketplace_offer', {
+    const result = await execCounter({
       ...decision.input,
       notes: decision.input.notes || decision.reasoning || undefined,
       shipping_cost: decision.input.shipping_cost ?? offer.shipping_cost ?? undefined,
       offer_id: offerId,
       acting_org_id: claimed.org_id,
       max_rounds: maxRounds,
-    })
+    }, chatDrivenTurn)
     await logAction(claimed.org_id, 'negotiation_countered', offerId, decision.input, result)
     if (result.error) return await halt(claimed, 'failed', `Autonomous counter failed: ${result.error}`)
 
@@ -379,12 +649,15 @@ async function tickOne(neg: Row): Promise<string> {
 
     // Round N-1 (counterparty) vs round N (us) as a comparison block — reads
     // as an actual negotiation exchange in the task thread, not just a price.
+    // In a chat-driven turn, round N-1 was actually OUR OWN prior move (the
+    // counterparty responded via Room chat instead of a formal counter), so
+    // label it accurately rather than misattributing it to them.
     const fmtPrice = (v: unknown) => v != null ? `${Number(v).toLocaleString()} ${listing.currency}` : '—'
     const comparison = {
       type: 'comparison',
       title: `Round ${newRound}`,
       left: {
-        label: `Their offer (Round ${newRound - 1})`,
+        label: chatDrivenTurn ? `Our previous offer (Round ${newRound - 1})` : `Their offer (Round ${newRound - 1})`,
         items: [
           { label: 'Price', value: fmtPrice(lastRound?.offered_price) },
           { label: 'Incoterms', value: lastRound?.proposed_incoterms || '—' },
@@ -515,8 +788,8 @@ interface Decision {
   reasoning: string
 }
 
-async function getNegotiationDecision(args: { offer: Row; listing: Row; plan: Plan; actingOrgId: string }): Promise<Decision | null> {
-  const { offer, listing, plan, actingOrgId } = args
+async function getNegotiationDecision(args: { offer: Row; listing: Row; plan: Plan; actingOrgId: string; chatDrivenTurn?: boolean }): Promise<Decision | null> {
+  const { offer, listing, plan, actingOrgId, chatDrivenTurn } = args
   const rounds: Row[] = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
   const lastRound = rounds[rounds.length - 1]
 
@@ -556,14 +829,60 @@ async function getNegotiationDecision(args: { offer: Row; listing: Row; plan: Pl
     }
   }
 
+  // Full listing/line-item/company context so the agent can actually answer
+  // product, spec, and company-background questions in the Room — not just
+  // haggle over price. Fetched fresh here (not passed in via `listing`, which
+  // only carries the narrow fields the tick loop's own turn-order logic
+  // needs) so this stays cheap for the common no-questions-asked tick.
+  const [{ data: fullListing }, { data: lineItems }, { data: actingOrg }] = await Promise.all([
+    adminClient.from('marketplace_listings')
+      .select('description, category, subcategory, tags, origin_country, incoterms, payment_terms, delivery_location, delivery_deadline')
+      .eq('id', listing.id).maybeSingle(),
+    adminClient.from('listing_line_items')
+      .select('name, quantity, unit, specs')
+      .eq('listing_id', listing.id),
+    adminClient.from('organizations')
+      .select('legal_name, doing_business_as, description, years_in_operation, industry_naics, country_of_origin, kyb_status, passport_score, passport_narrative')
+      .eq('id', actingOrgId).maybeSingle(),
+  ])
+
+  const productContext = [
+    fullListing?.description ? `Listing description: ${fullListing.description}` : '',
+    fullListing?.category ? `Category: ${fullListing.category}${fullListing.subcategory ? ` / ${fullListing.subcategory}` : ''}` : '',
+    Array.isArray(fullListing?.tags) && fullListing.tags.length ? `Tags: ${fullListing.tags.join(', ')}` : '',
+    fullListing?.origin_country ? `Origin country: ${fullListing.origin_country}` : '',
+    fullListing?.delivery_location ? `Delivery location: ${fullListing.delivery_location}` : '',
+    lineItems?.length
+      ? `Line items:\n${lineItems.map((li: Row) => `  - ${li.name}: ${li.quantity ?? '?'} ${li.unit ?? ''}${li.specs ? ` — specs: ${JSON.stringify(li.specs)}` : ''}`).join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n')
+
+  const companyContext = [
+    `Your organization: ${actingOrg?.doing_business_as ?? actingOrg?.legal_name ?? 'Unknown'}`,
+    actingOrg?.description ? `Company description: ${actingOrg.description}` : '',
+    actingOrg?.years_in_operation != null ? `Years in operation: ${actingOrg.years_in_operation}` : '',
+    actingOrg?.industry_naics ? `Industry (NAICS): ${actingOrg.industry_naics}` : '',
+    actingOrg?.country_of_origin ? `Country: ${actingOrg.country_of_origin}` : '',
+    actingOrg?.kyb_status ? `KYB status: ${actingOrg.kyb_status}` : '',
+    actingOrg?.passport_score != null ? `PassportScore: ${actingOrg.passport_score}` : '',
+    actingOrg?.passport_narrative ? `Passport summary: ${actingOrg.passport_narrative}` : '',
+  ].filter(Boolean).join('\n')
+
   const system = `You are Strike AI, autonomously negotiating a marketplace deal on behalf of an organization on the Strike SCF platform.
 
 Listing: "${listing.title}" (listing_id: ${listing.id}, ${listing.listing_type}), currency ${listing.currency}, target price ${listing.target_price ?? 'not specified'}.
+${productContext || 'No further listing detail available.'}
+
+Your own organization's background (use this to answer company/background questions — never invent facts beyond what's here):
+${companyContext}
+
 Offer (offer_id: ${offer.id}) status: ${offer.status}, round ${offer.current_round ?? 1}.
 Counterparty's latest terms — price: ${lastRound?.offered_price}, quantity: ${lastRound?.offered_quantity ?? 'n/a'}, delivery: ${lastRound?.proposed_delivery_date ?? 'n/a'}, incoterms: ${lastRound?.proposed_incoterms ?? 'n/a'}, payment terms: ${lastRound?.proposed_payment_terms ?? 'n/a'}, notes: ${lastRound?.notes ?? 'none'}.
 
 Recent conversation in the shared deal room (most recent last — this may include the counterparty's own agent explaining ITS reasoning, or a human chiming in; weigh it, but the structured terms above are the source of truth for what's actually being offered):
 ${roomConversation}
+${chatDrivenTurn ? `
+IMPORTANT — this is a chat-driven turn, not a formal counter: the structured terms above are still YOUR OWN last move (no new counter-offer has been submitted through the platform's form). The counterparty has no negotiation agent of their own and appears to be negotiating with you directly through the Strike Room chat above instead. Read their most recent message(s) as their actual current position — if they proposed a specific price or terms in chat, treat that as their counter-offer and respond to it for real (counter back, accept via recommend_finalization, or reject) exactly as you would a formal counter, referencing their chat message in your notes. If their latest message doesn't clearly state new terms (e.g. a question or small talk), use your own commercial judgment to move the negotiation forward rather than repeating yourself verbatim.` : ''}
 
 Hard limits you must respect:
 ${plan.guardrails_configured
@@ -579,9 +898,10 @@ You must call exactly one tool to make your decision:
 - counter_marketplace_offer — propose improved terms back to the counterparty. Always fill in "notes" with 1-2 sentences of real reasoning — this is posted into the shared deal room so the counterparty (their agent or a human) can see WHY you countered, not just the number.
 - reject_marketplace_offer — decline outright if the terms are clearly unacceptable (this commits to nothing, so use it freely when a counter isn't worth making). Always fill in "reason".
 - recommend_finalization — if the counterparty's CURRENT terms are good and should be accepted. You cannot accept an offer yourself; this flags it for a human to make the final call.
+- answer_question — if the counterparty's most recent Room message is PURELY an informational question (certifications, quality/compliance, specs, delivery logistics, company background) with no new price or terms proposed, answer it here using only the listing/company context above — never invent a certification, standard, or fact you weren't given. If they asked a question AND proposed new terms in the same message, don't call this — fold the answer into your counter/reject "notes"/"reason" instead and keep negotiating.
 - get_pricing_insights / evaluate_listing_offers — only if you need more market data before deciding; you'll be asked to decide again right after.
 
-Make one decision now. If you call counter_marketplace_offer or reject_marketplace_offer or recommend_finalization, briefly state your reasoning in a short text block before the tool call as well.`
+Make one decision now. If you call counter_marketplace_offer, reject_marketplace_offer, recommend_finalization, or answer_question, briefly state your reasoning in a short text block before the tool call as well.`
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [{ role: 'user', content: 'Decide how to respond to the counterparty\'s latest offer.' }]
@@ -594,6 +914,7 @@ Make one decision now. If you call counter_marketplace_offer or reject_marketpla
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
           'x-api-key': process.env.ANTHROPIC_API_KEY!,
         },
         body: JSON.stringify({
@@ -601,7 +922,14 @@ Make one decision now. If you call counter_marketplace_offer or reject_marketpla
           max_tokens: 1024,
           system,
           messages,
-          tools: NEGOTIATION_TOOLS,
+          // NEGOTIATION_TOOLS is static — cache_control on the last entry caches
+          // everything before it too. This is the highest-frequency call site in
+          // the app (pg_cron every ~60s x every active negotiation, PLUS this
+          // loop's own 2-3 internal iterations resending the same array), so
+          // caching pays off within a single tick, not just across ticks.
+          tools: NEGOTIATION_TOOLS.map((t, i) =>
+            i === NEGOTIATION_TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+          ),
           // disable_parallel_tool_use is required here — with plain {type:'any'},
           // Claude sometimes returns two tool_use blocks in one turn (e.g. both
           // get_pricing_insights and evaluate_listing_offers), but this loop only

@@ -121,6 +121,7 @@ export async function postUserMessage(
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
           'x-api-key': process.env.ANTHROPIC_API_KEY!,
         },
         body: JSON.stringify({
@@ -128,7 +129,11 @@ export async function postUserMessage(
           max_tokens: 1024,
           system,
           messages: anthropicMessages,
-          tools: TASK_CHAT_TOOLS,
+          // TASK_CHAT_TOOLS is static — same cache_control-on-last-entry pattern
+          // as the other call sites.
+          tools: TASK_CHAT_TOOLS.map((t, i) =>
+            i === TASK_CHAT_TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+          ),
           tool_choice: { type: 'auto', disable_parallel_tool_use: true },
         }),
       })

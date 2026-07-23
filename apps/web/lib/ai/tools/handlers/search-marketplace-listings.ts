@@ -72,15 +72,27 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
   // query is required by the tool schema, but agent-scan's freeform JSON
   // proposals aren't schema-validated before being stored, so a proposal
   // can still reach here without one — fall back to "all" rather than crash.
-  const keyword = (input.query || 'all').toLowerCase()
+  // Tokenize into individual words and match if ANY word appears in any
+  // searchable field (title/description/category/line items/poster org name).
+  // Previously this checked the whole query as one contiguous substring —
+  // "Walmart steel" would never match a listing titled "505 MT Steel
+  // Products" because "Walmart" only ever appears via the org relation, not
+  // in the listing's own text, so a completely valid, visible listing was
+  // silently filtered out. Confirmed live: this is exactly the natural
+  // "org name + product" phrasing a user or the AI itself would ask for.
+  const rawKeyword = (input.query || 'all').toLowerCase().trim()
+  const words = rawKeyword.split(/\s+/).filter((w) => w.length > 2)
   const filtered = (listings ?? []).filter((l: any) => {
-    if (keyword === 'all' || keyword === '') return true
-    return (
-      l.title?.toLowerCase().includes(keyword) ||
-      l.description?.toLowerCase().includes(keyword) ||
-      l.category?.toLowerCase().includes(keyword) ||
-      l.listing_line_items?.some((li: any) => li.name?.toLowerCase().includes(keyword))
-    )
+    if (rawKeyword === 'all' || rawKeyword === '' || words.length === 0) return true
+    const orgName = (l.organizations?.doing_business_as || l.organizations?.legal_name || '').toLowerCase()
+    const haystacks = [
+      l.title?.toLowerCase() ?? '',
+      l.description?.toLowerCase() ?? '',
+      l.category?.toLowerCase() ?? '',
+      orgName,
+      ...(l.listing_line_items?.map((li: any) => li.name?.toLowerCase() ?? '') ?? []),
+    ]
+    return words.some((w) => haystacks.some((h) => h.includes(w)))
   })
 
   const results = filtered.map((l: any) => ({

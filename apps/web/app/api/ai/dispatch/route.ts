@@ -96,12 +96,18 @@ export async function POST(req: NextRequest) {
   const model = 'claude-sonnet-4-6'
 
   for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
+    // portalTools is static per portal type — cache_control on the last entry
+    // (mirrors app/api/ai/chat/route.ts's already-working pattern) caches
+    // everything before it too.
+    const toolsWithCache = portalTools.map((t, i) =>
+      i === portalTools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+    )
     const anthropicBody: Record<string, unknown> = {
       model,
       max_tokens: 1024,
       system: `${DISPATCH_SYSTEM}\n\n${contextNote}`,
       messages,
-      tools: portalTools,
+      tools: toolsWithCache,
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -109,6 +115,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'x-api-key': process.env.ANTHROPIC_API_KEY!,
       },
       body: JSON.stringify(anthropicBody),

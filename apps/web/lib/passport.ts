@@ -342,13 +342,21 @@ Please analyze all documents thoroughly and produce the expert PassportScore JSO
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'pdfs-2024-09-25',
+        'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
         'x-api-key': process.env.ANTHROPIC_API_KEY!,
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: EXPERT_SYSTEM,
+        // Was 2048 — confirmed live to truncate mid-JSON specifically for orgs
+        // with zero uploaded documents (the "cannot verify from any primary
+        // source" hedging repeated across all 4 rubric sections is longer than
+        // a normal document-grounded response), which broke extractJson and
+        // silently downgraded scoring to the weaker formula fallback below.
+        max_tokens: 4096,
+        // EXPERT_SYSTEM has zero interpolation — identical across every org's
+        // scoring call — so it's cacheable byte-for-byte via the content-block
+        // form (no tools array on this call to hang cache_control off instead).
+        system: [{ type: 'text', text: EXPERT_SYSTEM, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userContent }],
       }),
     })

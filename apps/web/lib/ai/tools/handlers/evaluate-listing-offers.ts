@@ -23,7 +23,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
       .select(
         'id, from_org_id, offered_price, offered_quantity, proposed_delivery_date, ' +
         'proposed_incoterms, proposed_payment_terms, shipping_cost, notes, ' +
-        'offer_items, status, created_at'
+        'status, created_at'
       )
       .eq('listing_id', input.listing_id)
       .not('status', 'in', '("withdrawn","rejected","expired")')
@@ -57,7 +57,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
     id: string; from_org_id: string; offered_price: number; offered_quantity: number | null;
     proposed_delivery_date: string | null; proposed_incoterms: string | null;
     proposed_payment_terms: string | null; shipping_cost: number | null;
-    notes: string | null; offer_items: unknown; status: string;
+    notes: string | null; status: string;
   }) => {
     const org = orgMap[o.from_org_id] ?? {}
     return {

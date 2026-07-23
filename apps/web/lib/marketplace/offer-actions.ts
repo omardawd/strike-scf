@@ -123,8 +123,18 @@ export async function counterOffer(params: {
   actingOrgId: string
   terms: CounterTerms
   maxRounds?: number
+  /** Set ONLY by the tick loop's own internal (non-tool-schema) call path,
+   *  never derived from a tool_input an AI model can populate — a counterparty
+   *  with no negotiation agent of their own may be negotiating purely through
+   *  Strike Room chat instead of the counter-offer form, so from the formal
+   *  record it can still look like "our turn" even after we react to their
+   *  message. The tick loop only ever sets this after independently confirming
+   *  a genuinely new counterparty chat message exists since our last round
+   *  (see hasNewCounterpartyMessage in agent-tick.ts). The human-facing route
+   *  and every AI tool schema must never be able to set this. */
+  allowRepeatTurn?: boolean
 }): Promise<{ offer: Record<string, unknown>; roomId: string | null }> {
-  const { offerId, actingOrgId, maxRounds } = params
+  const { offerId, actingOrgId, maxRounds, allowRepeatTurn } = params
   // The AI negotiation path sometimes writes a unit onto a numeric field
   // (e.g. "500MT") — coerce before it ever reaches the numeric DB columns.
   const terms: CounterTerms = {
@@ -144,8 +154,8 @@ export async function counterOffer(params: {
   const isListingOwnerTurn = !lastRound || lastRound.by_org_id === offerorOrgId
   const isOfferorTurn = lastRound != null && lastRound.by_org_id === listingOrgId
 
-  const isListingOwnerCounter = actingOrgId === listingOrgId && isListingOwnerTurn
-  const isOfferorCounter = actingOrgId === offerorOrgId && isOfferorTurn
+  const isListingOwnerCounter = actingOrgId === listingOrgId && (isListingOwnerTurn || allowRepeatTurn)
+  const isOfferorCounter = actingOrgId === offerorOrgId && (isOfferorTurn || allowRepeatTurn)
   if (!isListingOwnerCounter && !isOfferorCounter) {
     throw new TurnOrderError('Cannot counter in the current state')
   }

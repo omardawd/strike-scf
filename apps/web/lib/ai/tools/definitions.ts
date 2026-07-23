@@ -345,6 +345,28 @@ const RECOMMEND_FINALIZATION = {
   },
 }
 
+// Signal-only "tool" for the autonomous negotiation tick loop. Not a real
+// action — it never touches offer_rounds, agent_negotiations, or any deal
+// state. Claude calls this when the counterparty's latest Room message is
+// primarily an informational question (certifications, quality process,
+// compliance, company background, product specs) rather than a price/terms
+// move — the tick loop intercepts this tool_use block directly (it is NOT
+// registered in execute.ts/ToolName) and simply posts the answer into the
+// shared Room, so the negotiation keeps its real-deal-cycle feel (a human or
+// counterparty agent can ask "are you ISO certified?" and get a grounded
+// answer) without ever advancing or resetting the negotiation's state.
+const ANSWER_QUESTION = {
+  name: 'answer_question',
+  description: 'Post an answer to an informational question the counterparty asked in the shared Room chat (about certifications, quality, compliance, specs, company background, etc.) — use this INSTEAD of counter_marketplace_offer/reject_marketplace_offer when their latest message is purely a question with no new price or terms proposed. If they asked a question AND proposed new terms in the same message, answer the question inside your counter/reject notes instead of calling this separately.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string', description: 'A specific, helpful answer grounded in the listing/company context you were given — never invent a certification or fact you were not given evidence for; say so plainly if the information is not available rather than guessing.' },
+    },
+    required: ['answer'],
+  },
+}
+
 // Signal-only "tool" for per-task plan chats (app/api/agents/tasks/[id]/messages/route.ts).
 // Not a real action — it never touches the database itself. Claude calls this
 // when the human asks it to change the terms of a pending proposed action; the
@@ -608,6 +630,7 @@ export const NEGOTIATION_TOOLS = [
   COUNTER_MARKETPLACE_OFFER,
   REJECT_MARKETPLACE_OFFER,
   RECOMMEND_FINALIZATION,
+  ANSWER_QUESTION,
   GET_PRICING_INSIGHTS,
   EVALUATE_LISTING_OFFERS,
 ]

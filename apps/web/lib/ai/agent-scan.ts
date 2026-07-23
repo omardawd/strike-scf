@@ -222,6 +222,22 @@ Each proposal must follow this exact schema:
   }
 }
 
+Beyond reacting to shortages, actively look for SURPLUS and FORWARD-LOOKING opportunities in the ERP
+signals above:
+- If "inventory_levels".bins shows any item where actual_qty (or projected_qty) is meaningfully
+  greater than reserved_qty — stock sitting unused with no order consuming it — propose creating a
+  marketplace listing to sell the excess. Use tool_name "create_marketplace_listing" with a "title",
+  "description", "listing_type":"product_service", and a realistic "target_price" derived from the
+  item's valuation_rate and surplus quantity. Name the specific item and quantity in the title/body
+  (e.g. "List 780 surplus units of refrigerated yogurt cases for sale") — never reference an
+  item_code directly to the human.
+- If "cash_position" plus "ar_aging"/"ap_aging" together suggest a cash surplus or shortfall in the
+  next 30-90 days, propose a "scan_advisory" naming the specific timing and dollar amount with a
+  concrete next step — reason months ahead using open_orders' delivery/schedule dates, not just the
+  current snapshot.
+- These are just as important as reactive proposals — do not only ever propose shortage responses.
+  If the data shows no surplus or no meaningful forward signal, do not fabricate one.
+
 If the "Marketplace opportunities" section lists any listings, seriously consider proposing a "submit_offer" for the
 best-fitting one(s) — this is how the agent actually sources/sells on Strike Place, not just manages existing deals.
 When you do, use tool_name "submit_marketplace_offer" with tool_input: { "listing_id": <the exact listing_id from the
@@ -232,9 +248,10 @@ plain numbers with no unit or currency symbol attached (475000, not "475000 USD"
 unit (MT, units, etc.) only in "notes" or the title/body text, never inside the numeric fields themselves.
 Name the counterparty by company name in the title/body, never "the poster" or the listing_id.
 
-Produce 1-5 proposals max. Prioritise by urgency (cash flow > overdue receivables > inventory > procurement > new
-marketplace opportunities). Only propose actions with clear supporting evidence in the data. If there is nothing
-meaningful to propose, return [].`
+Produce 1-5 proposals max. Prioritise by urgency (cash flow > overdue receivables > inventory
+shortages that block fulfillment > procurement > new marketplace opportunities > surplus inventory
+monetization > forward-looking positioning). Only propose actions with clear supporting evidence in
+the data. If there is nothing meaningful to propose, return [].`
 
   const userPrompt = `Here is the current state of the organisation:\n\n${contextSections}\n\nBased on this data, what actions do you propose for the human controller to review?`
 
