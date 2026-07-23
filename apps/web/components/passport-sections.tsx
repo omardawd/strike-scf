@@ -247,7 +247,6 @@ export function PassportSections({
   onDeleteDocument?: (id: string) => void
   afterScore?: React.ReactNode
 }) {
-  const flags = org.risk_flags ?? []
   const sourcing = org.sourcing_countries ?? []
   const categories = org.product_categories ?? []
   const perfTier = performance?.performance_tier ?? org.performance_tier ?? null
@@ -274,30 +273,6 @@ export function PassportSections({
               </div>
             )}
           </div>
-          {flags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
-              {flags.map((f, i) => {
-                const label = typeof f === 'string' ? f : (f.label ?? f.code ?? 'Flag')
-                return (
-                  <span
-                    key={i}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '3px 10px',
-                      fontSize: 11,
-                      fontWeight: 500,
-                      background: 'var(--color-amber-bg)',
-                      color: 'var(--color-amber)',
-                      border: '1px solid var(--color-amber)',
-                    }}
-                  >
-                    {label}
-                  </span>
-                )
-              })}
-            </div>
-          )}
         </div>
       </div>
 
