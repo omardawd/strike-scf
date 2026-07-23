@@ -117,7 +117,7 @@ export function DealRoadmap({ status, financingContext, currentUserRole: _role }
               <div style={{
                 fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
                 color: isCancelled ? 'var(--gray-soft)' : isCurrent ? 'var(--ink)' : isPast ? 'var(--color-green)' : 'var(--gray-soft)',
-                fontWeight: isCurrent ? 700 : 400, marginTop: 7, textAlign: 'center', whiteSpace: 'nowrap',
+                fontWeight: isCurrent ? 700 : 400, marginTop: 7, textAlign: 'center', maxWidth: 90,
               }}>
                 {isPayStep ? paymentStepLabel : step.label}
               </div>
