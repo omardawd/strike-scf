@@ -618,6 +618,21 @@ Make one decision now. If you call counter_marketplace_offer or reject_marketpla
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await res.json()
+    // This loop previously logged nothing to ai_usage — every autonomous
+    // tick's Sonnet call was invisible to any in-app spend tracking. Confirmed
+    // live as part of a multi-million-token spend spike that only showed up
+    // on the Anthropic billing dashboard, not here. Fire-and-forget so a
+    // logging failure never blocks an actual negotiation decision.
+    try {
+      await adminClient.from('ai_usage').insert({
+        org_id: actingOrgId,
+        feature: 'negotiation_tick',
+        tokens_input: data.usage?.input_tokens ?? 0,
+        tokens_output: data.usage?.output_tokens ?? 0,
+        tokens_total: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
+        model: MODEL,
+      })
+    } catch { /* never let logging failure block a negotiation decision */ }
     const content = data.content ?? []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toolUse = content.find((b: any) => b.type === 'tool_use')

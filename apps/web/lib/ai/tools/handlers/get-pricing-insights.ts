@@ -1,5 +1,8 @@
 import { adminClient } from '../admin'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>
+
 export interface GetPricingInsightsInput {
   product_name: string
   product_category?: string
@@ -23,7 +26,22 @@ interface ExternalPricingResult {
   raw_summary: string
 }
 
-async function searchExternalPricing(product: string, category: string | undefined): Promise<ExternalPricingResult> {
+async function logUsage(orgId: string | null, data: Row): Promise<void> {
+  const inTok = data?.usage?.input_tokens ?? 0
+  const outTok = data?.usage?.output_tokens ?? 0
+  try {
+    await adminClient.from('ai_usage').insert({
+      org_id: orgId,
+      feature: 'pricing_insights',
+      tokens_input: inTok,
+      tokens_output: outTok,
+      tokens_total: inTok + outTok,
+      model: 'claude-haiku-4-5-20251001',
+    })
+  } catch { /* never let logging break the actual tool call */ }
+}
+
+async function searchExternalPricing(product: string, category: string | undefined, orgId: string | null): Promise<ExternalPricingResult> {
   const prompt =
     `You are a commodity pricing analyst. Provide current market pricing for: "${product}"` +
     (category ? ` (category: ${category})` : '') +
@@ -32,11 +50,15 @@ async function searchExternalPricing(product: string, category: string | undefin
     `relevant_indices (applicable commodity indices: LME, CME, FAO, ICE, etc.), ` +
     `summary (2-3 sentence market outlook). Only return valid JSON.`
 
-  // Try with web search first
+  // Try with web search first. max_uses capped at 1 (was 3) — each search is
+  // a separately-billed tool call plus the tokens of whatever it scrapes back
+  // into context; the cache check above means this whole function now only
+  // runs at most once per commodity per 12h, so it no longer needs 3 searches
+  // to justify its cost the way an uncached per-tick call would have.
   const webSearchBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1024,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }],
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -56,6 +78,7 @@ async function searchExternalPricing(product: string, category: string | undefin
 
   if (wsRes?.ok) {
     const data = await wsRes.json()
+    void logUsage(orgId, data)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const textBlock = data?.content?.find((b: any) => b.type === 'text')
     text = textBlock?.text ?? ''
@@ -77,9 +100,10 @@ async function searchExternalPricing(product: string, category: string | undefin
     }).catch(() => null)
 
     if (kbRes?.ok) {
-      const data = await kbRes.json()
+      const kbData = await kbRes.json()
+      void logUsage(orgId, kbData)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      text = data?.content?.find((b: any) => b.type === 'text')?.text ?? ''
+      text = kbData?.content?.find((b: any) => b.type === 'text')?.text ?? ''
     }
   }
 
@@ -159,7 +183,32 @@ export async function getPricingInsights(input: GetPricingInsightsInput) {
     else priceAssessment = 'at_market'
   }
 
-  const external = await searchExternalPricing(input.product_name, input.product_category)
+  // Reuse a recent cached signal instead of re-running the live web-search
+  // call every time. Commodity prices don't meaningfully move minute to
+  // minute, but this tool is offered to the autonomous negotiation tick loop
+  // and gets called on essentially every round of every active negotiation —
+  // uncached, that's a real (paid, per-search) web_search tool call PLUS a
+  // Haiku completion on every single tick, with no rate limit. Confirmed live
+  // as the dominant driver of an unexpected multi-million-token spend spike.
+  // 12h freshness window: long enough to eliminate repeat calls within a
+  // single negotiation (or demo run), short enough that pricing still looks
+  // current if this runs unattended for days.
+  const freshSignal = (cachedSignals ?? []).find((s: Row) => {
+    if (s.signal_type !== 'commodity_price') return false
+    const ageMs = Date.now() - new Date(s.fetched_at as string).getTime()
+    return ageMs < 12 * 60 * 60 * 1000
+  }) as Row | undefined
+
+  const external: ExternalPricingResult = freshSignal
+    ? {
+        source: `${freshSignal.source ?? 'cache'} (cached)`,
+        index_price_range: (freshSignal.metadata as Row | null)?.price_range ?? null,
+        trend_30d: (freshSignal.metadata as Row | null)?.trend ?? null,
+        key_factors: (freshSignal.metadata as Row | null)?.key_factors ?? [],
+        relevant_indices: (freshSignal.metadata as Row | null)?.indices ?? [],
+        raw_summary: (freshSignal.metadata as Row | null)?.summary ?? '',
+      }
+    : await searchExternalPricing(input.product_name, input.product_category, input.buyer_org_id ?? input.supplier_org_id ?? null)
 
   const tactics: string[] = []
   if (priceAssessment === 'above_market') {
