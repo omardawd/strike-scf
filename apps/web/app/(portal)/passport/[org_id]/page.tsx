@@ -11,6 +11,7 @@ import {
   type PassportReview,
   type PassportDoc,
 } from '@/components/passport-sections'
+import { useT } from '@/lib/i18n/locale-context'
 
 type PublicOrg = PassportOrg & {
   doing_business_as: string | null
@@ -27,6 +28,20 @@ interface PassportResponse {
   bank_view_count_30d: number
   org_view_count_30d: number
   network_passport_score_median: number | null
+  catalog: CatalogListing[]
+}
+
+interface CatalogListing {
+  id: string
+  title: string
+  listing_type: string
+  category: string | null
+  target_price: number | null
+  currency: string
+  unit: string | null
+  cover_image_url: string | null
+  delivery_deadline: string | null
+  created_at: string
 }
 
 interface NarrativeResponse {
@@ -46,6 +61,65 @@ interface NarrativeResponse {
 function initials(name: string | null): string {
   const parts = (name || '?').trim().split(/\s+/)
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
+}
+
+function OrgCatalog({ listings, orgName }: { listings: CatalogListing[]; orgName: string | null }) {
+  const t = useT()
+  const router = useRouter()
+  if (listings.length === 0) return null
+
+  return (
+    <div className="card" style={{ marginTop: 20 }}>
+      <div className="card-head">
+        {t('passportPublic.productsListingsFrom', { org: orgName ?? t('passportPublic.thisOrganization') })}
+        <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--gray)', fontSize: 12 }}>
+          {t('passport.activeCount', { count: String(listings.length) })}
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: 14,
+          padding: 16,
+        }}
+      >
+        {listings.map((item) => (
+          <div
+            key={item.id}
+            className="card card-interactive"
+            style={{ overflow: 'hidden', cursor: 'pointer' }}
+            onClick={() => router.push(`/marketplace/listings/${item.id}`)}
+          >
+            {item.cover_image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.cover_image_url} alt={item.title} className="listing-card-image" />
+            ) : (
+              <div className="listing-card-image" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray-soft)' }}>
+                <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6" />
+                </svg>
+              </div>
+            )}
+            <div style={{ padding: 12 }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>
+                {item.category ?? (item.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService'))}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>
+                {item.title}
+              </div>
+              {item.target_price != null && (
+                <div style={{ fontSize: 13, color: 'var(--gray)' }}>
+                  {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(item.target_price)} {item.currency}
+                  {item.unit && <span> / {item.unit}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | null }) {
@@ -81,6 +155,7 @@ function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | 
 }
 
 function TypeBadge({ type }: { type: string | null }) {
+  const t = useT()
   const isBuyer = type === 'anchor'
   return (
     <span
@@ -91,7 +166,7 @@ function TypeBadge({ type }: { type: string | null }) {
         borderColor: isBuyer ? 'var(--blue)' : 'var(--color-green)',
       }}
     >
-      {isBuyer ? 'BUYER' : 'SUPPLIER'}
+      {isBuyer ? t('passport.buyer') : t('passport.supplier')}
     </span>
   )
 }
@@ -105,6 +180,7 @@ function AiAssessmentPanel({
   assessment: string | null
   loading: boolean
 }) {
+  const t = useT()
   return (
     <div style={{ border: '1px solid rgba(20,40,204,0.22)', background: 'rgba(20,40,204,0.02)' }}>
       <div
@@ -135,7 +211,7 @@ function AiAssessmentPanel({
             color: 'var(--blue)',
           }}
         >
-          Strike AI · Assessment
+          {t('passportPublic.strikeAiAssessment')}
         </span>
       </div>
       {loading ? (
@@ -149,7 +225,7 @@ function AiAssessmentPanel({
             letterSpacing: '0.04em',
           }}
         >
-          Analyzing…
+          {t('passport.analyzing')}
         </div>
       ) : (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -164,7 +240,7 @@ function AiAssessmentPanel({
           )}
           {!narrative && !assessment && (
             <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-              Passport narrative will be generated upon KYB verification.
+              {t('passportPublic.narrativePending')}
             </div>
           )}
         </div>
@@ -174,9 +250,10 @@ function AiAssessmentPanel({
 }
 
 function ReviewedToast({ onDismiss }: { onDismiss: () => void }) {
+  const t = useT()
   useEffect(() => {
-    const t = setTimeout(onDismiss, 4500)
-    return () => clearTimeout(t)
+    const timeout = setTimeout(onDismiss, 4500)
+    return () => clearTimeout(timeout)
   }, [onDismiss])
   return (
     <div
@@ -205,12 +282,13 @@ function ReviewedToast({ onDismiss }: { onDismiss: () => void }) {
           strokeLinejoin="round"
         />
       </svg>
-      Review submitted — thank you
+      {t('passportPublic.reviewSubmitted')}
     </div>
   )
 }
 
 export default function PublicPassportPage() {
+  const t = useT()
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -235,7 +313,7 @@ export default function PublicPassportPage() {
       const res = await fetch(`/api/passport/${orgId}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError((body as { error?: string }).error ?? 'Failed to load passport')
+        setError((body as { error?: string }).error ?? t('passport.loadFailed'))
         return
       }
       const json = (await res.json()) as PassportResponse
@@ -247,11 +325,11 @@ export default function PublicPassportPage() {
         return
       }
     } catch {
-      setError('Failed to load passport')
+      setError(t('passport.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [orgId, router])
+  }, [orgId, router, t])
 
   const loadNarrative = useCallback(async () => {
     setNarrativeLoading(true)
@@ -315,8 +393,8 @@ export default function PublicPassportPage() {
       )}
       <Topbar
         crumbs={[
-          { label: 'Strike' },
-          { label: 'Passports', onClick: () => router.push('/passport') },
+          { label: t('passport.strike') },
+          { label: t('passportPublic.passports'), onClick: () => router.push('/passport') },
           { label: org?.legal_name ?? '…' },
         ]}
         actions={<NotifBell />}
@@ -369,7 +447,7 @@ export default function PublicPassportPage() {
                     color: 'var(--gray)',
                   }}
                 >
-                  This organization&apos;s Strike Passport
+                  {t('passportPublic.orgsStrikePassport')}
                 </div>
                 <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <OrgAvatar name={org.legal_name} logoUrl={org.logo_url} />
@@ -386,13 +464,13 @@ export default function PublicPassportPage() {
                           color: 'var(--ink)',
                         }}
                       >
-                        {org.legal_name ?? 'Unknown organization'}
+                        {org.legal_name ?? t('passportPublic.unknownOrganization')}
                       </span>
                       <TypeBadge type={org.type} />
                     </div>
                     {dba && (
                       <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>
-                        doing business as {dba}
+                        {t('passport.doingBusinessAs')} {dba}
                       </div>
                     )}
                   </div>
@@ -408,6 +486,8 @@ export default function PublicPassportPage() {
                 documents={docs}
                 certifications={certs}
               />
+
+              <OrgCatalog listings={data.catalog} orgName={dba || org.legal_name} />
             </div>
 
             {/* RIGHT — sticky AI assessment panel */}
@@ -444,7 +524,7 @@ export default function PublicPassportPage() {
                     >
                       <CountUp value={data.bank_view_count_30d} />
                     </span>{' '}
-                    bank{data.bank_view_count_30d === 1 ? '' : 's'} viewed this Passport this month
+                    {t('passportPublic.bankViewedThisSuffix', { plural: data.bank_view_count_30d === 1 ? '' : 's' })}
                   </div>
                   <div style={{ height: 1, background: 'var(--border)' }} />
                   <div style={{ fontSize: 13, color: 'var(--ink)' }}>
@@ -458,8 +538,7 @@ export default function PublicPassportPage() {
                     >
                       <CountUp value={data.org_view_count_30d} />
                     </span>{' '}
-                    organization
-                    {data.org_view_count_30d === 1 ? '' : 's'} viewed this Passport this month
+                    {t('passportPublic.orgViewedThisSuffix', { plural: data.org_view_count_30d === 1 ? '' : 's' })}
                   </div>
                   {narrativeData?.medians?.peer_count != null &&
                     narrativeData.medians.peer_count > 0 && (
@@ -474,14 +553,16 @@ export default function PublicPassportPage() {
                             letterSpacing: '0.04em',
                           }}
                         >
-                          Network median PassportScore™:{' '}
+                          {t('passportPublic.networkMedianScore')}{' '}
                           <strong style={{ color: 'var(--ink)' }}>
                             {narrativeData.medians.passport_score != null
                               ? <CountUp value={narrativeData.medians.passport_score} />
                               : '—'}
                           </strong>{' '}
-                          across {narrativeData.medians.peer_count} verified{' '}
-                          {org.type === 'anchor' ? 'buyer' : 'supplier'}s
+                          {t('passportPublic.acrossVerified', {
+                            count: narrativeData.medians.peer_count,
+                            type: org.type === 'anchor' ? t('passportPublic.buyers') : t('passportPublic.suppliers'),
+                          })}
                         </div>
                       </>
                     )}

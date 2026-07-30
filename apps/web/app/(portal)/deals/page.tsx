@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { SkeletonCard, CountUp } from '@/components/motion'
+import { FINANCEABLE_STATUSES, type DealStatus } from '@/lib/deals/transitions'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 type DealTab = 'all' | 'active' | 'negotiating' | 'completed'
 
@@ -46,35 +50,39 @@ const TAB_STATUS_MAP: Record<DealTab, string | null> = {
   completed:   'completed',
 }
 
-const EMPTY_MESSAGES: Record<DealTab, { title: string; sub: string }> = {
-  all:          { title: 'No deals yet',          sub: 'When you accept or send an offer on Strike Place, your deals will appear here.' },
-  active:       { title: 'No active deals',        sub: 'Deals in progress — funded and on track — will show here.' },
-  negotiating:  { title: 'No active negotiations',  sub: 'Deals and marketplace offers you are actively negotiating will appear here.' },
-  completed:    { title: 'No completed deals',     sub: 'Deals that have reached delivery and payment will show here.' },
+function emptyMessages(t: TFn): Record<DealTab, { title: string; sub: string }> {
+  return {
+    all:          { title: t('deals.empty.all.title'),         sub: t('deals.empty.all.sub') },
+    active:       { title: t('deals.empty.active.title'),      sub: t('deals.empty.active.sub') },
+    negotiating:  { title: t('deals.empty.negotiating.title'), sub: t('deals.empty.negotiating.sub') },
+    completed:    { title: t('deals.empty.completed.title'),   sub: t('deals.empty.completed.sub') },
+  }
 }
 
-const DEAL_STATUS_LABEL: Record<string, string> = {
-  negotiating:         'Negotiating',
-  agreed:              'Agreed',
-  documents_pending:   'Documents',
-  confirmed:           'Confirmed',
-  in_preparation:      'In Preparation',
-  shipped:             'Shipped',
-  goods_received:      'Goods Received',
-  delivery_confirmed:  'Delivery Confirmed',
-  payment_info_sent:   'Payment Info Sent',
-  payment_confirmed:   'Payment Confirmed',
-  active:              'Active',
-  financing_requested: 'Financing Requested',
-  financing_active:    'Financing Active',
-  completed:           'Completed',
-  in_dispute:          'In Dispute',
-  disputed:            'Disputed',
-  cancelled:           'Cancelled',
+function dealStatusLabelMap(t: TFn): Record<string, string> {
+  return {
+    negotiating:         t('deals.status.negotiating'),
+    agreed:              t('deals.status.agreed'),
+    documents_pending:   t('deals.status.documentsPending'),
+    confirmed:           t('deals.status.confirmed'),
+    in_preparation:      t('deals.status.inPreparation'),
+    shipped:             t('deals.status.shipped'),
+    goods_received:      t('deals.status.goodsReceived'),
+    delivery_confirmed:  t('deals.status.deliveryConfirmed'),
+    payment_info_sent:   t('deals.status.paymentInfoSent'),
+    payment_confirmed:   t('deals.status.paymentConfirmed'),
+    active:              t('deals.status.active'),
+    financing_requested: t('deals.status.financingRequested'),
+    financing_active:    t('deals.status.financingActive'),
+    completed:           t('deals.status.completed'),
+    in_dispute:          t('deals.status.inDispute'),
+    disputed:            t('deals.status.disputed'),
+    cancelled:           t('deals.status.cancelled'),
+  }
 }
 
-function statusLabel(s: string): string {
-  return DEAL_STATUS_LABEL[s] ?? s.replace(/_/g, ' ')
+function statusLabel(s: string, t: TFn): string {
+  return dealStatusLabelMap(t)[s] ?? s.replace(/_/g, ' ')
 }
 
 function statusBadgeClass(s: string): string {
@@ -114,28 +122,32 @@ function financingBadgeClass(s: string): string {
 }
 
 // deal_source enum → human label.
-const SOURCE_LABEL: Record<string, string> = {
-  marketplace: 'Strike Place',
-  imported:    'Imported',
-  direct:      'Direct',
+function sourceLabel(t: TFn): Record<string, string> {
+  return {
+    marketplace: t('nav.strikePlace'),
+    imported:    t('deals.sourceImported'),
+    direct:      t('deals.sourceDirect'),
+  }
 }
 
 // financing_type enum → compact label for the financing cell.
-const FIN_TYPE_LABEL: Record<string, string> = {
-  reverse_factoring:   'Reverse Factoring',
-  invoice_factoring:   'Invoice Factoring',
-  po_financing:        'PO Financing',
-  dynamic_discounting: 'Dynamic Discounting',
+function finTypeLabel(t: TFn): Record<string, string> {
+  return {
+    reverse_factoring:   t('financing.type.reverseFactoring'),
+    invoice_factoring:   t('financing.type.invoiceFactoring'),
+    po_financing:        t('financing.type.poFinancing'),
+    dynamic_discounting: t('financing.type.dynamicDiscounting'),
+  }
 }
 
 // A deal is financing-eligible when it has been agreed/is live but no financing
 // has been requested yet. These are the "Finance This Deal" rows — the primary
-// action path that replaces the old transactions flow (TB.3). Statuses match the
-// detail page's actual financing gate (deals/[id]/page.tsx) so the CTA never
-// dead-ends on a deal whose form won't open.
-const FINANCEABLE_STATUSES = ['agreed', 'active']
+// action path that replaces the old transactions flow (TB.3). FINANCEABLE_STATUSES
+// is shared with the detail page's button gate and its ?action=finance deep-link
+// effect (lib/deals/transitions.ts) so the CTA never dead-ends on a deal whose
+// form won't open.
 function isFinanceable(d: DealRow): boolean {
-  return !d.financing_requested && !d.financing_request_id && FINANCEABLE_STATUSES.includes(d.status)
+  return !d.financing_requested && !d.financing_request_id && FINANCEABLE_STATUSES.includes(d.status as DealStatus)
 }
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
@@ -152,15 +164,17 @@ function shortId(id: string): string {
   return id.slice(0, 8).toUpperCase()
 }
 
-const DEAL_COLUMNS = [
-  { key: 'id',           label: 'Deal ID',       width: 150 },
-  { key: 'counterparty', label: 'Counterparty',  width: undefined },
-  { key: 'value',        label: 'Trade Value',   width: 130, align: 'right' as const },
-  { key: 'status',       label: 'Status',        width: 140 },
-  { key: 'financing',    label: 'Financing',     width: 180 },
-  { key: 'delivery',     label: 'Delivery',      width: 110 },
-  { key: 'actions',      label: '',              width: 150 },
-]
+function dealColumns(t: TFn) {
+  return [
+    { key: 'id',           label: t('deals.col.dealId'),       width: 150 },
+    { key: 'counterparty', label: t('deals.col.counterparty'), width: undefined },
+    { key: 'value',        label: t('deals.col.tradeValue'),   width: 130, align: 'right' as const },
+    { key: 'status',       label: t('deals.col.status'),       width: 140 },
+    { key: 'financing',    label: t('deals.col.financing'),    width: 180 },
+    { key: 'delivery',     label: t('deals.col.delivery'),     width: 110 },
+    { key: 'actions',      label: '',                          width: 150 },
+  ]
+}
 
 interface ImportableErpDeal {
   erp_reference: string
@@ -190,6 +204,8 @@ interface PendingOffer {
 
 export default function DealsPage() {
   const router = useRouter()
+  const t = useT()
+  const DEAL_COLUMNS = dealColumns(t)
   const [activeTab, setActiveTab] = useState<DealTab>('all')
   const [deals, setDeals] = useState<DealRow[]>([])
   const [pendingOffers, setPendingOffers] = useState<PendingOffer[]>([])
@@ -245,19 +261,19 @@ export default function DealsPage() {
     return true
   })
 
-  const empty = EMPTY_MESSAGES[activeTab]
+  const empty = emptyMessages(t)[activeTab]
 
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'My Deals' }]}
+        crumbs={[{ label: t('deals.myDeals') }]}
         actions={
           <div className="topbar-right">
             <button
               className="btn btn-blue btn-sm"
               onClick={() => router.push('/deals/import')}
             >
-              Finance an Existing Trade
+              {t('marketplace.financeExistingTrade')}
             </button>
           </div>
         }
@@ -266,9 +282,9 @@ export default function DealsPage() {
       <div className="page" style={{ maxWidth: 1280 }} data-page-name="Deals" data-ai-context={JSON.stringify({ total: counts.all, active: counts.active, negotiating: counts.negotiating, completed: counts.completed, active_tab: activeTab, pending_offers: pendingOffers.length, pending_offer_listings: pendingOffers.map(o => ({ title: o.listing_title, status: o.status, round: o.current_round, total: o.current_total })) })}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            My Deals
+            {t('deals.myDeals')}
           </h1>
-          <p className="subtitle">Track and manage your active trades from offer to delivery.</p>
+          <p className="subtitle">{t('deals.subtitle')}</p>
         </div>
 
         {/* Tab row */}
@@ -279,10 +295,10 @@ export default function DealsPage() {
               className={`deals-tab${activeTab === tab ? ' deals-tab-active' : ''}`}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'all' && 'All'}
-              {tab === 'active' && 'Active'}
-              {tab === 'negotiating' && 'Negotiating'}
-              {tab === 'completed' && 'Completed'}
+              {tab === 'all' && t('common.all')}
+              {tab === 'active' && t('deals.tabActive')}
+              {tab === 'negotiating' && t('deals.tabNegotiating')}
+              {tab === 'completed' && t('deals.tabCompleted')}
               <span className="deals-tab-count"><CountUp value={counts[tab]} /></span>
             </button>
           ))}
@@ -292,7 +308,7 @@ export default function DealsPage() {
         {!loading && erpImportable.length > 0 && (activeTab === 'all' || activeTab === 'active') && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-              From Your ERP ({erpImportable.length})
+              {t('deals.fromYourErp', { count: erpImportable.length })}
             </div>
             <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {erpImportable.map(inv => (
@@ -306,7 +322,7 @@ export default function DealsPage() {
                       {inv.counterparty_name}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                      Invoice {inv.invoice_name} · Unpaid receivable
+                      {t('deals.invoiceUnpaidReceivable', { invoice: inv.invoice_name })}
                     </div>
                   </div>
 
@@ -315,7 +331,7 @@ export default function DealsPage() {
                       {fmt(inv.amount, inv.currency)}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray)' }}>
-                      Due {fmtDate(inv.due_date)}
+                      {t('marketplace.due')} {fmtDate(inv.due_date)}
                     </div>
                   </div>
 
@@ -325,7 +341,7 @@ export default function DealsPage() {
                     disabled={importingRef === inv.erp_reference}
                     onClick={() => importErpDeal(inv.erp_reference)}
                   >
-                    {importingRef === inv.erp_reference ? 'Importing…' : 'Import to Strike →'}
+                    {importingRef === inv.erp_reference ? t('deals.importing') : t('deals.importToStrike')}
                   </button>
                 </div>
               ))}
@@ -337,7 +353,7 @@ export default function DealsPage() {
         {!loading && pendingOffers.length > 0 && (activeTab === 'all' || activeTab === 'negotiating') && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-              Pending Offers ({pendingOffers.length})
+              {t('deals.pendingOffers', { count: pendingOffers.length })}
             </div>
             <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {pendingOffers.map(offer => {
@@ -352,10 +368,10 @@ export default function DealsPage() {
                     {/* Title + type */}
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {offer.listing_title ?? 'Untitled listing'}
+                        {offer.listing_title ?? t('deals.untitledListing')}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                        {offer.listing_type === 'po_request' ? 'PO Request' : 'Product / Service'} · Strike Place
+                        {offer.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService')} · {t('nav.strikePlace')}
                       </div>
                     </div>
 
@@ -364,7 +380,7 @@ export default function DealsPage() {
                       <PassportScoreRing score={offer.listing_owner_score} size="sm" />
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{offer.listing_owner_name ?? '—'}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)' }}>Listing owner</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)' }}>{t('deals.listingOwner')}</div>
                       </div>
                     </div>
 
@@ -374,14 +390,14 @@ export default function DealsPage() {
                         {offer.current_total != null ? fmt(offer.current_total, offer.listing_currency) : '—'}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--gray)' }}>
-                        Round {offer.current_round}
+                        {t('listingDetail.round', { round: offer.current_round })}
                       </div>
                     </div>
 
                     {/* Status */}
                     <div style={{ flex: '0 0 auto' }}>
                       <span className={isCounted ? 'badge badge-offer' : 'badge badge-draft'}>
-                        {isCounted ? 'Countered' : 'Offer Sent'}
+                        {isCounted ? t('deals.countered') : t('deals.offerSent')}
                       </span>
                     </div>
 
@@ -404,7 +420,7 @@ export default function DealsPage() {
                       style={{ flexShrink: 0 }}
                       onClick={e => { e.stopPropagation(); router.push(`/marketplace/listings/${offer.listing_id}`) }}
                     >
-                      View Offer →
+                      {t('deals.viewOffer')}
                     </button>
                   </div>
                 )
@@ -456,13 +472,13 @@ export default function DealsPage() {
                             className="btn btn-ghost btn-sm"
                             onClick={() => router.push('/marketplace')}
                           >
-                            Browse Strike Place
+                            {t('deals.browseStrikePlace')}
                           </button>
                           <button
                             className="btn btn-blue btn-sm"
                             onClick={() => router.push('/deals/import')}
                           >
-                            Finance an Existing Trade
+                            {t('marketplace.financeExistingTrade')}
                           </button>
                         </div>
                       )}
@@ -472,7 +488,7 @@ export default function DealsPage() {
               ) : (
                 filtered.map(deal => {
                   const value = deal.total_value ?? deal.agreed_price
-                  const cpName = deal.counterparty?.legal_name ?? 'Unknown'
+                  const cpName = deal.counterparty?.legal_name ?? t('listingDetail.unknown')
                   const fin = deal.financing_request
                   const financeable = isFinanceable(deal)
                   return (
@@ -481,10 +497,10 @@ export default function DealsPage() {
                         {deal.marketplace_listings?.title ? (
                           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{deal.marketplace_listings.title}</span>
                         ) : (
-                          <span className="mono" style={{ color: 'var(--gray)' }}>Deal #{shortId(deal.id)}</span>
+                          <span className="mono" style={{ color: 'var(--gray)' }}>{t('deals.dealHash', { id: shortId(deal.id) })}</span>
                         )}
                         <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', color: 'var(--gray-soft)', textTransform: 'uppercase', marginTop: 2 }}>
-                          {SOURCE_LABEL[deal.deal_source] ?? deal.deal_source}
+                          {sourceLabel(t)[deal.deal_source] ?? deal.deal_source}
                         </div>
                       </td>
                       <td>
@@ -495,7 +511,7 @@ export default function DealsPage() {
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{cpName}</div>
                             <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', color: 'var(--gray-soft)', marginTop: 1 }}>
-                              {deal.user_role === 'buyer' ? 'You are buyer' : 'You are supplier'}
+                              {deal.user_role === 'buyer' ? t('deals.youAreBuyer') : t('deals.youAreSupplier')}
                             </div>
                           </div>
                         </div>
@@ -507,7 +523,7 @@ export default function DealsPage() {
                       </td>
                       <td>
                         <span className={statusBadgeClass(deal.status)}>
-                          {statusLabel(deal.status)}
+                          {statusLabel(deal.status, t)}
                         </span>
                       </td>
                       <td>
@@ -517,14 +533,14 @@ export default function DealsPage() {
                               {fin.status.replace(/_/g, ' ')}
                             </span>
                             <span style={{ fontSize: 10.5, color: 'var(--gray)' }}>
-                              {FIN_TYPE_LABEL[fin.financing_type] ?? fin.financing_type}
-                              {fin.offer_count ? ` · ${fin.offer_count} offer${fin.offer_count !== 1 ? 's' : ''}` : ''}
+                              {finTypeLabel(t)[fin.financing_type] ?? fin.financing_type}
+                              {fin.offer_count ? ` · ${fin.offer_count} ${fin.offer_count !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}` : ''}
                             </span>
                           </div>
                         ) : financeable ? (
-                          <span style={{ fontSize: 11.5, color: 'var(--color-green)', fontWeight: 500 }}>Eligible</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--color-green)', fontWeight: 500 }}>{t('deals.eligible')}</span>
                         ) : (
-                          <span style={{ fontSize: 11.5, color: 'var(--gray-soft)' }}>Not financed</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--gray-soft)' }}>{t('deals.notFinanced')}</span>
                         )}
                       </td>
                       <td>
@@ -538,14 +554,14 @@ export default function DealsPage() {
                             className="btn btn-blue btn-sm"
                             onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}?action=finance`) }}
                           >
-                            Finance This Deal
+                            {t('deals.financeThisDeal')}
                           </button>
                         ) : (
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={e => { e.stopPropagation(); router.push(`/deals/${deal.id}`) }}
                           >
-                            View
+                            {t('marketplace.view')}
                           </button>
                         )}
                       </td>

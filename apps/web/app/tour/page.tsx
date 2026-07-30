@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { TOUR_SCENES } from './tour-data'
 import TourSidebar from './TourSidebar'
 import TourGuide from './TourGuide'
-import TitleScene from './scenes/TitleScene'
+import AiOpeningScene from './scenes/AiOpeningScene'
 import DashboardScene from './scenes/DashboardScene'
 import ErpScene from './scenes/ErpScene'
 import GateScene from './scenes/GateScene'
@@ -40,7 +40,7 @@ function TourInner() {
   const scene = TOUR_SCENES[index]!
   const isFirst = index === 0
   const isLast = index === TOUR_SCENES.length - 1
-  const isChromeless = scene.kind === 'title' || scene.kind === 'capstone'
+  const isChromeless = scene.kind === 'capstone'
   const waitingOnNegotiation = scene.kind === 'negotiation' && !negotiationDone
 
   function next() {
@@ -56,8 +56,8 @@ function TourInner() {
 
   const sceneBody = (
     <>
-      {scene.kind === 'title' && <TitleScene scene={scene} onNext={next} />}
-      {scene.kind === 'dashboard' && <DashboardScene scene={scene} />}
+      {scene.kind === 'ai-open' && <AiOpeningScene scene={scene} onAdvance={next} />}
+      {scene.kind === 'dashboard' && <DashboardScene scene={scene} onAdvance={next} />}
       {scene.kind === 'erp' && <ErpScene scene={scene} />}
       {scene.kind === 'gate' && <GateScene scene={scene} onNext={next} />}
       {scene.kind === 'negotiation' && (

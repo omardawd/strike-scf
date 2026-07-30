@@ -6,6 +6,9 @@ import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
 import { AIInsight } from '@/components/ai-insight'
 import { CountUp, SkeletonCard } from '@/components/motion'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Bank types ────────────────────────────────────────────────────────────────
 interface MonthlyBucket { label: string; count: number; volume: number }
@@ -78,28 +81,30 @@ interface DealsReportingData {
 type ReportingData = BankReportingData | DealsReportingData
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const STATUS_LABELS: Record<string, string> = {
-  pending_anchor_approval: 'Pending Anchor',
-  pending_bank_review:     'Pending Bank',
-  more_info_requested:     'More Info Requested',
-  financing_approved:      'Financing Approved',
-  funded:                  'Funded',
-  completed:               'Completed',
-  rejected:                'Rejected',
-  // Deal statuses (Strike Place v2)
-  negotiating:         'Negotiating',
-  agreed:              'Agreed',
-  contract_pending:    'Contract Pending',
-  documents_pending:   'Documents Pending',
-  confirmed:           'In Business',
-  in_preparation:      'In Preparation',
-  shipped:             'Shipped',
-  delivery_confirmed:  'Delivery Confirmed',
-  in_dispute:          'In Dispute',
-  payment_due:         'Payment Due',
-  payment_overdue:     'Payment Overdue',
-  payment_confirmed:   'Payment Confirmed',
-  cancelled:           'Cancelled',
+function statusLabels(t: TFn): Record<string, string> {
+  return {
+    pending_anchor_approval: t('reportingPage.status.pendingAnchor'),
+    pending_bank_review:     t('reportingPage.status.pendingBank'),
+    more_info_requested:     t('reportingPage.status.moreInfoRequested'),
+    financing_approved:      t('reportingPage.status.financingApproved'),
+    funded:                  t('reportingPage.status.funded'),
+    completed:               t('deals.status.completed'),
+    rejected:                t('reportingPage.status.rejected'),
+    // Deal statuses (Strike Place v2)
+    negotiating:         t('deals.status.negotiating'),
+    agreed:              t('deals.status.agreed'),
+    contract_pending:    t('reportingPage.status.contractPending'),
+    documents_pending:   t('deals.status.documentsPending'),
+    confirmed:           t('reportingPage.status.inBusiness'),
+    in_preparation:      t('deals.status.inPreparation'),
+    shipped:             t('deals.status.shipped'),
+    delivery_confirmed:  t('deals.status.deliveryConfirmed'),
+    in_dispute:          t('deals.status.inDispute'),
+    payment_due:         t('reportingPage.status.paymentDue'),
+    payment_overdue:     t('reportingPage.status.paymentOverdue'),
+    payment_confirmed:   t('deals.status.paymentConfirmed'),
+    cancelled:           t('deals.status.cancelled'),
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -178,12 +183,14 @@ function HeroBand({
 
 // ── Status donut ──────────────────────────────────────────────────────────────
 function StatusDonut({ segments }: { segments: { status: string; count: number }[] }) {
+  const t = useT()
+  const STATUS_LABELS = statusLabels(t)
   const total = segments.reduce((s, x) => s + x.count, 0)
   const R = 52, SW = 16, C = 2 * Math.PI * R
   let acc = 0
 
   if (total === 0) {
-    return <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: 12 }}>No deals yet</div>
+    return <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: 12 }}>{t('reportingPage.noDealsYet')}</div>
   }
 
   return (
@@ -210,7 +217,7 @@ function StatusDonut({ segments }: { segments: { status: string; count: number }
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>{total}</div>
-          <div style={{ fontSize: 10.5, color: 'var(--gray)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>deals</div>
+          <div style={{ fontSize: 10.5, color: 'var(--gray)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>{t('reportingPage.deals')}</div>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: 1, minWidth: 150 }}>
@@ -229,6 +236,7 @@ function StatusDonut({ segments }: { segments: { status: string; count: number }
 
 // ── Ranked counterparty bars ──────────────────────────────────────────────────
 function RankBars({ rows, emptyLabel }: { rows: { id: string; name: string; deal_count: number; total_volume: number }[]; emptyLabel: string }) {
+  const t = useT()
   if (rows.length === 0) {
     return <div className="float-slow" style={{ padding: '20px 16px', fontSize: 13, color: 'var(--gray)' }}>{emptyLabel}</div>
   }
@@ -249,7 +257,7 @@ function RankBars({ rows, emptyLabel }: { rows: { id: string; name: string; deal
           <div style={{ height: 7, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${Math.max((r.total_volume / max) * 100, 3)}%`, borderRadius: 999, background: 'linear-gradient(90deg, var(--blue), var(--color-purple))', transition: 'width 0.5s ease' }} />
           </div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>{r.deal_count} deal{r.deal_count !== 1 ? 's' : ''}</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>{r.deal_count === 1 ? t('reportingPage.oneDeal') : t('reportingPage.dealCount', { count: r.deal_count })}</div>
         </div>
       ))}
     </div>
@@ -260,6 +268,8 @@ function RankBars({ rows, emptyLabel }: { rows: { id: string; name: string; deal
 export default function ReportingPage() {
   const router = useRouter()
   const user   = useUser()
+  const t = useT()
+  const STATUS_LABELS = statusLabels(t)
 
   const [data,    setData]    = useState<ReportingData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -273,17 +283,17 @@ export default function ReportingPage() {
       const res = await fetch(`/api/reporting?period=${volPeriod}`)
       if (!res.ok) {
         const d = await res.json() as { error?: string }
-        setError(d.error ?? 'Failed to load reporting data')
+        setError(d.error ?? t('reportingPage.failedLoadData'))
         return
       }
       const reportingData = await res.json() as ReportingData
       setData(reportingData)
     } catch {
-      setError('Failed to load reporting data')
+      setError(t('reportingPage.failedLoadData'))
     } finally {
       setLoading(false)
     }
-  }, [volPeriod])
+  }, [volPeriod, t])
 
   useEffect(() => {
     if (!user) return
@@ -303,14 +313,14 @@ export default function ReportingPage() {
       <Topbar
         onBack={() => router.push('/dashboard')}
         crumbs={[
-          { label: 'Reporting' },
+          { label: t('reportingPage.reporting') },
         ]}
         actions={<NotifBell />}
       />
 
       <div className="page" data-page-name="Reporting" data-ai-context={JSON.stringify({ role: (user as any)?.role, has_data: !!data, ...(data ? { summary: data } : {}) })}>
         <div className="page-header reveal">
-          <h1 className="t-page-title">Reporting</h1>
+          <h1 className="t-page-title">{t('reportingPage.reporting')}</h1>
         </div>
 
         {error && (
@@ -334,7 +344,7 @@ export default function ReportingPage() {
         ) : data?.role === 'bank' ? (
           <>
             <AIInsight
-              title="Analytics Summary"
+              title={t('reportingPage.analyticsSummary')}
               collapsed={false}
               prompt="Analyze this bank's SCF portfolio performance. Based on transaction volumes, status breakdown, and supplier activity, identify trends, flag any concerns, and suggest one portfolio optimization action."
               context={{
@@ -350,19 +360,19 @@ export default function ReportingPage() {
             {/* ── KPI strip ── */}
             <div className="kpi-strip-4 reveal-stagger" style={{ marginBottom: 24 }}>
               <div className="kpi-card-spark">
-                <div className="kpi-label">Total Transactions</div>
+                <div className="kpi-label">{t('reportingPage.totalTransactions')}</div>
                 <div className="kpi-value"><CountUp value={data.portfolio.total_transactions} /></div>
               </div>
               <div className="kpi-card-spark">
-                <div className="kpi-label">Active Deals</div>
+                <div className="kpi-label">{t('deals.tabActive')} {t('reportingPage.deals')}</div>
                 <div className="kpi-value"><CountUp value={data.portfolio.active_deals} /></div>
               </div>
               <div className="kpi-card-spark">
-                <div className="kpi-label">Outstanding Balance</div>
+                <div className="kpi-label">{t('reportingPage.outstandingBalance')}</div>
                 <div className="kpi-value"><CountUp value={data.portfolio.outstanding_balance} format={fmtCurrency} /></div>
               </div>
               <div className="kpi-card-spark">
-                <div className="kpi-label">Avg. Financing Rate</div>
+                <div className="kpi-label">{t('reportingPage.avgFinancingRate')}</div>
                 <div className="kpi-value">
                   <CountUp value={data.portfolio.avg_rate ?? NaN} format={(n) => `${n}%`} />
                 </div>
@@ -372,7 +382,7 @@ export default function ReportingPage() {
             {/* ── Monthly volume chart ── */}
             <div className="card reveal" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Volume (last 6 months)</h3>
+                <h3 className="t-card-head">{t('reportingPage.volumeLast6Months')}</h3>
                 <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
@@ -387,19 +397,19 @@ export default function ReportingPage() {
               {/* ── Top suppliers ── */}
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">Top suppliers</h3>
+                  <h3 className="t-card-head">{t('reportingPage.topSuppliers')}</h3>
                 </div>
                 {data.top_suppliers.length === 0 ? (
                   <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                    No supplier data yet.
+                    {t('reportingPage.noSupplierData')}
                   </div>
                 ) : (
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Supplier</th>
-                        <th style={{ textAlign: 'right' }}>Deals</th>
-                        <th style={{ textAlign: 'right' }}>Total financed</th>
+                        <th>{t('passport.supplier')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('reportingPage.deals')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('reportingPage.totalFinanced')}</th>
                       </tr>
                     </thead>
                     <tbody className="reveal-stagger">
@@ -425,11 +435,11 @@ export default function ReportingPage() {
               {/* ── Status breakdown ── */}
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">Status breakdown</h3>
+                  <h3 className="t-card-head">{t('reportingPage.statusBreakdown')}</h3>
                 </div>
                 {data.status_breakdown.length === 0 ? (
                   <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                    No transactions yet.
+                    {t('reportingPage.noTransactionsYet')}
                   </div>
                 ) : (
                   <div className="card-body reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -471,28 +481,28 @@ export default function ReportingPage() {
             {/* ── Portfolio summary ── */}
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Portfolio summary</h3>
+                <h3 className="t-card-head">{t('reportingPage.portfolioSummary')}</h3>
               </div>
               <div className="card-body">
                 <div className="kv-rows reveal-stagger">
                   <div className="kv-row">
-                    <span className="k">Total transactions</span>
+                    <span className="k">{t('reportingPage.totalTransactions')}</span>
                     <span className="v"><CountUp value={data.portfolio.total_transactions} /></span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Active deals</span>
+                    <span className="k">{t('reportingPage.activeDeals')}</span>
                     <span className="v"><CountUp value={data.portfolio.active_deals} /></span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Outstanding balance</span>
+                    <span className="k">{t('reportingPage.outstandingBalanceLower')}</span>
                     <span className="v"><CountUp value={data.portfolio.outstanding_balance} format={fmtCurrencyFull} /></span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Total repaid (completed)</span>
+                    <span className="k">{t('reportingPage.totalRepaidCompleted')}</span>
                     <span className="v"><CountUp value={data.portfolio.total_repaid} format={fmtCurrencyFull} /></span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Average financing rate</span>
+                    <span className="k">{t('reportingPage.averageFinancingRate')}</span>
                     <span className="v">
                       <CountUp value={data.portfolio.avg_rate ?? NaN} format={(n) => `${n}% APR`} />
                     </span>
@@ -506,20 +516,20 @@ export default function ReportingPage() {
           <>
             {/* ── Hero band ── */}
             <HeroBand
-              primaryLabel={data.role === 'anchor' ? 'Total Trade Volume' : 'Total Volume Sold'}
+              primaryLabel={data.role === 'anchor' ? t('reportingPage.totalTradeVolume') : t('reportingPage.totalVolumeSold')}
               primaryValue={<CountUp value={data.kpis.total_trade_volume} format={fmtCurrency} />}
               stats={[
-                { label: 'Active Value', value: <CountUp value={data.kpis.active_volume} format={fmtCurrency} /> },
-                { label: 'Completed', value: <CountUp value={data.kpis.completed_volume} format={fmtCurrency} /> },
-                { label: 'Active Deals', value: <CountUp value={data.kpis.active_deals} /> },
-                { label: 'Avg. Completed Cycle', value: <CountUp value={data.kpis.avg_deal_cycle_days ?? NaN} format={(n) => `${n}d`} /> },
-                { label: 'Avg. Pipeline Age', value: <CountUp value={data.kpis.avg_pipeline_age_days ?? NaN} format={(n) => `${n}d`} /> },
+                { label: t('reportingPage.activeValue'), value: <CountUp value={data.kpis.active_volume} format={fmtCurrency} /> },
+                { label: t('deals.status.completed'), value: <CountUp value={data.kpis.completed_volume} format={fmtCurrency} /> },
+                { label: t('reportingPage.activeDeals'), value: <CountUp value={data.kpis.active_deals} /> },
+                { label: t('reportingPage.avgCompletedCycle'), value: <CountUp value={data.kpis.avg_deal_cycle_days ?? NaN} format={(n) => `${n}d`} /> },
+                { label: t('reportingPage.avgPipelineAge'), value: <CountUp value={data.kpis.avg_pipeline_age_days ?? NaN} format={(n) => `${n}d`} /> },
               ]}
-              footnote={data.kpis.avg_deal_cycle_days == null ? 'No completed deals yet — cycle time will appear once a deal finishes. Pipeline age reflects current active deals.' : undefined}
+              footnote={data.kpis.avg_deal_cycle_days == null ? t('reportingPage.noCompletedDealsFootnote') : undefined}
             />
 
             <AIInsight
-              title={data.role === 'anchor' ? 'Payables Analytics' : 'Receivables Analytics'}
+              title={data.role === 'anchor' ? t('reportingPage.payablesAnalytics') : t('reportingPage.receivablesAnalytics')}
               collapsed={false}
               prompt={data.role === 'anchor'
                 ? "Analyze this buyer's Strike Place deal activity. Based on deal volumes, supplier concentration, and financing usage, identify trends, flag concerns, and suggest one action to improve program efficiency."
@@ -536,7 +546,7 @@ export default function ReportingPage() {
             <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
               <div className="card reveal">
                 <div className="card-head">
-                  <h3 className="t-card-head">Deal volume</h3>
+                  <h3 className="t-card-head">{t('reportingPage.dealVolume')}</h3>
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
@@ -550,7 +560,7 @@ export default function ReportingPage() {
 
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">Deal status</h3>
+                  <h3 className="t-card-head">{t('reportingPage.dealStatus')}</h3>
                 </div>
                 <div className="card-body">
                   <StatusDonut segments={data.status_breakdown} />
@@ -562,31 +572,31 @@ export default function ReportingPage() {
             <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">{data.role === 'anchor' ? 'Top suppliers by volume' : 'Top buyers by volume'}</h3>
+                  <h3 className="t-card-head">{data.role === 'anchor' ? t('reportingPage.topSuppliersByVolume') : t('reportingPage.topBuyersByVolume')}</h3>
                 </div>
-                <RankBars rows={data.top_counterparties} emptyLabel="No counterparty data yet." />
+                <RankBars rows={data.top_counterparties} emptyLabel={t('reportingPage.noCounterpartyData')} />
               </div>
 
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">Financing</h3>
+                  <h3 className="t-card-head">{t('reportingPage.financing')}</h3>
                 </div>
                 <div className="card-body">
                   <div className="fs-grid reveal-stagger">
                     <div className="fs-cell">
-                      <div className="fs-label">Pending requests</div>
+                      <div className="fs-label">{t('reportingPage.pendingRequests')}</div>
                       <div className="fs-value"><CountUp value={data.kpis.pending_financing_requests} /></div>
                     </div>
                     <div className="fs-cell">
-                      <div className="fs-label">Requested (open)</div>
+                      <div className="fs-label">{t('reportingPage.requestedOpen')}</div>
                       <div className="fs-value"><CountUp value={data.kpis.total_financing_requested} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
-                      <div className="fs-label">{data.role === 'anchor' ? 'Financed' : 'Secured'}</div>
+                      <div className="fs-label">{data.role === 'anchor' ? t('reportingPage.financed') : t('reportingPage.secured')}</div>
                       <div className="fs-value"><CountUp value={data.kpis.total_financed} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
-                      <div className="fs-label">Rate range</div>
+                      <div className="fs-label">{t('reportingPage.rateRange')}</div>
                       <div className="fs-value">
                         {data.kpis.avg_financing_rate != null
                           ? `${data.kpis.min_financing_rate}–${data.kpis.max_financing_rate}% (avg ${data.kpis.avg_financing_rate}%)`
@@ -601,35 +611,35 @@ export default function ReportingPage() {
             {/* ── Audit & risk ── */}
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Audit &amp; Risk</h3>
+                <h3 className="t-card-head">{t('reportingPage.auditAndRisk')}</h3>
               </div>
               <div className="card-body">
                 <div className="fs-grid reveal-stagger">
                   <div className="fs-cell">
-                    <div className="fs-label">Dispute rate</div>
+                    <div className="fs-label">{t('reportingPage.disputeRate')}</div>
                     <div className="fs-value" style={{ color: (data.kpis.dispute_rate ?? 0) > 10 ? 'var(--color-red)' : undefined }}>
                       <CountUp value={data.kpis.dispute_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
                   </div>
                   <div className="fs-cell">
-                    <div className="fs-label">Cancellation rate</div>
+                    <div className="fs-label">{t('reportingPage.cancellationRate')}</div>
                     <div className="fs-value">
                       <CountUp value={data.kpis.cancellation_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
                   </div>
                   <div className="fs-cell">
-                    <div className="fs-label">Counterparty concentration</div>
+                    <div className="fs-label">{t('reportingPage.counterpartyConcentration')}</div>
                     <div className="fs-value" style={{ color: (data.kpis.concentration_risk ?? 0) > 40 ? 'var(--color-amber)' : undefined }}>
                       <CountUp value={data.kpis.concentration_risk ?? NaN} format={(n) => `${n}%`} />
                       {(data.kpis.concentration_risk ?? 0) > 40 && (
                         <span className="badge" style={{ marginLeft: 8, background: 'var(--color-amber-bg, #FEF3C7)', color: 'var(--color-amber)', fontSize: 10.5 }}>
-                          Concentrated
+                          {t('reportingPage.concentrated')}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="fs-cell">
-                    <div className="fs-label">Contract completion rate</div>
+                    <div className="fs-label">{t('reportingPage.contractCompletionRate')}</div>
                     <div className="fs-value">
                       <CountUp value={data.kpis.contract_completion_rate ?? NaN} format={(n) => `${n}%`} />
                     </div>
@@ -642,15 +652,15 @@ export default function ReportingPage() {
             {data.stale_deals.length > 0 && (
               <div className="card reveal" style={{ marginBottom: 16 }}>
                 <div className="card-head">
-                  <h3 className="t-card-head">Stale Deals</h3>
-                  <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>14+ days without progressing</span>
+                  <h3 className="t-card-head">{t('reportingPage.staleDeals')}</h3>
+                  <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>{t('reportingPage.staleDealsHint')}</span>
                 </div>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>{data.role === 'anchor' ? 'Supplier' : 'Buyer'}</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Days stale</th>
+                      <th>{data.role === 'anchor' ? t('passport.supplier') : t('passport.buyer')}</th>
+                      <th>{t('financing.status')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('reportingPage.daysStale')}</th>
                     </tr>
                   </thead>
                   <tbody className="reveal-stagger">
@@ -674,28 +684,28 @@ export default function ReportingPage() {
             {/* ── Recent deals ── */}
             <div className="card reveal">
               <div className="card-head">
-                <h3 className="t-card-head">Recent deals</h3>
-                <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+                <h3 className="t-card-head">{t('reportingPage.recentDeals')}</h3>
+                <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('reportingPage.viewAll')}</a>
               </div>
               {data.recent_deals.length === 0 ? (
                 <div className="card-body float-slow" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  <p style={{ marginBottom: 12 }}>No deals yet.</p>
+                  <p style={{ marginBottom: 12 }}>{t('reportingPage.noDealsYetPeriod')}</p>
                   <button
                     className="btn btn-primary btn-sm"
                     type="button"
                     onClick={() => router.push('/marketplace')}
                   >
-                    Visit Strike Place
+                    {t('reportingPage.visitStrikePlace')}
                   </button>
                 </div>
               ) : (
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>{data.role === 'anchor' ? 'Supplier' : 'Buyer'}</th>
-                      <th style={{ textAlign: 'right' }}>Value</th>
-                      <th>Status</th>
-                      <th>Date</th>
+                      <th>{data.role === 'anchor' ? t('passport.supplier') : t('passport.buyer')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('dealImport.value')}</th>
+                      <th>{t('financing.status')}</th>
+                      <th>{t('reportingPage.date')}</th>
                     </tr>
                   </thead>
                   <tbody className="reveal-stagger">

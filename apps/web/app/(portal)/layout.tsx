@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { PortalProvider, type PortalType } from '@/lib/portal-context'
 import { UserProvider, type UserOrg } from '@/lib/user-context'
 import { PortalShell } from './portal-shell'
-import { GhostGate } from '@/components/ghost-gate'
+import { KybStatusPage } from '@/components/kyb-status-page'
 
 const adminClient = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,6 +53,12 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const portal = derivePortal(userData.role ?? '', org?.type)
 
+  // Central platform-access gate: an org must be KYB-approved to use the
+  // platform at all. Bank/admin users have no org and always pass through.
+  // Non-approved orgs see ONLY the status page — no sidebar, no other route
+  // is reachable — until Strike approves their application.
+  const needsKybGate = !!org && org.kyb_status !== 'approved'
+
   return (
     <PortalProvider portal={portal}>
       <UserProvider user={{
@@ -64,14 +70,13 @@ export default async function PortalLayout({ children }: { children: React.React
         bank_id: userData.bank_id ?? null,
         org,
       }}>
-        <PortalShell
-          portal={portal}
-          userName={userData.full_name ?? undefined}
-        >
-          {/* Central Tier-0 gate. Strict no-op for bank/admin/non-ghost users —
-              only ghost orgs see locked cards on actionable pages. */}
-          <GhostGate>{children}</GhostGate>
-        </PortalShell>
+        {needsKybGate ? (
+          <KybStatusPage />
+        ) : (
+          <PortalShell portal={portal} userName={userData.full_name ?? undefined}>
+            {children}
+          </PortalShell>
+        )}
       </UserProvider>
     </PortalProvider>
   )

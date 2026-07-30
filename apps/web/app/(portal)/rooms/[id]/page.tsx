@@ -6,6 +6,9 @@ import { Skeleton } from '@/components/motion'
 import { renderTextWithStrikeBlocks } from '@/components/ai-blocks'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,13 +79,13 @@ function formatTime(ts: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDate(ts: string): string {
+function formatDate(ts: string, t: TFn): string {
   const d = new Date(ts)
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  if (d.toDateString() === today.toDateString()) return t('rooms.today')
+  if (d.toDateString() === yesterday.toDateString()) return t('rooms.yesterday')
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -146,13 +149,14 @@ function SystemMsg({ msg }: { msg: Message }) {
 }
 
 function AiMsg({ msg }: { msg: Message }) {
+  const t = useT()
   return (
     <div className="room-msg room-msg-ai fade-in">
       <div className="room-msg-avatar room-msg-avatar-ai">✦</div>
       {/* .ai-sheen — animated gradient border so agent reasoning visually reads as AI */}
       <div className="room-msg-body ai-sheen" style={{ borderRadius: 10, padding: '8px 10px' }}>
         <div className="room-msg-meta">
-          <span className="room-msg-sender room-msg-sender-ai">Strike AI</span>
+          <span className="room-msg-sender room-msg-sender-ai">{t('nav.strikeAi')}</span>
           <span className="room-msg-time">{formatTime(msg.created_at)}</span>
         </div>
         <div className="room-msg-content">{msg.content.includes('[[STRIKE_BLOCK:') ? renderTextWithStrikeBlocks(msg.content) : msg.content}</div>
@@ -162,8 +166,9 @@ function AiMsg({ msg }: { msg: Message }) {
 }
 
 function DocumentMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
+  const t = useT()
   const meta = msg.metadata ?? {}
-  const fileName = (meta.file_name as string) ?? 'Document'
+  const fileName = (meta.file_name as string) ?? t('rooms.document')
   const fileSize = (meta.file_size as string) ?? ''
   return (
     <div className="room-msg fade-in">
@@ -173,7 +178,7 @@ function DocumentMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean })
       <div className="room-msg-body">
         {!hideAvatar && (
           <div className="room-msg-meta">
-            <span className="room-msg-sender">{msg.sender_name ?? 'Unknown'}</span>
+            <span className="room-msg-sender">{msg.sender_name ?? t('rooms.unknown')}</span>
             {msg.sender_org_name && (
               <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{msg.sender_org_name}</span>
             )}
@@ -193,7 +198,7 @@ function DocumentMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean })
             <span className="room-msg-doc-name">{fileName}</span>
             {fileSize && <span className="room-msg-doc-size">{fileSize}</span>}
           </div>
-          <span className="room-msg-doc-download">Download</span>
+          <span className="room-msg-doc-download">{t('rooms.download')}</span>
         </div>
       </div>
     </div>
@@ -201,6 +206,7 @@ function DocumentMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean })
 }
 
 function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
+  const t = useT()
   const meta = msg.metadata ?? {}
   const price = meta.offered_price as number | undefined
   const currency = (meta.currency as string) ?? 'USD'
@@ -218,7 +224,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
       <div className="room-msg-body">
         {!hideAvatar && (
           <div className="room-msg-meta">
-            <span className="room-msg-sender">{msg.sender_name ?? 'Unknown'}</span>
+            <span className="room-msg-sender">{msg.sender_name ?? t('rooms.unknown')}</span>
             {msg.sender_org_name && (
               <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{msg.sender_org_name}</span>
             )}
@@ -229,7 +235,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
           <div className="room-msg-content" style={{ marginBottom: 4 }}>{msg.content}</div>
         )}
         <div className="room-msg-offer-card">
-          <span className="room-msg-offer-label">Offer update</span>
+          <span className="room-msg-offer-label">{t('rooms.offerUpdate')}</span>
           {price != null && (
             <span className="room-msg-offer-price">
               {new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(price)}
@@ -252,6 +258,7 @@ function OfferMsg({ msg, hideAvatar }: { msg: Message; hideAvatar: boolean }) {
 // offwhite with an avatar circle. Grouped consecutive messages from the same
 // sender hide the avatar/sender label and tighten the bubble corner.
 function BubbleMsg({ msg, isOwn, hideAvatar }: { msg: Message; isOwn: boolean; hideAvatar: boolean }) {
+  const t = useT()
   return (
     <div className={`room-msg-row fade-in${isOwn ? ' room-msg-row-own' : ''}${hideAvatar ? ' room-msg-row-grouped' : ''}`}>
       {!isOwn && (
@@ -264,7 +271,7 @@ function BubbleMsg({ msg, isOwn, hideAvatar }: { msg: Message; isOwn: boolean; h
       <div className="room-msg-bubble-col">
         {!isOwn && !hideAvatar && (
           <span className="room-msg-bubble-sender">
-            {msg.sender_name ?? 'Unknown'}
+            {msg.sender_name ?? t('rooms.unknown')}
             {msg.sender_org_name ? ` · ${msg.sender_org_name}` : ''}
           </span>
         )}
@@ -281,6 +288,7 @@ export default function RoomPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const user = useUser()
+  const t = useT()
 
   const [room, setRoom] = useState<RoomDetail | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -331,8 +339,8 @@ export default function RoomPage() {
         setListing(data.listing ?? null)
         setLoading(false)
       })
-      .catch(() => { setError('Failed to load room'); setLoading(false) })
-  }, [id])
+      .catch(() => { setError(t('rooms.failedLoadRoom')); setLoading(false) })
+  }, [id, t])
 
   // Poll as a backstop alongside Realtime — negotiation rounds and agent
   // narration arrive from server-side (service-role) inserts, and Realtime
@@ -478,7 +486,7 @@ export default function RoomPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setSendError(data.error ?? 'Send failed')
+        setSendError(data.error ?? t('rooms.sendFailed'))
       } else {
         setInputValue('')
         // Optimistically append if private room (visible immediately)
@@ -494,12 +502,12 @@ export default function RoomPage() {
         }
       }
     } catch {
-      setSendError('Network error')
+      setSendError(t('common.networkError'))
     } finally {
       setSending(false)
       textareaRef.current?.focus()
     }
-  }, [id, inputValue, sending, room, user])
+  }, [id, inputValue, sending, room, user, t])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -517,7 +525,7 @@ export default function RoomPage() {
     <div className="topbar-right" style={{ gap: 8 }}>
       {room && (
         <span className={`badge ${room.status === 'active' ? 'badge-active' : 'badge-draft'}`}>
-          {room.status}
+          {room.status === 'active' ? t('rooms.status.active') : t('rooms.status.archived')}
         </span>
       )}
       {deal && (
@@ -525,14 +533,14 @@ export default function RoomPage() {
           className="btn btn-ghost btn-sm"
           onClick={() => router.push(`/deals/${deal.id}`)}
         >
-          ← Back to Deal
+          ← {t('rooms.backToDeal')}
         </button>
       )}
     </div>
   )
 
   const crumbs = [
-    { label: 'Rooms', onClick: () => router.push('/rooms') },
+    { label: t('rooms.title'), onClick: () => router.push('/rooms') },
     { label: room?.name ?? '…' },
   ]
 
@@ -542,7 +550,7 @@ export default function RoomPage() {
     const bubbleWidths = [62, 40, 55, 34, 48]
     return (
       <>
-        <Topbar crumbs={[{ label: 'Rooms', onClick: () => router.push('/rooms') }, { label: '…' }]} />
+        <Topbar crumbs={[{ label: t('rooms.title'), onClick: () => router.push('/rooms') }, { label: '…' }]} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, padding: '28px 28px', overflow: 'hidden' }}>
           {bubbleWidths.map((w, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: i % 2 === 0 ? 'flex-start' : 'flex-end' }}>
@@ -557,11 +565,11 @@ export default function RoomPage() {
   if (error || !room) {
     return (
       <>
-        <Topbar crumbs={[{ label: 'Rooms', onClick: () => router.push('/rooms') }, { label: 'Error' }]} />
+        <Topbar crumbs={[{ label: t('rooms.title'), onClick: () => router.push('/rooms') }, { label: t('rooms.error') }]} />
         <div style={{ padding: 48, textAlign: 'center' }}>
-          <p style={{ color: 'var(--color-red)', fontSize: 13 }}>{error ?? 'Room not found'}</p>
+          <p style={{ color: 'var(--color-red)', fontSize: 13 }}>{error ?? t('rooms.roomNotFound')}</p>
           <button className="btn btn-ghost btn-sm" style={{ marginTop: 16 }} onClick={() => router.push('/rooms')}>
-            Back to Rooms
+            {t('rooms.backToRooms')}
           </button>
         </div>
       </>
@@ -579,8 +587,8 @@ export default function RoomPage() {
       <div className="room-header">
         <span className="room-header-name">{room.name}</span>
         <span className="room-header-members">
-          {memberCount} member{memberCount !== 1 ? 's' : ''}
-          {onlineCount > 0 && <span style={{ color: 'var(--color-green)' }}> · {onlineCount} online</span>}
+          {t('rooms.memberCount', { count: memberCount })}
+          {onlineCount > 0 && <span style={{ color: 'var(--color-green)' }}> · {t('rooms.onlineCount', { count: onlineCount })}</span>}
         </span>
         {deal && (
           <>
@@ -595,7 +603,7 @@ export default function RoomPage() {
           </>
         )}
         <button className="room-header-viewbtn" onClick={() => setShowMembers(v => !v)}>
-          {showMembers ? 'Hide Members' : 'View Members'}
+          {showMembers ? t('rooms.hideMembers') : t('rooms.viewMembers')}
         </button>
       </div>
 
@@ -606,7 +614,7 @@ export default function RoomPage() {
           padding: '10px 28px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap',
         }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            {listing.listing_type === 'po_request' ? 'PO Request' : 'Listing'}
+            {listing.listing_type === 'po_request' ? t('passport.poRequest') : t('rooms.listing')}
           </span>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{listing.title}</span>
           {listing.target_price != null && (
@@ -619,7 +627,7 @@ export default function RoomPage() {
             style={{ marginLeft: 'auto' }}
             onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
           >
-            View Listing →
+            {t('rooms.viewListing')} →
           </button>
         </div>
       )}
@@ -631,7 +639,7 @@ export default function RoomPage() {
           padding: '10px 28px', display: 'flex', flexWrap: 'wrap', gap: 10, flexShrink: 0,
         }}>
           {participants.length === 0 ? (
-            <span style={{ fontSize: 12, color: 'var(--gray-soft)' }}>No members yet.</span>
+            <span style={{ fontSize: 12, color: 'var(--gray-soft)' }}>{t('rooms.noMembersYet')}</span>
           ) : participants.map(p => {
             const isOnline = onlineUsers.has(p.user_id)
             return (
@@ -648,7 +656,7 @@ export default function RoomPage() {
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{p.user_name ?? 'Unknown'}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{p.user_name ?? t('rooms.unknown')}</span>
                   {p.org_name && <span style={{ fontSize: 10.5, color: 'var(--gray-soft)' }}>{p.org_name}</span>}
                 </div>
               </div>
@@ -666,7 +674,7 @@ export default function RoomPage() {
         {messages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <p style={{ color: 'var(--gray)', fontSize: 13, fontStyle: 'italic' }}>
-              No messages yet. Start the conversation.
+              {t('rooms.noMessagesYet')}
             </p>
           </div>
         ) : (
@@ -683,7 +691,7 @@ export default function RoomPage() {
 
             return (
               <React.Fragment key={msg.id}>
-                {showDateDivider && <DateDivider label={formatDate(msg.created_at)} />}
+                {showDateDivider && <DateDivider label={formatDate(msg.created_at, t)} />}
                 {msg.message_type === 'system' && <SystemMsg msg={msg} />}
                 {msg.message_type === 'ai_suggestion' && <AiMsg msg={msg} />}
                 {msg.message_type === 'document_share' && (
@@ -708,7 +716,7 @@ export default function RoomPage() {
         )}
         {lastPendingReview && (
           <p style={{ fontSize: 11.5, color: 'var(--color-amber)', marginBottom: 6, fontStyle: 'italic' }}>
-            Moderation in progress…
+            {t('rooms.moderationInProgress')}
           </p>
         )}
         <div className="room-composer-bar">
@@ -716,7 +724,7 @@ export default function RoomPage() {
             ref={textareaRef}
             className="room-composer-input"
             rows={1}
-            placeholder={room.status !== 'active' ? 'This room is archived' : 'Send a message…'}
+            placeholder={room.status !== 'active' ? t('rooms.roomArchived') : t('rooms.sendMessagePlaceholder')}
             disabled={room.status !== 'active' || !!lastPendingReview}
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
@@ -726,8 +734,8 @@ export default function RoomPage() {
           <button
             className="room-composer-send shine"
             disabled={sendDisabled}
-            title={lastPendingReview ? 'Moderation in progress' : 'Send'}
-            aria-label="Send message"
+            title={lastPendingReview ? t('rooms.moderationInProgressShort') : t('rooms.send')}
+            aria-label={t('rooms.sendMessage')}
             onClick={handleSend}
           >
             {sending ? (

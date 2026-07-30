@@ -5,6 +5,8 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/locale-context'
+import { LanguageSwitcher } from '@/components/language-switcher'
 
 function EyeIcon({ off }: { off?: boolean }) {
   if (off) {
@@ -25,6 +27,7 @@ function EyeIcon({ off }: { off?: boolean }) {
 
 export default function LoginPage() {
   const router = useRouter()
+  const t = useT()
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -106,16 +109,16 @@ export default function LoginPage() {
             lineHeight: 1.15,
             margin: '0 0 16px',
           }}>
-            Supply chain<br/>finance,<br/>reimagined.
+            {t('login.heroTitle')}
           </h2>
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65, margin: '0 0 36px', maxWidth: 320 }}>
-            From invoice submission to early payment — Strike automates the entire SCF workflow.
+            {t('login.heroSubtitle')}
           </p>
           <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {([
-              ['Get paid early', 'Submit invoices and receive advances in days, not weeks.'],
-              ['AI-powered intelligence', 'Smart risk scoring and recommendations at every step.'],
-              ['One unified platform', 'Banks, anchors, and suppliers connected seamlessly.'],
+              [t('login.feature1Title'), t('login.feature1Desc')],
+              [t('login.feature2Title'), t('login.feature2Desc')],
+              [t('login.feature3Title'), t('login.feature3Desc')],
             ] as const).map(([title, desc]) => (
               <div key={title} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <div style={{
@@ -139,13 +142,16 @@ export default function LoginPage() {
         </div>
 
         <div style={{ position: 'relative', zIndex: 1, fontSize: 12, color: 'rgba(255,255,255,0.28)', lineHeight: 1.6 }}>
-          © 2026 Strike SCF · Trusted by leading banks and corporations
+          {t('login.footer')}
         </div>
       </div>
 
       {/* Right form panel */}
       <div className="login-v2-card">
         <div className="login-v2-card-inner reveal">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <LanguageSwitcher />
+          </div>
           {/* Heading */}
           <div style={{ marginBottom: 36 }}>
             <h1 style={{
@@ -154,21 +160,21 @@ export default function LoginPage() {
               letterSpacing: '-0.03em',
               color: 'var(--ink)', margin: '0 0 6px',
             }}>
-              Welcome back
+              {t('login.welcomeBack')}
             </h1>
             <p style={{ fontSize: 14, color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
-              Sign in to your Strike account
+              {t('login.subtitle')}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Email */}
             <div>
-              <label className="login-v2-label">Email address</label>
+              <label className="login-v2-label">{t('login.emailLabel')}</label>
               <input
                 className="login-v2-input"
                 type="email"
-                placeholder="you@company.com"
+                placeholder={t('login.emailPlaceholder')}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
@@ -179,12 +185,12 @@ export default function LoginPage() {
             {/* Password */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}>
-                <span className="login-v2-label" style={{ margin: 0 }}>Password</span>
+                <span className="login-v2-label" style={{ margin: 0 }}>{t('login.passwordLabel')}</span>
                 <Link
                   href="/forgot-password"
                   style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' }}
                 >
-                  Forgot password?
+                  {t('login.forgotPassword')}
                 </Link>
               </div>
               <div style={{ position: 'relative' }}>
@@ -225,14 +231,14 @@ export default function LoginPage() {
             </div>
 
             <button type="submit" className="login-v2-submit" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in →'}
+              {loading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
 
           <div style={{ marginTop: 28, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
-            Don&apos;t have an account?{' '}
+            {t('login.noAccount')}{' '}
             <Link href="/signup" style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
-              Get started
+              {t('login.getStarted')}
             </Link>
           </div>
 
@@ -242,11 +248,11 @@ export default function LoginPage() {
             fontSize: 12, color: 'var(--gray-soft)',
             textAlign: 'center', lineHeight: 1.5,
           }}>
-            Are you a bank or lender?{' '}
+            {t('login.bankQuestion')}{' '}
             <a href="mailto:banks@strikescf.com" style={{ color: 'var(--blue)', textDecoration: 'none' }}>
-              Contact us
+              {t('login.contactUs')}
             </a>
-            {' '}to get set up.
+            {' '}{t('login.toGetSetUp')}
           </div>
         </div>
       </div>

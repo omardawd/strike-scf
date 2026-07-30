@@ -111,20 +111,27 @@ export default function TourSidebar({
         />
       </div>
       <nav className="nav-section" style={{ marginTop: 4 }}>
-        {/* A few nav items share a target scene (no dedicated scene exists for
-            Passport/Analytics in this simplified tour — see TOUR_NAV), so
-            matching on sceneId alone would highlight several items at once.
-            Only the first item in nav order that targets the active scene
-            is ever shown active. */}
-        {TOUR_NAV.map((item, i) => {
-          const isActive = activeSceneId === item.sceneId && TOUR_NAV.findIndex((n) => n.sceneId === item.sceneId) === i
+        {/* Only nav items with a real corresponding scene in this tour are
+            clickable (see TOUR_NAV) — My Deals/Networks/Strike Passport/
+            Analytics don't have one here, so they render visibly but
+            disabled rather than being wired to a scene they don't actually
+            represent. */}
+        {TOUR_NAV.map((item) => {
+          const isActive = item.sceneId !== null && activeSceneId === item.sceneId
+          const disabled = item.sceneId === null
           return (
             <button
               key={item.label}
               type="button"
-              onClick={() => onNavigate(item.sceneId)}
+              disabled={disabled}
+              onClick={() => { if (item.sceneId) onNavigate(item.sceneId) }}
               className={`nav-item${isActive ? ' active' : ''}`}
-              style={{ transition: 'background 150ms, color 150ms' }}
+              style={{
+                transition: 'background 150ms, color 150ms',
+                opacity: disabled ? 0.4 : 1,
+                cursor: disabled ? 'default' : 'pointer',
+              }}
+              title={disabled ? 'Not part of this walkthrough' : undefined}
             >
               <NavIcon name={item.icon as NavIconName} />
               <span>{item.label}</span>

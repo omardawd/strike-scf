@@ -7,6 +7,9 @@ import { Topbar, NotifBell } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
 import { RiskBadge } from '@/components/risk-badge'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface Document {
   id: string
@@ -108,26 +111,26 @@ function kybBadgeClass(status: string): string {
   }
 }
 
-function kybStatusLabel(status: string): string {
+function kybStatusLabel(status: string, t: TFn): string {
   switch (status) {
-    case 'submitted': return 'Submitted'
-    case 'under_review': return 'Under Review'
-    case 'more_info_requested': return 'More Info Needed'
-    case 'approved': return 'Approved'
-    case 'rejected': return 'Rejected'
-    case 'in_progress': return 'In Progress'
-    case 'not_started': return 'Not Started'
+    case 'submitted': return t('bankKyb.status.submitted')
+    case 'under_review': return t('bankKyb.status.underReview')
+    case 'more_info_requested': return t('bankKyb.status.moreInfoNeeded')
+    case 'approved': return t('bankKyb.status.approved')
+    case 'rejected': return t('bankKyb.status.rejected')
+    case 'in_progress': return t('bankKyb.status.inProgress')
+    case 'not_started': return t('bankKyb.status.notStarted')
     default: return status
   }
 }
 
-function decisionLabel(decision: string): string {
+function decisionLabel(decision: string, t: TFn): string {
   switch (decision) {
-    case 'approved': return 'Approved'
-    case 'override_approved': return 'Override Approved'
-    case 'rejected': return 'Rejected'
-    case 'more_info_requested': return 'Requested More Info'
-    case 'pending_countersign': return 'Pending Countersign'
+    case 'approved': return t('bankKybDetail.decision.approved')
+    case 'override_approved': return t('bankKybDetail.decision.overrideApproved')
+    case 'rejected': return t('bankKybDetail.decision.rejected')
+    case 'more_info_requested': return t('bankKybDetail.decision.moreInfoRequested')
+    case 'pending_countersign': return t('bankKybDetail.decision.pendingCountersign')
     default: return decision
   }
 }
@@ -155,6 +158,7 @@ function scoreBarClass(score: number): string {
 }
 
 export default function KYBDetailPage() {
+  const t = useT()
   const router = useRouter()
   const params = useParams()
   const orgId = params.org_id as string
@@ -184,7 +188,7 @@ export default function KYBDetailPage() {
       const res = await fetch(`/api/kyb/${orgId}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError((body as { error?: string }).error ?? 'Failed to load application')
+        setError((body as { error?: string }).error ?? t('adminKyb.loadFailed'))
         return
       }
       const data = await res.json() as {
@@ -198,11 +202,11 @@ export default function KYBDetailPage() {
       setCreditScore(data.credit_score)
       setLatestDecision(data.latest_decision)
     } catch {
-      setError('Failed to load application')
+      setError(t('adminKyb.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [orgId])
+  }, [orgId, t])
 
   // Read referrer but do not remove here: React Strict Mode (dev) runs this effect twice;
   // removing on first run leaves storage empty on remount and resets referrer to /kyb.
@@ -274,7 +278,7 @@ export default function KYBDetailPage() {
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'KYB Review', onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
+        crumbs={[{ label: t('bankKyb.title'), onClick: () => router.push('/kyb') }, { label: org?.legal_name ?? '…' }]}
         actions={<NotifBell />}
       />
     <div className="page" data-page-name="KYB Detail" data-ai-context={JSON.stringify({ role: (user as any)?.role, org_name: org?.legal_name ?? null, org_type: org?.type ?? null, kyb_status: org?.kyb_status ?? null, credit_score: creditScore?.total_score ?? null, risk_tier: creditScore?.risk_tier ?? null, document_count: documents.length, latest_decision: latestDecision?.decision ?? null })}>
@@ -289,12 +293,12 @@ export default function KYBDetailPage() {
             router.push(referrer)
           }}
         >
-          ← Back
+          ← {t('common.back')}
         </button>
         {org && (
           <h1 className="page-id-title">
             <span className="id-text">{org.legal_name}</span>
-            <span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status)}</span>
+            <span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status, t)}</span>
             <span className="badge badge-draft" style={{ textTransform: 'capitalize' }}>{org.type}</span>
             {riskData && (
               <RiskBadge
@@ -309,9 +313,9 @@ export default function KYBDetailPage() {
         )}
         {org && (
           <div className="subtitle" style={{ marginTop: 6 }}>
-            {org.ein && <span>EIN {org.ein}</span>}
+            {org.ein && <span>{t('bankKybDetail.einLabel')} {org.ein}</span>}
             {org.city && org.state && <span> · {org.city}, {org.state}</span>}
-            {org.kyb_submitted_at && <span> · Submitted {submittedDate}</span>}
+            {org.kyb_submitted_at && <span> · {t('adminKyb.submittedOn', { date: submittedDate })}</span>}
           </div>
         )}
       </div>
@@ -322,7 +326,7 @@ export default function KYBDetailPage() {
 
       {loading ? (
         <div className="card">
-          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>
+          <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--gray)' }}>{t('common.loading')}</div>
         </div>
       ) : org ? (
         <div className="split-60">
@@ -331,18 +335,18 @@ export default function KYBDetailPage() {
 
             {/* Business details */}
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Business details</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.businessDetails')}</h3></div>
               <div className="kv-rows">
-                <div className="kv-row"><span className="k">Legal name</span><span className="v">{org.legal_name}</span></div>
-                <div className="kv-row"><span className="k">Type</span><span className="v" style={{ textTransform: 'capitalize' }}>{org.type}</span></div>
-                {org.ein && <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>}
+                <div className="kv-row"><span className="k">{t('onboarding.field.legalName')}</span><span className="v">{org.legal_name}</span></div>
+                <div className="kv-row"><span className="k">{t('kybStatus.type')}</span><span className="v" style={{ textTransform: 'capitalize' }}>{org.type}</span></div>
+                {org.ein && <div className="kv-row"><span className="k">{t('bankKybDetail.einLabel')}</span><span className="v mono">{org.ein}</span></div>}
                 {(org.city || org.state) && (
-                  <div className="kv-row"><span className="k">Location</span><span className="v">{[org.city, org.state].filter(Boolean).join(', ')}</span></div>
+                  <div className="kv-row"><span className="k">{t('bankKybDetail.location')}</span><span className="v">{[org.city, org.state].filter(Boolean).join(', ')}</span></div>
                 )}
-                <div className="kv-row"><span className="k">KYB status</span><span className="v"><span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status)}</span></span></div>
-                <div className="kv-row"><span className="k">Application submitted</span><span className="v plain">{submittedDate}</span></div>
+                <div className="kv-row"><span className="k">{t('bankKyb.col.kybStatus')}</span><span className="v"><span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status, t)}</span></span></div>
+                <div className="kv-row"><span className="k">{t('bankKybDetail.applicationSubmitted')}</span><span className="v plain">{submittedDate}</span></div>
                 {org.credit_reviewed_at && (
-                  <div className="kv-row"><span className="k">Last reviewed</span><span className="v plain">{formatDate(org.credit_reviewed_at)}</span></div>
+                  <div className="kv-row"><span className="k">{t('bankKybDetail.lastReviewed')}</span><span className="v plain">{formatDate(org.credit_reviewed_at)}</span></div>
                 )}
               </div>
             </div>
@@ -350,13 +354,13 @@ export default function KYBDetailPage() {
             {/* Credit score */}
             {creditScore && (
               <div className="card">
-                <div className="card-head"><h3 className="t-card-head">Credit score</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.creditScore')}</h3></div>
                 <div className="score-head">
                   <div className="num">{creditScore.total_score}</div>
                   <div className="col">
                     {creditScore.risk_tier && (
                       <span className="badge" style={tierBadgeStyle(creditScore.risk_tier)}>
-                        Tier {creditScore.risk_tier}
+                        {t('bankKybDetail.tier', { tier: creditScore.risk_tier })}
                       </span>
                     )}
                     <div className="progress">
@@ -364,15 +368,15 @@ export default function KYBDetailPage() {
                     </div>
                   </div>
                 </div>
-                <div className="dim-note">Score recorded {formatDate(creditScore.created_at)}</div>
+                <div className="dim-note">{t('bankKybDetail.scoreRecorded', { date: formatDate(creditScore.created_at) })}</div>
               </div>
             )}
 
             {/* Documents */}
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.documents')}</h3></div>
               {documents.length === 0 ? (
-                <div style={{ padding: '16px', color: 'var(--gray)' }}>No documents uploaded.</div>
+                <div style={{ padding: '16px', color: 'var(--gray)' }}>{t('adminKyb.noDocuments')}</div>
               ) : (
                 <div>
                   {documents.map(doc => (
@@ -381,9 +385,9 @@ export default function KYBDetailPage() {
                       <span className="doc-name">{getDocLabel(doc)}</span>
                       <span className="doc-date">{formatDate(doc.created_at)}</span>
                       {doc.signed_url ? (
-                        <a className="doc-link" href={doc.signed_url} target="_blank" rel="noopener noreferrer">View</a>
+                        <a className="doc-link" href={doc.signed_url} target="_blank" rel="noopener noreferrer">{t('bankKybDetail.viewShort')}</a>
                       ) : (
-                        <span className="doc-link" style={{ color: 'var(--gray)' }}>Unavailable</span>
+                        <span className="doc-link" style={{ color: 'var(--gray)' }}>{t('adminKyb.unavailable')}</span>
                       )}
                     </div>
                   ))}
@@ -394,34 +398,34 @@ export default function KYBDetailPage() {
             {/* Decision history */}
             {latestDecision && (
               <div className="card">
-                <div className="card-head"><h3 className="t-card-head">Latest decision</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.latestDecision')}</h3></div>
                 <div className="timeline">
                   <div className="tl-item">
                     <div className="tl-dot" />
                     <div className="tl-line" />
                     <div className="tl-body">
                       <div className="tl-actor-row">
-                        <span className="tl-actor-pill bank">Bank</span>
+                        <span className="tl-actor-pill bank">{t('bankKybDetail.bank')}</span>
                         <span className="tl-actor-name">
-                          Credit officer{latestDecision.decided_by_user_id
+                          {t('bankKybDetail.creditOfficer')}{latestDecision.decided_by_user_id
                             ? ` · ${latestDecision.decided_by_user_id.slice(0, 8)}…`
                             : ''}
                         </span>
-                        <span className="tl-action">{decisionLabel(latestDecision.decision)}</span>
+                        <span className="tl-action">{decisionLabel(latestDecision.decision, t)}</span>
                       </div>
                       {latestDecision.rejection_reason && (
                         <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
-                          Reason: {latestDecision.rejection_reason}
+                          {t('adminKyb.reasonPrefix')} {latestDecision.rejection_reason}
                         </div>
                       )}
                       {latestDecision.info_request_message && (
                         <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
-                          Message: {latestDecision.info_request_message}
+                          {t('adminKyb.messagePrefix')} {latestDecision.info_request_message}
                         </div>
                       )}
                       {latestDecision.override_reason && (
                         <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink)' }}>
-                          Override note: {latestDecision.override_reason}
+                          {t('bankKybDetail.overrideNote')} {latestDecision.override_reason}
                         </div>
                       )}
                       <div className="tl-time">{formatDate(latestDecision.created_at)}</div>
@@ -434,11 +438,11 @@ export default function KYBDetailPage() {
             {/* Internal Documents — bank only */}
             <div className="card">
               <div className="card-head">
-                <span>Internal Documents</span>
+                <span>{t('bankKybDetail.internalDocuments')}</span>
                 <label
                   className="btn btn-ghost btn-sm"
                   style={{ cursor: uploadingDoc ? 'not-allowed' : 'pointer' }}>
-                  {uploadingDoc ? 'Uploading…' : '+ Upload'}
+                  {uploadingDoc ? t('onboarding.misc.uploading') : t('bankKybDetail.uploadPlus')}
                   <input
                     type="file"
                     accept=".pdf,.doc,.docx,.xlsx,.png,.jpg"
@@ -455,14 +459,14 @@ export default function KYBDetailPage() {
                   fontSize: 12,
                   color: 'var(--gray)',
                 }}>
-                  No internal documents
+                  {t('bankKybDetail.noInternalDocuments')}
                 </div>
               ) : (
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 internalDocs.map((doc: any) => (
                   <div key={doc.id} className="doc-row">
                     <svg width={14} height={14} className="doc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
-                    <span className="doc-name">{doc.name ?? 'Document'}</span>
+                    <span className="doc-name">{doc.name ?? t('adminKyb.document')}</span>
                     <span style={{
                       fontFamily: 'var(--font-body)',
                       fontSize: 11,
@@ -489,7 +493,7 @@ export default function KYBDetailPage() {
                             URL.revokeObjectURL(url)
                           } catch {}
                         }}
-                      >Download</button>
+                      >{t('bankKybDetail.download')}</button>
                     )}
                   </div>
                 ))
@@ -501,7 +505,7 @@ export default function KYBDetailPage() {
               Banks evaluate counterparties via PassportScore; Strike platform handles verification. */}
           <div style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <AIInsight
-              title="Counterparty Risk Summary"
+              title={t('bankKybDetail.counterpartyRiskSummary')}
               prompt="Based on this organization's profile, provide a brief read-only risk assessment for a bank evaluating it as a counterparty. Focus on trade-finance risk signals. Do not recommend a KYB approval decision — verification is handled by the Strike platform."
               context={{
                 org_name: org?.legal_name,
@@ -523,7 +527,7 @@ export default function KYBDetailPage() {
 
             {/* PassportScore (read-only) */}
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">PassportScore</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.passportScore')}</h3></div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: 20 }}>
                 <PassportScoreRing score={riskData?.risk_score ?? org.credit_score ?? null} size="md" showLabel />
                 <a
@@ -531,30 +535,29 @@ export default function KYBDetailPage() {
                   className="btn btn-ghost btn-sm"
                   style={{ width: '100%', justifyContent: 'center' }}
                 >
-                  View full Passport →
+                  {t('bankKybDetail.viewFullPassport')}
                 </a>
               </div>
             </div>
 
             {/* Verification status (read-only — no decision actions) */}
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Verification status</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.verificationStatus')}</h3></div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <span className={kybBadgeClass(org.kyb_status)} style={{ alignSelf: 'flex-start' }}>
-                  {kybStatusLabel(org.kyb_status)}
+                  {kybStatusLabel(org.kyb_status, t)}
                 </span>
                 {org.risk_tier && (
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>Risk tier: <strong>{org.risk_tier}</strong></div>
+                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{t('bankKybDetail.riskTier')} <strong>{org.risk_tier}</strong></div>
                 )}
                 {org.credit_score != null && (
-                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>Credit score: <strong>{org.credit_score}</strong></div>
+                  <div style={{ fontSize: 13, color: 'var(--ink)' }}>{t('bankKybDetail.creditScoreLabel')} <strong>{org.credit_score}</strong></div>
                 )}
                 {org.credit_reviewed_at && (
-                  <div style={{ fontSize: 13, color: 'var(--gray)' }}>Last reviewed {formatDate(org.credit_reviewed_at)}</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray)' }}>{t('bankKybDetail.lastReviewedOn', { date: formatDate(org.credit_reviewed_at) })}</div>
                 )}
                 <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5, marginTop: 4 }}>
-                  Verification is managed by the Strike platform. Banks evaluate counterparties
-                  via PassportScore and trade history — no bank KYB action is required.
+                  {t('bankKybDetail.verificationNote')}
                 </div>
               </div>
             </div>

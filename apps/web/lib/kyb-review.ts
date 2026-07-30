@@ -139,7 +139,13 @@ export async function runKybAiReview(
     }
   }
 
-  const approved  = passportScore >= 60
+  const meetsAiThreshold = passportScore >= 60
+  // Soft-launch guardrail: score/narrative/risk_flags are always computed and stored (so the
+  // Strike Admin KYB queue shows the AI's recommendation), but auto-approval can be disabled so a
+  // human confirms every org while trust in the AI scorer is still being built up. Flip
+  // REQUIRE_MANUAL_KYB_APPROVAL off once comfortable auto-approving without a human in the loop.
+  const requireManualApproval = process.env.REQUIRE_MANUAL_KYB_APPROVAL === 'true'
+  const approved = meetsAiThreshold && !requireManualApproval
   const kybStatus: 'approved' | 'under_review' = approved ? 'approved' : 'under_review'
 
   const orgUpdate: Record<string, unknown> = {

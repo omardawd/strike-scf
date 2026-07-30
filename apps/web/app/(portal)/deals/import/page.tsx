@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
+import { useT } from '@/lib/i18n/locale-context'
 
 const INCOTERMS = ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP']
 const PAYMENT_TERMS_OPTS = ['NET30', 'NET60', 'NET90', 'Letter of Credit', 'Cash in Advance', 'Open Account', 'Other']
@@ -48,6 +49,7 @@ const INITIAL_FORM: DealForm = {
 }
 
 function ExtractedChip() {
+  const t = useT()
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -56,13 +58,14 @@ function ExtractedChip() {
       border: '1px solid var(--teal)', background: 'var(--teal-dim)',
       padding: '2px 7px', marginLeft: 8, borderRadius: 'var(--radius-badge)',
     }}>
-      ✦ Extracted
+      ✦ {t('dealImport.extracted')}
     </span>
   )
 }
 
 function PassportMiniCompact({ org }: { org: OrgResult }) {
-  const name = org.doing_business_as ?? org.legal_name ?? 'Unknown'
+  const t = useT()
+  const name = org.doing_business_as ?? org.legal_name ?? t('listingDetail.unknown')
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
       <PassportScoreRing score={org.passport_score} size="sm" />
@@ -79,6 +82,7 @@ function PassportMiniCompact({ org }: { org: OrgResult }) {
 export default function ImportDealPage() {
   const router = useRouter()
   const user = useUser()
+  const t = useT()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState<DealForm>(INITIAL_FORM)
   const [extractedFields, setExtractedFields] = useState<Set<string>>(new Set())
@@ -138,7 +142,7 @@ export default function ImportDealPage() {
 
       const res = await fetch('/api/onboarding/documents', { method: 'POST', body: fd })
       const data = await res.json()
-      if (!res.ok || !data.document_id) { alert('Upload failed'); return }
+      if (!res.ok || !data.document_id) { alert(t('dealImport.uploadFailed')); return }
 
       setUploadedDocId(data.document_id)
       setExtracting(true)
@@ -187,7 +191,7 @@ export default function ImportDealPage() {
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) { alert(data.error ?? 'Submission failed'); return }
+      if (!res.ok) { alert(data.error ?? t('dealImport.submissionFailed')); return }
       router.push(`/deals/${data.deal_id}`)
     } finally {
       setSubmitting(false)
@@ -200,20 +204,20 @@ export default function ImportDealPage() {
     return true
   }
 
-  const STEPS = ['Your Deal', 'Documents', 'Review & Submit']
+  const STEPS = [t('dealImport.stepYourDeal'), t('dealImport.stepDocuments'), t('dealImport.stepReviewSubmit')]
 
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: 'Finance an Existing Trade' }]}
+        crumbs={[{ label: t('deals.myDeals'), onClick: () => router.push('/deals') }, { label: t('marketplace.financeExistingTrade') }]}
       />
 
       <div className="page" style={{ maxWidth: 680 }}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            Finance an Existing Trade
+            {t('marketplace.financeExistingTrade')}
           </h1>
-          <p className="subtitle">Import a deal you&apos;ve already agreed with your counterparty to unlock financing.</p>
+          <p className="subtitle">{t('dealImport.subtitle')}</p>
         </div>
 
         {/* Stepper */}
@@ -240,12 +244,12 @@ export default function ImportDealPage() {
         {/* ── STEP 1: Your Deal ── */}
         {step === 1 && (
           <div className="card">
-            <div className="card-head">Step 1 — Your Deal</div>
+            <div className="card-head">{t('dealImport.step1Title')}</div>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
               {/* Role */}
               <div className="form-field">
-                <label className="form-label">I am the…</label>
+                <label className="form-label">{t('dealImport.iAmThe')}</label>
                 <div className="radio-cards">
                   {(['buyer', 'supplier'] as const).map(side => (
                     <button
@@ -255,7 +259,7 @@ export default function ImportDealPage() {
                       onClick={() => patch({ initiating_side: side })}
                     >
                       <div className="radio-card-radio" />
-                      <span style={{ textTransform: 'capitalize' }}>{side}</span>
+                      <span style={{ textTransform: 'capitalize' }}>{side === 'buyer' ? t('passport.buyer') : t('passport.supplier')}</span>
                     </button>
                   ))}
                 </div>
@@ -264,7 +268,7 @@ export default function ImportDealPage() {
               {/* Counterparty search */}
               <div className="form-field">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Counterparty</label>
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t('dealImport.counterparty')}</label>
                   <button
                     type="button"
                     className="inline-link"
@@ -274,7 +278,7 @@ export default function ImportDealPage() {
                       clearOrg()
                     }}
                   >
-                    {counterpartyMode === 'search' ? 'Not on Strike? Enter manually' : 'Search on Strike'}
+                    {counterpartyMode === 'search' ? t('dealImport.notOnStrike') : t('dealImport.searchOnStrike')}
                   </button>
                 </div>
 
@@ -289,7 +293,7 @@ export default function ImportDealPage() {
                       <>
                         <input
                           className="input"
-                          placeholder="Search by company name…"
+                          placeholder={t('dealImport.searchByCompanyName')}
                           value={searchQuery}
                           onChange={e => handleSearchChange(e.target.value)}
                         />
@@ -309,7 +313,7 @@ export default function ImportDealPage() {
                         )}
                         {searchQuery.length >= 2 && searchResults.length === 0 && (
                           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--white)', border: '1px solid var(--border)', borderTop: 'none', padding: '12px 16px', fontSize: 12, color: 'var(--gray)' }}>
-                            No results. <button type="button" className="inline-link" onClick={() => setCounterpartyMode('manual')}>Enter manually →</button>
+                            {t('dealImport.noResults')} <button type="button" className="inline-link" onClick={() => setCounterpartyMode('manual')}>{t('dealImport.enterManually')}</button>
                           </div>
                         )}
                       </>
@@ -319,14 +323,14 @@ export default function ImportDealPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <input
                       className="input"
-                      placeholder="Company name"
+                      placeholder={t('dealImport.companyName')}
                       value={form.counterparty_name}
                       onChange={e => patch({ counterparty_name: e.target.value })}
                     />
                     <input
                       className="input"
                       type="email"
-                      placeholder="Contact email (optional — for invite)"
+                      placeholder={t('dealImport.contactEmailOptional')}
                       value={form.counterparty_email}
                       onChange={e => patch({ counterparty_email: e.target.value })}
                     />
@@ -337,13 +341,13 @@ export default function ImportDealPage() {
               {/* Goods */}
               <div className="form-field">
                 <label className="form-label">
-                  Goods Description
+                  {t('dealImport.goodsDescription')}
                   {extractedFields.has('goods_description') && <ExtractedChip />}
                 </label>
                 <textarea
                   className="input"
                   rows={3}
-                  placeholder="Describe the goods or services being traded…"
+                  placeholder={t('dealImport.goodsDescriptionPlaceholder')}
                   value={form.goods_description}
                   onChange={e => patch({ goods_description: e.target.value })}
                 />
@@ -353,7 +357,7 @@ export default function ImportDealPage() {
               <div className="form-row-2">
                 <div className="form-field">
                   <label className="form-label">
-                    Total Value
+                    {t('dealImport.totalValue')}
                     {extractedFields.has('total_value') && <ExtractedChip />}
                   </label>
                   <input
@@ -367,7 +371,7 @@ export default function ImportDealPage() {
                 </div>
                 <div className="form-field">
                   <label className="form-label">
-                    Currency
+                    {t('newListing.currency')}
                     {extractedFields.has('currency') && <ExtractedChip />}
                   </label>
                   <select
@@ -384,7 +388,7 @@ export default function ImportDealPage() {
               <div className="form-row-2">
                 <div className="form-field">
                   <label className="form-label">
-                    Delivery Date
+                    {t('listingDetail.deliveryDate')}
                     {extractedFields.has('agreed_delivery_date') && <ExtractedChip />}
                   </label>
                   <input
@@ -396,7 +400,7 @@ export default function ImportDealPage() {
                 </div>
                 <div className="form-field">
                   <label className="form-label">
-                    Incoterms
+                    {t('newListing.incoterms')}
                     {extractedFields.has('agreed_incoterms') && <ExtractedChip />}
                   </label>
                   <select
@@ -404,8 +408,8 @@ export default function ImportDealPage() {
                     value={form.agreed_incoterms}
                     onChange={e => patch({ agreed_incoterms: e.target.value })}
                   >
-                    <option value="">Select…</option>
-                    {INCOTERMS.map(t => <option key={t} value={t}>{t}</option>)}
+                    <option value="">{t('common.select')}</option>
+                    {INCOTERMS.map(it => <option key={it} value={it}>{it}</option>)}
                   </select>
                 </div>
               </div>
@@ -414,7 +418,7 @@ export default function ImportDealPage() {
               <div className="form-row-2">
                 <div className="form-field">
                   <label className="form-label">
-                    Payment Terms
+                    {t('newListing.paymentTerms')}
                     {extractedFields.has('agreed_payment_terms') && <ExtractedChip />}
                   </label>
                   <select
@@ -422,15 +426,15 @@ export default function ImportDealPage() {
                     value={form.agreed_payment_terms}
                     onChange={e => patch({ agreed_payment_terms: e.target.value })}
                   >
-                    <option value="">Select…</option>
-                    {PAYMENT_TERMS_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+                    <option value="">{t('common.select')}</option>
+                    {PAYMENT_TERMS_OPTS.map(pt => <option key={pt} value={pt}>{pt}</option>)}
                   </select>
                 </div>
                 <div className="form-field">
                   <label className="form-label">
-                    PO Number
+                    {t('dealImport.poNumber')}
                     {extractedFields.has('po_number') && <ExtractedChip />}
-                    <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: 6, fontSize: 11 }}>(optional)</span>
+                    <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: 6, fontSize: 11 }}>({t('reviewForm.optional')})</span>
                   </label>
                   <input
                     className="input"
@@ -447,7 +451,7 @@ export default function ImportDealPage() {
                   disabled={!canProceedStep1()}
                   onClick={() => setStep(2)}
                 >
-                  Next: Upload Documents →
+                  {t('dealImport.nextUploadDocuments')}
                 </button>
               </div>
             </div>
@@ -457,10 +461,10 @@ export default function ImportDealPage() {
         {/* ── STEP 2: Documents ── */}
         {step === 2 && (
           <div className="card">
-            <div className="card-head">Step 2 — Upload Your Documents</div>
+            <div className="card-head">{t('dealImport.step2Title')}</div>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <p style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>
-                Upload a PO, commercial invoice, or contract. Strike AI will read your document and pre-fill deal terms automatically. At least one document is recommended.
+                {t('dealImport.step2Hint')}
               </p>
 
               <div
@@ -490,16 +494,16 @@ export default function ImportDealPage() {
                   <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
                 {uploading ? (
-                  <p className="upload-title">Uploading…</p>
+                  <p className="upload-title">{t('dealImport.uploading')}</p>
                 ) : uploadedFileName ? (
                   <>
                     <p className="upload-title" style={{ color: 'var(--color-green)' }}>✓ {uploadedFileName}</p>
-                    <p className="upload-sub">Click to replace</p>
+                    <p className="upload-sub">{t('dealImport.clickToReplace')}</p>
                   </>
                 ) : (
                   <>
-                    <p className="upload-title">Drop your document here, or click to browse</p>
-                    <p className="upload-sub">PDF, Word, Excel, image — max 10 MB</p>
+                    <p className="upload-title">{t('dealImport.dropDocumentHint')}</p>
+                    <p className="upload-sub">{t('dealImport.fileTypesHint')}</p>
                   </>
                 )}
               </div>
@@ -507,21 +511,21 @@ export default function ImportDealPage() {
               {extracting && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--teal-dim)', border: '1px solid var(--teal)', borderLeft: '3px solid var(--teal)' }}>
                   <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--teal)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: 'var(--teal)' }}>Strike AI is reading your document…</span>
+                  <span style={{ fontSize: 13, color: 'var(--teal)' }}>{t('dealImport.aiReadingDocument')}</span>
                 </div>
               )}
 
               {extractedFields.size > 0 && !extracting && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--teal)' }}>
                   <span>✦</span>
-                  <span>Extracted {extractedFields.size} field{extractedFields.size !== 1 ? 's' : ''} from your document. Review them in step 1.</span>
+                  <span>{t('dealImport.extractedFieldsHint', { count: extractedFields.size })}</span>
                 </div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                <button className="btn btn-ghost" onClick={() => setStep(1)}>← Back</button>
+                <button className="btn btn-ghost" onClick={() => setStep(1)}>← {t('dealImport.back')}</button>
                 <button className="btn btn-blue" onClick={() => setStep(3)}>
-                  {uploadedDocId ? 'Next: Review →' : 'Skip & Review →'}
+                  {uploadedDocId ? t('dealImport.nextReview') : t('dealImport.skipAndReview')}
                 </button>
               </div>
             </div>
@@ -531,44 +535,44 @@ export default function ImportDealPage() {
         {/* ── STEP 3: Review & Submit ── */}
         {step === 3 && (
           <div className="card">
-            <div className="card-head">Step 3 — Review & Submit</div>
+            <div className="card-head">{t('dealImport.step3Title')}</div>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
               <div className="review-section">
                 <div className="review-section-head">
-                  <span className="review-section-label">Your Role</span>
-                  <button className="review-edit" onClick={() => setStep(1)}>Edit</button>
+                  <span className="review-section-label">{t('dealImport.yourRole')}</span>
+                  <button className="review-edit" onClick={() => setStep(1)}>{t('dealImport.editStep')}</button>
                 </div>
                 <div className="kv-list inset">
                   <div className="kv-row">
-                    <span className="k">I am the</span>
-                    <span className="v plain" style={{ textTransform: 'capitalize' }}>{form.initiating_side}</span>
+                    <span className="k">{t('dealImport.iAmThe')}</span>
+                    <span className="v plain" style={{ textTransform: 'capitalize' }}>{form.initiating_side === 'buyer' ? t('passport.buyer') : t('passport.supplier')}</span>
                   </div>
                 </div>
               </div>
 
               <div className="review-section">
                 <div className="review-section-head">
-                  <span className="review-section-label">Counterparty</span>
-                  <button className="review-edit" onClick={() => setStep(1)}>Edit</button>
+                  <span className="review-section-label">{t('dealImport.counterparty')}</span>
+                  <button className="review-edit" onClick={() => setStep(1)}>{t('dealImport.editStep')}</button>
                 </div>
                 <div className="kv-list inset">
                   {selectedOrg ? (
                     <div className="kv-row">
-                      <span className="k">Organization</span>
+                      <span className="k">{t('dealImport.organization')}</span>
                       <span className="v plain">{selectedOrg.doing_business_as ?? selectedOrg.legal_name}</span>
                     </div>
                   ) : (
                     <>
                       {form.counterparty_name && (
                         <div className="kv-row">
-                          <span className="k">Name</span>
+                          <span className="k">{t('dealImport.name')}</span>
                           <span className="v plain">{form.counterparty_name}</span>
                         </div>
                       )}
                       {form.counterparty_email && (
                         <div className="kv-row">
-                          <span className="k">Email</span>
+                          <span className="k">{t('dealImport.email')}</span>
                           <span className="v plain">{form.counterparty_email}</span>
                         </div>
                       )}
@@ -579,39 +583,39 @@ export default function ImportDealPage() {
 
               <div className="review-section">
                 <div className="review-section-head">
-                  <span className="review-section-label">Deal Terms</span>
-                  <button className="review-edit" onClick={() => setStep(1)}>Edit</button>
+                  <span className="review-section-label">{t('dealImport.dealTerms')}</span>
+                  <button className="review-edit" onClick={() => setStep(1)}>{t('dealImport.editStep')}</button>
                 </div>
                 <div className="kv-list inset">
                   <div className="kv-row">
-                    <span className="k">Goods</span>
+                    <span className="k">{t('financingDetail.goods')}</span>
                     <span className="v plain">{form.goods_description || '—'}</span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Value</span>
+                    <span className="k">{t('dealImport.value')}</span>
                     <span className="v">{form.total_value ? `${form.currency} ${Number(form.total_value).toLocaleString()}` : '—'}</span>
                   </div>
                   {form.agreed_delivery_date && (
                     <div className="kv-row">
-                      <span className="k">Delivery</span>
+                      <span className="k">{t('dealImport.delivery')}</span>
                       <span className="v">{form.agreed_delivery_date}</span>
                     </div>
                   )}
                   {form.agreed_incoterms && (
                     <div className="kv-row">
-                      <span className="k">Incoterms</span>
+                      <span className="k">{t('newListing.incoterms')}</span>
                       <span className="v">{form.agreed_incoterms}</span>
                     </div>
                   )}
                   {form.agreed_payment_terms && (
                     <div className="kv-row">
-                      <span className="k">Payment Terms</span>
+                      <span className="k">{t('newListing.paymentTerms')}</span>
                       <span className="v plain">{form.agreed_payment_terms}</span>
                     </div>
                   )}
                   {form.po_number && (
                     <div className="kv-row">
-                      <span className="k">PO Number</span>
+                      <span className="k">{t('dealImport.poNumber')}</span>
                       <span className="v">{form.po_number}</span>
                     </div>
                   )}
@@ -621,8 +625,8 @@ export default function ImportDealPage() {
               {uploadedDocId && (
                 <div className="review-section">
                   <div className="review-section-head">
-                    <span className="review-section-label">Documents</span>
-                    <button className="review-edit" onClick={() => setStep(2)}>Edit</button>
+                    <span className="review-section-label">{t('listingDetail.documents')}</span>
+                    <button className="review-edit" onClick={() => setStep(2)}>{t('dealImport.editStep')}</button>
                   </div>
                   <div className="doc-list-inset">
                     <div className="doc-row-check">
@@ -638,23 +642,23 @@ export default function ImportDealPage() {
               <div className="alert alert-info" style={{ margin: '20px 0 0', fontSize: 12 }}>
                 <span className="alert-icon">ℹ</span>
                 <span className="alert-body">
-                  Submitting creates a deal with status <strong>Agreed</strong>.
+                  {t('dealImport.submitCreatesAgreedDeal')}
                   {form.counterparty_org_id
-                    ? ' Your counterparty will be notified on Strike.'
+                    ? ' ' + t('dealImport.counterpartyNotifiedOnStrike')
                     : form.counterparty_email
-                    ? ' An invite will be sent to your counterparty by email.'
-                    : ' You can invite your counterparty later.'}
+                    ? ' ' + t('dealImport.inviteWillBeSent')
+                    : ' ' + t('dealImport.inviteLater')}
                 </span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-                <button className="btn btn-ghost" onClick={() => setStep(2)}>← Back</button>
+                <button className="btn btn-ghost" onClick={() => setStep(2)}>← {t('dealImport.back')}</button>
                 <button
                   className="btn btn-blue"
                   disabled={submitting}
                   onClick={handleSubmit}
                 >
-                  {submitting ? 'Submitting…' : 'Submit Deal'}
+                  {submitting ? t('newListing.saving') : t('dealImport.submitDeal')}
                 </button>
               </div>
             </div>

@@ -35,7 +35,31 @@ const ALLOWED_FIELDS = [
   'country_of_origin',
   'sourcing_countries',
   'product_categories',
+  'payment_terms_preference',
   'network_visible',
+  // Step 3 — Ownership & Compliance
+  'ceo_name',
+  'ubo_summary',
+  'is_pep',
+  'has_sanctioned_exposure',
+  'bankruptcy_filed',
+  'material_litigation',
+  // Step 4 — Financial & Trade extras
+  'primary_currency',
+  'avg_invoice_size',
+  'payment_terms_offered',
+  'payment_terms_received',
+  'customer_count',
+  'largest_customer_pct',
+  'financing_need',
+  'supplier_count',
+  'largest_supplier_pct',
+  'supplier_payment_terms',
+  // Step 5 — Systems & Intent
+  'erp_system',
+  'primary_bank_name',
+  'platform_intent',
+  'ai_matching_opt_in',
 ] as const
 
 async function resolveOrgId(userId: string): Promise<string | null> {

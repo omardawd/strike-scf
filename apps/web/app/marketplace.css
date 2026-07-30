@@ -148,6 +148,14 @@
   cursor: pointer;
 }
 
+.listing-card-image {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+  background: var(--offwhite);
+}
+
 .listing-card:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   border-color: var(--border-strong);
@@ -929,6 +937,43 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Strike Place only (app/(portal)/marketplace/page.tsx) — a real marketplace
+   grid with equal-sized, truncated cards. Scoped under .mp-listing-grid instead
+   of changing the shared .listing-card/.mp-listing-feed classes directly, since
+   those are also reused as-is by the Financing pages' stacked card list. */
+.mp-listing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.mp-listing-grid .listing-card {
+  height: 400px;
+  overflow: hidden;
+}
+.mp-listing-grid .listing-card-body {
+  min-height: 0;
+  overflow: hidden;
+}
+.mp-listing-grid .listing-card-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mp-listing-grid .listing-details-row {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.mp-listing-grid .listing-detail-item {
+  min-width: 0;
+  flex-shrink: 0;
+}
+.mp-listing-grid .listing-detail-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
 }
 
 .mp-skeleton-card {

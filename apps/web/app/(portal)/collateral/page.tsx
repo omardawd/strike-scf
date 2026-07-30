@@ -3,30 +3,35 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 const BANK_ROLES = ['bank_admin', 'bank_credit_officer']
 const ORG_ROLES  = ['org_admin', 'org_member']
 
-const STATUS_LABELS: Record<string, string> = {
-  pending:   'Required by bank',
-  submitted: 'Acknowledged by supplier',
-  accepted:  'Accepted',
-  waived:    'Waived',
-  rejected:  'Not accepted — resubmit required',
-  released:  'Released',
+function statusLabel(status: string, t: TFn): string {
+  switch (status) {
+    case 'pending':   return t('collateral.status.pending')
+    case 'submitted': return t('collateral.status.submitted')
+    case 'accepted':  return t('collateral.status.accepted')
+    case 'waived':    return t('collateral.status.waived')
+    case 'rejected':  return t('collateral.status.rejected')
+    case 'released':  return t('collateral.status.released')
+    default: return status.charAt(0).toUpperCase() + status.slice(1)
+  }
 }
 
-const COLLATERAL_TYPE_LABELS: Record<string, string> = {
-  post_dated_cheque:         'Post-dated Cheque',
-  personal_guarantee:        'Personal Guarantee',
-  assignment_of_receivables: 'Assignment of Receivables',
-  cash_collateral:           'Cash Collateral',
-  asset_pledge:              'Asset Pledge',
-  other:                     'Other',
-}
-
-function formatCollateralType(type: string): string {
-  return COLLATERAL_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+function collateralTypeLabel(type: string, t: TFn): string {
+  switch (type) {
+    case 'post_dated_cheque':         return t('collateral.type.postDatedCheque')
+    case 'personal_guarantee':        return t('collateral.type.personalGuarantee')
+    case 'assignment_of_receivables': return t('collateral.type.assignmentOfReceivables')
+    case 'cash_collateral':           return t('collateral.type.cashCollateral')
+    case 'asset_pledge':              return t('collateral.type.assetPledge')
+    case 'other':                     return t('collateral.type.other')
+    default: return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  }
 }
 
 function statusBadge(status: string): string {
@@ -65,18 +70,26 @@ interface CollateralItem {
   created_at: string
 }
 
-const FILTER_TABS = ['All', 'Pending', 'Submitted', 'Accepted', 'Rejected', 'Waived', 'Released']
+const FILTER_TAB_VALUES = ['All', 'Pending', 'Submitted', 'Accepted', 'Rejected', 'Waived', 'Released']
 
-const COLLATERAL_TYPES = [
-  { value: 'post_dated_cheque',         label: 'Post-dated Cheque' },
-  { value: 'personal_guarantee',        label: 'Personal Guarantee' },
-  { value: 'assignment_of_receivables', label: 'Assignment of Receivables' },
-  { value: 'cash_collateral',           label: 'Cash Collateral' },
-  { value: 'asset_pledge',              label: 'Asset Pledge' },
-  { value: 'other',                     label: 'Other' },
-]
+function filterTabLabel(tab: string, t: TFn): string {
+  if (tab === 'All') return t('common.all')
+  return statusLabel(tab.toLowerCase(), t)
+}
+
+function collateralTypeOptions(t: TFn) {
+  return [
+    { value: 'post_dated_cheque',         label: t('collateral.type.postDatedCheque') },
+    { value: 'personal_guarantee',        label: t('collateral.type.personalGuarantee') },
+    { value: 'assignment_of_receivables', label: t('collateral.type.assignmentOfReceivables') },
+    { value: 'cash_collateral',           label: t('collateral.type.cashCollateral') },
+    { value: 'asset_pledge',              label: t('collateral.type.assetPledge') },
+    { value: 'other',                     label: t('collateral.type.other') },
+  ]
+}
 
 export default function CollateralPage() {
+  const t = useT()
   const user   = useUser()
   const router = useRouter()
 
@@ -130,11 +143,11 @@ export default function CollateralPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-      setAlert({ kind: 'success', msg: `Collateral ${action}d` })
+      setAlert({ kind: 'success', msg: t('collateral.actionSuccess', { action }) })
       load()
       setTimeout(() => setAlert(null), 3000)
     } catch (err) {
-      setAlert({ kind: 'error', msg: err instanceof Error ? err.message : 'Action failed' })
+      setAlert({ kind: 'error', msg: err instanceof Error ? err.message : t('admin.actionFailed') })
     }
   }
 
@@ -153,11 +166,11 @@ export default function CollateralPage() {
       } else if (form.level === 'onboarding' && form.org_id.trim()) {
         body.org_id = form.org_id.trim()
       } else {
-        setFormError(form.level === 'transaction' ? 'Transaction ID is required' : 'Organization ID is required')
+        setFormError(form.level === 'transaction' ? t('collateral.transactionIdRequired') : t('collateral.orgIdRequired'))
         return
       }
-      if (!form.description.trim()) { setFormError('Description is required'); return }
-      if (!form.deadline)           { setFormError('Deadline is required'); return }
+      if (!form.description.trim()) { setFormError(t('collateral.descriptionRequired')); return }
+      if (!form.deadline)           { setFormError(t('collateral.deadlineRequired')); return }
       if (form.required_value.trim()) {
         body.required_value = parseFloat(form.required_value)
       }
@@ -170,7 +183,7 @@ export default function CollateralPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
 
-      setAlert({ kind: 'success', msg: 'Requirement added' })
+      setAlert({ kind: 'success', msg: t('collateral.requirementAdded') })
       setForm({
         collateral_type: 'post_dated_cheque', description: '',
         level: 'transaction', transaction_id: '', org_id: '',
@@ -180,7 +193,7 @@ export default function CollateralPage() {
       load()
       setTimeout(() => setAlert(null), 3000)
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to add requirement')
+      setFormError(err instanceof Error ? err.message : t('collateral.addFailed'))
     } finally {
       setFormSaving(false)
     }
@@ -190,7 +203,7 @@ export default function CollateralPage() {
     <PortalShell activeSection="collateral">
       <Topbar
         crumbs={[
-          { label: 'Collateral' },
+          { label: t('collateral.title') },
         ]}
         actions={
           <>
@@ -201,7 +214,7 @@ export default function CollateralPage() {
                 type="button"
                 onClick={() => setShowForm(true)}
               >
-                Add requirement
+                {t('collateral.addRequirement')}
               </button>
             )}
           </>
@@ -210,8 +223,8 @@ export default function CollateralPage() {
 
       <div className="page" data-page-name="Collateral" data-ai-context={JSON.stringify({ role: (user as any)?.role, total: collateral.length, pending: collateral.filter(c => c.status === 'pending').length, submitted: collateral.filter(c => c.status === 'submitted').length, accepted: collateral.filter(c => c.status === 'accepted').length, active_filter: filter })}>
         <div className="page-header">
-          <h1 className="t-page-title">Collateral</h1>
-          <div className="subtitle">Track collateral requirements across transactions and onboarding</div>
+          <h1 className="t-page-title">{t('collateral.title')}</h1>
+          <div className="subtitle">{t('collateral.subtitle')}</div>
         </div>
 
         {alert && (
@@ -224,38 +237,38 @@ export default function CollateralPage() {
         {showForm && (
           <div className="card" style={{ marginBottom: 20, maxWidth: 560 }}>
             <div className="card-head">
-              <span>New collateral requirement</span>
+              <span>{t('collateral.newRequirement')}</span>
             </div>
             <div className="card-body">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label className="form-label">Type</label>
+                  <label className="form-label">{t('collateral.type')}</label>
                   <select
                     className="form-input"
                     value={form.collateral_type}
                     onChange={e => setForm(f => ({ ...f, collateral_type: e.target.value }))}
                     style={{ width: '100%' }}
                   >
-                    {COLLATERAL_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                    {collateralTypeOptions(t).map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="form-label">Description *</label>
+                  <label className="form-label">{t('collateral.descriptionRequiredLabel')}</label>
                   <textarea
                     className="form-input"
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Describe the collateral requirement…"
+                    placeholder={t('collateral.describePlaceholder')}
                     rows={3}
                     style={{ width: '100%', resize: 'vertical' }}
                   />
                 </div>
 
                 <div>
-                  <label className="form-label">Level</label>
+                  <label className="form-label">{t('collateral.level')}</label>
                   <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
                     {(['transaction', 'onboarding'] as const).map(lvl => (
                       <label key={lvl} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -264,7 +277,7 @@ export default function CollateralPage() {
                           checked={form.level === lvl}
                           onChange={() => setForm(f => ({ ...f, level: lvl }))}
                         />
-                        {lvl.charAt(0).toUpperCase() + lvl.slice(1)}
+                        {lvl === 'transaction' ? t('collateral.level.transaction') : t('collateral.level.onboarding')}
                       </label>
                     ))}
                   </div>
@@ -272,7 +285,7 @@ export default function CollateralPage() {
 
                 {form.level === 'transaction' ? (
                   <div>
-                    <label className="form-label">Transaction ID *</label>
+                    <label className="form-label">{t('collateral.transactionIdRequiredLabel')}</label>
                     <input
                       className="form-input mono"
                       value={form.transaction_id}
@@ -283,7 +296,7 @@ export default function CollateralPage() {
                   </div>
                 ) : (
                   <div>
-                    <label className="form-label">Organization ID *</label>
+                    <label className="form-label">{t('collateral.orgIdRequiredLabel')}</label>
                     <input
                       className="form-input mono"
                       value={form.org_id}
@@ -295,7 +308,7 @@ export default function CollateralPage() {
                 )}
 
                 <div>
-                  <label className="form-label">Required value (optional)</label>
+                  <label className="form-label">{t('collateral.requiredValueOptional')}</label>
                   <input
                     className="form-input mono"
                     value={form.required_value}
@@ -306,7 +319,7 @@ export default function CollateralPage() {
                 </div>
 
                 <div>
-                  <label className="form-label">Deadline *</label>
+                  <label className="form-label">{t('collateral.deadlineRequiredLabel')}</label>
                   <input
                     type="date"
                     className="form-input"
@@ -327,14 +340,14 @@ export default function CollateralPage() {
                     disabled={formSaving}
                     onClick={handleAdd}
                   >
-                    {formSaving ? 'Adding…' : 'Add'}
+                    {formSaving ? t('collateral.adding') : t('collateral.add')}
                   </button>
                   <button
                     className="btn btn-ghost btn-sm"
                     type="button"
                     onClick={() => { setShowForm(false); setFormError(null) }}
                   >
-                    Cancel
+                    {t('onboarding.btn.cancel')}
                   </button>
                 </div>
               </div>
@@ -344,14 +357,14 @@ export default function CollateralPage() {
 
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {FILTER_TABS.map(tab => (
+          {FILTER_TAB_VALUES.map(tab => (
             <button
               key={tab}
               type="button"
               className={`btn btn-sm ${filter === tab ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setFilter(tab)}
             >
-              {tab}
+              {filterTabLabel(tab, t)}
             </button>
           ))}
         </div>
@@ -360,24 +373,24 @@ export default function CollateralPage() {
         <div className="card">
           {loading ? (
             <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
-              Loading…
+              {t('common.loading')}
             </div>
           ) : filtered.length === 0 ? (
             <div className="card-body" style={{ padding: 48, textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
-              No collateral requirements
+              {t('collateral.none')}
             </div>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th>Type</th>
-                  <th>Organization</th>
-                  <th>Description</th>
-                  <th>Level</th>
-                  <th>Required value</th>
-                  <th>Deadline</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>{t('collateral.type')}</th>
+                  <th>{t('collateral.col.organization')}</th>
+                  <th>{t('collateral.col.description')}</th>
+                  <th>{t('collateral.level')}</th>
+                  <th>{t('collateral.col.requiredValue')}</th>
+                  <th>{t('collateral.col.deadline')}</th>
+                  <th>{t('collateral.col.status')}</th>
+                  <th>{t('bankKyb.col.action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -385,7 +398,7 @@ export default function CollateralPage() {
                   const isPastDue = item.deadline ? new Date(item.deadline) < new Date() && item.status === 'pending' : false
                   return (
                     <tr key={item.id}>
-                      <td>{formatCollateralType(item.collateral_type)}</td>
+                      <td>{collateralTypeLabel(item.collateral_type, t)}</td>
                       <td style={{ fontSize: 12 }}>
                         {item.org_name ?? (item.org_id ? item.org_id.slice(0, 8) + '…' : '—')}
                       </td>
@@ -394,7 +407,7 @@ export default function CollateralPage() {
                       </td>
                       <td>
                         <span className="badge badge-draft">
-                          {item.level === 'onboarding' ? 'Onboarding' : 'Transaction'}
+                          {item.level === 'onboarding' ? t('collateral.level.onboarding') : t('collateral.level.transaction')}
                         </span>
                       </td>
                       <td>{fmtAmt(item.required_value)}</td>
@@ -403,23 +416,23 @@ export default function CollateralPage() {
                       </td>
                       <td>
                         <span className={`badge ${statusBadge(item.status)}`}>
-                          {STATUS_LABELS[item.status] ?? item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                          {statusLabel(item.status, t)}
                         </span>
                       </td>
                       <td>
                         {isSupplier && item.status === 'pending' && (
                           <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'submit')}>
-                            Acknowledge
+                            {t('collateral.acknowledge')}
                           </button>
                         )}
                         {isBank && item.status === 'submitted' && (
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'accept')}>Accept</button>
-                            <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'reject')}>Reject</button>
+                            <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'accept')}>{t('collateral.accept')}</button>
+                            <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'reject')}>{t('admin.reject')}</button>
                           </div>
                         )}
                         {isBank && item.status === 'accepted' && (
-                          <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'release')}>Release</button>
+                          <button className="btn btn-sm btn-ghost" type="button" onClick={() => handleAction(item.id, 'release')}>{t('collateral.release')}</button>
                         )}
                       </td>
                     </tr>

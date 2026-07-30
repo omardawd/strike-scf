@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { Topbar } from '@/components/portal-shell'
+import { DOC_KIND_LABELS, REQUESTABLE_DOC_KINDS } from '@/lib/kyb-document-kinds'
+import { useT } from '@/lib/i18n/locale-context'
 
 interface KybOrg {
   id: string
@@ -37,7 +39,7 @@ interface Stats {
 
 type ActionState =
   | { type: 'reject'; orgId: string; reason: string }
-  | { type: 'more_info'; orgId: string; message: string }
+  | { type: 'more_info'; orgId: string; message: string; requestedDocs: string[] }
   | null
 
 function fmtDate(ts: string | null): string {
@@ -46,6 +48,7 @@ function fmtDate(ts: string | null): string {
 }
 
 export default function AdminPage() {
+  const t = useT()
   const router = useRouter()
   const user = useUser()
 
@@ -79,7 +82,7 @@ export default function AdminPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  async function handleKybAction(orgId: string, action: string, extra?: { reason?: string; message?: string }) {
+  async function handleKybAction(orgId: string, action: string, extra?: { reason?: string; message?: string; requested_documents?: string[] }) {
     setSubmitting(true)
     setError(null)
     try {
@@ -89,11 +92,11 @@ export default function AdminPage() {
         body: JSON.stringify({ action, ...extra }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Action failed'); return }
+      if (!res.ok) { setError(data.error ?? t('admin.actionFailed')); return }
       setKybOrgs(prev => prev.filter(o => o.id !== orgId))
       setActionState(null)
     } catch {
-      setError('Network error')
+      setError(t('common.networkError'))
     } finally {
       setSubmitting(false)
     }
@@ -113,7 +116,7 @@ export default function AdminPage() {
       })
       setReports(prev => prev.filter(r => r.id !== reportId))
     } catch {
-      setError('Failed to remove message')
+      setError(t('admin.removeMessageFailed'))
     }
   }
 
@@ -126,49 +129,49 @@ export default function AdminPage() {
       })
       setReports(prev => prev.filter(r => r.id !== reportId))
     } catch {
-      setError('Failed to dismiss report')
+      setError(t('admin.dismissReportFailed'))
     }
   }
 
   if (!user || user.role !== 'strike_admin') return null
 
   const kpiCards = [
-    { label: 'Total Orgs',               value: stats?.total_orgs              ?? '—' },
-    { label: 'Active Orgs',              value: stats?.active_orgs             ?? '—' },
-    { label: 'Open Financing Requests',  value: stats?.open_financing_requests ?? '—' },
-    { label: 'Deals This Month',         value: stats?.deals_this_month        ?? '—' },
+    { label: t('admin.totalOrgs'),              value: stats?.total_orgs              ?? '—' },
+    { label: t('admin.activeOrgs'),             value: stats?.active_orgs             ?? '—' },
+    { label: t('admin.openFinancingRequests'),  value: stats?.open_financing_requests ?? '—' },
+    { label: t('admin.dealsThisMonth'),         value: stats?.deals_this_month        ?? '—' },
   ]
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Admin' }, { label: 'Dashboard' }]} />
+      <Topbar crumbs={[{ label: t('admin.title') }, { label: t('admin.dashboard') }]} />
 
       <div className="page" style={{ maxWidth: 1400 }} data-page-name="Admin Dashboard" data-ai-context={JSON.stringify({ role: 'strike_admin', kyb_pending: kybOrgs.length, room_reports: reports.length, total_orgs: stats?.total_orgs ?? null, active_orgs: stats?.active_orgs ?? null, open_financing: stats?.open_financing_requests ?? null, deals_this_month: stats?.deals_this_month ?? null })}>
 
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', margin: 0 }}>
-              Strike Admin
+              {t('admin.title')}
             </h1>
             <span className="badge" style={{ background: 'var(--color-red-bg)', color: 'var(--color-red)', borderColor: 'var(--color-red)' }}>
-              Admin Only
+              {t('admin.adminOnly')}
             </span>
           </div>
-          <p className="subtitle">Platform oversight, KYB decisions, and room moderation.</p>
+          <p className="subtitle">{t('admin.subtitle')}</p>
         </div>
 
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 20 }}>
             <span className="alert-icon">✕</span>
             <span className="alert-body">{error}</span>
-            <button className="alert-link" onClick={() => setError(null)}>Dismiss</button>
+            <button className="alert-link" onClick={() => setError(null)}>{t('common.dismiss')}</button>
           </div>
         )}
 
         {/* ── Section 3: Platform Stats ── */}
         <div className="section" style={{ marginBottom: 32 }}>
           <div className="rooms-section-head" style={{ marginBottom: 12 }}>
-            <span className="rooms-section-title">Platform Stats</span>
+            <span className="rooms-section-title">{t('admin.platformStats')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'var(--border)' }}>
             {kpiCards.map(card => (
@@ -185,9 +188,9 @@ export default function AdminPage() {
         {/* ── Section 1: KYB Escalation Queue ── */}
         <div className="section" style={{ marginBottom: 32 }}>
           <div className="rooms-section-head">
-            <span className="rooms-section-title">KYB Escalation Queue</span>
+            <span className="rooms-section-title">{t('admin.kybQueueTitle')}</span>
             <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
-              {loading ? '…' : `${kybOrgs.length} pending`}
+              {loading ? '…' : t('admin.pendingCount', { count: String(kybOrgs.length) })}
             </span>
           </div>
 
@@ -198,18 +201,26 @@ export default function AdminPage() {
               </div>
             ) : kybOrgs.length === 0 ? (
               <div style={{ padding: '32px 24px', textAlign: 'center' }}>
-                <p style={{ fontSize: 13, color: 'var(--gray)' }}>No organizations pending KYB review.</p>
+                <p style={{ fontSize: 13, color: 'var(--gray)' }}>{t('admin.noneKyb')}</p>
               </div>
             ) : (
-              <table className="table">
+              <table className="table" style={{ tableLayout: 'fixed', width: '100%' }}>
+                <colgroup>
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '22%' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Organization</th>
-                    <th>Type</th>
-                    <th>Submitted</th>
-                    <th>Risk Score</th>
-                    <th>Risk Flags</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th>{t('bankKyb.col.applicant')}</th>
+                    <th>{t('bankKyb.col.type')}</th>
+                    <th>{t('bankKyb.col.submitted')}</th>
+                    <th>{t('admin.riskScore')}</th>
+                    <th>{t('admin.riskFlags')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('bankKyb.col.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,10 +231,16 @@ export default function AdminPage() {
                     return (
                       <React.Fragment key={org.id}>
                         <tr>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{name}</div>
+                          <td style={{ overflow: 'hidden' }}>
+                            <a
+                              href={`/admin/kyb/${org.id}`}
+                              onClick={e => { e.preventDefault(); router.push(`/admin/kyb/${org.id}`) }}
+                              style={{ fontWeight: 500, color: 'var(--blue)', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {name}
+                            </a>
                             {org.primary_contact_email && (
-                              <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{org.primary_contact_email}</div>
+                              <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{org.primary_contact_email}</div>
                             )}
                           </td>
                           <td>
@@ -244,14 +261,18 @@ export default function AdminPage() {
                               </span>
                             ) : '—'}
                           </td>
-                          <td>
+                          <td style={{ overflow: 'hidden' }}>
                             {(org.risk_flags ?? []).length > 0 ? (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {(org.risk_flags ?? []).slice(0, 3).map((flag, i) => (
-                                  <span key={i} className="badge badge-pending" style={{ fontSize: 9 }}>{flag}</span>
-                                ))}
-                                {(org.risk_flags ?? []).length > 3 && (
-                                  <span style={{ fontSize: 11, color: 'var(--gray)' }}>+{(org.risk_flags ?? []).length - 3}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                <span
+                                  className="badge badge-pending"
+                                  title={org.risk_flags![0]}
+                                  style={{ fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', display: 'inline-block' }}
+                                >
+                                  {org.risk_flags![0]}
+                                </span>
+                                {org.risk_flags!.length > 1 && (
+                                  <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>+{org.risk_flags!.length - 1}</span>
                                 )}
                               </div>
                             ) : <span style={{ color: 'var(--gray)', fontSize: 12 }}>—</span>}
@@ -264,16 +285,16 @@ export default function AdminPage() {
                                 disabled={submitting}
                                 onClick={() => handleKybAction(org.id, 'approve')}
                               >
-                                Approve
+                                {t('admin.approve')}
                               </button>
                               <button
                                 className="btn btn-secondary btn-sm"
                                 style={{ fontSize: 11 }}
                                 onClick={() => setActionState(
-                                  isExpandedMoreInfo ? null : { type: 'more_info', orgId: org.id, message: '' }
+                                  isExpandedMoreInfo ? null : { type: 'more_info', orgId: org.id, message: '', requestedDocs: [] }
                                 )}
                               >
-                                More Info
+                                {t('admin.moreInfo')}
                               </button>
                               <button
                                 className="btn btn-sm"
@@ -282,7 +303,7 @@ export default function AdminPage() {
                                   isExpandedReject ? null : { type: 'reject', orgId: org.id, reason: '' }
                                 )}
                               >
-                                Reject
+                                {t('admin.reject')}
                               </button>
                             </div>
                           </td>
@@ -294,11 +315,11 @@ export default function AdminPage() {
                             <td colSpan={6} style={{ background: 'var(--color-red-bg)', padding: '12px 16px' }}>
                               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
                                 <div style={{ flex: 1 }}>
-                                  <label className="field-label" style={{ color: 'var(--color-red)' }}>Rejection Reason</label>
+                                  <label className="field-label" style={{ color: 'var(--color-red)' }}>{t('admin.rejectionReason')}</label>
                                   <input
                                     className="input"
                                     type="text"
-                                    placeholder="Provide a reason to include in the email…"
+                                    placeholder={t('admin.rejectionReasonPlaceholder')}
                                     value={(actionState as any)?.reason ?? ''}
                                     onChange={e => setActionState(s => s ? { ...s, reason: e.target.value } as any : s)}
                                   />
@@ -308,10 +329,10 @@ export default function AdminPage() {
                                   disabled={submitting}
                                   onClick={() => handleKybAction(org.id, 'reject', { reason: (actionState as any)?.reason })}
                                 >
-                                  {submitting ? 'Rejecting…' : 'Confirm Reject'}
+                                  {submitting ? t('admin.rejecting') : t('admin.confirmReject')}
                                 </button>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setActionState(null)}>
-                                  Cancel
+                                  {t('onboarding.btn.cancel')}
                                 </button>
                               </div>
                             </td>
@@ -322,28 +343,62 @@ export default function AdminPage() {
                         {isExpandedMoreInfo && (
                           <tr>
                             <td colSpan={6} style={{ background: 'var(--color-amber-bg)', padding: '12px 16px' }}>
-                              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                                <div style={{ flex: 1 }}>
-                                  <label className="field-label" style={{ color: 'var(--color-amber)' }}>Message to Applicant</label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <div>
+                                  <label className="field-label" style={{ color: 'var(--color-amber)' }}>{t('admin.messageToApplicant')}</label>
                                   <input
                                     className="input"
                                     type="text"
-                                    placeholder="Describe what additional information is needed…"
+                                    placeholder={t('admin.messageToApplicantPlaceholder')}
                                     value={(actionState as any)?.message ?? ''}
                                     onChange={e => setActionState(s => s ? { ...s, message: e.target.value } as any : s)}
                                   />
                                 </div>
+                                <div>
+                                  <label className="field-label" style={{ color: 'var(--color-amber)' }}>{t('admin.requestDocsOptional')}</label>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                                    {REQUESTABLE_DOC_KINDS.map(kind => {
+                                      const checked = (actionState as any)?.requestedDocs?.includes(kind) ?? false
+                                      return (
+                                        <label
+                                          key={kind}
+                                          style={{
+                                            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5,
+                                            padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                                            border: `1px solid ${checked ? 'var(--color-amber)' : 'var(--border)'}`,
+                                            background: checked ? '#fff' : 'transparent',
+                                            color: checked ? 'var(--color-amber)' : 'var(--gray)',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => setActionState(s => {
+                                              if (!s || s.type !== 'more_info') return s
+                                              const has = s.requestedDocs.includes(kind)
+                                              return { ...s, requestedDocs: has ? s.requestedDocs.filter(k => k !== kind) : [...s.requestedDocs, kind] }
+                                            })}
+                                            style={{ margin: 0 }}
+                                          />
+                                          {DOC_KIND_LABELS[kind]}
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8 }}>
                                 <button
                                   className="btn btn-sm"
                                   style={{ background: 'var(--color-amber)', borderColor: 'var(--color-amber)', color: '#fff' }}
-                                  disabled={submitting}
-                                  onClick={() => handleKybAction(org.id, 'more_info', { message: (actionState as any)?.message })}
+                                  disabled={submitting || !(actionState as any)?.message?.trim()}
+                                  onClick={() => handleKybAction(org.id, 'more_info', { message: (actionState as any)?.message, requested_documents: (actionState as any)?.requestedDocs })}
                                 >
-                                  {submitting ? 'Sending…' : 'Send Request'}
+                                  {submitting ? t('admin.sending') : t('admin.sendRequest')}
                                 </button>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setActionState(null)}>
-                                  Cancel
+                                  {t('onboarding.btn.cancel')}
                                 </button>
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -360,9 +415,9 @@ export default function AdminPage() {
         {/* ── Section 2: Room Reports Queue ── */}
         <div className="section">
           <div className="rooms-section-head">
-            <span className="rooms-section-title">Room Reports Queue</span>
+            <span className="rooms-section-title">{t('admin.roomReportsTitle')}</span>
             <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
-              {loading ? '…' : `${reports.length} unresolved`}
+              {loading ? '…' : t('admin.unresolvedCount', { count: String(reports.length) })}
             </span>
           </div>
 
@@ -373,18 +428,18 @@ export default function AdminPage() {
               </div>
             ) : reports.length === 0 ? (
               <div style={{ padding: '32px 24px', textAlign: 'center' }}>
-                <p style={{ fontSize: 13, color: 'var(--gray)' }}>No unresolved room reports.</p>
+                <p style={{ fontSize: 13, color: 'var(--gray)' }}>{t('admin.noneReports')}</p>
               </div>
             ) : (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Room</th>
-                    <th>Message</th>
-                    <th>Reason</th>
-                    <th>Reported By</th>
-                    <th>Date</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th>{t('admin.col.room')}</th>
+                    <th>{t('admin.col.message')}</th>
+                    <th>{t('admin.col.reason')}</th>
+                    <th>{t('admin.col.reportedBy')}</th>
+                    <th>{t('admin.col.date')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('bankKyb.col.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -402,7 +457,7 @@ export default function AdminPage() {
                       </td>
                       <td>
                         <span className="badge badge-pending" style={{ fontSize: 9 }}>
-                          {report.reason ?? 'No reason'}
+                          {report.reason ?? t('admin.noReason')}
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--gray)' }}>{report.reported_by_name}</td>
@@ -417,7 +472,7 @@ export default function AdminPage() {
                               style={{ fontSize: 11 }}
                               onClick={() => handleRemoveMessage(report.message_id!, report.id)}
                             >
-                              Remove Msg
+                              {t('admin.removeMsg')}
                             </button>
                           )}
                           <button
@@ -425,7 +480,7 @@ export default function AdminPage() {
                             style={{ fontSize: 11 }}
                             onClick={() => handleDismissReport(report.id)}
                           >
-                            Dismiss
+                            {t('admin.dismiss')}
                           </button>
                         </div>
                       </td>

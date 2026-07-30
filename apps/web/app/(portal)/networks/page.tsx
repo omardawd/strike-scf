@@ -5,10 +5,12 @@ import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
 import type { AnchorNetwork } from '@strike-scf/types'
+import { useT } from '@/lib/i18n/locale-context'
 
 // ── Anchor Networks List ─────────────────────────────────────
 
 function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCreated: (n: AnchorNetwork) => void }) {
+  const t = useT()
   const [name, setName]       = useState('')
   const [desc, setDesc]       = useState('')
   const [vis, setVis]         = useState<'public' | 'network_only'>('public')
@@ -17,8 +19,8 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) { setError('Network name is required'); return }
-    if (name.trim().length > 60) { setError('Name must be 60 characters or fewer'); return }
+    if (!name.trim()) { setError(t('networks.nameRequired')); return }
+    if (name.trim().length > 60) { setError(t('networks.nameTooLong')); return }
     setError('')
     setLoading(true)
     try {
@@ -28,10 +30,10 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
         body: JSON.stringify({ name: name.trim(), description: desc || undefined, visibility_default: vis }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
       onCreated(data.network)
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong')
+      setError(err.message ?? t('networks.somethingWrong'))
       setLoading(false)
     }
   }
@@ -46,18 +48,18 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
         padding: 32, width: '100%', maxWidth: 460,
         boxShadow: 'var(--shadow-elevated)',
       }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Create Network</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>{t('networks.createNetwork')}</h2>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>
-              Network Name <span style={{ color: 'var(--color-red)' }}>*</span>
+              {t('networks.networkName')} <span style={{ color: 'var(--color-red)' }}>*</span>
             </label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={60}
-              placeholder="e.g. Preferred Suppliers"
+              placeholder={t('networks.networkNamePlaceholder')}
               style={{
                 width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)',
                 border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box',
@@ -68,14 +70,14 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>
-              Description
+              {t('networks.description')}
             </label>
             <textarea
               value={desc}
               onChange={e => setDesc(e.target.value)}
               maxLength={200}
               rows={3}
-              placeholder="Optional description"
+              placeholder={t('networks.optionalDescription')}
               style={{
                 width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)',
                 border: '1.5px solid var(--border)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box',
@@ -86,15 +88,15 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 10, color: 'var(--ink-soft)' }}>
-              Default Visibility
+              {t('networks.defaultVisibility')}
             </label>
             {(['public', 'network_only'] as const).map(v => (
               <label key={v} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
                 <input type="radio" name="visibility" checked={vis === v} onChange={() => setVis(v)} style={{ marginTop: 2 }} />
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{v === 'public' ? 'Public' : 'Network Only'}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{v === 'public' ? t('networks.public') : t('networks.networkOnly')}</div>
                   <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                    {v === 'public' ? 'Listings are visible to all verified orgs by default' : 'Listings are private to network members by default'}
+                    {v === 'public' ? t('networks.publicHint') : t('networks.networkOnlyHint')}
                   </div>
                 </div>
               </label>
@@ -109,7 +111,7 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
               border: '1.5px solid var(--border)', background: 'none',
               fontSize: 14, cursor: 'pointer',
             }}>
-              Cancel
+              {t('onboarding.btn.cancel')}
             </button>
             <button type="submit" disabled={loading} style={{
               padding: '10px 24px', borderRadius: 'var(--radius-button)',
@@ -117,7 +119,7 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
               fontSize: 14, fontWeight: 600, cursor: loading ? 'default' : 'pointer',
               opacity: loading ? 0.6 : 1,
             }}>
-              {loading ? 'Creating…' : 'Create Network'}
+              {loading ? t('networks.creating') : t('networks.createNetwork')}
             </button>
           </div>
         </form>
@@ -127,6 +129,7 @@ function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCre
 }
 
 function VisibilityBadge({ v }: { v: string }) {
+  const t = useT()
   const isPrivate = v === 'network_only'
   return (
     <span style={{
@@ -136,12 +139,13 @@ function VisibilityBadge({ v }: { v: string }) {
       color: isPrivate ? 'var(--color-amber)' : 'var(--color-green)',
       border: `1px solid ${isPrivate ? 'var(--color-amber)' : 'var(--color-green)'}33`,
     }}>
-      {isPrivate ? 'Private default' : 'Public default'}
+      {isPrivate ? t('networks.privateDefault') : t('networks.publicDefault')}
     </span>
   )
 }
 
 function AnchorNetworksPage() {
+  const t = useT()
   const router = useRouter()
   const [networks, setNetworks] = useState<AnchorNetwork[]>([])
   const [loading, setLoading]   = useState(true)
@@ -164,38 +168,38 @@ function AnchorNetworksPage() {
     <>
       <div style={{ padding: '32px 32px 0' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'anchor', total_networks: networks.length, loading })}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>My Networks</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800 }}>{t('networks.myNetworks')}</h1>
           <button onClick={() => setShowCreate(true)} style={{
             background: 'var(--blue)', color: '#fff', border: 'none',
             borderRadius: 'var(--radius-button)', padding: '10px 20px',
             fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>
-            + Create Network
+            {t('networks.createNetworkPlus')}
           </button>
         </div>
         <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 32 }}>
-          Create private supplier groups, control listing visibility, and invite suppliers.
+          {t('networks.anchorSubtitle')}
         </p>
       </div>
 
       <div style={{ padding: '0 32px 40px' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>Loading networks…</div>
+          <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('networks.loadingNetworks')}</div>
         ) : networks.length === 0 ? (
           <div style={{
             border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)',
             padding: '64px 32px', textAlign: 'center',
           }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>No networks yet</h3>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{t('networks.noneYet')}</h3>
             <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto 24px' }}>
-              You haven't created any supplier networks yet. Create one to invite suppliers and post private listings.
+              {t('networks.noneYetHint')}
             </p>
             <button onClick={() => setShowCreate(true)} style={{
               background: 'var(--blue)', color: '#fff', border: 'none',
               borderRadius: 'var(--radius-button)', padding: '10px 24px',
               fontSize: 14, fontWeight: 600, cursor: 'pointer',
             }}>
-              Create your first network
+              {t('networks.createFirst')}
             </button>
           </div>
         ) : (
@@ -221,11 +225,11 @@ function AnchorNetworksPage() {
                 )}
                 <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
                   <span style={{ fontSize: 13, color: 'var(--ink)' }}>
-                    <strong>{net.member_count}</strong> <span style={{ color: 'var(--gray)' }}>Active</span>
+                    <strong>{net.member_count}</strong> <span style={{ color: 'var(--gray)' }}>{t('networks.active')}</span>
                   </span>
                 </div>
                 <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <span style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600 }}>Manage →</span>
+                  <span style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600 }}>{t('networks.manage')}</span>
                 </div>
               </div>
             ))}
@@ -246,6 +250,7 @@ function AnchorNetworksPage() {
 // ── Supplier Networks Page ────────────────────────────────────
 
 function SupplierNetworksPage() {
+  const t = useT()
   const [data, setData]         = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
   const [actionLoading, setAL]  = useState<string | null>(null)
@@ -270,7 +275,7 @@ function SupplierNetworksPage() {
     try {
       const res = await fetch(`/api/networks/${networkId}/accept`, { method: 'POST' })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed')
+      if (!res.ok) throw new Error(json.error ?? t('networks.failed'))
       load()
     } catch (err: any) {
       setError(err.message)
@@ -285,7 +290,7 @@ function SupplierNetworksPage() {
     try {
       const res = await fetch(`/api/networks/${networkId}/decline`, { method: 'POST' })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed')
+      if (!res.ok) throw new Error(json.error ?? t('networks.failed'))
       load()
     } catch (err: any) {
       setError(err.message)
@@ -301,9 +306,9 @@ function SupplierNetworksPage() {
   return (
     <div style={{ padding: '32px' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'supplier', total: data.length, pending: pending.length, active: active.length, others: others.length })}>
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>My Networks</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>{t('networks.myNetworks')}</h1>
         <p style={{ color: 'var(--gray)', fontSize: 14 }}>
-          Networks are created by buyers. You'll receive an invitation when a buyer adds you.
+          {t('networks.supplierSubtitle')}
         </p>
       </div>
 
@@ -314,12 +319,12 @@ function SupplierNetworksPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>Loading…</div>
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
       ) : data.length === 0 ? (
         <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)', padding: '64px 32px', textAlign: 'center' }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>No network invitations yet</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{t('networks.noInvitationsYet')}</h3>
           <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto' }}>
-            You haven't joined any supplier networks yet. Networks are created by buyers — you'll receive an invitation when a buyer adds you.
+            {t('networks.noInvitationsHint')}
           </p>
         </div>
       ) : (
@@ -332,7 +337,7 @@ function SupplierNetworksPage() {
                 borderRadius: 'var(--radius-card)', padding: '12px 16px', marginBottom: 16,
                 fontSize: 14, fontWeight: 600, color: '#92400e',
               }}>
-                You have {pending.length} pending network invitation{pending.length > 1 ? 's' : ''}
+                {t('networks.pendingInvitationCount', { count: String(pending.length) })}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {pending.map(({ membership, network, anchor }) => (
@@ -344,7 +349,7 @@ function SupplierNetworksPage() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                       <div>
                         <p style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 4 }}>
-                          {anchor?.legal_name ?? 'A buyer'} has invited you to join their network
+                          {t('networks.invitedBy', { buyer: anchor?.legal_name ?? t('networks.aBuyer') })}
                         </p>
                         <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>"{network?.name}"</h3>
                         {network?.description && (
@@ -364,7 +369,7 @@ function SupplierNetworksPage() {
                             fontSize: 14, fontWeight: 600, cursor: 'pointer',
                           }}
                         >
-                          Decline
+                          {t('networks.decline')}
                         </button>
                         <button
                           onClick={() => handleAccept(network?.id)}
@@ -375,7 +380,7 @@ function SupplierNetworksPage() {
                             fontSize: 14, fontWeight: 600, cursor: 'pointer',
                           }}
                         >
-                          {actionLoading === network?.id + '-accept' ? 'Accepting…' : 'Accept'}
+                          {actionLoading === network?.id + '-accept' ? t('networks.accepting') : t('networks.accept')}
                         </button>
                       </div>
                     </div>
@@ -388,7 +393,7 @@ function SupplierNetworksPage() {
           {/* Active networks */}
           {active.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Active Networks</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{t('networks.activeNetworks')}</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
                 {active.map(({ membership, network, anchor, pending_listings_count }) => (
                   <div key={membership.id} style={{
@@ -401,17 +406,17 @@ function SupplierNetworksPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
                       <span style={{ fontSize: 13, color: 'var(--ink)' }}>
-                        {pending_listings_count} listing{pending_listings_count !== 1 ? 's' : ''} available
+                        {t('networks.listingsAvailable', { count: String(pending_listings_count) })}
                       </span>
                       <a
                         href={`/marketplace?network_id=${network?.id}`}
                         style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}
                       >
-                        View Listings →
+                        {t('networks.viewListings')}
                       </a>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray-soft)', marginTop: 8 }}>
-                      Member since {membership.joined_at ? new Date(membership.joined_at).toLocaleDateString() : '—'}
+                      {t('networks.memberSince', { date: membership.joined_at ? new Date(membership.joined_at).toLocaleDateString() : '—' })}
                     </div>
                   </div>
                 ))}
@@ -421,7 +426,7 @@ function SupplierNetworksPage() {
 
           {others.length > 0 && (
             <div style={{ marginTop: 24 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray)', marginBottom: 10 }}>Other</h2>
+              <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray)', marginBottom: 10 }}>{t('networks.other')}</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {others.map(({ membership, network, anchor }) => (
                   <div key={membership.id} style={{

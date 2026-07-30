@@ -4,16 +4,21 @@ import { useSearchParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Role constants ────────────────────────────────────────────────────────────
 const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
 const BANK_ROLES  = ['bank_admin', 'bank_credit_officer']
 
-const ROLE_LABELS: Record<string, string> = {
-  bank_admin:          'Bank Admin',
-  bank_credit_officer: 'Credit Officer',
-  org_admin:           'Org Admin',
-  org_member:          'Team Member',
+function roleLabels(t: TFn): Record<string, string> {
+  return {
+    bank_admin:          t('teamPage.role.bankAdmin'),
+    bank_credit_officer: t('teamPage.role.creditOfficer'),
+    org_admin:           t('teamPage.role.orgAdmin'),
+    org_member:          t('teamPage.role.teamMember'),
+  }
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -32,12 +37,14 @@ interface ErpConnection {
   created_at: string
 }
 
-const ERP_PROVIDERS = [
-  { id: 'erpnext', label: 'ERPNext', badge: 'Free', desc: 'Open-source ERP — free tier on frappe.cloud' },
-  { id: 'odoo', label: 'Odoo', badge: 'Free', desc: 'Open-source ERP — free community or odoo.com' },
-  { id: 'netsuite', label: 'NetSuite', badge: 'Coming Soon', desc: 'Oracle NetSuite (planned)', disabled: true },
-  { id: 'sap', label: 'SAP', badge: 'Coming Soon', desc: 'SAP S/4HANA (planned)', disabled: true },
-]
+function erpProviders(t: TFn) {
+  return [
+    { id: 'erpnext', label: 'ERPNext', badge: t('settingsPage.free'), desc: t('settingsPage.erpnextDesc') },
+    { id: 'odoo', label: 'Odoo', badge: t('settingsPage.free'), desc: t('settingsPage.odooDesc') },
+    { id: 'netsuite', label: 'NetSuite', badge: t('settingsPage.comingSoon'), desc: t('settingsPage.netsuiteDesc'), disabled: true },
+    { id: 'sap', label: 'SAP', badge: t('settingsPage.comingSoon'), desc: t('settingsPage.sapDesc'), disabled: true },
+  ]
+}
 
 interface BankAccount {
   id: string
@@ -127,13 +134,16 @@ export default function SettingsPage() {
   const portal = usePortal()
   const user   = useUser()
   const searchParams = useSearchParams()
+  const t = useT()
+  const ROLE_LABELS = roleLabels(t)
+  const ERP_PROVIDERS = erpProviders(t)
 
   const initialTab = (searchParams.get('tab') as TabKey | null)
   const [tab, setTab] = useState<TabKey>(initialTab && ['profile', 'org', 'team', 'bank-accounts', 'erp'].includes(initialTab) ? initialTab : 'profile')
 
   const isAdmin    = ADMIN_ROLES.includes(user?.role ?? '')
   const isBankUser = BANK_ROLES.includes(user?.role ?? '')
-  const tabLabel   = isBankUser ? 'Institution' : 'Company'
+  const tabLabel   = isBankUser ? t('settingsPage.institution') : t('settingsPage.company')
 
   // ── Profile tab ─────────────────────────────────────────────────────────────
   const [profile, setProfile] = useState({ full_name: '', email: '', role: '' })
@@ -163,11 +173,11 @@ export default function SettingsPage() {
         body: JSON.stringify({ full_name: profile.full_name }),
       })
       const data = await res.json()
-      if (!res.ok) { setProfileAlert({ kind: 'error', msg: data.error ?? 'Failed to save' }); return }
-      setProfileAlert({ kind: 'info', msg: 'Profile updated' })
+      if (!res.ok) { setProfileAlert({ kind: 'error', msg: data.error ?? t('settingsPage.failedToSave') }); return }
+      setProfileAlert({ kind: 'info', msg: t('settingsPage.profileUpdated') })
       setTimeout(() => setProfileAlert(null), 3000)
     } catch {
-      setProfileAlert({ kind: 'error', msg: 'Network error. Please try again.' })
+      setProfileAlert({ kind: 'error', msg: t('common.networkError') })
     } finally {
       setProfileSaving(false)
     }
@@ -208,16 +218,16 @@ export default function SettingsPage() {
         body: JSON.stringify(orgProfile),
       })
       const data = await res.json()
-      if (!res.ok) { setOrgAlert({ kind: 'error', msg: data.error ?? 'Failed to save' }); return }
+      if (!res.ok) { setOrgAlert({ kind: 'error', msg: data.error ?? t('settingsPage.failedToSave') }); return }
       if (data.profile) {
         const p: Record<string, string> = {}
         for (const [k, v] of Object.entries(data.profile)) p[k] = v != null ? String(v) : ''
         setOrgProfile(p)
       }
-      setOrgAlert({ kind: 'info', msg: 'Details updated' })
+      setOrgAlert({ kind: 'info', msg: t('settingsPage.detailsUpdated') })
       setTimeout(() => setOrgAlert(null), 3000)
     } catch {
-      setOrgAlert({ kind: 'error', msg: 'Network error. Please try again.' })
+      setOrgAlert({ kind: 'error', msg: t('common.networkError') })
     } finally {
       setOrgSaving(false)
     }
@@ -233,12 +243,12 @@ export default function SettingsPage() {
       form.append('file', file)
       const res  = await fetch('/api/settings/logo', { method: 'POST', body: form })
       const data = await res.json()
-      if (!res.ok) { setLogoAlert({ kind: 'error', msg: data.error ?? 'Upload failed' }); return }
+      if (!res.ok) { setLogoAlert({ kind: 'error', msg: data.error ?? t('settingsPage.uploadFailed') }); return }
       setOrgProfile(p => ({ ...p, logo_url: data.logo_url }))
-      setLogoAlert({ kind: 'info', msg: 'Logo updated' })
+      setLogoAlert({ kind: 'info', msg: t('settingsPage.logoUpdated') })
       setTimeout(() => setLogoAlert(null), 3000)
     } catch {
-      setLogoAlert({ kind: 'error', msg: 'Upload failed. Please try again.' })
+      setLogoAlert({ kind: 'error', msg: t('settingsPage.uploadFailedRetry') })
     } finally {
       setLogoUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -266,7 +276,7 @@ export default function SettingsPage() {
   const [addError,     setAddError]     = useState<string | null>(null)
   const [addSuccess,   setAddSuccess]   = useState<string | null>(null)
 
-  const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
+  const newMemberRoleLabel = user?.role === 'bank_admin' ? t('teamPage.role.creditOfficer') : t('teamPage.role.teamMember')
 
   // ── Bank Accounts tab ─────────────────────────────────────────────────────
   const canWriteAccounts = ['bank_admin', 'org_admin'].includes(user?.role ?? '')
@@ -291,10 +301,10 @@ export default function SettingsPage() {
     try {
       const res  = await fetch('/api/settings/bank-accounts')
       const data = await res.json() as { accounts?: BankAccount[]; error?: string }
-      if (!res.ok) { setBaError(data.error ?? 'Failed to load accounts'); return }
+      if (!res.ok) { setBaError(data.error ?? t('settingsPage.failedLoadAccounts')); return }
       setBankAccounts(data.accounts ?? [])
     } catch {
-      setBaError('Failed to load accounts')
+      setBaError(t('settingsPage.failedLoadAccounts'))
     } finally {
       setBaLoading(false)
     }
@@ -333,7 +343,7 @@ export default function SettingsPage() {
 
   async function saveBankAccount() {
     if (!baDraft.bank_name.trim() || !baDraft.account_number.trim() || !baDraft.routing_number.trim()) {
-      setBaAlert({ kind: 'error', msg: 'Bank name, account number and routing number are required.' })
+      setBaAlert({ kind: 'error', msg: t('settingsPage.bankFieldsRequired') })
       return
     }
     setBaSaving(true)
@@ -343,13 +353,13 @@ export default function SettingsPage() {
       const url    = baEditId ? `/api/settings/bank-accounts/${baEditId}` : '/api/settings/bank-accounts'
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(baDraft) })
       const data   = await res.json() as { account?: BankAccount; error?: string }
-      if (!res.ok) { setBaAlert({ kind: 'error', msg: data.error ?? 'Failed to save' }); return }
+      if (!res.ok) { setBaAlert({ kind: 'error', msg: data.error ?? t('settingsPage.failedToSave') }); return }
       await fetchBankAccounts()
       closeForm()
-      setBaAlert({ kind: 'info', msg: baEditId ? 'Account updated' : 'Account added' })
+      setBaAlert({ kind: 'info', msg: baEditId ? t('settingsPage.accountUpdated') : t('settingsPage.accountAdded') })
       setTimeout(() => setBaAlert(null), 3000)
     } catch {
-      setBaAlert({ kind: 'error', msg: 'Network error. Please try again.' })
+      setBaAlert({ kind: 'error', msg: t('common.networkError') })
     } finally {
       setBaSaving(false)
     }
@@ -421,10 +431,10 @@ export default function SettingsPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        setErpAlert({ kind: 'error', msg: json.error ?? 'Connection failed' })
+        setErpAlert({ kind: 'error', msg: json.error ?? t('settingsPage.connectionFailed') })
         return
       }
-      setErpAlert({ kind: 'info', msg: `Connected! ERP user: ${json.erp_user}` })
+      setErpAlert({ kind: 'info', msg: t('settingsPage.connectedErpUser', { user: json.erp_user }) })
       setErpBaseUrl(''); setErpApiKey(''); setErpApiSecret(''); setErpDbName('')
       await fetchErpConnection()
     } finally {
@@ -439,15 +449,15 @@ export default function SettingsPage() {
       const res = await fetch('/api/erp/sync', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) {
-        setErpAlert({ kind: 'error', msg: json.error ?? 'Sync failed' })
+        setErpAlert({ kind: 'error', msg: json.error ?? t('settingsPage.syncFailed') })
         return
       }
       const errCount = json.errors?.length ?? 0
       setErpAlert({
         kind: errCount > 0 ? 'error' : 'info',
         msg: errCount > 0
-          ? `Sync completed with ${errCount} error(s): ${json.errors.join(', ')}`
-          : 'Sync complete — ERP data is now up to date.',
+          ? t('settingsPage.syncCompletedErrors', { count: errCount, errors: json.errors.join(', ') })
+          : t('settingsPage.syncCompleteUpToDate'),
       })
       await fetchErpConnection()
     } finally {
@@ -456,12 +466,12 @@ export default function SettingsPage() {
   }
 
   async function handleErpDisconnect() {
-    if (!confirm('Disconnect your ERP? Synced data will be preserved but no new syncs will run.')) return
+    if (!confirm(t('settingsPage.disconnectErpConfirm'))) return
     setErpDisconnecting(true)
     try {
       await fetch('/api/erp/connect', { method: 'DELETE' })
       setErpConnection(null)
-      setErpAlert({ kind: 'info', msg: 'ERP connection removed.' })
+      setErpAlert({ kind: 'info', msg: t('settingsPage.erpConnectionRemoved') })
     } finally {
       setErpDisconnecting(false)
     }
@@ -487,14 +497,14 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings/team')
       if (!res.ok) {
         const data = await res.json() as { error?: string }
-        setTeamError(data.error ?? 'Failed to load team')
+        setTeamError(data.error ?? t('teamPage.failedLoadTeam'))
         return
       }
       const data = await res.json() as { users: TeamMember[]; pending_invitations: PendingInvitation[] }
       setMembers(data.users ?? [])
       setInvitations(data.pending_invitations ?? [])
     } catch {
-      setTeamError('Failed to load team')
+      setTeamError(t('teamPage.failedLoadTeam'))
     } finally {
       setTeamLoading(false)
     }
@@ -517,13 +527,13 @@ export default function SettingsPage() {
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
-        setActionErr(data.error ?? 'Failed to update user')
+        setActionErr(data.error ?? t('teamPage.failedUpdateUser'))
         return
       }
       setConfirmId(null)
       await fetchTeam()
     } catch {
-      setActionErr('Failed to update user')
+      setActionErr(t('teamPage.failedUpdateUser'))
     } finally {
       setActingId(null)
     }
@@ -539,12 +549,12 @@ export default function SettingsPage() {
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
-        setActionErr(data.error ?? 'Failed to cancel invitation')
+        setActionErr(data.error ?? t('settingsPage.failedCancelInvitation'))
         return
       }
       setInvitations(prev => prev.filter(i => i.id !== invId))
     } catch {
-      setActionErr('Failed to cancel invitation')
+      setActionErr(t('settingsPage.failedCancelInvitation'))
     } finally {
       setCancellingId(null)
     }
@@ -567,15 +577,15 @@ export default function SettingsPage() {
         }),
       })
       const data = await res.json() as { error?: string }
-      if (!res.ok) { setAddError(data.error ?? 'Failed to create account'); return }
-      setAddSuccess(`Account created for ${addEmail.trim()}`)
+      if (!res.ok) { setAddError(data.error ?? t('teamPage.failedCreateAccount')); return }
+      setAddSuccess(t('teamPage.accountCreatedFor', { email: addEmail.trim() }))
       setAddEmail('')
       setAddFullName('')
       setAddPassword('')
       setAddConfirmPw('')
       await fetchTeam()
     } catch {
-      setAddError('Failed to create account')
+      setAddError(t('teamPage.failedCreateAccount'))
     } finally {
       setAdding(false)
     }
@@ -587,15 +597,15 @@ export default function SettingsPage() {
     <PortalShell activeSection="settings">
       <Topbar
         crumbs={[
-          { label: 'Settings' },
+          { label: t('teamPage.settings') },
         ]}
         actions={<NotifBell />}
       />
 
       <div className="page" data-page-name="Settings" data-ai-context={JSON.stringify({ role: (user as any)?.role, portal, active_tab: tab, team_member_count: members.length, bank_account_count: bankAccounts.length, is_admin: isAdmin })}>
         <div className="page-header">
-          <h1 className="t-page-title">Settings</h1>
-          <div className="subtitle">Manage your profile and organization details</div>
+          <h1 className="t-page-title">{t('teamPage.settings')}</h1>
+          <div className="subtitle">{t('settingsPage.subtitle')}</div>
         </div>
 
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -606,7 +616,7 @@ export default function SettingsPage() {
             className={`btn btn-sm ${tab === 'profile' ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setTab('profile')}
           >
-            My Profile
+            {t('settingsPage.myProfile')}
           </button>
           <button
             type="button"
@@ -621,7 +631,7 @@ export default function SettingsPage() {
               className={`btn btn-sm ${tab === 'team' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setTab('team')}
             >
-              Team
+              {t('teamPage.team')}
             </button>
           )}
           <button
@@ -629,7 +639,7 @@ export default function SettingsPage() {
             className={`btn btn-sm ${tab === 'bank-accounts' ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setTab('bank-accounts')}
           >
-            Bank Accounts
+            {t('settingsPage.bankAccounts')}
           </button>
           {!isBankUser && (
             <button
@@ -637,7 +647,7 @@ export default function SettingsPage() {
               className={`btn btn-sm ${tab === 'erp' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setTab('erp')}
             >
-              ERP Integration
+              {t('settingsPage.erpIntegration')}
             </button>
           )}
         </div>
@@ -646,7 +656,7 @@ export default function SettingsPage() {
         {tab === 'profile' && (
           <div className="card">
             <div className="card-head">
-              <h3 className="t-card-head">Personal details</h3>
+              <h3 className="t-card-head">{t('settingsPage.personalDetails')}</h3>
             </div>
             <div className="card-body">
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
@@ -663,12 +673,12 @@ export default function SettingsPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <EditableInput
-                  label="Full name"
+                  label={t('teamPage.fullName')}
                   value={profile.full_name}
                   onChange={v => setProfile(p => ({ ...p, full_name: v }))}
                 />
                 <div className="form-field">
-                  <label className="form-label">Email</label>
+                  <label className="form-label">{t('teamPage.email')}</label>
                   <input
                     className="form-input"
                     value={profile.email}
@@ -676,11 +686,11 @@ export default function SettingsPage() {
                     style={{ background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'default' }}
                   />
                   <span style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}>
-                    Contact support to change email
+                    {t('settingsPage.contactSupportEmail')}
                   </span>
                 </div>
                 <div className="form-field">
-                  <label className="form-label">Role</label>
+                  <label className="form-label">{t('teamPage.role')}</label>
                   <div style={{ paddingTop: 4 }}>
                     <span className="badge badge-active">
                       {ROLE_LABELS[profile.role] ?? profile.role}
@@ -698,7 +708,7 @@ export default function SettingsPage() {
                   onClick={saveProfile}
                   disabled={profileSaving}
                 >
-                  {profileSaving ? 'Saving…' : 'Save changes'}
+                  {profileSaving ? t('newListing.saving') : t('settingsPage.saveChanges')}
                 </button>
               </div>
             </div>
@@ -710,21 +720,21 @@ export default function SettingsPage() {
           <div className="card">
             <div className="card-head">
               <h3 className="t-card-head">
-                {isBankUser ? 'Institution details' : 'Organization details'}
+                {isBankUser ? t('settingsPage.institutionDetails') : t('settingsPage.organizationDetails')}
               </h3>
             </div>
             <div className="card-body">
               {!isAdmin && (
                 <div className="alert alert-warn" style={{ marginBottom: 20 }}>
                   <div className="alert-body">
-                    Contact your admin to update organization details
+                    {t('settingsPage.contactAdminOrgDetails')}
                   </div>
                 </div>
               )}
 
               {/* Logo upload */}
               <div style={{ marginBottom: 20 }}>
-                <label className="form-label">Logo</label>
+                <label className="form-label">{t('settingsPage.logo')}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
                   {orgProfile.logo_url ? (
                     <img
@@ -734,7 +744,7 @@ export default function SettingsPage() {
                     />
                   ) : (
                     <div style={{ width: 56, height: 56, borderRadius: 6, border: '1px dashed var(--border)', background: 'var(--offwhite)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--gray)' }}>
-                      No logo
+                      {t('settingsPage.noLogo')}
                     </div>
                   )}
                   {isAdmin && (
@@ -752,9 +762,9 @@ export default function SettingsPage() {
                         disabled={logoUploading}
                         onClick={() => fileInputRef.current?.click()}
                       >
-                        {logoUploading ? 'Uploading…' : 'Upload logo'}
+                        {logoUploading ? t('settingsPage.uploading') : t('settingsPage.uploadLogo')}
                       </button>
-                      <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>PNG, JPG, SVG - max 2 MB</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>{t('settingsPage.logoFileTypes')}</span>
                     </>
                   )}
                 </div>
@@ -763,45 +773,45 @@ export default function SettingsPage() {
 
               {isBankUser ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <EditableInput label="Legal name"            value={orgField('legal_name')}            onChange={v => setOrgField('legal_name', v)}            readOnly={!isAdmin} />
-                  <EditableInput label="Display name"          value={orgField('display_name')}          onChange={v => setOrgField('display_name', v)}          readOnly={!isAdmin} />
-                  <EditableInput label="Website"               value={orgField('website')}               onChange={v => setOrgField('website', v)}               readOnly={!isAdmin} />
-                  <EditableInput label="Primary contact name"  value={orgField('primary_contact_name')}  onChange={v => setOrgField('primary_contact_name', v)}  readOnly={!isAdmin} />
-                  <EditableInput label="Primary contact email" value={orgField('primary_contact_email')} onChange={v => setOrgField('primary_contact_email', v)} readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.legalName')}            value={orgField('legal_name')}            onChange={v => setOrgField('legal_name', v)}            readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.displayName')}          value={orgField('display_name')}          onChange={v => setOrgField('display_name', v)}          readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.website')}              value={orgField('website')}               onChange={v => setOrgField('website', v)}               readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.primaryContactName')}   value={orgField('primary_contact_name')}  onChange={v => setOrgField('primary_contact_name', v)}  readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.primaryContactEmail')}  value={orgField('primary_contact_email')} onChange={v => setOrgField('primary_contact_email', v)} readOnly={!isAdmin} />
                   <div className="kv-row" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
-                    <span className="k">Routing number</span>
+                    <span className="k">{t('settingsPage.routingNumber')}</span>
                     <span className="v">{orgField('routing_number') || '—'}</span>
                   </div>
                   <div className="kv-row" style={{ padding: '10px 0' }}>
-                    <span className="k">Status</span>
-                    <span className="v"><span className="badge badge-active">{orgField('status') || 'Active'}</span></span>
+                    <span className="k">{t('financing.status')}</span>
+                    <span className="v"><span className="badge badge-active">{orgField('status') || t('teamPage.active')}</span></span>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <EditableInput label="Legal name"            value={orgField('legal_name')}            onChange={v => setOrgField('legal_name', v)}            readOnly={!isAdmin} />
-                  <EditableInput label="DBA / Trade name"      value={orgField('doing_business_as')}     onChange={v => setOrgField('doing_business_as', v)}     readOnly={!isAdmin} />
-                  <EditableInput label="Address line 1"        value={orgField('address_line1')}         onChange={v => setOrgField('address_line1', v)}         readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.legalName')}          value={orgField('legal_name')}            onChange={v => setOrgField('legal_name', v)}            readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.dbaTradeName')}      value={orgField('doing_business_as')}     onChange={v => setOrgField('doing_business_as', v)}     readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.addressLine1')}      value={orgField('address_line1')}         onChange={v => setOrgField('address_line1', v)}         readOnly={!isAdmin} />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 12 }}>
-                    <EditableInput label="City"  value={orgField('city')}  onChange={v => setOrgField('city', v)}  readOnly={!isAdmin} />
-                    <EditableInput label="State" value={orgField('state')} onChange={v => setOrgField('state', v)} readOnly={!isAdmin} />
-                    <EditableInput label="ZIP"   value={orgField('zip')}   onChange={v => setOrgField('zip', v)}   readOnly={!isAdmin} />
+                    <EditableInput label={t('settingsPage.city')}  value={orgField('city')}  onChange={v => setOrgField('city', v)}  readOnly={!isAdmin} />
+                    <EditableInput label={t('settingsPage.state')} value={orgField('state')} onChange={v => setOrgField('state', v)} readOnly={!isAdmin} />
+                    <EditableInput label={t('settingsPage.zip')}   value={orgField('zip')}   onChange={v => setOrgField('zip', v)}   readOnly={!isAdmin} />
                   </div>
-                  <EditableInput label="Primary contact phone" value={orgField('primary_contact_phone')} onChange={v => setOrgField('primary_contact_phone', v)} readOnly={!isAdmin} />
+                  <EditableInput label={t('settingsPage.primaryContactPhone')} value={orgField('primary_contact_phone')} onChange={v => setOrgField('primary_contact_phone', v)} readOnly={!isAdmin} />
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 0 }}>
                     <div className="kv-row" style={{ padding: '9px 0' }}>
-                      <span className="k">EIN</span>
+                      <span className="k">{t('settingsPage.ein')}</span>
                       <span className="v">{orgField('ein') ? `**-***${orgField('ein').slice(-4)}` : '—'}</span>
                     </div>
                     <div className="kv-row" style={{ padding: '9px 0' }}>
-                      <span className="k">KYB Status</span>
+                      <span className="k">{t('settingsPage.kybStatus')}</span>
                       <span className="v">
                         <span className={`badge ${
                           orgField('kyb_status') === 'approved' ? 'badge-active'
                           : orgField('kyb_status') === 'pending' ? 'badge-pending'
                           : 'badge-draft'
                         }`}>
-                          {(orgField('kyb_status') || 'Not started').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                          {(orgField('kyb_status') || t('settingsPage.notStarted')).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                         </span>
                       </span>
                     </div>
@@ -814,7 +824,7 @@ export default function SettingsPage() {
               {isAdmin && (
                 <div style={{ marginTop: 20 }}>
                   <button type="button" className="btn btn-primary" onClick={saveOrg} disabled={orgSaving}>
-                    {orgSaving ? 'Saving…' : 'Save changes'}
+                    {orgSaving ? t('newListing.saving') : t('settingsPage.saveChanges')}
                   </button>
                 </div>
               )}
@@ -839,20 +849,20 @@ export default function SettingsPage() {
             {/* Members table */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Members</h3>
+                <h3 className="t-card-head">{t('teamPage.members')}</h3>
                 {!teamLoading && !teamError && (
-                  <span className="subtitle" style={{ marginLeft: 8 }}>{members.length} member{members.length !== 1 ? 's' : ''}</span>
+                  <span className="subtitle" style={{ marginLeft: 8 }}>{t('teamPage.memberCount', { count: members.length })}</span>
                 )}
               </div>
               {teamLoading ? (
-                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
+                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>{t('common.loading')}</div>
               ) : members.length === 0 ? (
-                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>No team members yet.</div>
+                <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>{t('teamPage.noTeamMembersYet')}</div>
               ) : (
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Member</th><th>Role</th><th>Status</th><th>Joined</th><th className="row-actions" />
+                      <th>{t('teamPage.member')}</th><th>{t('teamPage.role')}</th><th>{t('financing.status')}</th><th>{t('teamPage.joined')}</th><th className="row-actions" />
                     </tr>
                   </thead>
                   <tbody>
@@ -881,32 +891,32 @@ export default function SettingsPage() {
                           <td><span className={roleBadgeClass(m.role)}>{ROLE_LABELS[m.role] ?? m.role}</span></td>
                           <td>
                             {m.is_active
-                              ? <span className="badge badge-active">Active</span>
-                              : <span className="badge badge-rejected">Inactive</span>}
+                              ? <span className="badge badge-active">{t('teamPage.active')}</span>
+                              : <span className="badge badge-rejected">{t('teamPage.inactive')}</span>}
                           </td>
                           <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>{fmtDate(m.created_at)}</td>
                           <td className="row-actions">
                             {isMe ? (
-                              <span className="badge badge-draft">You</span>
+                              <span className="badge badge-draft">{t('listingDetail.you')}</span>
                             ) : isConfirming ? (
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                 <span style={{ fontSize: 12, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                                  Deactivate {m.full_name?.split(' ')[0] ?? 'user'}? They will lose access.
+                                  {t('teamPage.deactivateConfirm', { name: m.full_name?.split(' ')[0] ?? t('teamPage.user') })}
                                 </span>
                                 <button className="btn btn-danger btn-sm" type="button" disabled={isActing} onClick={() => handleToggle(m.id, false)}>
-                                  {isActing ? '…' : 'Confirm'}
+                                  {isActing ? '…' : t('teamPage.confirm')}
                                 </button>
                                 <button className="btn btn-ghost btn-sm" type="button" disabled={isActing} onClick={() => setConfirmId(null)}>
-                                  Cancel
+                                  {t('common.cancel')}
                                 </button>
                               </div>
                             ) : m.is_active ? (
                               <button className="btn btn-ghost btn-sm" type="button" disabled={isActing} onClick={() => setConfirmId(m.id)}>
-                                Deactivate
+                                {t('teamPage.deactivate')}
                               </button>
                             ) : (
                               <button className="btn btn-ghost btn-sm" type="button" disabled={isActing} onClick={() => handleToggle(m.id, true)}>
-                                {isActing ? '…' : 'Reactivate'}
+                                {isActing ? '…' : t('teamPage.reactivate')}
                               </button>
                             )}
                           </td>
@@ -921,16 +931,16 @@ export default function SettingsPage() {
             {/* Pending invitations */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Pending invitations</h3>
+                <h3 className="t-card-head">{t('teamPage.pendingInvitations')}</h3>
               </div>
               {invitations.length === 0 ? (
                 <div className="card-body" style={{ padding: 24, color: 'var(--gray)', fontSize: 13 }}>
-                  No pending invitations
+                  {t('teamPage.noPendingInvitations')}
                 </div>
               ) : (
                 <table className="table">
                   <thead>
-                    <tr><th>Email</th><th>Role</th><th>Sent</th><th>Expires</th><th className="row-actions" /></tr>
+                    <tr><th>{t('teamPage.email')}</th><th>{t('teamPage.role')}</th><th>{t('teamPage.sent')}</th><th>{t('listingDetail.expires')}</th><th className="row-actions" /></tr>
                   </thead>
                   <tbody>
                     {invitations.map(inv => {
@@ -952,7 +962,7 @@ export default function SettingsPage() {
                               disabled={isCancelling}
                               onClick={() => handleCancelInvite(inv.id)}
                             >
-                              {isCancelling ? '…' : 'Cancel'}
+                              {isCancelling ? '…' : t('common.cancel')}
                             </button>
                           </td>
                         </tr>
@@ -966,8 +976,8 @@ export default function SettingsPage() {
             {/* Add member form */}
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Add a team member</h3>
-                <div className="subtitle">Create an account for a new {newMemberRoleLabel} in your organization</div>
+                <h3 className="t-card-head">{t('teamPage.addTeamMember')}</h3>
+                <div className="subtitle">{t('teamPage.createAccountHint', { role: newMemberRoleLabel })}</div>
               </div>
               <div className="card-body">
                 {addSuccess && (
@@ -983,7 +993,7 @@ export default function SettingsPage() {
                 <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span></label>
+                      <label className="field-label" htmlFor="add-fullname">{t('teamPage.fullName')} <span style={{ fontWeight: 400, color: 'var(--gray)' }}>({t('reviewForm.optional')})</span></label>
                       <input
                         id="add-fullname"
                         className="input"
@@ -994,7 +1004,7 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="field-label" htmlFor="add-email">Email address</label>
+                      <label className="field-label" htmlFor="add-email">{t('teamPage.emailAddress')}</label>
                       <input
                         id="add-email"
                         className="input"
@@ -1008,7 +1018,7 @@ export default function SettingsPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="field-label" htmlFor="add-password">Password</label>
+                      <label className="field-label" htmlFor="add-password">{t('teamPage.password')}</label>
                       <div style={{ position: 'relative' }}>
                         <input
                           id="add-password"
@@ -1040,18 +1050,18 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="field-label" htmlFor="add-confirm">Confirm password</label>
+                      <label className="field-label" htmlFor="add-confirm">{t('teamPage.confirmPassword')}</label>
                       <input
                         id="add-confirm"
                         className="input"
                         type={showAddPw ? 'text' : 'password'}
-                        placeholder="Re-enter password"
+                        placeholder={t('teamPage.reEnterPassword')}
                         value={addConfirmPw}
                         onChange={e => setAddConfirmPw(e.target.value)}
                         required
                       />
                       {addConfirmPw.length > 0 && addPassword !== addConfirmPw && (
-                        <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>Passwords don&apos;t match</div>
+                        <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>{t('teamPage.passwordsDontMatch')}</div>
                       )}
                     </div>
                   </div>
@@ -1061,7 +1071,7 @@ export default function SettingsPage() {
                       type="submit"
                       disabled={adding || !addEmail.trim() || !addPassword || addPassword !== addConfirmPw || addPassword.length < 8}
                     >
-                      {adding ? 'Creating…' : 'Create account'}
+                      {adding ? t('teamPage.creating') : t('teamPage.createAccount')}
                     </button>
                   </div>
                 </form>
@@ -1075,7 +1085,7 @@ export default function SettingsPage() {
             {baAlert && <AlertBox alert={baAlert} />}
 
             {baLoading && (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>{t('common.loading')}</div>
             )}
 
             {baError && (
@@ -1090,7 +1100,7 @@ export default function SettingsPage() {
                 {bankAccounts.length === 0 && !baError && (
                   <div className="card">
                     <div className="card-body" style={{ textAlign: 'center', padding: '32px 24px', color: 'var(--gray)', fontSize: 13 }}>
-                      No bank accounts yet. Add one below.
+                      {t('settingsPage.noBankAccountsYet')}
                     </div>
                   </div>
                 )}
@@ -1112,12 +1122,12 @@ export default function SettingsPage() {
                         <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           {acc.nickname || acc.bank_name}
                           {acc.is_primary && (
-                            <span className="badge" style={{ color: 'var(--blue)', fontSize: 10 }}>Primary</span>
+                            <span className="badge" style={{ color: 'var(--blue)', fontSize: 10 }}>{t('financingDetail.primary')}</span>
                           )}
                         </div>
                         <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 3 }}>
-                          {acc.bank_name} - {acc.account_type === 'checking' ? 'Checking' : 'Savings'} - ****{acc.account_number.slice(-4)}
-                          {acc.routing_number && ` - Routing: ****${acc.routing_number.slice(-4)}`}
+                          {acc.bank_name} - {acc.account_type === 'checking' ? t('settingsPage.checking') : t('settingsPage.savings')} - ****{acc.account_number.slice(-4)}
+                          {acc.routing_number && ` - ${t('settingsPage.routingSuffix', { last4: acc.routing_number.slice(-4) })}`}
                         </div>
                         {acc.account_holder_name && (
                           <div style={{ fontSize: 12, color: 'var(--gray-soft)', marginTop: 2 }}>{acc.account_holder_name}</div>
@@ -1126,12 +1136,12 @@ export default function SettingsPage() {
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         {canWriteAccounts && !acc.is_primary && (
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimaryAccount(acc)}>
-                            Set primary
+                            {t('settingsPage.setPrimary')}
                           </button>
                         )}
                         {canWriteAccounts && (
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditForm(acc)}>
-                            Edit
+                            {t('dealDetail.editStep')}
                           </button>
                         )}
                         {canWriteAccounts && (
@@ -1142,7 +1152,7 @@ export default function SettingsPage() {
                             disabled={baDeleteId === acc.id}
                             onClick={() => deleteBankAccount(acc.id)}
                           >
-                            {baDeleteId === acc.id ? '…' : 'Remove'}
+                            {baDeleteId === acc.id ? '…' : t('dealDetail.remove')}
                           </button>
                         )}
                       </div>
@@ -1156,26 +1166,26 @@ export default function SettingsPage() {
             {baFormOpen ? (
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">{baEditId ? 'Edit bank account' : 'Add bank account'}</h3>
+                  <h3 className="t-card-head">{baEditId ? t('settingsPage.editBankAccount') : t('settingsPage.addBankAccount')}</h3>
                 </div>
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="form-label">Account nickname <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>Optional</span></label>
+                      <label className="form-label">{t('settingsPage.accountNickname')} <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>{t('reviewForm.optional')}</span></label>
                       <input className="form-input" value={baDraft.nickname} onChange={e => setBaDraft(d => ({ ...d, nickname: e.target.value }))} placeholder="Operating Account" />
                     </div>
                     <div className="form-field">
-                      <label className="form-label">Bank name</label>
+                      <label className="form-label">{t('financingDetail.bank')} {t('settingsPage.name')}</label>
                       <input className="form-input" value={baDraft.bank_name} onChange={e => setBaDraft(d => ({ ...d, bank_name: e.target.value }))} placeholder="Chase" />
                     </div>
                   </div>
                   <div className="form-field">
-                    <label className="form-label">Account holder name</label>
+                    <label className="form-label">{t('dealDetail.accountHolder')} {t('settingsPage.name')}</label>
                     <input className="form-input" value={baDraft.account_holder_name} onChange={e => setBaDraft(d => ({ ...d, account_holder_name: e.target.value }))} placeholder="Acme Corp LLC" />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="form-label">Account number</label>
+                      <label className="form-label">{t('dealDetail.account')} {t('settingsPage.number')}</label>
                       <div className="input-with-status">
                         <input
                           className="form-input mono"
@@ -1190,25 +1200,25 @@ export default function SettingsPage() {
                           onClick={() => setBaShowNum(s => !s)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)' }}
                         >
-                          {baShowNum ? 'Hide' : 'Show'}
+                          {baShowNum ? t('dealDetail.hide') : t('settingsPage.show')}
                         </button>
                       </div>
                     </div>
                     <div className="form-field">
-                      <label className="form-label">Routing number</label>
+                      <label className="form-label">{t('settingsPage.routingNumber')}</label>
                       <input className="form-input mono" value={baDraft.routing_number} onChange={e => setBaDraft(d => ({ ...d, routing_number: e.target.value }))} placeholder="021000021" />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="form-label">Account type</label>
+                      <label className="form-label">{t('dealDetail.type')} {t('settingsPage.account')}</label>
                       <select className="form-input form-select" value={baDraft.account_type} onChange={e => setBaDraft(d => ({ ...d, account_type: e.target.value as 'checking' | 'savings' }))}>
-                        <option value="checking">Checking</option>
-                        <option value="savings">Savings</option>
+                        <option value="checking">{t('settingsPage.checking')}</option>
+                        <option value="savings">{t('settingsPage.savings')}</option>
                       </select>
                     </div>
                     <div className="form-field">
-                      <label className="form-label">SWIFT / IBAN <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>Optional</span></label>
+                      <label className="form-label">{t('dealDetail.swiftIban')} <span style={{ fontWeight: 400, color: 'var(--gray)', fontSize: 11 }}>{t('reviewForm.optional')}</span></label>
                       <input className="form-input mono" value={baDraft.swift_iban} onChange={e => setBaDraft(d => ({ ...d, swift_iban: e.target.value }))} placeholder="CHASUS33 / DE89…" />
                     </div>
                   </div>
@@ -1223,27 +1233,27 @@ export default function SettingsPage() {
                     >
                       <span style={{ position: 'absolute', top: 2, left: baDraft.is_primary ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
                     </span>
-                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>Set as primary account</span>
+                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>{t('settingsPage.setAsPrimaryAccount')}</span>
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button type="button" className="btn btn-primary" onClick={saveBankAccount} disabled={baSaving}>
-                      {baSaving ? 'Saving…' : baEditId ? 'Update account' : 'Add account'}
+                      {baSaving ? t('newListing.saving') : baEditId ? t('settingsPage.updateAccount') : t('settingsPage.addAccount')}
                     </button>
-                    <button type="button" className="btn btn-ghost" onClick={closeForm}>Cancel</button>
+                    <button type="button" className="btn btn-ghost" onClick={closeForm}>{t('common.cancel')}</button>
                   </div>
                 </div>
               </div>
             ) : (
               canWriteAccounts && (
                 <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={openAddForm}>
-                  + Add bank account
+                  + {t('settingsPage.addBankAccount')}
                 </button>
               )
             )}
 
             {!canWriteAccounts && bankAccounts.length === 0 && !baLoading && (
               <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
-                Contact your admin to add bank accounts.
+                {t('settingsPage.contactAdminBankAccounts')}
               </div>
             )}
           </div>
@@ -1255,7 +1265,7 @@ export default function SettingsPage() {
             {erpAlert && <AlertBox alert={erpAlert} />}
 
             {erpLoading ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>Loading…</div>
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>{t('common.loading')}</div>
             ) : erpConnection ? (
               /* ── Connected state ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1274,10 +1284,10 @@ export default function SettingsPage() {
                       {isAdmin && (
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void handleErpSync()} disabled={erpSyncing}>
-                            {erpSyncing ? 'Syncing…' : 'Sync Now'}
+                            {erpSyncing ? t('settingsPage.syncing') : t('settingsPage.syncNow')}
                           </button>
                           <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-red)' }} onClick={() => void handleErpDisconnect()} disabled={erpDisconnecting}>
-                            {erpDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                            {erpDisconnecting ? t('settingsPage.disconnecting') : t('settingsPage.disconnect')}
                           </button>
                         </div>
                       )}
@@ -1285,13 +1295,13 @@ export default function SettingsPage() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 13 }}>
                       <div>
-                        <span style={{ color: 'var(--gray)' }}>URL</span>
+                        <span style={{ color: 'var(--gray)' }}>{t('settingsPage.url')}</span>
                         <div style={{ color: 'var(--ink)', marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{erpConnection.base_url}</div>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--gray)' }}>Last synced</span>
+                        <span style={{ color: 'var(--gray)' }}>{t('settingsPage.lastSynced')}</span>
                         <div style={{ color: 'var(--ink)', marginTop: 2 }}>
-                          {erpConnection.last_synced_at ? new Date(erpConnection.last_synced_at).toLocaleString() : 'Never — click Sync Now'}
+                          {erpConnection.last_synced_at ? new Date(erpConnection.last_synced_at).toLocaleString() : t('settingsPage.neverClickSync')}
                         </div>
                       </div>
                     </div>
@@ -1306,11 +1316,11 @@ export default function SettingsPage() {
 
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Dispatch Token</h3>
+                    <h3 className="t-card-head">{t('settingsPage.dispatchToken')}</h3>
                   </div>
                   <div className="card-body">
                     <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 14px' }}>
-                      Use this token to send commands to Strike AI from your phone, ERPNext webhooks, or any HTTP client.
+                      {t('settingsPage.dispatchTokenHint')}
                     </p>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{
@@ -1322,22 +1332,22 @@ export default function SettingsPage() {
                         {erpShowToken ? erpConnection.dispatch_token : '•'.repeat(40)}
                       </div>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setErpShowToken(v => !v)}>
-                        {erpShowToken ? 'Hide' : 'Show'}
+                        {erpShowToken ? t('dealDetail.hide') : t('settingsPage.show')}
                       </button>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={copyErpToken}>
-                        {erpCopied ? 'Copied!' : 'Copy'}
+                        {erpCopied ? t('dealDetail.copied') : t('settingsPage.copy')}
                       </button>
                     </div>
 
                     <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 'var(--radius-input)', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--ink)', overflowX: 'auto' }}>
-                      <div style={{ color: 'var(--gray)', marginBottom: 6, fontFamily: 'var(--font-body)' }}>Example — ERPNext webhook payload:</div>
+                      <div style={{ color: 'var(--gray)', marginBottom: 6, fontFamily: 'var(--font-body)' }}>{t('settingsPage.exampleWebhookPayload')}</div>
                       {`POST https://your-strike-domain.com/api/ai/dispatch\n` +
                        `Authorization: Bearer ${erpShowToken ? erpConnection.dispatch_token : '<your-dispatch-token>'}\n\n` +
                        `{ "message": "Inventory is low on SKU-001, create a listing", "source": "erp_webhook" }`}
                     </div>
 
                     <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gray)' }}>
-                      Or open the mobile command page:{' '}
+                      {t('settingsPage.orOpenMobileCommand')}{' '}
                       <a href={`/dispatch?token=${erpConnection.dispatch_token}`} target="_blank" style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
                         /dispatch?token=…
                       </a>
@@ -1347,15 +1357,15 @@ export default function SettingsPage() {
 
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">What Strike AI can now do</h3>
+                    <h3 className="t-card-head">{t('settingsPage.whatStrikeAiCanDo')}</h3>
                   </div>
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {[
-                      'Detect low inventory and suggest creating a PO request on Strike Marketplace',
-                      'Identify overdue AR and recommend invoice factoring or early payment financing',
-                      'Flag cash flow stress and suggest reverse factoring programs',
-                      'Match open purchase orders with Strike suppliers automatically',
-                      'Accept commands from your phone via the Dispatch page or ERPNext webhooks',
+                      t('settingsPage.aiCapability1'),
+                      t('settingsPage.aiCapability2'),
+                      t('settingsPage.aiCapability3'),
+                      t('settingsPage.aiCapability4'),
+                      t('settingsPage.aiCapability5'),
                     ].map(text => (
                       <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--ink-soft)' }}>
                         <span style={{ color: 'var(--blue)', flexShrink: 0 }}>•</span>
@@ -1370,11 +1380,11 @@ export default function SettingsPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Connect your ERP</h3>
+                    <h3 className="t-card-head">{t('settingsPage.connectYourErp')}</h3>
                   </div>
                   <div className="card-body">
                     <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 18px' }}>
-                      Connecting an ERP gives Strike AI real-time financial signals to act on autonomously.
+                      {t('settingsPage.connectErpHint')}
                     </p>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
@@ -1405,25 +1415,25 @@ export default function SettingsPage() {
                     {erpProvider === 'erpnext' && isAdmin && (
                       <form onSubmit={(e) => void handleErpConnect(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <div className="form-field">
-                          <label className="form-label">ERPNext site URL</label>
+                          <label className="form-label">{t('settingsPage.erpnextSiteUrl')}</label>
                           <input className="form-input" value={erpBaseUrl} onChange={e => setErpBaseUrl(e.target.value)} placeholder="https://your-site.frappe.cloud" required />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                           <div className="form-field">
-                            <label className="form-label">API Key</label>
+                            <label className="form-label">{t('settingsPage.apiKey')}</label>
                             <input className="form-input" value={erpApiKey} onChange={e => setErpApiKey(e.target.value)} placeholder="API Key" required />
                           </div>
                           <div className="form-field">
-                            <label className="form-label">API Secret</label>
+                            <label className="form-label">{t('settingsPage.apiSecret')}</label>
                             <input className="form-input" type="password" value={erpApiSecret} onChange={e => setErpApiSecret(e.target.value)} placeholder="API Secret" required />
                           </div>
                         </div>
                         <div style={{ padding: '12px 14px', background: 'var(--blue-light)', borderRadius: 'var(--radius-input)', fontSize: 12, color: 'var(--blue)' }}>
-                          <strong>Get your credentials:</strong> In ERPNext → Settings → API Access → Generate Keys.
-                          Don&apos;t have an account? Sign up free at <span style={{ fontWeight: 500 }}>frappe.cloud</span>
+                          <strong>{t('settingsPage.getCredentials')}</strong> {t('settingsPage.erpnextCredentialsHint')}
+                          {t('settingsPage.noAccountSignUp')} <span style={{ fontWeight: 500 }}>frappe.cloud</span>
                         </div>
                         <button type="submit" className="btn btn-primary" disabled={erpConnecting}>
-                          {erpConnecting ? 'Connecting…' : 'Connect ERPNext'}
+                          {erpConnecting ? t('settingsPage.connecting') : t('settingsPage.connectErpnext')}
                         </button>
                       </form>
                     )}
@@ -1431,36 +1441,36 @@ export default function SettingsPage() {
                     {erpProvider === 'odoo' && isAdmin && (
                       <form onSubmit={(e) => void handleErpConnect(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <div className="form-field">
-                          <label className="form-label">Odoo URL</label>
+                          <label className="form-label">{t('settingsPage.odooUrl')}</label>
                           <input className="form-input" value={erpBaseUrl} onChange={e => setErpBaseUrl(e.target.value)} placeholder="https://yourcompany.odoo.com" required />
                         </div>
                         <div className="form-field">
-                          <label className="form-label">Database name <span style={{ fontWeight: 400, color: 'var(--gray-soft)' }}>(optional — auto-detected from URL for odoo.com)</span></label>
+                          <label className="form-label">{t('settingsPage.databaseName')} <span style={{ fontWeight: 400, color: 'var(--gray-soft)' }}>{t('settingsPage.autoDetectedHint')}</span></label>
                           <input className="form-input" value={erpDbName} onChange={e => setErpDbName(e.target.value)} placeholder="yourcompany" />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                           <div className="form-field">
-                            <label className="form-label">Email / Username</label>
+                            <label className="form-label">{t('settingsPage.emailUsername')}</label>
                             <input className="form-input" type="email" value={erpApiKey} onChange={e => setErpApiKey(e.target.value)} placeholder="you@company.com" required />
                           </div>
                           <div className="form-field">
-                            <label className="form-label">API Key / Password</label>
+                            <label className="form-label">{t('settingsPage.apiKeyPassword')}</label>
                             <input className="form-input" type="password" value={erpApiSecret} onChange={e => setErpApiSecret(e.target.value)} placeholder="API Key or password" required />
                           </div>
                         </div>
                         <div style={{ padding: '12px 14px', background: 'var(--blue-light)', borderRadius: 'var(--radius-input)', fontSize: 12, color: 'var(--blue)' }}>
-                          <strong>Get your API key:</strong> In Odoo → Settings → Users → your user → API Keys tab → New API Key.
-                          Don&apos;t have an account? Sign up free at <span style={{ fontWeight: 500 }}>odoo.com</span>
+                          <strong>{t('settingsPage.getApiKey')}</strong> {t('settingsPage.odooCredentialsHint')}
+                          {t('settingsPage.noAccountSignUp')} <span style={{ fontWeight: 500 }}>odoo.com</span>
                         </div>
                         <button type="submit" className="btn btn-primary" disabled={erpConnecting}>
-                          {erpConnecting ? 'Connecting…' : 'Connect Odoo'}
+                          {erpConnecting ? t('settingsPage.connecting') : t('settingsPage.connectOdoo')}
                         </button>
                       </form>
                     )}
 
                     {!isAdmin && (
                       <div className="alert alert-warn">
-                        <div className="alert-body">Only org admins can connect an ERP system.</div>
+                        <div className="alert-body">{t('settingsPage.onlyAdminsConnectErp')}</div>
                       </div>
                     )}
                   </div>
@@ -1468,14 +1478,14 @@ export default function SettingsPage() {
 
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Why connect your ERP?</h3>
+                    <h3 className="t-card-head">{t('settingsPage.whyConnectErp')}</h3>
                   </div>
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {[
-                      'Strike AI gains real-time visibility into your cash position, AR/AP aging, inventory, and open orders',
-                      'Proactive advisories appear on your dashboard before you ask — low stock, overdue invoices, cash stress',
-                      'AI can autonomously create listings, submit financing requests, and match suppliers to your open POs',
-                      'Command Strike AI from your phone or directly from ERPNext webhooks via the Dispatch API',
+                      t('settingsPage.erpBenefit1'),
+                      t('settingsPage.erpBenefit2'),
+                      t('settingsPage.erpBenefit3'),
+                      t('settingsPage.erpBenefit4'),
                     ].map(text => (
                       <div key={text} style={{ display: 'flex', gap: 10, fontSize: 13, color: 'var(--ink-soft)' }}>
                         <span style={{ color: 'var(--blue)', flexShrink: 0 }}>✓</span>

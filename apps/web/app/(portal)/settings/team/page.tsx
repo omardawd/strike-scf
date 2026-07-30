@@ -3,6 +3,9 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface TeamMember {
   id: string
@@ -21,11 +24,13 @@ interface PendingInvitation {
   expires_at: string
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  bank_admin:          'Bank Admin',
-  bank_credit_officer: 'Credit Officer',
-  org_admin:           'Org Admin',
-  org_member:          'Team Member',
+function roleLabels(t: TFn): Record<string, string> {
+  return {
+    bank_admin:          t('teamPage.role.bankAdmin'),
+    bank_credit_officer: t('teamPage.role.creditOfficer'),
+    org_admin:           t('teamPage.role.orgAdmin'),
+    org_member:          t('teamPage.role.teamMember'),
+  }
 }
 
 const ADMIN_ROLES = ['bank_admin', 'bank_credit_officer', 'org_admin']
@@ -56,6 +61,8 @@ function fmtDate(s: string): string {
 export default function TeamPage() {
   const router = useRouter()
   const user   = useUser()
+  const t = useT()
+  const ROLE_LABELS = roleLabels(t)
 
   const [members,     setMembers]     = useState<TeamMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
@@ -79,7 +86,7 @@ export default function TeamPage() {
 
   const isAdmin = ADMIN_ROLES.includes(user?.role ?? '')
 
-  const newMemberRoleLabel = user?.role === 'bank_admin' ? 'Credit Officer' : 'Team Member'
+  const newMemberRoleLabel = user?.role === 'bank_admin' ? t('teamPage.role.creditOfficer') : t('teamPage.role.teamMember')
 
   const fetchTeam = useCallback(async () => {
     setLoading(true)
@@ -88,7 +95,7 @@ export default function TeamPage() {
       const res = await fetch('/api/settings/team')
       if (!res.ok) {
         const data = await res.json() as { error?: string }
-        setFetchError(data.error ?? 'Failed to load team')
+        setFetchError(data.error ?? t('teamPage.failedLoadTeam'))
         return
       }
       const data = await res.json() as {
@@ -98,11 +105,11 @@ export default function TeamPage() {
       setMembers(data.users ?? [])
       setInvitations(data.pending_invitations ?? [])
     } catch {
-      setFetchError('Failed to load team')
+      setFetchError(t('teamPage.failedLoadTeam'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!user) return
@@ -124,13 +131,13 @@ export default function TeamPage() {
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
-        setActionErr(data.error ?? 'Failed to update user')
+        setActionErr(data.error ?? t('teamPage.failedUpdateUser'))
         return
       }
       setConfirmId(null)
       await fetchTeam()
     } catch {
-      setActionErr('Failed to update user')
+      setActionErr(t('teamPage.failedUpdateUser'))
     } finally {
       setActingId(null)
     }
@@ -154,17 +161,17 @@ export default function TeamPage() {
       })
       const data = await res.json() as { error?: string }
       if (!res.ok) {
-        setAddError(data.error ?? 'Failed to create account')
+        setAddError(data.error ?? t('teamPage.failedCreateAccount'))
         return
       }
-      setAddSuccess(`Account created for ${addEmail.trim()}`)
+      setAddSuccess(t('teamPage.accountCreatedFor', { email: addEmail.trim() }))
       setAddEmail('')
       setAddFullName('')
       setAddPassword('')
       setAddConfirmPw('')
       await fetchTeam()
     } catch {
-      setAddError('Failed to create account')
+      setAddError(t('teamPage.failedCreateAccount'))
     } finally {
       setAdding(false)
     }
@@ -178,17 +185,17 @@ export default function TeamPage() {
       <Topbar
         onBack={() => router.push('/settings')}
         crumbs={[
-          { label: 'Settings', onClick: () => router.push('/settings') },
-          { label: 'Team' },
+          { label: t('teamPage.settings'), onClick: () => router.push('/settings') },
+          { label: t('teamPage.team') },
         ]}
         actions={<NotifBell />}
       />
 
       <div className="page">
         <div className="page-header">
-          <h1 className="t-page-title">Team members</h1>
+          <h1 className="t-page-title">{t('teamPage.teamMembers')}</h1>
           {!loading && !fetchError && (
-            <div className="subtitle">{members.length} member{members.length !== 1 ? 's' : ''}</div>
+            <div className="subtitle">{t('teamPage.memberCount', { count: members.length })}</div>
           )}
         </div>
 
@@ -207,24 +214,24 @@ export default function TeamPage() {
         {/* ── Members table ── */}
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-head">
-            <h3 className="t-card-head">Members</h3>
+            <h3 className="t-card-head">{t('teamPage.members')}</h3>
           </div>
           {loading ? (
             <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>
-              Loading…
+              {t('common.loading')}
             </div>
           ) : members.length === 0 ? (
             <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)' }}>
-              No team members yet.
+              {t('teamPage.noTeamMembersYet')}
             </div>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th>Member</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Joined</th>
+                  <th>{t('teamPage.member')}</th>
+                  <th>{t('teamPage.role')}</th>
+                  <th>{t('financing.status')}</th>
+                  <th>{t('teamPage.joined')}</th>
                   <th className="row-actions" />
                 </tr>
               </thead>
@@ -264,19 +271,19 @@ export default function TeamPage() {
                       </td>
                       <td>
                         {m.is_active
-                          ? <span className="badge badge-active">Active</span>
-                          : <span className="badge badge-rejected">Inactive</span>}
+                          ? <span className="badge badge-active">{t('teamPage.active')}</span>
+                          : <span className="badge badge-rejected">{t('teamPage.inactive')}</span>}
                       </td>
                       <td className="mono" style={{ color: 'var(--gray)', fontSize: 12 }}>
                         {fmtDate(m.created_at)}
                       </td>
                       <td className="row-actions">
                         {isMe ? (
-                          <span className="badge badge-draft">You</span>
+                          <span className="badge badge-draft">{t('listingDetail.you')}</span>
                         ) : isConfirming ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             <span style={{ fontSize: 12, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                              Deactivate {m.full_name?.split(' ')[0] ?? 'user'}? They will lose access.
+                              {t('teamPage.deactivateConfirm', { name: m.full_name?.split(' ')[0] ?? t('teamPage.user') })}
                             </span>
                             <button
                               className="btn btn-danger btn-sm"
@@ -284,7 +291,7 @@ export default function TeamPage() {
                               disabled={isActing}
                               onClick={() => handleToggle(m.id, false)}
                             >
-                              {isActing ? '…' : 'Confirm'}
+                              {isActing ? '…' : t('teamPage.confirm')}
                             </button>
                             <button
                               className="btn btn-ghost btn-sm"
@@ -292,7 +299,7 @@ export default function TeamPage() {
                               disabled={isActing}
                               onClick={() => setConfirmId(null)}
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                           </div>
                         ) : m.is_active ? (
@@ -302,7 +309,7 @@ export default function TeamPage() {
                             disabled={isActing}
                             onClick={() => setConfirmId(m.id)}
                           >
-                            Deactivate
+                            {t('teamPage.deactivate')}
                           </button>
                         ) : (
                           <button
@@ -311,7 +318,7 @@ export default function TeamPage() {
                             disabled={isActing}
                             onClick={() => handleToggle(m.id, true)}
                           >
-                            {isActing ? '…' : 'Reactivate'}
+                            {isActing ? '…' : t('teamPage.reactivate')}
                           </button>
                         )}
                       </td>
@@ -326,21 +333,21 @@ export default function TeamPage() {
         {/* ── Pending invitations ── */}
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-head">
-            <h3 className="t-card-head">Pending invitations</h3>
+            <h3 className="t-card-head">{t('teamPage.pendingInvitations')}</h3>
           </div>
           {invitations.length === 0 ? (
             <div className="card-body" style={{ padding: 24, color: 'var(--gray)', fontSize: 13 }}>
-              No pending invitations
+              {t('teamPage.noPendingInvitations')}
             </div>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Sent</th>
-                  <th>Expires</th>
-                  <th>Status</th>
+                  <th>{t('teamPage.email')}</th>
+                  <th>{t('teamPage.role')}</th>
+                  <th>{t('teamPage.sent')}</th>
+                  <th>{t('listingDetail.expires')}</th>
+                  <th>{t('financing.status')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -365,7 +372,7 @@ export default function TeamPage() {
                         {fmtDate(inv.expires_at)}
                       </td>
                       <td>
-                        <span className="badge badge-pending">Pending</span>
+                        <span className="badge badge-pending">{t('dealDetail.pending')}</span>
                       </td>
                     </tr>
                   )
@@ -378,8 +385,8 @@ export default function TeamPage() {
         {/* ── Add member form ── */}
         <div className="card">
           <div className="card-head">
-            <h3 className="t-card-head">Add a team member</h3>
-            <div className="subtitle">Create an account for a new {newMemberRoleLabel} in your organization</div>
+            <h3 className="t-card-head">{t('teamPage.addTeamMember')}</h3>
+            <div className="subtitle">{t('teamPage.createAccountHint', { role: newMemberRoleLabel })}</div>
           </div>
           <div className="card-body">
             {addSuccess && (
@@ -395,7 +402,7 @@ export default function TeamPage() {
             <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="field-label" htmlFor="add-fullname">Full name <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span></label>
+                  <label className="field-label" htmlFor="add-fullname">{t('teamPage.fullName')} <span style={{ fontWeight: 400, color: 'var(--gray)' }}>({t('reviewForm.optional')})</span></label>
                   <input
                     id="add-fullname"
                     className="input"
@@ -406,7 +413,7 @@ export default function TeamPage() {
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="field-label" htmlFor="add-email">Email address</label>
+                  <label className="field-label" htmlFor="add-email">{t('teamPage.emailAddress')}</label>
                   <input
                     id="add-email"
                     className="input"
@@ -420,7 +427,7 @@ export default function TeamPage() {
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
-                  <label className="field-label" htmlFor="add-password">Password</label>
+                  <label className="field-label" htmlFor="add-password">{t('teamPage.password')}</label>
                   <div style={{ position: 'relative' }}>
                     <input
                       id="add-password"
@@ -452,18 +459,18 @@ export default function TeamPage() {
                   </div>
                 </div>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <label className="field-label" htmlFor="add-confirm">Confirm password</label>
+                  <label className="field-label" htmlFor="add-confirm">{t('teamPage.confirmPassword')}</label>
                   <input
                     id="add-confirm"
                     className="input"
                     type={showAddPw ? 'text' : 'password'}
-                    placeholder="Re-enter password"
+                    placeholder={t('teamPage.reEnterPassword')}
                     value={addConfirmPw}
                     onChange={e => setAddConfirmPw(e.target.value)}
                     required
                   />
                   {addConfirmPw.length > 0 && addPassword !== addConfirmPw && (
-                    <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>Passwords don&apos;t match</div>
+                    <div style={{ fontSize: 12, color: '#DC2626', marginTop: 4 }}>{t('teamPage.passwordsDontMatch')}</div>
                   )}
                 </div>
               </div>
@@ -473,7 +480,7 @@ export default function TeamPage() {
                   type="submit"
                   disabled={adding || !addEmail.trim() || !addPassword || addPassword !== addConfirmPw || addPassword.length < 8}
                 >
-                  {adding ? 'Creating…' : 'Create account'}
+                  {adding ? t('teamPage.creating') : t('teamPage.createAccount')}
                 </button>
               </div>
             </form>

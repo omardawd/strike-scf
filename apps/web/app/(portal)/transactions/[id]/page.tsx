@@ -5,6 +5,9 @@ import { usePortal } from '@/lib/portal-context'
 import { TRANSACTION_REFERRER_KEY } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface Transaction {
   id: string
@@ -100,14 +103,14 @@ function getRepaymentInstructions(raw: string | null): string | null {
   } catch { return raw }
 }
 
-function formatCollateralType(type: string): string {
+function formatCollateralType(type: string, t: TFn): string {
   const labels: Record<string, string> = {
-    post_dated_cheque:         'Post-dated Cheque',
-    personal_guarantee:        'Personal Guarantee',
-    assignment_of_receivables: 'Assignment of Receivables',
-    cash_collateral:           'Cash Collateral',
-    asset_pledge:              'Asset Pledge',
-    other:                     'Other',
+    post_dated_cheque:         t('txnDetail.collateral.postDatedCheque'),
+    personal_guarantee:        t('txnDetail.collateral.personalGuarantee'),
+    assignment_of_receivables: t('txnDetail.collateral.assignmentOfReceivables'),
+    cash_collateral:           t('txnDetail.collateral.cashCollateral'),
+    asset_pledge:              t('txnDetail.collateral.assetPledge'),
+    other:                     t('txnDetail.collateral.other'),
   }
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
@@ -125,26 +128,30 @@ function collateralStatusBadge(status: string): string {
 }
 
 // Status order for stepper
-const RF_STEPPER_STEPS = [
-  { key: 'pending_anchor_approval',          label: 'Anchor Review' },
-  { key: 'pending_bank_review',              label: 'Bank Review' },
-  { key: 'pending_supplier_counter_review',  label: 'Supplier Review' },
-  { key: 'financing_approved',              label: 'Approved' },
-  { key: 'funded',                           label: 'Disbursed' },
-  { key: 'completed',                        label: 'Repaid' },
-]
+function rfStepperSteps(t: TFn) {
+  return [
+    { key: 'pending_anchor_approval',          label: t('txnDetail.stepper.anchorReview') },
+    { key: 'pending_bank_review',              label: t('txnDetail.stepper.bankReview') },
+    { key: 'pending_supplier_counter_review',  label: t('txnDetail.stepper.supplierReview') },
+    { key: 'financing_approved',              label: t('transactionsPage.approved') },
+    { key: 'funded',                           label: t('txnDetail.stepper.disbursed') },
+    { key: 'completed',                        label: t('txnDetail.stepper.repaid') },
+  ]
+}
 
-const RF_STATUS_ORDER = RF_STEPPER_STEPS.map(s => s.key)
+const RF_STATUS_ORDER = ['pending_anchor_approval', 'pending_bank_review', 'pending_supplier_counter_review', 'financing_approved', 'funded', 'completed']
 
-const IF_STEPPER_STEPS = [
-  { key: 'pending_bank_review',              label: 'Bank Review' },
-  { key: 'pending_supplier_counter_review',  label: 'Supplier Review' },
-  { key: 'financing_approved',               label: 'Approved' },
-  { key: 'funded',                           label: 'Disbursed' },
-  { key: 'completed',                        label: 'Repaid' },
-]
+function ifStepperSteps(t: TFn) {
+  return [
+    { key: 'pending_bank_review',              label: t('txnDetail.stepper.bankReview') },
+    { key: 'pending_supplier_counter_review',  label: t('txnDetail.stepper.supplierReview') },
+    { key: 'financing_approved',               label: t('transactionsPage.approved') },
+    { key: 'funded',                           label: t('txnDetail.stepper.disbursed') },
+    { key: 'completed',                        label: t('txnDetail.stepper.repaid') },
+  ]
+}
 
-const IF_STATUS_ORDER = IF_STEPPER_STEPS.map(s => s.key)
+const IF_STATUS_ORDER = ['pending_bank_review', 'pending_supplier_counter_review', 'financing_approved', 'funded', 'completed']
 
 function ifStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
   let eff = status
@@ -175,16 +182,20 @@ function rfStepperState(stepKey: string, status: string): 'done' | 'current' | '
   return 'todo'
 }
 
-const PO_STEPPER_STEPS = [
-  { key: 'po_submitted',                label: 'PO Submitted' },
-  { key: 'pending_bank_review',         label: 'Bank Review' },
-  { key: 'financing_approved',          label: 'Financing Approved' },
-  { key: 'funded',                      label: 'Disbursed' },
-  { key: 'invoice_submitted',           label: 'Invoice Submitted' },
-  { key: 'pending_anchor_confirmation', label: 'Anchor Confirmation' },
-  { key: 'repayment_due',              label: 'Repayment Due' },
-  { key: 'completed',                   label: 'Completed' },
-]
+const PO_STEPPER_KEYS = ['po_submitted', 'pending_bank_review', 'financing_approved', 'funded', 'invoice_submitted', 'pending_anchor_confirmation', 'repayment_due', 'completed']
+
+function poStepperSteps(t: TFn) {
+  return [
+    { key: 'po_submitted',                label: t('txnDetail.stepper.poSubmitted') },
+    { key: 'pending_bank_review',         label: t('txnDetail.stepper.bankReview') },
+    { key: 'financing_approved',          label: t('txnDetail.stepper.financingApproved') },
+    { key: 'funded',                      label: t('txnDetail.stepper.disbursed') },
+    { key: 'invoice_submitted',           label: t('txnDetail.stepper.invoiceSubmitted') },
+    { key: 'pending_anchor_confirmation', label: t('txnDetail.stepper.anchorConfirmation') },
+    { key: 'repayment_due',              label: t('txnDetail.stepper.repaymentDue') },
+    { key: 'completed',                   label: t('deals.status.completed') },
+  ]
+}
 
 function poStatusToStepIndex(status: string): number {
   switch (status) {
@@ -210,7 +221,7 @@ function poStatusToStepIndex(status: string): number {
 }
 
 function poStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
-  const stepIdx    = PO_STEPPER_STEPS.findIndex(s => s.key === stepKey)
+  const stepIdx    = PO_STEPPER_KEYS.indexOf(stepKey)
   const currentIdx = poStatusToStepIndex(status)
 
   if (currentIdx === -1 || stepIdx === -1) return 'todo'
@@ -219,13 +230,15 @@ function poStepperState(stepKey: string, status: string): 'done' | 'current' | '
   return 'todo'
 }
 
-const DD_STEPPER_STEPS = [
-  { key: 'pending_anchor_approval', label: 'Anchor Review' },
-  { key: 'funded',                  label: 'Payment Approved' },
-  { key: 'completed',               label: 'Completed' },
-]
+function ddStepperSteps(t: TFn) {
+  return [
+    { key: 'pending_anchor_approval', label: t('txnDetail.stepper.anchorReview') },
+    { key: 'funded',                  label: t('txnDetail.stepper.paymentApproved') },
+    { key: 'completed',               label: t('deals.status.completed') },
+  ]
+}
 
-const DD_STATUS_ORDER = DD_STEPPER_STEPS.map(s => s.key)
+const DD_STATUS_ORDER = ['pending_anchor_approval', 'funded', 'completed']
 
 function ddStepperState(stepKey: string, status: string): 'done' | 'current' | 'todo' {
   let eff = status
@@ -255,19 +268,19 @@ function statusBadge(status: string): string {
   }
 }
 
-function statusLabel(status: string): string {
+function statusLabel(status: string, t: TFn): string {
   switch (status) {
-    case 'pending_anchor_approval':         return 'Pending Approval'
-    case 'pending_bank_review':             return 'Pending Bank Review'
-    case 'pending_supplier_counter_review': return 'Counter-offer Pending'
-    case 'more_info_requested':             return 'More Info Needed'
-    case 'financing_approved':              return 'Approved'
-    case 'funded':                          return 'Funded'
-    case 'pending_anchor_confirmation':     return 'Awaiting Anchor Confirmation'
-    case 'repayment_due':                   return 'Repayment Due'
-    case 'in_dispute':                      return 'In Dispute'
-    case 'completed':                       return 'Completed'
-    case 'rejected':                        return 'Rejected'
+    case 'pending_anchor_approval':         return t('transactionsPage.pendingApproval')
+    case 'pending_bank_review':             return t('transactionsPage.pendingBankReview')
+    case 'pending_supplier_counter_review': return t('txnDetail.status.counterOfferPending')
+    case 'more_info_requested':             return t('transactionsPage.moreInfoNeeded')
+    case 'financing_approved':              return t('transactionsPage.approved')
+    case 'funded':                          return t('transactionsPage.funded')
+    case 'pending_anchor_confirmation':     return t('txnDetail.status.awaitingAnchorConfirmation')
+    case 'repayment_due':                   return t('txnDetail.status.repaymentDue')
+    case 'in_dispute':                      return t('txnDetail.status.inDispute')
+    case 'completed':                       return t('deals.status.completed')
+    case 'rejected':                        return t('transactionsPage.rejected')
     default:                                return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   }
 }
@@ -294,47 +307,57 @@ function humanizeType(t: string | null): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-function humanizeEvent(e: TransactionEvent): string {
+function frequencyLabel(structure: string | undefined, t: TFn): string {
+  switch (structure) {
+    case 'weekly':    return t('txnDetail.frequency.weekly')
+    case 'biweekly':  return t('txnDetail.frequency.biweekly')
+    case 'monthly':   return t('txnDetail.frequency.monthly')
+    case 'quarterly': return t('txnDetail.frequency.quarterly')
+    default:          return structure ?? ''
+  }
+}
+
+function humanizeEvent(e: TransactionEvent, t: TFn): string {
   switch (e.event_type) {
-    case 'transaction_submitted':    return 'Submitted transaction'
+    case 'transaction_submitted':    return t('txnDetail.event.submittedTransaction')
     case 'created': {
       const rateMatch = e.notes?.match(/(\d+(?:\.\d+)?)%/)
-      return rateMatch ? `Submitted invoice — ${rateMatch[1]}% advance rate` : 'Transaction created'
+      return rateMatch?.[1] ? t('txnDetail.event.submittedInvoiceRate', { rate: rateMatch[1] }) : t('txnDetail.event.transactionCreated')
     }
-    case 'anchor_approved':          return 'Approved invoice'
-    case 'anchor_rejected':          return 'Rejected invoice'
-    case 'bank_approved':            return 'Approved financing'
-    case 'bank_rejected':            return 'Rejected transaction'
-    case 'bank_requested_info':      return 'Requested more information'
-    case 'more_info_provided':       return 'Provided additional information'
+    case 'anchor_approved':          return t('txnDetail.event.approvedInvoice')
+    case 'anchor_rejected':          return t('txnDetail.event.rejectedInvoice')
+    case 'bank_approved':            return t('txnDetail.event.approvedFinancing')
+    case 'bank_rejected':            return t('txnDetail.event.rejectedTransaction')
+    case 'bank_requested_info':      return t('txnDetail.event.requestedMoreInfo')
+    case 'more_info_provided':       return t('txnDetail.event.providedAdditionalInfo')
     case 'counter_offer_submitted': {
-      const base = e.actor === 'bank' ? 'Sent counter-offer to supplier' : 'Sent counter-offer to bank'
+      const base = e.actor === 'bank' ? t('txnDetail.event.sentCounterToSupplier') : t('txnDetail.event.sentCounterToBank')
       const rateMatch = e.notes?.match(/(\d+(?:\.\d+)?)%/)
-      return rateMatch ? `${base} — ${rateMatch[1]}% advance rate` : base
+      return rateMatch?.[1] ? `${base} — ${t('txnDetail.event.advanceRatePct', { rate: rateMatch[1] })}` : base
     }
-    case 'counter_offer_accepted':   return 'Accepted counter-offer'
-    case 'counter_offer_rejected':   return 'Declined counter-offer'
-    case 'wire_info_sent':                         return 'Sent wire transfer info to supplier'
-    case 'repayment_info_sent':                    return 'Sent repayment instructions to anchor'
-    case 'anchor_repayment_extension_requested':   return 'Requested repayment extension'
-    case 'anchor_repayment_installment_requested': return 'Requested installment structure'
-    case 'anchor_accepted_repayment_counter':      return 'Accepted bank repayment counter-proposal'
-    case 'anchor_rejected_repayment_counter':      return 'Declined bank repayment counter-proposal'
-    case 'anchor_repayment_approved':              return 'Bank approved repayment request'
-    case 'anchor_repayment_rejected':              return 'Bank declined repayment request'
-    case 'anchor_repayment_countered':             return 'Bank counter-proposed repayment terms'
-    case 'disbursement_marked':                    return 'Disbursed funds to supplier'
-    case 'repayment_marked':         return 'Marked as repaid'
-    case 'disbursed':                return 'Disbursed funds to supplier'
-    case 'repaid':                   return 'Recorded repayment'
-    case 'funded':                   return 'Transaction funded'
-    case 'completed':                return 'Transaction completed'
-    case 'document_uploaded':        return 'Uploaded document'
-    case 'collateral_updated':       return 'Updated collateral requirement'
+    case 'counter_offer_accepted':   return t('txnDetail.event.acceptedCounterOffer')
+    case 'counter_offer_rejected':   return t('txnDetail.event.declinedCounterOffer')
+    case 'wire_info_sent':                         return t('txnDetail.event.sentWireInfo')
+    case 'repayment_info_sent':                    return t('txnDetail.event.sentRepaymentInstructions')
+    case 'anchor_repayment_extension_requested':   return t('txnDetail.event.requestedRepaymentExtension')
+    case 'anchor_repayment_installment_requested': return t('txnDetail.event.requestedInstallmentStructure')
+    case 'anchor_accepted_repayment_counter':      return t('txnDetail.event.acceptedBankRepaymentCounter')
+    case 'anchor_rejected_repayment_counter':      return t('txnDetail.event.declinedBankRepaymentCounter')
+    case 'anchor_repayment_approved':              return t('txnDetail.event.bankApprovedRepaymentRequest')
+    case 'anchor_repayment_rejected':              return t('txnDetail.event.bankDeclinedRepaymentRequest')
+    case 'anchor_repayment_countered':             return t('txnDetail.event.bankCounterProposedRepayment')
+    case 'disbursement_marked':                    return t('txnDetail.event.disbursedFunds')
+    case 'repayment_marked':         return t('txnDetail.event.markedAsRepaid')
+    case 'disbursed':                return t('txnDetail.event.disbursedFunds')
+    case 'repaid':                   return t('txnDetail.event.recordedRepayment')
+    case 'funded':                   return t('txnDetail.event.transactionFunded')
+    case 'completed':                return t('txnDetail.event.transactionCompleted')
+    case 'document_uploaded':        return t('txnDetail.event.uploadedDocument')
+    case 'collateral_updated':       return t('txnDetail.event.updatedCollateralRequirement')
     case 'status_change':
     case 'status_changed':
-      if (e.notes === 'Invoice submitted after delivery') return 'Submitted invoice after delivery'
-      return e.to_status ? `Status updated to ${statusLabel(e.to_status)}` : 'Status updated'
+      if (e.notes === 'Invoice submitted after delivery') return t('txnDetail.event.submittedInvoiceAfterDelivery')
+      return e.to_status ? t('txnDetail.event.statusUpdatedTo', { status: statusLabel(e.to_status, t) }) : t('txnDetail.event.statusUpdated')
     default:
       return (e.action || e.event_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   }
@@ -358,6 +381,7 @@ function AnchorStandaloneRepaymentSection({
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
 }) {
+  const t = useT()
   const [mode, setMode]           = useState<'none'|'extension'|'installment'>('none')
   const [extDate, setExtDate]     = useState('')
   const [extNotes, setExtNotes]   = useState('')
@@ -374,21 +398,21 @@ function AnchorStandaloneRepaymentSection({
   if (mode === 'extension') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Request repayment extension</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{t('txnDetail.requestRepaymentExtension')}</div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Requested date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.requestedDate')}</div>
           <input type="date" className="input" value={extDate} onChange={e => setExtDate(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.notesOptional')}</div>
           <textarea className="form-input" rows={2} value={extNotes} onChange={e => setExtNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary btn-sm" type="button" disabled={!extDate || acting}
             onClick={async () => { await onAction({ action: 'request_extension', extension_date: extDate, ...(extNotes ? { notes: extNotes } : {}) }); setMode('none') }}>
-            {acting ? 'Sending…' : 'Submit request'}
+            {acting ? t('txnDetail.sending') : t('txnDetail.submitRequest')}
           </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>Cancel</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>{t('common.cancel')}</button>
         </div>
       </div>
     )
@@ -397,32 +421,32 @@ function AnchorStandaloneRepaymentSection({
   if (mode === 'installment') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Request installment structure</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{t('txnDetail.requestInstallmentStructure')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Installments</div>
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.installments')}</div>
             <input type="number" className="input" min="2" max="52" value={instCount} onChange={e => setInstCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.frequency.label')}</div>
             <select className="input" value={instStructure} onChange={e => setInstStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
+              <option value="weekly">{t('txnDetail.frequency.weekly')}</option>
+              <option value="biweekly">{t('txnDetail.frequency.biweekly')}</option>
+              <option value="monthly">{t('txnDetail.frequency.monthly')}</option>
+              <option value="quarterly">{t('txnDetail.frequency.quarterly')}</option>
             </select>
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.notesOptional')}</div>
           <textarea className="form-input" rows={2} value={instNotes} onChange={e => setInstNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary btn-sm" type="button" disabled={acting}
             onClick={async () => { await onAction({ action: 'request_installment', count: instCount, structure: instStructure, ...(instNotes ? { notes: instNotes } : {}) }); setMode('none') }}>
-            {acting ? 'Sending…' : 'Submit request'}
+            {acting ? t('txnDetail.sending') : t('txnDetail.submitRequest')}
           </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>Cancel</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('none')}>{t('common.cancel')}</button>
         </div>
       </div>
     )
@@ -438,52 +462,52 @@ function AnchorStandaloneRepaymentSection({
           fontSize: 13,
           color: 'var(--gray)',
         }}>
-          Your repayment request was declined. Standard repayment terms apply.
+          {t('txnDetail.repaymentRequestDeclinedHint')}
         </div>
       ) : !repRequest ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-            Request a payment extension or installment plan from the bank.
+            {t('txnDetail.requestExtensionOrInstallmentHint')}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('extension')}>Request extension</button>
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('installment')}>Request installments</button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('extension')}>{t('txnDetail.requestExtension')}</button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setMode('installment')}>{t('txnDetail.requestInstallments')}</button>
           </div>
         </div>
       ) : repRequest.status === 'pending_bank_review' ? (
         <div>
-          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>Awaiting bank review</div>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.awaitingBankReview')}</div>
           {repRequest.type === 'extension' && repRequest.requested_date && (
-            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested date: {repRequest.requested_date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{t('txnDetail.requestedDate')}: {repRequest.requested_date}</div>
           )}
           {repRequest.type === 'installment' && repRequest.count && (
-            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{repRequest.count} {repRequest.structure} installments</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{t('txnDetail.countInstallments', { count: repRequest.count, frequency: frequencyLabel(repRequest.structure, t) })}</div>
           )}
         </div>
       ) : repRequest.status === 'bank_countered' ? (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-amber)', marginBottom: 6 }}>Bank has a counter-proposal</div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-amber)', marginBottom: 6 }}>{t('txnDetail.bankHasCounterProposal')}</div>
           {repRequest.bank_counter?.date && (
-            <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Counter date: {repRequest.bank_counter.date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{t('txnDetail.counterDate')}: {repRequest.bank_counter.date}</div>
           )}
           {repRequest.bank_counter?.count != null && (
             <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
-              Counter: {repRequest.bank_counter.count} {repRequest.bank_counter.structure} installments
+              {t('txnDetail.counterCountInstallments', { count: repRequest.bank_counter.count, frequency: frequencyLabel(repRequest.bank_counter.structure, t) })}
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" disabled={acting}
               onClick={() => onAction({ action: 'accept_repayment_counter' })}>
-              {acting ? 'Processing…' : 'Accept'}
+              {acting ? t('txnDetail.processing') : t('listingDetail.accept')}
             </button>
             <button className="btn btn-ghost btn-sm" type="button" disabled={acting}
               onClick={() => onAction({ action: 'reject_repayment_counter' })}>
-              Decline
+              {t('txnDetail.decline')}
             </button>
           </div>
         </div>
       ) : repRequest.status === 'approved' ? (
-        <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Your repayment request was approved ✓</div>
+        <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>{t('txnDetail.repaymentRequestApproved')} ✓</div>
       ) : null}
     </div>
   )
@@ -500,6 +524,7 @@ function BankAnchorRepaymentRequestCard({
   onAction: (body: Record<string, unknown>) => Promise<void>
   acting: boolean
 }) {
+  const t = useT()
   const [counterMode, setCounterMode]       = useState(false)
   const [counterDate, setCounterDate]       = useState('')
   const [counterCount, setCounterCount]     = useState(2)
@@ -513,32 +538,32 @@ function BankAnchorRepaymentRequestCard({
 
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Anchor Repayment Request</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>{t('txnDetail.anchorRepaymentRequest')}</div>
 
       {repRequest.type === 'extension' && repRequest.requested_date && (
-        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Extension to: {repRequest.requested_date}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{t('txnDetail.extensionTo')}: {repRequest.requested_date}</div>
       )}
       {repRequest.type === 'installment' && repRequest.count != null && (
-        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{repRequest.count} {repRequest.structure} installments</div>
+        <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{t('txnDetail.countInstallments', { count: repRequest.count, frequency: frequencyLabel(repRequest.structure, t) })}</div>
       )}
       {repRequest.notes && (
-        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>Notes: {repRequest.notes}</div>
+        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>{t('txnDetail.notesLabel')}: {repRequest.notes}</div>
       )}
 
       {repRequest.status === 'pending_bank_review' && !counterMode && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
           <button className="btn btn-primary btn-sm" type="button" disabled={acting}
             onClick={() => onAction({ action: 'review_repayment_request', decision: 'approve' })}>
-            {acting ? 'Processing…' : 'Approve request'}
+            {acting ? t('txnDetail.processing') : t('txnDetail.approveRequest')}
           </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(true)}>Counter-offer</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(true)}>{t('txnDetail.counterOffer')}</button>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Rejection reason (optional)</div>
-            <input className="input" style={{ width: '100%' }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason…" />
+            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.rejectionReasonOptional')}</div>
+            <input className="input" style={{ width: '100%' }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder={t('txnDetail.reasonPlaceholder')} />
           </div>
           <button className="btn btn-danger btn-sm" type="button" disabled={acting}
             onClick={() => onAction({ action: 'review_repayment_request', decision: 'reject', rejection_reason: rejectReason })}>
-            Decline
+            {t('txnDetail.decline')}
           </button>
         </div>
       )}
@@ -547,23 +572,23 @@ function BankAnchorRepaymentRequestCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {repRequest.type === 'extension' && (
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter date</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.counterDate')}</div>
               <input type="date" className="input" value={counterDate} onChange={e => setCounterDate(e.target.value)} style={{ width: '100%' }} />
             </div>
           )}
           {repRequest.type === 'installment' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Installments</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.installments')}</div>
                 <input type="number" className="input" min="2" value={counterCount} onChange={e => setCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.frequency.label')}</div>
                 <select className="input" value={counterStructure} onChange={e => setCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
-                  <option value="weekly">Weekly</option>
-                  <option value="biweekly">Bi-weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
+                  <option value="weekly">{t('txnDetail.frequency.weekly')}</option>
+                  <option value="biweekly">{t('txnDetail.frequency.biweekly')}</option>
+                  <option value="monthly">{t('txnDetail.frequency.monthly')}</option>
+                  <option value="quarterly">{t('txnDetail.frequency.quarterly')}</option>
                 </select>
               </div>
             </div>
@@ -575,32 +600,32 @@ function BankAnchorRepaymentRequestCard({
                 action: 'review_repayment_request', decision: 'counter',
                 ...(repRequest.type === 'extension' ? { counter_date: counterDate } : { counter_count: counterCount, counter_structure: counterStructure }),
               })}>
-              {acting ? 'Sending…' : 'Submit counter'}
+              {acting ? t('txnDetail.sending') : t('txnDetail.submitCounter')}
             </button>
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(false)}>Cancel</button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCounterMode(false)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
 
       {repRequest.status === 'bank_countered' && (
         <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>
-          Counter-offer sent — awaiting anchor response
-          {repRequest.bank_counter?.date && <div style={{ marginTop: 4 }}>Counter date: {repRequest.bank_counter.date}</div>}
+          {t('txnDetail.counterOfferSentAwaitingAnchor')}
+          {repRequest.bank_counter?.date && <div style={{ marginTop: 4 }}>{t('txnDetail.counterDate')}: {repRequest.bank_counter.date}</div>}
           {repRequest.bank_counter?.count != null && (
-            <div style={{ marginTop: 4 }}>Counter: {repRequest.bank_counter.count} {repRequest.bank_counter.structure} installments</div>
+            <div style={{ marginTop: 4 }}>{t('txnDetail.counterCountInstallments', { count: repRequest.bank_counter.count, frequency: frequencyLabel(repRequest.bank_counter.structure, t) })}</div>
           )}
         </div>
       )}
 
       {repRequest.status === 'approved' && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', background: 'rgba(var(--color-green-rgb, 34,197,94), 0.08)', borderRadius: 8, marginTop: 4 }}>
-          <span style={{ fontSize: 12.5, color: 'var(--color-green)', fontWeight: 500 }}>Repayment request approved ✓</span>
+          <span style={{ fontSize: 12.5, color: 'var(--color-green)', fontWeight: 500 }}>{t('txnDetail.repaymentRequestApproved')} ✓</span>
         </div>
       )}
 
       {repRequest.status === 'rejected' && (
         <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 4 }}>
-          Request declined{repRequest.rejection_reason ? ` — ${repRequest.rejection_reason}` : ''}
+          {t('txnDetail.requestDeclined')}{repRequest.rejection_reason ? ` — ${repRequest.rejection_reason}` : ''}
         </div>
       )}
     </div>
@@ -626,6 +651,7 @@ function BankActionPanel({
   isInvoiceFactoring?: boolean
   isPOFinancing?: boolean
 }) {
+  const t = useT()
   const { status } = transaction
   const invoiceAmt = transaction.invoice_amount ?? 0
 
@@ -700,7 +726,7 @@ function BankActionPanel({
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
         onRefresh()
       } catch (err) {
-        setDisbError(err instanceof Error ? err.message : 'Failed to disburse')
+        setDisbError(err instanceof Error ? err.message : t('txnDetail.failedToDisburse'))
       } finally {
         setDisbursing(false)
       }
@@ -709,31 +735,31 @@ function BankActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-          Send wire transfer to supplier
+          {t('txnDetail.sendWireTransferToSupplier')}
         </p>
         <div className="calc-panel">
           <div className="calc-row">
-            <span>Approved amount</span>
+            <span>{t('txnDetail.approvedAmount')}</span>
             <span>{fmtAmt(transaction.financing_amount_approved)}</span>
           </div>
           {(transaction.apr ?? transaction.financing_rate_apr) != null && (
             <div className="calc-row">
-              <span>Advance rate</span>
+              <span>{t('newTransaction.advanceRate')}</span>
               <span>{transaction.apr ?? transaction.financing_rate_apr}%</span>
             </div>
           )}
           {transaction.fee_amount != null && (
             <div className="calc-row">
-              <span>Discount fee</span>
+              <span>{t('txnDetail.discountFee')}</span>
               <span>{fmtAmt(transaction.fee_amount)}</span>
             </div>
           )}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Wire reference / memo</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.wireReferenceMemo')}</div>
           <input
             className="input"
-            placeholder="e.g. invoice number or internal ref"
+            placeholder={t('txnDetail.wireReferencePlaceholder')}
             value={disbRef}
             onChange={e => setDisbRef(e.target.value)}
             style={{ width: '100%' }}
@@ -741,7 +767,7 @@ function BankActionPanel({
         </div>
         {disbError && <div style={{ fontSize: 12, color: '#DC2626' }}>{disbError}</div>}
         <button className="btn btn-primary btn-full" type="button" disabled={disbursing} onClick={handleDisburse}>
-          {disbursing ? 'Processing…' : 'Mark as disbursed'}
+          {disbursing ? t('txnDetail.processing') : t('txnDetail.markAsDisbursed')}
         </button>
       </div>
     )
@@ -751,7 +777,7 @@ function BankActionPanel({
   if (status === 'funded' && isPOFinancing) {
     return (
       <div className="action-passive muted">
-        Waiting for supplier to deliver goods and submit invoice
+        {t('txnDetail.waitingForSupplierToDeliver')}
       </div>
     )
   }
@@ -778,7 +804,7 @@ function BankActionPanel({
         setRepaymentSent(true)
         onRefresh()
       } catch (err) {
-        setRepaymentError(err instanceof Error ? err.message : 'Failed to send')
+        setRepaymentError(err instanceof Error ? err.message : t('txnDetail.failedToSend'))
       } finally {
         setSendingRepayment(false)
       }
@@ -797,7 +823,7 @@ function BankActionPanel({
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
         onRefresh()
       } catch (err) {
-        setRepaidError(err instanceof Error ? err.message : 'Failed to mark as repaid')
+        setRepaidError(err instanceof Error ? err.message : t('txnDetail.failedToMarkAsRepaid'))
       } finally {
         setMarkingRepaid(false)
       }
@@ -807,18 +833,18 @@ function BankActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-green)', margin: 0 }}>
-            Repayment instructions sent to anchor
+            {t('txnDetail.repaymentInstructionsSent')}
           </p>
           <div className="calc-panel">
             {transaction.repayment_due_date && (
               <div className="calc-row">
-                <span>Due date</span>
+                <span>{t('txnDetail.dueDate')}</span>
                 <span>{fmtDate(transaction.repayment_due_date)}</span>
               </div>
             )}
             {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
-                <span>Instructions</span>
+                <span>{t('txnDetail.instructions')}</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
                   {getRepaymentInstructions(transaction.bank_approval_notes)}
                 </span>
@@ -832,7 +858,7 @@ function BankActionPanel({
             disabled={markingRepaid}
             onClick={handleMarkRepaid}
           >
-            {markingRepaid ? 'Processing…' : 'Mark as repaid'}
+            {markingRepaid ? t('txnDetail.processing') : t('txnDetail.markAsRepaid')}
           </button>
         </div>
       )
@@ -841,10 +867,10 @@ function BankActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-          Send repayment instructions to anchor
+          {t('txnDetail.sendRepaymentInstructionsToAnchor')}
         </p>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment amount ($)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.repaymentAmountLabel')}</div>
           <input
             className="input mono"
             placeholder="0.00"
@@ -854,7 +880,7 @@ function BankActionPanel({
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment due date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.repaymentDueDate')}</div>
           <input
             type="date"
             className="input"
@@ -864,11 +890,11 @@ function BankActionPanel({
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Instructions / wire details</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.instructionsWireDetails')}</div>
           <textarea
             className="form-input"
             rows={3}
-            placeholder="IBAN, wire instructions, or payment reference…"
+            placeholder={t('txnDetail.wireInstructionsPlaceholder')}
             value={repaymentInstructions}
             onChange={e => setRepaymentInstructions(e.target.value)}
             style={{ width: '100%', resize: 'vertical' }}
@@ -881,7 +907,7 @@ function BankActionPanel({
           disabled={sendingRepayment || !repaymentDueDate}
           onClick={handleSendRepayment}
         >
-          {sendingRepayment ? 'Sending…' : 'Send to anchor'}
+          {sendingRepayment ? t('txnDetail.sending') : t('txnDetail.sendToAnchor')}
         </button>
       </div>
     )
@@ -889,7 +915,7 @@ function BankActionPanel({
 
   // ── PO: pending_anchor_confirmation / repayment_due ──────────────────────
   if (isPOFinancing && status === 'pending_anchor_confirmation') {
-    return <div className="action-passive muted">Anchor is confirming receipt of goods</div>
+    return <div className="action-passive muted">{t('txnDetail.anchorConfirmingReceipt')}</div>
   }
 
   if (isPOFinancing && status === 'repayment_due') {
@@ -914,7 +940,7 @@ function BankActionPanel({
         setRepaymentSent(true)
         onRefresh()
       } catch (err) {
-        setRepaymentError(err instanceof Error ? err.message : 'Failed to send')
+        setRepaymentError(err instanceof Error ? err.message : t('txnDetail.failedToSend'))
       } finally {
         setSendingRepayment(false)
       }
@@ -933,7 +959,7 @@ function BankActionPanel({
         if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
         onRefresh()
       } catch (err) {
-        setRepaidError(err instanceof Error ? err.message : 'Failed to mark as repaid')
+        setRepaidError(err instanceof Error ? err.message : t('txnDetail.failedToMarkAsRepaid'))
       } finally {
         setMarkingRepaid(false)
       }
@@ -943,25 +969,25 @@ function BankActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--color-green)', margin: 0 }}>
-            Repayment instructions sent to anchor
+            {t('txnDetail.repaymentInstructionsSent')}
           </p>
           <div className="calc-panel">
             {transaction.repayment_due_date && (
               <div className="calc-row">
-                <span>Due date</span>
+                <span>{t('txnDetail.dueDate')}</span>
                 <span>{fmtDate(transaction.repayment_due_date)}</span>
               </div>
             )}
             {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
-                <span>Instructions</span>
+                <span>{t('txnDetail.instructions')}</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{getRepaymentInstructions(transaction.bank_approval_notes)}</span>
               </div>
             )}
           </div>
           {repaidError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaidError}</div>}
           <button className="btn btn-primary btn-full" type="button" disabled={markingRepaid} onClick={handleMarkRepaidPO}>
-            {markingRepaid ? 'Processing…' : 'Mark as repaid'}
+            {markingRepaid ? t('txnDetail.processing') : t('txnDetail.markAsRepaid')}
           </button>
         </div>
       )
@@ -970,23 +996,23 @@ function BankActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-          Send repayment instructions to anchor
+          {t('txnDetail.sendRepaymentInstructionsToAnchor')}
         </p>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment amount ($)</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.repaymentAmountLabel')}</div>
           <input className="input mono" placeholder="0.00" value={repaymentAmount} onChange={e => setRepaymentAmount(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Repayment due date</div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.repaymentDueDate')}</div>
           <input type="date" className="input" value={repaymentDueDate} onChange={e => setRepaymentDueDate(e.target.value)} style={{ width: '100%' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Instructions / wire details</div>
-          <textarea className="form-input" rows={3} placeholder="IBAN, wire instructions, or payment reference…" value={repaymentInstructions} onChange={e => setRepaymentInstructions(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.instructionsWireDetails')}</div>
+          <textarea className="form-input" rows={3} placeholder={t('txnDetail.wireInstructionsPlaceholder')} value={repaymentInstructions} onChange={e => setRepaymentInstructions(e.target.value)} style={{ width: '100%', resize: 'vertical' }} />
         </div>
         {repaymentError && <div style={{ fontSize: 12, color: '#DC2626' }}>{repaymentError}</div>}
         <button className="btn btn-primary btn-full" type="button" disabled={sendingRepayment || !repaymentDueDate} onClick={handleSendRepaymentPO}>
-          {sendingRepayment ? 'Sending…' : 'Send to anchor'}
+          {sendingRepayment ? t('txnDetail.sending') : t('txnDetail.sendToAnchor')}
         </button>
       </div>
     )
@@ -995,9 +1021,9 @@ function BankActionPanel({
   if (status !== 'pending_bank_review' && status !== 'more_info_requested') {
     return (
       <div className="action-passive muted">
-        {status === 'rejected'   ? 'This transaction was rejected.'
-          : status === 'completed' ? 'Transaction completed.'
-          : `Awaiting ${status.replace(/_/g, ' ')}`}
+        {status === 'rejected'   ? t('txnDetail.transactionWasRejectedPeriod')
+          : status === 'completed' ? t('txnDetail.transactionCompletedPeriod')
+          : t('txnDetail.awaitingStatus', { status: status.replace(/_/g, ' ') })}
       </div>
     )
   }
@@ -1007,11 +1033,11 @@ function BankActionPanel({
   if (mode === 'reject') {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>Supplier financing — rejection reason</p>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{t('txnDetail.supplierFinancingRejectionReason')}</p>
         <textarea
           className="form-input"
           rows={4}
-          placeholder="Reason for rejection (optional)…"
+          placeholder={t('txnDetail.reasonForRejectionOptional')}
           value={rejectNote}
           onChange={e => setRejectNote(e.target.value)}
           style={{ width: '100%', resize: 'vertical' }}
@@ -1022,10 +1048,10 @@ function BankActionPanel({
           disabled={acting}
           onClick={() => onAction({ action: 'reject', negotiation_target: 'supplier', rejection_reason: rejectNote.trim() })}
         >
-          {acting ? 'Processing…' : 'Confirm rejection'}
+          {acting ? t('txnDetail.processing') : t('txnDetail.confirmRejection')}
         </button>
         <button className="btn btn-ghost btn-full" type="button" onClick={() => { setMode('idle'); setRejectNote('') }}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     )
@@ -1036,7 +1062,7 @@ function BankActionPanel({
   return (
     <>
       <AIInsight
-        title="Risk Analysis"
+        title={t('txnDetail.riskAnalysis')}
         prompt="Analyze this transaction and provide a brief risk assessment. Consider the advance rate requested, invoice amount, counterparty history if available, and recommend whether to approve, counter, or flag for review."
         context={{
           invoice_amount: transaction.invoice_amount,
@@ -1053,22 +1079,22 @@ function BankActionPanel({
 
       {/* ── Panel 1: Supplier financing offer ── */}
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>Supplier financing offer</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{t('txnDetail.supplierFinancingOffer')}</div>
 
         {supplierNeg?.status === 'approved' ? (
-          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Financing approved ✓</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>{t('txnDetail.financingApproved')} ✓</div>
         ) : (supplierNeg?.status === 'counter_offered' || supplierNeg?.status === 'supplier_countered') ? (
           supplierNeg.supplier_counter ? (
             <>
               <div className="calc-panel">
-                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>Supplier counter-offer</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>{t('txnDetail.supplierCounterOffer')}</div>
                 <div className="calc-row">
-                  <span>Supplier&apos;s counter rate</span>
+                  <span>{t('txnDetail.suppliersCounterRate')}</span>
                   <span style={{ fontWeight: 600 }}>{supplierNeg.supplier_counter.advance_rate}%</span>
                 </div>
                 {supplierNeg.bank_counter_rate != null && (
                   <div className="calc-row">
-                    <span>Bank&apos;s offer</span>
+                    <span>{t('txnDetail.banksOffer')}</span>
                     <span style={{ color: 'var(--gray)', textDecoration: 'line-through', fontSize: 12 }}>
                       {supplierNeg.bank_counter_rate}%
                     </span>
@@ -1076,7 +1102,7 @@ function BankActionPanel({
                 )}
                 {supplierNeg.supplier_counter.amount != null && (
                   <div className="calc-row">
-                    <span>Counter amount</span>
+                    <span>{t('txnDetail.counterAmount')}</span>
                     <span>{fmtAmt(supplierNeg.supplier_counter.amount)}</span>
                   </div>
                 )}
@@ -1084,7 +1110,7 @@ function BankActionPanel({
               {isCounter ? (
                 <>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.counterAdvanceRate')}</div>
                     <div style={{ position: 'relative' }}>
                       <input
                         className="form-input mono"
@@ -1099,20 +1125,20 @@ function BankActionPanel({
                   </div>
                   {counterRateNum > 0 && (
                     <div className="calc-row">
-                      <span>Counter amount</span>
+                      <span>{t('txnDetail.counterAmount')}</span>
                       <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
                     </div>
                   )}
                   <div>
-                    <label className="field-label">Discount fee ($)</label>
+                    <label className="field-label">{t('txnDetail.discountFeeLabel')}</label>
                     <div className="input-group">
                       <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                       <span className="input-suffix">USD</span>
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
-                    <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.notesOptional')}</div>
+                    <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder={t('txnDetail.reasonForCounterOffer')} />
                   </div>
                   {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                   <button
@@ -1121,7 +1147,7 @@ function BankActionPanel({
                     disabled={acting || !counterRateNum || discountFee < 0}
                     onClick={() => {
                       if (counterRateNum > 100 || counterRateNum <= 0) {
-                        setCounterError('Advance rate must be between 0.01% and 100%')
+                        setCounterError(t('txnDetail.advanceRateRangeError'))
                         return
                       }
                       setCounterError(null)
@@ -1134,14 +1160,14 @@ function BankActionPanel({
                       })
                     }}
                   >
-                    {acting ? 'Sending…' : 'Send counter-offer'}
+                    {acting ? t('txnDetail.sending') : t('txnDetail.sendCounterOffer')}
                   </button>
-                  <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>Cancel</button>
+                  <button className="btn btn-ghost btn-full" type="button" onClick={() => setMode('idle')}>{t('common.cancel')}</button>
                 </>
               ) : (
                 <>
                   <div>
-                    <label className="field-label">Discount fee ($)</label>
+                    <label className="field-label">{t('txnDetail.discountFeeLabel')}</label>
                     <div className="input-group">
                       <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                       <span className="input-suffix">USD</span>
@@ -1156,7 +1182,7 @@ function BankActionPanel({
                       const scRate = supplierNeg.supplier_counter!.advance_rate ?? 0
                       const scAmt  = supplierNeg.supplier_counter!.amount ?? 0
                       if (scRate > 100 || scRate <= 0) {
-                        setCounterError('Advance rate must be between 0.01% and 100%')
+                        setCounterError(t('txnDetail.advanceRateRangeError'))
                         return
                       }
                       setCounterError(null)
@@ -1168,30 +1194,30 @@ function BankActionPanel({
                       })
                     }}
                   >
-                    {acting ? 'Processing…' : 'Approve counter-offer'}
+                    {acting ? t('txnDetail.processing') : t('txnDetail.approveCounterOffer')}
                   </button>
-                  <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>Counter again</button>
-                  <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>Reject</button>
+                  <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>{t('txnDetail.counterAgain')}</button>
+                  <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>{t('txnDetail.reject')}</button>
                 </>
               )}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Counter-offer sent — awaiting supplier</div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>{t('txnDetail.counterOfferSentAwaitingSupplier')}</div>
           )
         ) : (
           <>
             {/* Supplier's offer */}
             <div className="calc-panel">
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>Supplier&apos;s offer</div>
-              <div className="calc-row"><span>Invoice amount</span><span>{fmtAmt(transaction.invoice_amount)}</span></div>
-              <div className="calc-row"><span>Requested advance rate</span><span>{supplierRatePct}%</span></div>
-              <div className="calc-row"><span>Requested amount</span><span>{fmtAmt(transaction.financing_amount_requested)}</span></div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>{t('txnDetail.suppliersOffer')}</div>
+              <div className="calc-row"><span>{t('newTransaction.invoiceAmount')}</span><span>{fmtAmt(transaction.invoice_amount)}</span></div>
+              <div className="calc-row"><span>{t('txnDetail.requestedAdvanceRate')}</span><span>{supplierRatePct}%</span></div>
+              <div className="calc-row"><span>{t('txnDetail.requestedAmount')}</span><span>{fmtAmt(transaction.financing_amount_requested)}</span></div>
             </div>
 
             {isCounter ? (
               <>
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter advance rate (%)</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.counterAdvanceRate')}</div>
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input mono"
@@ -1206,20 +1232,20 @@ function BankActionPanel({
                 </div>
                 {counterRateNum > 0 && (
                   <div className="calc-row">
-                    <span>Counter amount</span>
+                    <span>{t('txnDetail.counterAmount')}</span>
                     <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterDisburseAmt.toFixed(2)))}</strong>
                   </div>
                 )}
                 <div>
-                  <label className="field-label">Discount fee ($)</label>
+                  <label className="field-label">{t('txnDetail.discountFeeLabel')}</label>
                   <div className="input-group">
                     <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                     <span className="input-suffix">USD</span>
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
-                  <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder="Reason for counter-offer…" />
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.notesOptional')}</div>
+                  <textarea className="form-input" rows={2} value={counterNotes} onChange={e => setCounterNotes(e.target.value)} style={{ width: '100%', resize: 'vertical' }} placeholder={t('txnDetail.reasonForCounterOffer')} />
                 </div>
                 {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                 <button
@@ -1228,7 +1254,7 @@ function BankActionPanel({
                   disabled={acting || !counterRateNum || discountFee < 0}
                   onClick={() => {
                     if (counterRateNum > 100 || counterRateNum <= 0) {
-                      setCounterError('Advance rate must be between 0.01% and 100%')
+                      setCounterError(t('txnDetail.advanceRateRangeError'))
                       return
                     }
                     setCounterError(null)
@@ -1241,19 +1267,19 @@ function BankActionPanel({
                     })
                   }}
                 >
-                  {acting ? 'Sending…' : 'Send counter-offer'}
+                  {acting ? t('txnDetail.sending') : t('txnDetail.sendCounterOffer')}
                 </button>
-                <button className="btn btn-ghost btn-full" type="button" onClick={() => { setMode('idle'); setCounterError(null) }}>Cancel</button>
+                <button className="btn btn-ghost btn-full" type="button" onClick={() => { setMode('idle'); setCounterError(null) }}>{t('common.cancel')}</button>
               </>
             ) : (
               <>
                 <div>
-                  <label className="field-label">Discount fee ($)</label>
+                  <label className="field-label">{t('txnDetail.discountFeeLabel')}</label>
                   <div className="input-group">
                     <input className="input" type="number" placeholder="0.00" value={discountFee} onChange={e => setDiscountFee(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                     <span className="input-suffix">USD</span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>Fee charged for early payment</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 4 }}>{t('txnDetail.feeChargedForEarlyPayment')}</div>
                 </div>
                 {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
                 <button
@@ -1262,7 +1288,7 @@ function BankActionPanel({
                   disabled={acting || !supplierRateNum || discountFee < 0}
                   onClick={() => {
                     if (supplierRateNum > 100 || supplierRateNum <= 0) {
-                      setCounterError('Advance rate must be between 0.01% and 100%')
+                      setCounterError(t('txnDetail.advanceRateRangeError'))
                       return
                     }
                     setCounterError(null)
@@ -1274,10 +1300,10 @@ function BankActionPanel({
                     })
                   }}
                 >
-                  {acting ? 'Processing…' : 'Approve offer'}
+                  {acting ? t('txnDetail.processing') : t('txnDetail.approveOffer')}
                 </button>
-                <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>Counter-offer</button>
-                <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>Reject</button>
+                <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => setMode('counter')}>{t('txnDetail.counterOffer')}</button>
+                <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setMode('reject')}>{t('txnDetail.reject')}</button>
               </>
             )}
           </>
@@ -1287,31 +1313,31 @@ function BankActionPanel({
       {/* ── Panel 2: Anchor repayment request (only if anchor requested something) ── */}
       {anchorNeg?.type && (
         <div style={{ border: '1px solid var(--color-amber)', borderRadius: 8, padding: '12px 14px', background: 'rgba(180,83,9,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)' }}>Anchor repayment request</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)' }}>{t('txnDetail.anchorRepaymentRequest')}</div>
 
           {/* Request details */}
           {anchorNeg.type === 'extension' && anchorNeg.anchor_request?.date && (
-            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested repayment date: {anchorNeg.anchor_request.date}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{t('txnDetail.requestedRepaymentDate')}: {anchorNeg.anchor_request.date}</div>
           )}
           {anchorNeg.type === 'installment' && anchorNeg.anchor_request && (
-            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Requested: {anchorNeg.anchor_request.count} {anchorNeg.anchor_request.structure} installments</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>{t('txnDetail.requestedCountInstallments', { count: anchorNeg.anchor_request.count ?? 0, frequency: frequencyLabel(anchorNeg.anchor_request.structure, t) })}</div>
           )}
           {anchorNeg.anchor_request?.notes && (
-            <div style={{ fontSize: 12, color: 'var(--gray)' }}>Notes: {anchorNeg.anchor_request.notes}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('txnDetail.notesLabel')}: {anchorNeg.anchor_request.notes}</div>
           )}
 
           {anchorNeg.status === 'pending' && !anchorCounterMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <button className="btn btn-primary btn-sm" type="button" disabled={acting}
                 onClick={() => onAction({ action: 'approve', negotiation_target: 'anchor' })}>
-                {acting ? 'Processing…' : 'Approve request'}
+                {acting ? t('txnDetail.processing') : t('txnDetail.approveRequest')}
               </button>
               <button className="btn btn-ghost btn-sm" type="button" disabled={acting} onClick={() => setAnchorCounterMode(true)}>
-                Counter-offer
+                {t('txnDetail.counterOffer')}
               </button>
               <button className="btn btn-danger btn-sm" type="button" disabled={acting}
                 onClick={() => onAction({ action: 'reject', negotiation_target: 'anchor' })}>
-                Decline
+                {t('txnDetail.decline')}
               </button>
             </div>
           )}
@@ -1320,23 +1346,23 @@ function BankActionPanel({
             <>
               {anchorNeg.type === 'extension' && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Counter repayment date</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.counterRepaymentDate')}</div>
                   <input type="date" className="input" value={anchorCounterDate} onChange={e => setAnchorCounterDate(e.target.value)} style={{ width: '100%' }} />
                 </div>
               )}
               {anchorNeg.type === 'installment' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Number of installments</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.numberOfInstallments')}</div>
                     <input type="number" className="input" min="2" max="52" value={anchorCounterCount} onChange={e => setAnchorCounterCount(Number(e.target.value))} onWheel={e => (e.target as HTMLInputElement).blur()} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Frequency</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.frequency.label')}</div>
                     <select className="input" value={anchorCounterStructure} onChange={e => setAnchorCounterStructure(e.target.value as 'weekly'|'biweekly'|'monthly'|'quarterly')}>
-                      <option value="weekly">Weekly</option>
-                      <option value="biweekly">Bi-weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="quarterly">Quarterly</option>
+                      <option value="weekly">{t('txnDetail.frequency.weekly')}</option>
+                      <option value="biweekly">{t('txnDetail.frequency.biweekly')}</option>
+                      <option value="monthly">{t('txnDetail.frequency.monthly')}</option>
+                      <option value="quarterly">{t('txnDetail.frequency.quarterly')}</option>
                     </select>
                   </div>
                 </div>
@@ -1351,27 +1377,27 @@ function BankActionPanel({
                     ...(anchorNeg.type === 'extension' ? { counter_date: anchorCounterDate } : { counter_count: anchorCounterCount, counter_structure: anchorCounterStructure }),
                   })}
                 >
-                  {acting ? 'Sending…' : 'Submit counter'}
+                  {acting ? t('txnDetail.sending') : t('txnDetail.submitCounter')}
                 </button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setAnchorCounterMode(false)}>Cancel</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setAnchorCounterMode(false)}>{t('common.cancel')}</button>
               </div>
             </>
           )}
 
           {anchorNeg.status === 'counter_offered' && (
             <div>
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Counter-offer sent — awaiting anchor response</div>
-              {anchorNeg.bank_counter?.date && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>Counter date: {anchorNeg.bank_counter.date}</div>}
-              {anchorNeg.bank_counter?.count != null && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>Counter: {anchorNeg.bank_counter.count} {anchorNeg.bank_counter.structure} installments</div>}
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('txnDetail.counterOfferSentAwaitingAnchor')}</div>
+              {anchorNeg.bank_counter?.date && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>{t('txnDetail.counterDate')}: {anchorNeg.bank_counter.date}</div>}
+              {anchorNeg.bank_counter?.count != null && <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 4 }}>{t('txnDetail.counterCountInstallments', { count: anchorNeg.bank_counter.count, frequency: frequencyLabel(anchorNeg.bank_counter.structure, t) })}</div>}
             </div>
           )}
 
           {anchorNeg.status === 'approved' && (
-            <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Repayment terms agreed ✓</div>
+            <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>{t('txnDetail.repaymentTermsAgreed')} ✓</div>
           )}
 
           {anchorNeg.status === 'rejected' && (
-            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Standard repayment terms apply</div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>{t('txnDetail.standardRepaymentTermsApply')}</div>
           )}
         </div>
       )}
@@ -1399,6 +1425,7 @@ function AnchorActionPanel({
   isPOFinancing?: boolean
   isDynamicDiscounting?: boolean
 }) {
+  const t = useT()
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectReason, setRejectReason]     = useState('')
   const [disputeReason, setDisputeReason]   = useState('')
@@ -1410,44 +1437,44 @@ function AnchorActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-green)', margin: 0 }}>
-            Early payment approved
+            {t('txnDetail.earlyPaymentApproved')}
           </p>
           <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
-            Send payment to the supplier then mark as sent.
+            {t('txnDetail.sendPaymentThenMark')}
           </p>
           {transaction.financing_amount_requested != null && (
             <div className="calc-panel">
               <div className="calc-row">
-                <span>Amount to send</span>
+                <span>{t('txnDetail.amountToSend')}</span>
                 <strong style={{ color: 'var(--blue)' }}>{fmtAmt(transaction.financing_amount_requested)}</strong>
               </div>
               {transaction.invoice_due_date && (
                 <div className="calc-row">
-                  <span>Pay by</span>
+                  <span>{t('txnDetail.payBy')}</span>
                   <span>{fmtDate(transaction.invoice_due_date)}</span>
                 </div>
               )}
             </div>
           )}
           <button className="btn btn-primary btn-full" type="button" disabled={acting}
-            onClick={() => { onAction({ action: 'mark_paid' }); onSuccess('Payment marked as sent') }}>
-            {acting ? 'Processing…' : 'Mark payment as sent'}
+            onClick={() => { onAction({ action: 'mark_paid' }); onSuccess(t('txnDetail.paymentMarkedAsSent')) }}>
+            {acting ? t('txnDetail.processing') : t('txnDetail.markPaymentAsSent')}
           </button>
         </div>
       )
     }
     if (transaction.status === 'completed') {
-      return <div className="action-passive muted">Payment sent — transaction completed.</div>
+      return <div className="action-passive muted">{t('txnDetail.paymentSentTransactionCompleted')}</div>
     }
     if (transaction.status === 'rejected') {
-      return <div className="action-passive" style={{ color: '#DC2626' }}>Request declined.</div>
+      return <div className="action-passive" style={{ color: '#DC2626' }}>{t('txnDetail.requestDeclinedPeriod')}</div>
     }
     // pending_anchor_approval: fall through to approve/reject below
   }
 
   // PO financing: passive until pending_anchor_confirmation
   if (isPOFinancing && transaction.status !== 'pending_anchor_confirmation' && transaction.status !== 'repayment_due' && transaction.status !== 'completed' && transaction.status !== 'rejected' && transaction.status !== 'in_dispute') {
-    return <div className="action-passive muted">Waiting for supplier to fulfill the order</div>
+    return <div className="action-passive muted">{t('txnDetail.waitingForSupplierToFulfill')}</div>
   }
 
   // PO financing: anchor confirms goods receipt
@@ -1455,11 +1482,11 @@ function AnchorActionPanel({
     if (showDisputeForm) {
       return (
         <div className="action-block">
-          <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>Rejection reason</p>
+          <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>{t('txnDetail.rejectionReason')}</p>
           <textarea
             className="form-input"
             rows={4}
-            placeholder="Reason for rejection (optional)…"
+            placeholder={t('txnDetail.reasonForRejectionOptional')}
             value={disputeReason}
             onChange={e => setDisputeReason(e.target.value)}
             style={{ width: '100%', resize: 'vertical' }}
@@ -1470,10 +1497,10 @@ function AnchorActionPanel({
             disabled={acting}
             onClick={() => onAction({ action: 'reject', notes: disputeReason.trim() })}
           >
-            {acting ? 'Processing…' : 'Confirm rejection'}
+            {acting ? t('txnDetail.processing') : t('txnDetail.confirmRejection')}
           </button>
           <button className="btn btn-ghost btn-full" type="button" disabled={acting} onClick={() => { setShowDisputeForm(false); setDisputeReason('') }}>
-            Cancel
+            {t('common.cancel')}
           </button>
         </div>
       )
@@ -1484,30 +1511,30 @@ function AnchorActionPanel({
     return (
       <div className="action-block">
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-          Invoice ready for approval
+          {t('txnDetail.invoiceReadyForApproval')}
         </p>
         <div className="calc-panel">
           {transaction.invoice_number && (
             <div className="calc-row">
-              <span>Invoice #</span>
+              <span>{t('newTransaction.invoiceHash')}</span>
               <span>{transaction.invoice_number}</span>
             </div>
           )}
           {transaction.invoice_amount != null && (
             <div className="calc-row">
-              <span>Amount</span>
+              <span>{t('txnDetail.amount')}</span>
               <span>{fmtAmt(transaction.invoice_amount)}</span>
             </div>
           )}
           {transaction.invoice_date && (
             <div className="calc-row">
-              <span>Date</span>
+              <span>{t('txnDetail.date')}</span>
               <span>{fmtDate(transaction.invoice_date)}</span>
             </div>
           )}
           {transaction.description && (
             <div className="calc-row">
-              <span>Description</span>
+              <span>{t('listingDetail.description')}</span>
               <span>{transaction.description}</span>
             </div>
           )}
@@ -1518,13 +1545,13 @@ function AnchorActionPanel({
           disabled={acting}
           onClick={async () => {
             await onAction({ action: 'approve', transaction_type: 'po_financing' })
-            onSuccess('Invoice approved — transaction moved to repayment')
+            onSuccess(t('txnDetail.invoiceApprovedMovedToRepayment'))
           }}
         >
-          {acting ? 'Processing…' : 'Approve invoice'}
+          {acting ? t('txnDetail.processing') : t('txnDetail.approveInvoice')}
         </button>
         <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowDisputeForm(true)}>
-          Reject
+          {t('txnDetail.reject')}
         </button>
       </div>
     )
@@ -1534,23 +1561,23 @@ function AnchorActionPanel({
   if (isPOFinancing && transaction.status === 'repayment_due') {
     return (
       <div className="action-block">
-        <div className="action-passive muted" style={{ marginBottom: 8 }}>Transaction in repayment</div>
+        <div className="action-passive muted" style={{ marginBottom: 8 }}>{t('txnDetail.transactionInRepayment')}</div>
         {transaction.repayment_due_date ? (
           <div className="calc-panel">
             <div className="calc-row">
-              <span>Repayment due</span>
+              <span>{t('txnDetail.repaymentDue')}</span>
               <span>{fmtDate(transaction.repayment_due_date)}</span>
             </div>
             {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
-                <span>Instructions</span>
+                <span>{t('txnDetail.instructions')}</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{getRepaymentInstructions(transaction.bank_approval_notes)}</span>
               </div>
             )}
           </div>
         ) : (
           <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
-            Awaiting repayment instructions from bank
+            {t('txnDetail.awaitingRepaymentInstructionsFromBank')}
           </p>
         )}
       </div>
@@ -1560,22 +1587,22 @@ function AnchorActionPanel({
   if (transaction.status === 'funded') {
     return (
       <div className="action-block">
-        <div className="action-passive muted">Transaction funded.</div>
+        <div className="action-passive muted">{t('txnDetail.transactionFundedPeriod')}</div>
         {transaction.repayment_due_date ? (
           <div className="calc-panel" style={{ marginTop: 8 }}>
             <div className="calc-row">
-              <span>Repayment due</span>
+              <span>{t('txnDetail.repaymentDue')}</span>
               <span>{fmtDate(transaction.repayment_due_date)}</span>
             </div>
             {transaction.financing_amount_approved != null && (
               <div className="calc-row">
-                <span>Amount</span>
+                <span>{t('txnDetail.amount')}</span>
                 <span>{fmtAmt(transaction.financing_amount_approved)}</span>
               </div>
             )}
             {getRepaymentInstructions(transaction.bank_approval_notes) && (
               <div className="calc-row" style={{ alignItems: 'flex-start' }}>
-                <span>Instructions</span>
+                <span>{t('txnDetail.instructions')}</span>
                 <span style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
                   {getRepaymentInstructions(transaction.bank_approval_notes)}
                 </span>
@@ -1584,7 +1611,7 @@ function AnchorActionPanel({
           </div>
         ) : (
           <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
-            Awaiting repayment instructions from bank
+            {t('txnDetail.awaitingRepaymentInstructionsFromBank')}
           </p>
         )}
       </div>
@@ -1595,16 +1622,16 @@ function AnchorActionPanel({
     return (
       <div className={`action-passive ${transaction.status === 'rejected' ? '' : 'muted'}`}>
         {transaction.status === 'rejected'
-          ? 'This transaction was rejected.'
+          ? t('txnDetail.transactionWasRejectedPeriod')
           : transaction.status === 'pending_bank_review'
             || transaction.status === 'more_info_requested'
             || transaction.status === 'pending_supplier_counter_review'
-          ? 'Invoice is under bank review.'
+          ? t('txnDetail.invoiceUnderBankReview')
           : transaction.status === 'financing_approved'
-          ? 'Financing approved — supplier will receive payment shortly.'
+          ? t('txnDetail.financingApprovedSupplierWillReceive')
           : transaction.status === 'completed'
-          ? 'Transaction completed.'
-          : 'Awaiting next step.'}
+          ? t('txnDetail.transactionCompletedPeriod')
+          : t('txnDetail.awaitingNextStep')}
       </div>
     )
   }
@@ -1622,64 +1649,64 @@ function AnchorActionPanel({
       <div className="action-block">
         {/* Card 1: Invoice approval — read-only */}
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>Your invoice approval</div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Approved — awaiting bank review</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>{t('txnDetail.yourInvoiceApproval')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>{t('txnDetail.approvedAwaitingBankReview')}</div>
         </div>
 
         {/* Card 2: Repayment request (only when anchor requested something) */}
         {anchorNegV?.type && (
           <div style={{ border: '1px solid var(--color-amber)', borderRadius: 8, padding: '12px 14px', background: 'rgba(180,83,9,0.04)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>Your repayment request</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 8 }}>{t('txnDetail.yourRepaymentRequest')}</div>
 
             {anchorNegV.type === 'extension' && anchorNegV.anchor_request?.date && (
               <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
-                Requested date: {anchorNegV.anchor_request.date}
+                {t('txnDetail.requestedDate')}: {anchorNegV.anchor_request.date}
               </div>
             )}
             {anchorNegV.type === 'installment' && anchorNegV.anchor_request && (
               <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
-                Requested: {anchorNegV.anchor_request.count} {anchorNegV.anchor_request.structure} installments
+                {t('txnDetail.requestedCountInstallments', { count: anchorNegV.anchor_request.count ?? 0, frequency: frequencyLabel(anchorNegV.anchor_request.structure, t) })}
               </div>
             )}
             {anchorNegV.anchor_request?.notes && (
               <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>
-                Notes: {anchorNegV.anchor_request.notes}
+                {t('txnDetail.notesLabel')}: {anchorNegV.anchor_request.notes}
               </div>
             )}
 
             {anchorNegV.status === 'pending' && (
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Awaiting bank decision</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('txnDetail.awaitingBankDecision')}</div>
             )}
 
             {anchorNegV.status === 'counter_offered' && (
               <>
-                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>Bank counter-proposal:</div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>{t('txnDetail.bankCounterProposal')}:</div>
                 {anchorNegV.bank_counter?.date && (
-                  <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>Counter date: {anchorNegV.bank_counter.date}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>{t('txnDetail.counterDate')}: {anchorNegV.bank_counter.date}</div>
                 )}
                 {anchorNegV.bank_counter?.count != null && (
                   <div style={{ fontSize: 12.5, color: 'var(--ink)', marginBottom: 4 }}>
-                    Counter: {anchorNegV.bank_counter.count} {anchorNegV.bank_counter.structure} installments
+                    {t('txnDetail.counterCountInstallments', { count: anchorNegV.bank_counter.count, frequency: frequencyLabel(anchorNegV.bank_counter.structure, t) })}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                   <button className="btn btn-primary btn-sm" type="button" disabled={acting}
                     onClick={() => onAction({ action: 'accept_anchor_counter' })}>
-                    {acting ? 'Processing…' : 'Accept'}
+                    {acting ? t('txnDetail.processing') : t('listingDetail.accept')}
                   </button>
                   <button className="btn btn-ghost btn-sm" type="button" disabled={acting}
                     onClick={() => onAction({ action: 'reject_anchor_counter' })}>
-                    Decline
+                    {t('txnDetail.decline')}
                   </button>
                 </div>
               </>
             )}
 
             {anchorNegV.status === 'approved' && (
-              <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>Your repayment request was approved</div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-green)' }}>{t('txnDetail.repaymentRequestApproved')}</div>
             )}
             {anchorNegV.status === 'rejected' && (
-              <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>Bank declined — standard terms apply</div>
+              <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>{t('txnDetail.bankDeclinedStandardTerms')}</div>
             )}
           </div>
         )}
@@ -1691,14 +1718,14 @@ function AnchorActionPanel({
     return (
       <div className={`action-passive ${transaction.status === 'rejected' ? '' : 'muted'}`}>
         {transaction.status === 'rejected'
-          ? 'This transaction was rejected.'
+          ? t('txnDetail.transactionWasRejectedPeriod')
           : transaction.status === 'pending_supplier_counter_review'
-          ? 'Invoice approved — awaiting bank review.'
+          ? t('txnDetail.invoiceApprovedAwaitingBank')
           : transaction.status === 'financing_approved'
-          ? 'Financing approved — supplier will receive payment shortly.'
+          ? t('txnDetail.financingApprovedSupplierWillReceive')
           : transaction.status === 'completed'
-          ? 'Transaction completed.'
-          : 'Awaiting next step.'}
+          ? t('txnDetail.transactionCompletedPeriod')
+          : t('txnDetail.awaitingNextStep')}
       </div>
     )
   }
@@ -1706,11 +1733,11 @@ function AnchorActionPanel({
   if (showRejectForm) {
     return (
       <div className="action-block">
-        <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>Rejection reason</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>{t('txnDetail.rejectionReason')}</p>
         <textarea
           className="form-input"
           rows={4}
-          placeholder="Reason for rejection (optional)…"
+          placeholder={t('txnDetail.reasonForRejectionOptional')}
           value={rejectReason}
           onChange={e => setRejectReason(e.target.value)}
           style={{ width: '100%', resize: 'vertical' }}
@@ -1721,7 +1748,7 @@ function AnchorActionPanel({
           disabled={acting}
           onClick={() => onAction({ action: 'reject', notes: rejectReason.trim() })}
         >
-          {acting ? 'Processing…' : 'Confirm rejection'}
+          {acting ? t('txnDetail.processing') : t('txnDetail.confirmRejection')}
         </button>
         <button
           className="btn btn-ghost btn-full"
@@ -1729,7 +1756,7 @@ function AnchorActionPanel({
           disabled={acting}
           onClick={() => { setShowRejectForm(false); setRejectReason('') }}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     )
@@ -1739,11 +1766,11 @@ function AnchorActionPanel({
     <div className="action-block">
       <p style={{ fontSize: 12.5, color: 'var(--ink)', margin: 0 }}>
         {isDynamicDiscounting
-          ? 'Review this early payment request. Approving commits you to funding from your own cash.'
-          : 'Review and confirm this invoice before it is sent to the bank for financing.'}
+          ? t('txnDetail.reviewEarlyPaymentRequestHint')
+          : t('txnDetail.reviewConfirmInvoiceHint')}
       </p>
       <AIInsight
-        title="Invoice Assessment"
+        title={t('txnDetail.invoiceAssessment')}
         prompt="Assess this invoice submission. Is the requested advance rate reasonable? What should the anchor consider before approving or rejecting?"
         context={{
           invoice_number: transaction.invoice_number,
@@ -1760,13 +1787,13 @@ function AnchorActionPanel({
         disabled={acting}
         onClick={async () => {
           await onAction({ action: 'approve' })
-          onSuccess(isDynamicDiscounting ? 'Early payment approved' : 'Invoice approved — sent to bank for review')
+          onSuccess(isDynamicDiscounting ? t('txnDetail.earlyPaymentApproved') : t('txnDetail.invoiceApprovedSentToBank'))
         }}
       >
-        {acting ? 'Processing…' : isDynamicDiscounting ? 'Approve early payment' : 'Approve'}
+        {acting ? t('txnDetail.processing') : isDynamicDiscounting ? t('txnDetail.approveEarlyPayment') : t('listingDetail.accept')}
       </button>
       <button className="btn btn-danger btn-full" type="button" disabled={acting} onClick={() => setShowRejectForm(true)}>
-        Reject
+        {t('txnDetail.reject')}
       </button>
     </div>
   )
@@ -1793,6 +1820,7 @@ function SupplierActionPanel({
   txnId: string
   onRefresh: () => void
 }) {
+  const t = useT()
   const [counterMode, setCounterMode] = useState(false)
   const [counterRate, setCounterRate] = useState('')
   const [counterNotes, setCounterNotes] = useState('')
@@ -1809,10 +1837,10 @@ function SupplierActionPanel({
 
   switch (transaction.status) {
     case 'pending_anchor_approval':
-      return <div className="action-passive muted">Waiting for anchor to review</div>
+      return <div className="action-passive muted">{t('txnDetail.waitingForAnchorToReview')}</div>
 
     case 'pending_bank_review':
-      return <div className="action-passive muted">{isPOFinancing ? 'Your PO is under bank review' : isInvoiceFactoring ? 'Your invoice is under bank review' : 'Anchor approved — awaiting bank review'}</div>
+      return <div className="action-passive muted">{isPOFinancing ? t('txnDetail.poUnderBankReview') : isInvoiceFactoring ? t('txnDetail.invoiceUnderBankReviewYours') : t('txnDetail.anchorApprovedAwaitingBank')}</div>
 
     case 'pending_supplier_counter_review': {
       const rate = transaction.apr ?? transaction.financing_rate_apr
@@ -1822,10 +1850,10 @@ function SupplierActionPanel({
         return (
           <div className="action-block">
             <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-              Your counter-offer
+              {t('txnDetail.yourCounterOffer')}
             </p>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Your advance rate (%)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.yourAdvanceRate')}</div>
               <div style={{ position: 'relative' }}>
                 <input
                   className="form-input mono"
@@ -1844,19 +1872,19 @@ function SupplierActionPanel({
             </div>
             {counterRateNum > 0 && (
               <div className="calc-row">
-                <span>Amount you&apos;d receive</span>
+                <span>{t('txnDetail.amountYouReceive')}</span>
                 <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(parseFloat(counterAmt.toFixed(2)))}</strong>
               </div>
             )}
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Notes (optional)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.notesOptional')}</div>
               <textarea
                 className="form-input"
                 rows={2}
                 value={counterNotes}
                 onChange={e => setCounterNotes(e.target.value)}
                 style={{ width: '100%', resize: 'vertical' }}
-                placeholder="Reason for counter-offer…"
+                placeholder={t('txnDetail.reasonForCounterOffer')}
               />
             </div>
             {counterError && <div style={{ fontSize: 12, color: '#DC2626' }}>{counterError}</div>}
@@ -1866,7 +1894,7 @@ function SupplierActionPanel({
               disabled={acting || !counterRateNum}
               onClick={() => {
                 if (counterRateNum > 100 || counterRateNum <= 0) {
-                  setCounterError('Advance rate must be between 0.01% and 100%')
+                  setCounterError(t('txnDetail.advanceRateRangeError'))
                   return
                 }
                 setCounterError(null)
@@ -1877,10 +1905,10 @@ function SupplierActionPanel({
                 })
               }}
             >
-              {acting ? 'Sending…' : 'Send counter-offer to bank'}
+              {acting ? t('txnDetail.sending') : t('txnDetail.sendCounterOfferToBank')}
             </button>
             <button className="btn btn-ghost btn-full" type="button" onClick={() => { setCounterMode(false); setCounterError(null) }}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         )
@@ -1889,30 +1917,30 @@ function SupplierActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-            Bank has made a counter-offer
+            {t('txnDetail.bankHasMadeCounterOffer')}
           </p>
           <div className="calc-panel">
             {rate != null && (
               <div className="calc-row">
-                <span>Advance rate</span>
+                <span>{t('newTransaction.advanceRate')}</span>
                 <span>{rate}%</span>
               </div>
             )}
             {transaction.financing_amount_approved != null && (
               <div className="calc-row">
-                <span>Amount you&apos;ll receive</span>
+                <span>{t('txnDetail.amountYoullReceive')}</span>
                 <strong style={{ color: 'var(--color-green)' }}>{fmtAmt(transaction.financing_amount_approved)}</strong>
               </div>
             )}
             {transaction.fee_amount != null && (
               <div className="calc-row">
-                <span>Discount fee</span>
+                <span>{t('txnDetail.discountFee')}</span>
                 <span>{fmtAmt(transaction.fee_amount)}</span>
               </div>
             )}
           </div>
           <AIInsight
-            title="Offer Analysis"
+            title={t('txnDetail.offerAnalysis')}
             prompt="The bank has made a counter-offer. Analyze whether the supplier should accept this offer or negotiate further. Consider the advance rate, fees, and market context."
             context={{
               original_rate: transaction.financing_rate_apr,
@@ -1928,7 +1956,7 @@ function SupplierActionPanel({
             disabled={acting}
             onClick={() => onAction({ action: 'accept_counter' })}
           >
-            {acting ? 'Processing…' : 'Accept offer'}
+            {acting ? t('txnDetail.processing') : t('txnDetail.acceptOffer')}
           </button>
           <button
             className="btn btn-ghost btn-full"
@@ -1936,7 +1964,7 @@ function SupplierActionPanel({
             disabled={acting}
             onClick={() => setCounterMode(true)}
           >
-            Make counter-offer
+            {t('txnDetail.makeCounterOffer')}
           </button>
           <button
             className="btn btn-danger btn-full"
@@ -1944,7 +1972,7 @@ function SupplierActionPanel({
             disabled={acting}
             onClick={() => onAction({ action: 'reject_counter' })}
           >
-            Decline offer
+            {t('txnDetail.declineOffer')}
           </button>
         </div>
       )
@@ -1956,20 +1984,20 @@ function SupplierActionPanel({
       return (
         <div className="action-block">
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-green)', margin: 0 }}>
-            Financing approved
+            {t('txnDetail.financingApproved')}
           </p>
           {hasWire ? (
             <>
               <p style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-                Wire transfer details
+                {t('txnDetail.wireTransferDetails')}
               </p>
               <div className="calc-panel">
-                {wireInfo!.reference && <div className="calc-row"><span>Reference</span><span className="mono">{wireInfo!.reference}</span></div>}
+                {wireInfo!.reference && <div className="calc-row"><span>{t('txnDetail.reference')}</span><span className="mono">{wireInfo!.reference}</span></div>}
               </div>
             </>
           ) : (
             <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
-              Wire transfer details will be sent shortly
+              {t('txnDetail.wireDetailsSentShortly')}
             </p>
           )}
         </div>
@@ -1982,15 +2010,15 @@ function SupplierActionPanel({
           <div className="action-block">
             <div className="action-passive green" style={{ marginBottom: 8 }}>
               <Icon name="check" size={14} />
-              Early payment approved
+              {t('txnDetail.earlyPaymentApproved')}
             </div>
             <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
-              Your anchor is processing the payment to your account.
+              {t('txnDetail.anchorProcessingPayment')}
             </p>
             {transaction.financing_amount_requested != null && (
               <div className="calc-panel" style={{ marginTop: 8 }}>
                 <div className="calc-row">
-                  <span>You will receive</span>
+                  <span>{t('txnDetail.youWillReceive')}</span>
                   <strong style={{ color: 'var(--blue)' }}>{fmtAmt(transaction.financing_amount_requested)}</strong>
                 </div>
               </div>
@@ -2001,7 +2029,7 @@ function SupplierActionPanel({
       if (isPOFinancing) {
         const handleSubmitInvoice = async () => {
           if (!invoiceNum.trim() || !invoiceAmt2 || !invoiceDateVal) {
-            setInvError('All invoice fields are required')
+            setInvError(t('txnDetail.allInvoiceFieldsRequired'))
             return
           }
           setInvError(null)
@@ -2023,25 +2051,25 @@ function SupplierActionPanel({
         return (
           <div className="action-block">
             <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-              Goods delivered? Submit your invoice
+              {t('txnDetail.goodsDeliveredSubmitInvoice')}
             </p>
             <p style={{ fontSize: 12, color: 'var(--gray)', margin: 0 }}>
-              Once the anchor has received the goods, submit the invoice to proceed.
+              {t('txnDetail.onceAnchorReceivedGoods')}
             </p>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice number</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('newTransaction.invoiceNumber')}</div>
               <input className="form-input" style={{ width: '100%' }} value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} placeholder="INV-001" />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice amount ($)</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('newTransaction.invoiceAmountLabel')}</div>
               <input className="form-input mono" style={{ width: '100%' }} value={invoiceAmt2} onChange={e => setInvoiceAmt2(e.target.value)} placeholder="0.00" />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Invoice date</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('newTransaction.invoiceDate')}</div>
               <input type="date" className="form-input" style={{ width: '100%' }} value={invoiceDateVal} onChange={e => setInvoiceDateVal(e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Upload invoice document</div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.uploadInvoiceDocument')}</div>
               <input
                 type="file"
                 accept=".pdf,image/*"
@@ -2054,12 +2082,12 @@ function SupplierActionPanel({
                 className="btn btn-ghost btn-sm"
                 style={{ cursor: 'pointer', display: 'inline-block' }}
               >
-                {invoiceFile ? invoiceFile.name : 'Choose file'}
+                {invoiceFile ? invoiceFile.name : t('txnDetail.chooseFile')}
               </label>
             </div>
             {invError && <div style={{ fontSize: 12, color: '#DC2626' }}>{invError}</div>}
             <button className="btn btn-primary btn-full" type="button" disabled={acting} onClick={handleSubmitInvoice}>
-              {acting ? 'Submitting…' : 'Submit Invoice'}
+              {acting ? t('txnDetail.submitting') : t('txnDetail.submitInvoice')}
             </button>
           </div>
         )
@@ -2069,12 +2097,12 @@ function SupplierActionPanel({
         <div className="action-block">
           <div className="action-passive green" style={{ marginBottom: 8 }}>
             <Icon name="check" size={14} />
-            Payment disbursed
+            {t('txnDetail.paymentDisbursed')}
           </div>
           {transaction.disbursed_at && (
             <div className="calc-panel">
               <div className="calc-row">
-                <span>Disbursed on</span>
+                <span>{t('txnDetail.disbursedOn')}</span>
                 <span>{fmtDate(transaction.disbursed_at)}</span>
               </div>
             </div>
@@ -2083,29 +2111,29 @@ function SupplierActionPanel({
       )
 
     case 'pending_anchor_confirmation':
-      return <div className="action-passive muted">Invoice submitted — awaiting anchor confirmation</div>
+      return <div className="action-passive muted">{t('txnDetail.invoiceSubmittedAwaitingAnchor')}</div>
 
     case 'repayment_due':
-      return <div className="action-passive muted">Repayment due — transaction completing</div>
+      return <div className="action-passive muted">{t('txnDetail.repaymentDueTransactionCompleting')}</div>
 
     case 'in_dispute':
-      return <div className="action-passive" style={{ color: '#DC2626' }}>Invoice in dispute.</div>
+      return <div className="action-passive" style={{ color: '#DC2626' }}>{t('txnDetail.invoiceInDispute')}</div>
 
     case 'completed':
       return (
         <div className="action-block">
           <div className="action-passive muted">
             <Icon name="check" size={14} />
-            Transaction completed
+            {t('txnDetail.transactionCompleted')}
           </div>
         </div>
       )
 
     case 'rejected':
-      return <div className="action-passive" style={{ color: '#DC2626' }}>Transaction rejected.</div>
+      return <div className="action-passive" style={{ color: '#DC2626' }}>{t('txnDetail.transactionRejectedPeriod')}</div>
 
     default:
-      return <div className="action-passive muted">Awaiting update</div>
+      return <div className="action-passive muted">{t('txnDetail.awaitingUpdate')}</div>
   }
 }
 
@@ -2120,6 +2148,7 @@ function SupplierCollateralSubmitForm({
   txnId: string
   onDone: () => void
 }) {
+  const t = useT()
   const [notes, setNotes]         = useState('')
   const [file, setFile]           = useState<File | null>(null)
   const [saving, setSaving]       = useState(false)
@@ -2137,10 +2166,10 @@ function SupplierCollateralSubmitForm({
 
       const res = await fetch(`/api/collateral/${item.id}`, { method: 'PATCH', body: form })
       const data = await res.json()
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Submit failed')
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? t('txnDetail.submitFailed'))
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit')
+      setError(err instanceof Error ? err.message : t('txnDetail.failedToSubmitGeneric'))
     } finally {
       setSaving(false)
     }
@@ -2149,18 +2178,18 @@ function SupplierCollateralSubmitForm({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0' }}>
       <div>
-        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Details / notes</div>
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.detailsNotes')}</div>
         <textarea
           className="input"
           rows={3}
           value={notes}
           onChange={e => setNotes(e.target.value)}
-          placeholder="Describe what you are submitting…"
+          placeholder={t('txnDetail.describeWhatSubmitting')}
           style={{ width: '100%', resize: 'none' }}
         />
       </div>
       <div>
-        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Supporting document (optional)</div>
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.supportingDocumentOptional')}</div>
         <input
           ref={fileRef}
           type="file"
@@ -2175,17 +2204,17 @@ function SupplierCollateralSubmitForm({
           </div>
         ) : (
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => fileRef.current?.click()}>
-            Attach file
+            {t('txnDetail.attachFile')}
           </button>
         )}
       </div>
       {error && <div style={{ fontSize: 12, color: '#DC2626' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-primary btn-sm" type="button" disabled={saving} onClick={handleSubmit}>
-          {saving ? 'Submitting…' : 'Submit collateral'}
+          {saving ? t('txnDetail.submitting') : t('txnDetail.submitCollateral')}
         </button>
         <button className="btn btn-ghost btn-sm" type="button" onClick={onDone}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -2199,6 +2228,7 @@ export default function TransactionDetailPage() {
   const router = useRouter()
   const params = useParams()
   const id = params.id as string
+  const t = useT()
 
   const [transaction, setTransaction]       = useState<Transaction | null>(null)
   const [events, setEvents]                 = useState<TransactionEvent[]>([])
@@ -2259,10 +2289,10 @@ export default function TransactionDetailPage() {
         setLoading(false)
       })
       .catch(err => {
-        setError(err instanceof Error ? err.message : 'Failed to load')
+        setError(err instanceof Error ? err.message : t('txnDetail.failedToLoadGeneric'))
         setLoading(false)
       })
-  }, [id])
+  }, [id, t])
 
   useEffect(() => { load() }, [load])
 
@@ -2281,15 +2311,15 @@ export default function TransactionDetailPage() {
       if (updatedTxn) {
         setTransaction(prev => prev ? { ...prev, ...updatedTxn } : prev)
       }
-      setActionSuccess('Done')
+      setActionSuccess(t('txnDetail.done'))
       setTimeout(() => setActionSuccess(null), 2000)
       load()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Action failed')
+      setActionError(err instanceof Error ? err.message : t('txnDetail.actionFailed'))
     } finally {
       setActing(false)
     }
-  }, [id, load])
+  }, [id, load, t])
 
   function handleSuccess(msg: string) {
     setActionSuccess(msg)
@@ -2343,11 +2373,11 @@ export default function TransactionDetailPage() {
       setTimeout(() => { setAddCollSuccess(false); setShowAddCollateral(false) }, 1500)
       refreshCollateral()
     } catch (err) {
-      setAddCollError(err instanceof Error ? err.message : 'Failed to add requirement')
+      setAddCollError(err instanceof Error ? err.message : t('txnDetail.failedToAddRequirement'))
     } finally {
       setAddCollSaving(false)
     }
-  }, [id, addCollForm, refreshCollateral])
+  }, [id, addCollForm, refreshCollateral, t])
 
   const txn = transaction
 
@@ -2408,8 +2438,8 @@ export default function TransactionDetailPage() {
           router.push(backPath)
         }}
         crumbs={[
-          { label: 'Transactions', onClick: () => router.push('/transactions') },
-          { label: loading ? '…' : (txn?.id ?? 'Transaction') },
+          { label: t('transactionsPage.title'), onClick: () => router.push('/transactions') },
+          { label: loading ? '…' : (txn?.id ?? t('txnDetail.transaction')) },
         ]}
       />
 
@@ -2422,14 +2452,14 @@ export default function TransactionDetailPage() {
         ) : error ? (
           <div className="alert alert-error" style={{ marginBottom: 24 }}>
             <Icon name="error" size={16} className="alert-icon" />
-            <div className="alert-body">Failed to load transaction: {error}</div>
+            <div className="alert-body">{t('txnDetail.failedToLoad', { error })}</div>
           </div>
         ) : txn ? (
           <>
             <div className="page-header">
               <h1 className="page-id-title">
                 <span className="id-text">{txn.invoice_number}</span>
-                <span className={`badge ${statusBadge(txn.status)}`}>{statusLabel(txn.status)}</span>
+                <span className={`badge ${statusBadge(txn.status)}`}>{statusLabel(txn.status, t)}</span>
                 {(txn.type ?? txn.financing_type) && (
                   <span className="badge badge-active">{typeLabel}</span>
                 )}
@@ -2446,36 +2476,36 @@ export default function TransactionDetailPage() {
                 {/* Financial summary */}
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Financial summary</h3>
+                    <h3 className="t-card-head">{t('txnDetail.financialSummary')}</h3>
                   </div>
                   {isDynamicDiscounting ? (
                     <div className="fs-grid">
                       <div className="fs-cell">
-                        <span className="fs-label">Invoice amount</span>
+                        <span className="fs-label">{t('newTransaction.invoiceAmount')}</span>
                         <span className="fs-value">{fmtAmt(txn.invoice_amount)}</span>
                       </div>
                       <div className="fs-cell">
-                        <span className="fs-label">Discount rate</span>
+                        <span className="fs-label">{t('newTransaction.discountRate')}</span>
                         <span className="fs-value">{txn.discount_rate != null ? `${txn.discount_rate}%` : '—'}</span>
                       </div>
                       <div className="fs-cell">
-                        <span className="fs-label">You receive</span>
+                        <span className="fs-label">{t('txnDetail.youReceive')}</span>
                         <span className="fs-value blue">
                           {txn.financing_amount_requested != null ? fmtAmt(txn.financing_amount_requested) : '—'}
                         </span>
                       </div>
                       <div className="fs-cell">
-                        <span className="fs-label">Discount amount</span>
+                        <span className="fs-label">{t('newTransaction.discountAmount')}</span>
                         <span className="fs-value">{txn.discount_amount != null ? fmtAmt(txn.discount_amount) : '—'}</span>
                       </div>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: 'var(--border)', border: '1px solid var(--border)' }}>
                       {([
-                        ['Invoice Amount', fmtAmt(txn.invoice_amount)],
-                        ['Advance Rate', showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'],
-                        ['Amount Disbursed', showApprovedFinancials ? fmtAmt(txn.financing_amount_approved) : '—'],
-                        ['Discount Fee', showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'],
+                        [t('newTransaction.invoiceAmount'), fmtAmt(txn.invoice_amount)],
+                        [t('newTransaction.advanceRate'), showApprovedFinancials && displayAdvanceRate != null ? `${displayAdvanceRate}%` : '—'],
+                        [t('txnDetail.amountDisbursed'), showApprovedFinancials ? fmtAmt(txn.financing_amount_approved) : '—'],
+                        [t('txnDetail.discountFee'), showApprovedFinancials ? fmtAmt(txn.fee_amount) : '—'],
                       ] as [string, string][]).map(([label, value]) => (
                         <div key={label} style={{ background: 'var(--white)', padding: '16px 20px' }}>
                           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 6 }}>{label}</div>
@@ -2489,75 +2519,75 @@ export default function TransactionDetailPage() {
                 {/* Invoice details */}
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Invoice details</h3>
+                    <h3 className="t-card-head">{t('txnDetail.invoiceDetails')}</h3>
                   </div>
                   <div className="kv-rows">
                     {txn.invoice_number && (
                       <div className="kv-row">
-                        <span className="k">Invoice number</span>
+                        <span className="k">{t('txnDetail.invoiceNumberLower')}</span>
                         <span className="v">{txn.invoice_number}</span>
                       </div>
                     )}
                     <div className="kv-row">
-                      <span className="k">Invoice date</span>
+                      <span className="k">{t('txnDetail.invoiceDateLower')}</span>
                       <span className="v plain">{fmtDate(txn.invoice_date)}</span>
                     </div>
                     {/* Wire info in summary — only for supplier and bank */}
                   {(portal === 'supplier' || portal === 'bank') && wireInfoForSummary?.reference && (
                     <div className="kv-row">
-                      <span className="k">Wire reference</span>
+                      <span className="k">{t('txnDetail.wireReference')}</span>
                       <span className="v plain">{wireInfoForSummary.reference}</span>
                     </div>
                   )}
                     <div className="kv-row">
-                      <span className="k">Invoice due date</span>
+                      <span className="k">{t('txnDetail.invoiceDueDateLower')}</span>
                       <span className="v plain">{fmtDate(txn.invoice_due_date)}</span>
                     </div>
                     {txn.description && (
                       <div className="kv-row" style={{ alignItems: 'flex-start' }}>
-                        <span className="k" style={{ paddingTop: 2 }}>Description</span>
+                        <span className="k" style={{ paddingTop: 2 }}>{t('listingDetail.description')}</span>
                         <span className="v plain" style={{ maxWidth: '60%', textAlign: 'right' }}>
                           {txn.description}
                         </span>
                       </div>
                     )}
                     <div className="kv-row">
-                      <span className="k">Program</span>
+                      <span className="k">{t('newTransaction.program')}</span>
                       <span className="v plain">{txn.program_name ?? '—'}</span>
                     </div>
                     <div className="kv-row">
-                      <span className="k">Supplier</span>
+                      <span className="k">{t('transactionsPage.supplier')}</span>
                       <span className="v plain">{txn.supplier_name ?? '—'}</span>
                     </div>
                     <div className="kv-row">
-                      <span className="k">Anchor</span>
+                      <span className="k">{t('transactionsPage.anchor')}</span>
                       <span className="v plain">{txn.anchor_name ?? '—'}</span>
                     </div>
                     {txn.bank_name && (
                       <div className="kv-row">
-                        <span className="k">Bank</span>
+                        <span className="k">{t('newTransaction.bank')}</span>
                         <span className="v plain">{txn.bank_name}</span>
                       </div>
                     )}
                     <div className="kv-row">
-                      <span className="k">Submitted</span>
+                      <span className="k">{t('txnDetail.submitted')}</span>
                       <span className="v plain">{fmtDate(txn.created_at)}</span>
                     </div>
                     {txn.disbursed_at && (
                       <div className="kv-row">
-                        <span className="k">Disbursed</span>
+                        <span className="k">{t('txnDetail.disbursed')}</span>
                         <span className="v plain">{fmtDate(txn.disbursed_at)}</span>
                       </div>
                     )}
                     {txn.repaid_at && (
                       <div className="kv-row">
-                        <span className="k">Repaid</span>
+                        <span className="k">{t('txnDetail.repaid')}</span>
                         <span className="v plain">{fmtDate(txn.repaid_at)}</span>
                       </div>
                     )}
                     {repaymentInstructionsText && (portal === 'bank' || portal === 'anchor') && (
                       <div className="kv-row">
-                        <span className="k">Repayment instructions</span>
+                        <span className="k">{t('txnDetail.repaymentInstructions')}</span>
                         <span className="v plain" style={{ fontSize: 12, lineHeight: 1.5 }}>
                           {repaymentInstructionsText}
                         </span>
@@ -2565,23 +2595,23 @@ export default function TransactionDetailPage() {
                     )}
                     {txn.repayment_due_date && (portal === 'bank' || portal === 'anchor') && (
                       <div className="kv-row">
-                        <span className="k">Repayment due</span>
+                        <span className="k">{t('txnDetail.repaymentDue')}</span>
                         <span className="v plain">{fmtDate(txn.repayment_due_date)}</span>
                       </div>
                     )}
                     {repaymentRequest?.status === 'approved' && (portal === 'bank' || portal === 'anchor') && (
                       <>
                         <div className="kv-row">
-                          <span className="k">Repayment arrangement</span>
+                          <span className="k">{t('txnDetail.repaymentArrangement')}</span>
                           <span className="v plain">
                             {repaymentRequest.type === 'extension'
-                              ? 'Extended payment date'
-                              : `${repaymentRequest.agreed_count ?? repaymentRequest.count} ${repaymentRequest.agreed_structure ?? repaymentRequest.structure} installments`}
+                              ? t('txnDetail.extendedPaymentDate')
+                              : t('txnDetail.countInstallments', { count: repaymentRequest.agreed_count ?? repaymentRequest.count ?? 0, frequency: frequencyLabel(repaymentRequest.agreed_structure ?? repaymentRequest.structure, t) })}
                           </span>
                         </div>
                         {repaymentRequest.type === 'extension' && (
                           <div className="kv-row">
-                            <span className="k">New payment date</span>
+                            <span className="k">{t('txnDetail.newPaymentDate')}</span>
                             <span className="v plain">
                               {repaymentRequest.agreed_date ?? repaymentRequest.requested_date}
                             </span>
@@ -2596,14 +2626,14 @@ export default function TransactionDetailPage() {
                 {(collateral.length > 0 || portal === 'bank') && (
                   <div className="card">
                     <div className="card-head">
-                      <span>Collateral</span>
+                      <span>{t('txnDetail.collateral')}</span>
                       {portal === 'bank' && (
                         <button
                           className="btn btn-ghost btn-sm"
                           type="button"
                           onClick={() => setShowAddCollateral(s => !s)}
                         >
-                          {showAddCollateral ? 'Cancel' : 'Add'}
+                          {showAddCollateral ? t('common.cancel') : t('txnDetail.add')}
                         </button>
                       )}
                     </div>
@@ -2612,7 +2642,7 @@ export default function TransactionDetailPage() {
                       ? portal === 'bank' && (
                           <div className="card-body">
                             <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0 }}>
-                              No collateral requirements
+                              {t('txnDetail.noCollateralRequirements')}
                             </p>
                           </div>
                         )
@@ -2630,14 +2660,14 @@ export default function TransactionDetailPage() {
                               }} />
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 13, fontWeight: 500 }}>
-                                  {formatCollateralType(item.collateral_type)}
+                                  {formatCollateralType(item.collateral_type, t)}
                                 </div>
                                 <div style={{ fontSize: 12, color: 'var(--gray)' }}>
                                   {item.description}
                                 </div>
                               </div>
                               <span className={`badge ${collateralStatusBadge(item.status)}`}>
-                                {item.status}
+                                {t(`collateral.status.${item.status}`)}
                               </span>
                               {portal === 'supplier' && item.status === 'pending' && (
                                 submittingCollateral?.id === item.id ? null : (
@@ -2646,7 +2676,7 @@ export default function TransactionDetailPage() {
                                     type="button"
                                     onClick={() => setSubmittingCollateral(item)}
                                   >
-                                    Submit
+                                    {t('txnDetail.submit')}
                                   </button>
                                 )
                               )}
@@ -2656,7 +2686,7 @@ export default function TransactionDetailPage() {
                                   type="button"
                                   onClick={() => setReviewingCollateral(item)}
                                 >
-                                  Review
+                                  {t('txnDetail.review')}
                                 </button>
                               )}
                               {portal === 'bank' && item.status === 'accepted' && (
@@ -2665,7 +2695,7 @@ export default function TransactionDetailPage() {
                                   type="button"
                                   onClick={() => handleCollateralAction(item.id, { action: 'release' })}
                                 >
-                                  Release
+                                  {t('txnDetail.release')}
                                 </button>
                               )}
                             </div>
@@ -2690,7 +2720,7 @@ export default function TransactionDetailPage() {
                     {reviewingCollateral && (
                       <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>
-                          Review: {formatCollateralType(reviewingCollateral.collateral_type)}
+                          {t('txnDetail.review')}: {formatCollateralType(reviewingCollateral.collateral_type, t)}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <button
@@ -2698,11 +2728,11 @@ export default function TransactionDetailPage() {
                             type="button"
                             onClick={() => handleCollateralAction(reviewingCollateral.id, { action: 'accept' })}
                           >
-                            Accept
+                            {t('listingDetail.accept')}
                           </button>
                           <textarea
                             className="input"
-                            placeholder="Waiver note (required to waive)"
+                            placeholder={t('txnDetail.waiverNotePlaceholder')}
                             value={waiverNote}
                             onChange={e => setWaiverNote(e.target.value)}
                             style={{ height: 60, resize: 'none', width: '100%' }}
@@ -2712,11 +2742,11 @@ export default function TransactionDetailPage() {
                             type="button"
                             onClick={() => handleCollateralAction(reviewingCollateral.id, { action: 'waive', waiver_note: waiverNote })}
                           >
-                            Waive
+                            {t('txnDetail.waive')}
                           </button>
                           <textarea
                             className="input"
-                            placeholder="Rejection reason (required)"
+                            placeholder={t('txnDetail.rejectionReasonRequiredPlaceholder')}
                             value={rejectionReason}
                             onChange={e => setRejectionReason(e.target.value)}
                             style={{ height: 60, resize: 'none', width: '100%' }}
@@ -2727,14 +2757,14 @@ export default function TransactionDetailPage() {
                             disabled={!rejectionReason.trim()}
                             onClick={() => handleCollateralAction(reviewingCollateral.id, { action: 'reject', rejection_reason: rejectionReason })}
                           >
-                            Reject
+                            {t('txnDetail.reject')}
                           </button>
                           <button
                             className="btn btn-ghost btn-sm"
                             type="button"
                             onClick={() => setReviewingCollateral(null)}
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         </div>
                       </div>
@@ -2744,33 +2774,33 @@ export default function TransactionDetailPage() {
                       <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Type</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('newTransaction.type')}</div>
                             <select
                               className="input"
                               value={addCollForm.collateral_type}
                               onChange={e => setAddCollForm(f => ({ ...f, collateral_type: e.target.value }))}
                               style={{ width: '100%' }}
                             >
-                              <option value="post_dated_cheque">Post-dated Cheque</option>
-                              <option value="personal_guarantee">Personal Guarantee</option>
-                              <option value="assignment_of_receivables">Assignment of Receivables</option>
-                              <option value="cash_collateral">Cash Collateral</option>
-                              <option value="asset_pledge">Asset Pledge</option>
-                              <option value="other">Other</option>
+                              <option value="post_dated_cheque">{t('txnDetail.collateral.postDatedCheque')}</option>
+                              <option value="personal_guarantee">{t('txnDetail.collateral.personalGuarantee')}</option>
+                              <option value="assignment_of_receivables">{t('txnDetail.collateral.assignmentOfReceivables')}</option>
+                              <option value="cash_collateral">{t('txnDetail.collateral.cashCollateral')}</option>
+                              <option value="asset_pledge">{t('txnDetail.collateral.assetPledge')}</option>
+                              <option value="other">{t('txnDetail.collateral.other')}</option>
                             </select>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Description *</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.descriptionRequired')}</div>
                             <textarea
                               className="input"
                               value={addCollForm.description}
                               onChange={e => setAddCollForm(f => ({ ...f, description: e.target.value }))}
-                              placeholder="Describe the collateral requirement…"
+                              placeholder={t('txnDetail.describeCollateralRequirement')}
                               style={{ width: '100%', height: 72, resize: 'none' }}
                             />
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Required value (optional)</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.requiredValueOptional')}</div>
                             <input
                               className="input mono"
                               value={addCollForm.required_value}
@@ -2780,7 +2810,7 @@ export default function TransactionDetailPage() {
                             />
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>Deadline *</div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{t('txnDetail.deadlineRequired')}</div>
                             <input
                               type="date"
                               className="input"
@@ -2793,7 +2823,7 @@ export default function TransactionDetailPage() {
                             <div style={{ fontSize: 12, color: '#DC2626' }}>{addCollError}</div>
                           )}
                           {addCollSuccess && (
-                            <div style={{ fontSize: 12, color: 'var(--color-green)' }}>Requirement added</div>
+                            <div style={{ fontSize: 12, color: 'var(--color-green)' }}>{t('txnDetail.requirementAdded')}</div>
                           )}
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button
@@ -2802,14 +2832,14 @@ export default function TransactionDetailPage() {
                               disabled={addCollSaving}
                               onClick={handleAddCollateral}
                             >
-                              {addCollSaving ? 'Adding…' : 'Add'}
+                              {addCollSaving ? t('txnDetail.adding') : t('txnDetail.add')}
                             </button>
                             <button
                               className="btn btn-ghost btn-sm"
                               type="button"
                               onClick={() => { setShowAddCollateral(false); setAddCollError(null) }}
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                           </div>
                         </div>
@@ -2822,12 +2852,12 @@ export default function TransactionDetailPage() {
                 {documents.length > 0 && (
                   <div className="card">
                     <div className="card-head">
-                      <h3 className="t-card-head">Documents</h3>
+                      <h3 className="t-card-head">{t('txnDetail.documents')}</h3>
                     </div>
                     {documents.length === 0 ? (
                       <div className="card-body">
                         <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0 }}>
-                          No documents uploaded
+                          {t('txnDetail.noDocumentsUploaded')}
                         </p>
                       </div>
                     ) : (
@@ -2864,7 +2894,7 @@ export default function TransactionDetailPage() {
                                   } catch {}
                                 }}
                               >
-                                Download
+                                {t('txnDetail.download')}
                               </button>
                             )}
                           </div>
@@ -2877,11 +2907,11 @@ export default function TransactionDetailPage() {
                 {/* Event history */}
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">History</h3>
+                    <h3 className="t-card-head">{t('txnDetail.history')}</h3>
                   </div>
                   {events.length === 0 ? (
                     <div className="card-body" style={{ color: 'var(--gray)', fontSize: 12 }}>
-                      No events yet
+                      {t('txnDetail.noEventsYet')}
                     </div>
                   ) : (
                     <div className="timeline">
@@ -2892,7 +2922,7 @@ export default function TransactionDetailPage() {
                           actor === 'anchor'   ? 'amber'  :
                           actor === 'supplier' ? 'purple' : 'gray'
                         const isWireEvent = e.event_type === 'disbursement_marked' || e.event_type === 'wire_info_sent' || (e.notes?.toLowerCase().includes('wire') ?? false)
-                        const displayAction = isWireEvent ? 'Bank submitted wire transfer details' : humanizeEvent(e)
+                        const displayAction = isWireEvent ? t('txnDetail.event.bankSubmittedWireDetails') : humanizeEvent(e, t)
                         const displayNotes = isWireEvent ? null : e.notes
                         return (
                           <div key={e.id} className="tl-item">
@@ -2901,7 +2931,7 @@ export default function TransactionDetailPage() {
                             <div className="tl-body">
                               <div className="tl-actor-row">
                                 <span className={`tl-actor-pill ${actor}`}>
-                                  {actor.charAt(0).toUpperCase() + actor.slice(1)}
+                                  {actor === 'bank' ? t('newTransaction.bank') : actor === 'anchor' ? t('transactionsPage.anchor') : actor === 'supplier' ? t('transactionsPage.supplier') : t('txnDetail.system')}
                                 </span>
                                 <span className="tl-actor-name">{e.actor_name}</span>
                                 <span className="tl-action">{displayAction}</span>
@@ -2932,19 +2962,19 @@ export default function TransactionDetailPage() {
                     fontWeight: 500, marginBottom: 12,
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}>
-                    ✕ This transaction was rejected
+                    ✕ {t('txnDetail.transactionWasRejected')}
                     {txnRejectionReason && ` — ${txnRejectionReason}`}
                   </div>
                 )}
                 <div className="card">
                   <div className="card-head">
-                    <h3 className="t-card-head">Status tracker</h3>
+                    <h3 className="t-card-head">{t('txnDetail.statusTracker')}</h3>
                   </div>
 
                   <div className="stepper">
                     {(() => {
                       // For RF transactions with an anchor repayment request, inject a dynamic step
-                      let steps = isDynamicDiscounting ? DD_STEPPER_STEPS : isPOFinancing ? PO_STEPPER_STEPS : isInvoiceFactoring ? IF_STEPPER_STEPS : RF_STEPPER_STEPS
+                      let steps = isDynamicDiscounting ? ddStepperSteps(t) : isPOFinancing ? poStepperSteps(t) : isInvoiceFactoring ? ifStepperSteps(t) : rfStepperSteps(t)
                       type StepDef = { key: string; label: string; stateOverride?: 'done'|'current'|'todo' }
                       let stepsWithOverride: StepDef[] = steps
 
@@ -2956,9 +2986,9 @@ export default function TransactionDetailPage() {
                           : 'todo'
 
                         stepsWithOverride = [
-                          { key: 'pending_anchor_approval', label: 'Anchor Review' },
-                          { key: 'anchor_repayment_negotiation', label: 'Repayment Request', stateOverride: anchorStepState },
-                          ...RF_STEPPER_STEPS.slice(1),
+                          { key: 'pending_anchor_approval', label: t('txnDetail.stepper.anchorReview') },
+                          { key: 'anchor_repayment_negotiation', label: t('txnDetail.stepper.repaymentRequest'), stateOverride: anchorStepState },
+                          ...rfStepperSteps(t).slice(1),
                         ]
                       }
 
@@ -3039,7 +3069,7 @@ export default function TransactionDetailPage() {
                   )}
                   {portal === 'bank' && isDynamicDiscounting && (
                     <div className="action-passive muted" style={{ padding: '12px 16px' }}>
-                      Dynamic discounting — no bank involvement.
+                      {t('txnDetail.ddNoBankInvolvement')}
                     </div>
                   )}
                   {portal === 'anchor' && (
@@ -3070,7 +3100,7 @@ export default function TransactionDetailPage() {
                   !['draft', 'rejected', 'cancelled', 'completed'].includes(txn.status) && (
                   <div className="card" style={{ width: '100%', marginTop: 12 }}>
                     <div className="card-head">
-                      <span>Repayment Request</span>
+                      <span>{t('txnDetail.repaymentRequest')}</span>
                     </div>
                     <div className="card-body">
                       <AnchorStandaloneRepaymentSection

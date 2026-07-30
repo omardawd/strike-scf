@@ -5,6 +5,9 @@ import { pushTransactionDetail } from '@/lib/transaction-referrer'
 import { pushKybDetail } from '@/lib/kyb-referrer'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
@@ -79,10 +82,10 @@ function kybBadge(s: string) {
   return m[s] ?? 'badge-draft'
 }
 
-function kybLabel(s: string) {
+function kybLabel(s: string, t: TFn) {
   const m: Record<string, string> = {
-    approved: 'Approved', submitted: 'Submitted', under_review: 'Under Review',
-    more_info_requested: 'Info Requested', rejected: 'Rejected', draft: 'Draft',
+    approved: t('programDetail.kyb.approved'), submitted: t('programDetail.kyb.submitted'), under_review: t('programDetail.kyb.underReview'),
+    more_info_requested: t('programDetail.kyb.infoRequested'), rejected: t('programDetail.kyb.rejected'), draft: t('programsPage.status.draft'),
   }
   return m[s] ?? s
 }
@@ -95,16 +98,16 @@ function collBadge(s: string) {
   return m[s] ?? 'badge-draft'
 }
 
-function collTypeLabel(t: string) {
+function collTypeLabel(type: string, t: TFn) {
   const m: Record<string, string> = {
-    post_dated_cheque:         'Post-dated cheque',
-    personal_guarantee:        'Personal guarantee',
-    assignment_of_receivables: 'Assignment of receivables',
-    cash_collateral:           'Cash collateral',
-    asset_pledge:              'Asset pledge',
-    other:                     'Other',
+    post_dated_cheque:         t('collateral.type.postDatedCheque'),
+    personal_guarantee:        t('collateral.type.personalGuarantee'),
+    assignment_of_receivables: t('collateral.type.assignmentOfReceivables'),
+    cash_collateral:           t('collateral.type.cashCollateral'),
+    asset_pledge:              t('collateral.type.assetPledge'),
+    other:                     t('collateral.type.other'),
   }
-  return m[t] ?? t
+  return m[type] ?? type
 }
 
 function txnBadge(s: string) {
@@ -114,14 +117,16 @@ function txnBadge(s: string) {
   return 'badge-pending'
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_anchor_approval: 'Pending Anchor',
-  pending_bank_review:     'Pending Bank',
-  more_info_requested:     'More Info',
-  financing_approved:      'Approved',
-  funded:                  'Funded',
-  completed:               'Completed',
-  rejected:                'Rejected',
+function statusLabels(t: TFn): Record<string, string> {
+  return {
+    pending_anchor_approval: t('anchorDetail.status.pendingAnchor'),
+    pending_bank_review:     t('anchorDetail.status.pendingBank'),
+    more_info_requested:     t('anchorDetail.status.moreInfo'),
+    financing_approved:      t('dealDetail.financingApproved'),
+    funded:                  t('transactionsPage.funded'),
+    completed:               t('deals.status.completed'),
+    rejected:                t('transactionsPage.rejected'),
+  }
 }
 
 function riskTierBadge(t: string | null | undefined) {
@@ -153,9 +158,10 @@ function AddCollateralForm({
   const [deadline, setDeadline] = useState('')
   const [saving, setSaving]     = useState(false)
   const [err, setErr]           = useState<string | null>(null)
+  const t = useT()
 
   async function save() {
-    if (!desc.trim() || !deadline) { setErr('Description and deadline are required'); return }
+    if (!desc.trim() || !deadline) { setErr(t('supplierDetail.errDescriptionDeadlineRequired')); return }
     setSaving(true); setErr(null)
     try {
       const res = await fetch('/api/collateral', {
@@ -167,10 +173,10 @@ function AddCollateralForm({
         }),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Failed')
+      if (!res.ok) throw new Error(d.error ?? t('programDetail.failed'))
       onSuccess(); onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed')
+      setErr(e instanceof Error ? e.message : t('programDetail.failed'))
       setSaving(false)
     }
   }
@@ -178,36 +184,36 @@ function AddCollateralForm({
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-head">
-        <h3 className="t-card-head">Add collateral requirement</h3>
-        <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>Cancel</button>
+        <h3 className="t-card-head">{t('supplierDetail.addCollateralRequirement')}</h3>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>{t('common.cancel')}</button>
       </div>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
-          <label className="form-label">Type</label>
+          <label className="form-label">{t('newTransaction.type')}</label>
           <select className="form-input" value={collType} onChange={e => setCollType(e.target.value)}>
-            <option value="post_dated_cheque">Post-dated cheque</option>
-            <option value="personal_guarantee">Personal guarantee</option>
-            <option value="assignment_of_receivables">Assignment of receivables</option>
-            <option value="cash_collateral">Cash collateral</option>
-            <option value="asset_pledge">Asset pledge</option>
-            <option value="other">Other</option>
+            <option value="post_dated_cheque">{t('txnDetail.collateral.postDatedCheque')}</option>
+            <option value="personal_guarantee">{t('txnDetail.collateral.personalGuarantee')}</option>
+            <option value="assignment_of_receivables">{t('txnDetail.collateral.assignmentOfReceivables')}</option>
+            <option value="cash_collateral">{t('txnDetail.collateral.cashCollateral')}</option>
+            <option value="asset_pledge">{t('txnDetail.collateral.assetPledge')}</option>
+            <option value="other">{t('txnDetail.collateral.other')}</option>
           </select>
         </div>
         <div>
-          <label className="form-label">Description</label>
+          <label className="form-label">{t('listingDetail.description')}</label>
           <textarea
             className="form-input" rows={2} value={desc}
             onChange={e => setDesc(e.target.value)}
-            placeholder="Describe the collateral requirement…"
+            placeholder={t('txnDetail.describeCollateralRequirement')}
           />
         </div>
         <div>
-          <label className="form-label">Deadline</label>
+          <label className="form-label">{t('supplierDetail.deadline')}</label>
           <input className="form-input" type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
         {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
         <button className="btn btn-primary" type="button" disabled={saving} onClick={save}>
-          {saving ? 'Saving…' : 'Add requirement'}
+          {saving ? t('programDetail.savingEllipsis') : t('supplierDetail.addRequirement')}
         </button>
       </div>
     </div>
@@ -220,6 +226,7 @@ export default function IFSupplierDetailPage() {
   const params     = useParams()
   const programId  = params.id          as string
   const supplierId = params.supplier_id as string
+  const t = useT()
 
   const [org, setOrg]                   = useState<OrgDetail | null>(null)
   const [docs, setDocs]                 = useState<KYBDoc[]>([])
@@ -233,7 +240,7 @@ export default function IFSupplierDetailPage() {
   const [collVersion, setCollVersion]   = useState(0)
   const [volPeriod, setVolPeriod]       = useState<Period>('monthly')
 
-  const [programCrumbName, setProgramCrumbName] = useState('Program')
+  const [programCrumbName, setProgramCrumbName] = useState(t('programDetail.program'))
 
   useEffect(() => {
     try {
@@ -263,7 +270,7 @@ export default function IFSupplierDetailPage() {
         const txData = await txRes.json()
         const all: TxRow[] = txData.transactions ?? txData.data ?? []
         setTransactions(
-          all.filter(t => t.supplier_id === supplierId && t.program_id === programId)
+          all.filter(tx => tx.supplier_id === supplierId && tx.program_id === programId)
              .slice(0, 20)
         )
       }
@@ -277,11 +284,11 @@ export default function IFSupplierDetailPage() {
         setAnalytics(await analyticsRes.json())
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
+      setError(e instanceof Error ? e.message : t('txnDetail.failedToLoadGeneric'))
     } finally {
       setLoading(false)
     }
-  }, [supplierId, programId, collVersion, volPeriod])
+  }, [supplierId, programId, collVersion, volPeriod, t])
 
   useEffect(() => { load() }, [load])
 
@@ -291,7 +298,7 @@ export default function IFSupplierDetailPage() {
     }
   }, [org?.legal_name])
 
-  const orgName = org?.legal_name ?? 'Supplier'
+  const orgName = org?.legal_name ?? t('transactionsPage.supplier')
 
   if (loading) {
     return (
@@ -299,7 +306,7 @@ export default function IFSupplierDetailPage() {
         <Topbar
           onBack={() => router.push(`/programs/${programId}`)}
           crumbs={[
-            { label: 'Programs', onClick: () => router.push('/programs') },
+            { label: t('nav.programs'), onClick: () => router.push('/programs') },
             { label: programCrumbName, onClick: () => router.push(`/programs/${programId}`) },
             { label: '…' },
           ]}
@@ -319,7 +326,7 @@ export default function IFSupplierDetailPage() {
       <Topbar
         onBack={() => router.push(`/programs/${programId}`)}
         crumbs={[
-          { label: 'Programs', onClick: () => router.push('/programs') },
+          { label: t('nav.programs'), onClick: () => router.push('/programs') },
           { label: programCrumbName, onClick: () => router.push(`/programs/${programId}`) },
           { label: orgName },
         ]}
@@ -348,32 +355,32 @@ export default function IFSupplierDetailPage() {
 
         <div className="page-header">
           <h1 className="t-page-title">{orgName}</h1>
-          <div className="subtitle">Supplier profile</div>
+          <div className="subtitle">{t('supplierDetail.supplierProfile')}</div>
         </div>
 
         <div className="split-65">
           {/* ── LEFT: Org details + analytics + transactions ── */}
           <div>
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-head"><h3 className="t-card-head">Organization</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('anchorDetail.organization')}</h3></div>
               <div className="kv-rows">
-                <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
-                {org?.business_type && <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>}
-                {org?.ein && <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>}
+                <div className="kv-row"><span className="k">{t('programDetail.legalName')}</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
+                {org?.business_type && <div className="kv-row"><span className="k">{t('anchorDetail.industry')}</span><span className="v plain">{org.business_type}</span></div>}
+                {org?.ein && <div className="kv-row"><span className="k">{t('bankKybDetail.einLabel')}</span><span className="v mono">{org.ein}</span></div>}
                 {(org?.city || org?.state) && (
                   <div className="kv-row">
-                    <span className="k">Location</span>
+                    <span className="k">{t('anchorDetail.location')}</span>
                     <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
                   </div>
                 )}
                 {org?.annual_revenue_range != null && (
-                  <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
+                  <div className="kv-row"><span className="k">{t('anchorDetail.annualRevenue')}</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
                 )}
                 {org?.primary_contact_name && (
-                  <div className="kv-row"><span className="k">Contact</span><span className="v plain">{org.primary_contact_name}</span></div>
+                  <div className="kv-row"><span className="k">{t('anchorDetail.contact')}</span><span className="v plain">{org.primary_contact_name}</span></div>
                 )}
                 {org?.primary_contact_email && (
-                  <div className="kv-row"><span className="k">Email</span><span className="v plain">{org.primary_contact_email}</span></div>
+                  <div className="kv-row"><span className="k">{t('anchorDetail.email')}</span><span className="v plain">{org.primary_contact_email}</span></div>
                 )}
               </div>
             </div>
@@ -381,21 +388,21 @@ export default function IFSupplierDetailPage() {
             {analytics && (
               <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-head">
-                  <h3 className="t-card-head">Analytics</h3>
+                  <h3 className="t-card-head">{t('anchorDetail.analytics')}</h3>
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
                   <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                     <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.transactions')}</div>
                       <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
                     </div>
                     <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.invoiceVolume')}</div>
                       <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
                     </div>
                     <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
-                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                      <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.avgRate')}</div>
                       <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
@@ -407,40 +414,40 @@ export default function IFSupplierDetailPage() {
 
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Transactions</h3>
+                <h3 className="t-card-head">{t('programDetail.transactions')}</h3>
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
                   onClick={() => router.push('/transactions')}
                 >
-                  View all
+                  {t('supplierDetail.viewAll')}
                 </button>
               </div>
               {transactions.length === 0 ? (
                 <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  No transactions yet.
+                  {t('supplierDetail.noTransactionsYet')}
                 </div>
               ) : (
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Invoice #</th>
-                      <th style={{ textAlign: 'right' }}>Amount</th>
-                      <th>Status</th>
-                      <th>Date</th>
+                      <th>{t('newTransaction.invoiceHash')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('txnDetail.amount')}</th>
+                      <th>{t('financing.status')}</th>
+                      <th>{t('txnDetail.date')}</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map(t => (
-                      <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, t.id)}>
-                        <td style={{ fontSize: 13 }}>{t.invoice_number ?? t.id.slice(0, 8) + '…'}</td>
+                    {transactions.map(tx => (
+                      <tr key={tx.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, tx.id)}>
+                        <td style={{ fontSize: 13 }}>{tx.invoice_number ?? tx.id.slice(0, 8) + '…'}</td>
                         <td style={{ textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-                          {t.financing_amount_approved != null ? fmtCurrency(t.financing_amount_approved)
-                            : t.invoice_amount != null ? fmtCurrency(t.invoice_amount) : '—'}
+                          {tx.financing_amount_approved != null ? fmtCurrency(tx.financing_amount_approved)
+                            : tx.invoice_amount != null ? fmtCurrency(tx.invoice_amount) : '—'}
                         </td>
-                        <td><span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span></td>
-                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                        <td><span className={`badge ${txnBadge(tx.status)}`}>{statusLabels(t)[tx.status] ?? tx.status}</span></td>
+                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(tx.created_at)}</td>
                         <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                       </tr>
                     ))}
@@ -453,43 +460,43 @@ export default function IFSupplierDetailPage() {
           {/* ── RIGHT: KYB + Credit score + Collateral + Documents ── */}
           <div>
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-head"><h3 className="t-card-head">KYB &amp; Credit</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('supplierDetail.kybAndCredit')}</h3></div>
               <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 0, marginBottom: 0 }}>
                 <div className="card-body">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       {(org?.kyb_status === 'submitted' || org?.kyb_status === 'under_review') && (
-                        <span className="badge badge-active">Ready for review</span>
+                        <span className="badge badge-active">{t('anchorDetail.readyForReview')}</span>
                       )}
-                      {org?.kyb_status === 'approved' && <span className="badge badge-funded">Approved</span>}
-                      {org?.kyb_status === 'rejected' && <span className="badge badge-rejected">Rejected</span>}
-                      {org?.kyb_status === 'more_info_requested' && <span className="badge badge-pending">More info requested</span>}
-                      {org?.kyb_status === 'in_progress' && <span className="badge badge-pending">Application in progress</span>}
+                      {org?.kyb_status === 'approved' && <span className="badge badge-funded">{kybLabel('approved', t)}</span>}
+                      {org?.kyb_status === 'rejected' && <span className="badge badge-rejected">{kybLabel('rejected', t)}</span>}
+                      {org?.kyb_status === 'more_info_requested' && <span className="badge badge-pending">{t('anchorDetail.moreInfoRequested')}</span>}
+                      {org?.kyb_status === 'in_progress' && <span className="badge badge-pending">{t('anchorDetail.applicationInProgress')}</span>}
                       {(!org?.kyb_status || org?.kyb_status === 'not_started' || org?.kyb_status === 'draft') && (
-                        <span className="badge badge-draft">Not started</span>
+                        <span className="badge badge-draft">{t('anchorDetail.notStarted')}</span>
                       )}
                       {org?.kyb_status === 'approved' && creditScore?.risk_tier && (
                         <span className={`badge ${riskTierBadge(creditScore.risk_tier)}`}>
-                          Risk {creditScore.risk_tier}
+                          {t('anchorDetail.riskTier', { tier: creditScore.risk_tier })}
                         </span>
                       )}
                       {org?.credit_reviewed_at && org?.kyb_status === 'approved' && (
                         <span style={{ fontSize: 12, color: 'var(--gray)' }}>
-                          Reviewed {fmtDate(org.credit_reviewed_at)}
+                          {t('anchorDetail.reviewedOn', { date: fmtDate(org.credit_reviewed_at) })}
                         </span>
                       )}
                     </div>
                     {(!org?.kyb_status || org?.kyb_status === 'not_started' || org?.kyb_status === 'draft') && (
-                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)' }}>{t('supplierDetail.kybNotSubmittedNeedsToComplete')}</div>
                     )}
                     {org?.kyb_status === 'rejected' && (
                       <div style={{ fontSize: 13, color: '#DC2626' }}>
-                        KYB rejected. Supplier cannot participate in financing.
+                        {t('supplierDetail.kybRejectedCannotParticipate')}
                       </div>
                     )}
                     {org?.kyb_status === 'more_info_requested' && (
                       <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                        Additional information requested from supplier.
+                        {t('supplierDetail.additionalInfoRequestedFromSupplier')}
                       </div>
                     )}
                     <div>
@@ -498,7 +505,7 @@ export default function IFSupplierDetailPage() {
                         type="button"
                         onClick={() => pushKybDetail(router, supplierId)}
                       >
-                        {(org?.kyb_status === 'submitted' || org?.kyb_status === 'under_review') ? 'Review KYB application' : 'View KYB record'}
+                        {(org?.kyb_status === 'submitted' || org?.kyb_status === 'under_review') ? t('anchorDetail.reviewKybApplication') : t('anchorDetail.viewKybRecord')}
                       </button>
                     </div>
                   </div>
@@ -512,33 +519,33 @@ export default function IFSupplierDetailPage() {
                     </span>
                     {creditScore.risk_tier && (
                       <span className={`badge ${riskTierBadge(creditScore.risk_tier)}`}>
-                        Risk {creditScore.risk_tier}
+                        {t('anchorDetail.riskTier', { tier: creditScore.risk_tier })}
                       </span>
                     )}
                   </div>
                   <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>
-                    Credit score
+                    {t('supplierDetail.creditScore')}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                    Scored {fmtDate(creditScore.created_at)}
+                    {t('supplierDetail.scoredOn', { date: fmtDate(creditScore.created_at) })}
                   </div>
                 </div>
               ) : (
                 <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  Credit review pending.
+                  {t('supplierDetail.creditReviewPending')}
                 </div>
               )}
             </div>
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Onboarding Collateral</h3>
+                <h3 className="t-card-head">{t('supplierDetail.onboardingCollateral')}</h3>
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
                   onClick={() => setShowAddColl(v => !v)}
                 >
-                  {showAddColl ? 'Cancel' : '+ Add'}
+                  {showAddColl ? t('common.cancel') : `+ ${t('txnDetail.add')}`}
                 </button>
               </div>
               {showAddColl && (
@@ -552,7 +559,7 @@ export default function IFSupplierDetailPage() {
               )}
               {collateral.length === 0 ? (
                 <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  No collateral requirements.
+                  {t('txnDetail.noCollateralRequirements')}
                 </div>
               ) : (
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -569,10 +576,10 @@ export default function IFSupplierDetailPage() {
                         }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{collTypeLabel(c.collateral_type)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{collTypeLabel(c.collateral_type, t)}</div>
                         <div style={{ fontSize: 12, color: 'var(--gray)' }}>{c.description}</div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
-                          Due {fmtDate(c.deadline)}
+                          {t('supplierDetail.dueOn', { date: fmtDate(c.deadline) })}
                           {c.required_value != null && ` · ${fmtCurrency(c.required_value)}`}
                         </div>
                       </div>
@@ -586,10 +593,10 @@ export default function IFSupplierDetailPage() {
             </div>
 
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('txnDetail.documents')}</h3></div>
               {docs.length === 0 ? (
                 <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  No documents uploaded.
+                  {t('anchorDetail.noDocumentsUploaded')}
                 </div>
               ) : (
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -606,7 +613,7 @@ export default function IFSupplierDetailPage() {
                           rel="noreferrer"
                           className="btn btn-ghost btn-sm"
                         >
-                          Download
+                          {t('txnDetail.download')}
                         </a>
                       )}
                     </div>

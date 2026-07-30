@@ -7,6 +7,9 @@ import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/por
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
 import { BulkInviteModal } from '@/components/bulk-invite-modal'
 import { RiskBadge } from '@/components/risk-badge'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Program {
@@ -127,10 +130,10 @@ function kybBadge(s: string) {
   return m[s] ?? 'badge-draft'
 }
 
-function kybLabel(s: string) {
+function kybLabel(s: string, t: TFn) {
   const m: Record<string, string> = {
-    approved: 'Approved', submitted: 'Submitted', under_review: 'Under Review',
-    more_info_requested: 'Info Requested', rejected: 'Rejected', draft: 'Draft',
+    approved: t('programDetail.kyb.approved'), submitted: t('programDetail.kyb.submitted'), under_review: t('programDetail.kyb.underReview'),
+    more_info_requested: t('programDetail.kyb.infoRequested'), rejected: t('programDetail.kyb.rejected'), draft: t('programsPage.status.draft'),
   }
   return m[s] ?? s
 }
@@ -163,6 +166,7 @@ function NetworkCard({
   countryOfOrigin?: string | null
   onClick: () => void
 }) {
+  const t = useT()
   return (
     <div
       className="network-card"
@@ -175,7 +179,7 @@ function NetworkCard({
           <div className="network-name">{name}</div>
           <div className="network-meta">
             {kybStatus === 'approved' && <span className="verified-dot" />}
-            <span className={`badge ${kybBadge(kybStatus)}`}>{kybLabel(kybStatus)}</span>
+            <span className={`badge ${kybBadge(kybStatus)}`}>{kybLabel(kybStatus, t)}</span>
           </div>
           {riskTier && (
             <div style={{ marginTop: 4 }}>
@@ -238,16 +242,18 @@ function NetworkCard({
   )
 }
 
-const AVAILABLE_DOCS = [
-  { id: 'certificate_of_incorporation', label: 'Certificate of Incorporation' },
-  { id: 'ein_letter',                   label: 'IRS EIN Confirmation Letter' },
-  { id: 'ownership_structure',          label: 'Ownership Structure' },
-  { id: 'audited_financials',           label: 'Audited Financials (2 years)' },
-  { id: 'bank_statements',              label: 'Bank Statements (6 months)' },
-  { id: 'insurance_certificate',        label: 'Certificate of Insurance' },
-  { id: 'aml_kyc_policy',              label: 'AML / KYC Policy' },
-  { id: 'custom_document',              label: 'Custom document (specify below)' },
-]
+function availableDocs(t: TFn) {
+  return [
+    { id: 'certificate_of_incorporation', label: t('programDetail.doc.certificateOfIncorporation') },
+    { id: 'ein_letter',                   label: t('programDetail.doc.einLetter') },
+    { id: 'ownership_structure',          label: t('programDetail.doc.ownershipStructure') },
+    { id: 'audited_financials',           label: t('programDetail.doc.auditedFinancials') },
+    { id: 'bank_statements',              label: t('programDetail.doc.bankStatements') },
+    { id: 'insurance_certificate',        label: t('programDetail.doc.insuranceCertificate') },
+    { id: 'aml_kyc_policy',              label: t('programDetail.doc.amlKycPolicy') },
+    { id: 'custom_document',              label: t('programDetail.doc.customDocument') },
+  ]
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ProgramDetailPage() {
@@ -256,6 +262,7 @@ export default function ProgramDetailPage() {
   const router = useRouter()
   const params = useParams()
   const id     = params.id as string
+  const t = useT()
 
   const [program, setProgram]         = useState<Program | null>(null)
   const [anchors, setAnchors]         = useState<AnchorEntry[]>([])
@@ -364,11 +371,11 @@ export default function ProgramDetailPage() {
         setPipeline(await results[3].json())
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
+      setError(e instanceof Error ? e.message : t('txnDetail.failedToLoadGeneric'))
     } finally {
       setLoading(false)
     }
-  }, [id, portal, volPeriod])
+  }, [id, portal, volPeriod, t])
 
   useEffect(() => { load() }, [load, networkVersion])
 
@@ -379,7 +386,7 @@ export default function ProgramDetailPage() {
   }, [program?.name])
 
   async function handleSendInvite() {
-    if (!inviteEmail.includes('@')) { setInviteError('Enter a valid email'); return }
+    if (!inviteEmail.includes('@')) { setInviteError(t('programDetail.enterValidEmail')); return }
     setInviteLoading(true); setInviteError(null)
     try {
       const body: Record<string, unknown> = {
@@ -392,7 +399,7 @@ export default function ProgramDetailPage() {
         body.required_documents = requiredDocs.map(docId =>
           docId === 'custom_document'
             ? { id: docId, label: customDocName }
-            : AVAILABLE_DOCS.find(d => d.id === docId)
+            : availableDocs(t).find(d => d.id === docId)
         )
       }
       const res = await fetch(`/api/programs/${id}/invite`, {
@@ -401,11 +408,11 @@ export default function ProgramDetailPage() {
         body: JSON.stringify(body),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Failed')
+      if (!res.ok) throw new Error(d.error ?? t('programDetail.failed'))
       setInviteSent(true)
       setNetworkVersion(v => v + 1)
     } catch (e) {
-      setInviteError(e instanceof Error ? e.message : 'Failed')
+      setInviteError(e instanceof Error ? e.message : t('programDetail.failed'))
     } finally {
       setInviteLoading(false)
     }
@@ -449,13 +456,13 @@ export default function ProgramDetailPage() {
         body: JSON.stringify(body),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Failed to save')
+      if (!res.ok) throw new Error(d.error ?? t('programDetail.failedToSave'))
       setProgram(d.program)
       setEditing(false)
       setEditSuccess(true)
       setTimeout(() => setEditSuccess(false), 3000)
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : 'Failed to save')
+      setEditError(e instanceof Error ? e.message : t('programDetail.failedToSave'))
     } finally {
       setEditSaving(false)
     }
@@ -475,7 +482,7 @@ export default function ProgramDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this draft program? This cannot be undone.')) return
+    if (!confirm(t('programDetail.confirmDeleteDraft'))) return
     setDeleting(true)
     const res = await fetch(`/api/programs/${id}`, {
       method: 'PATCH',
@@ -498,7 +505,7 @@ export default function ProgramDetailPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setCancelError(data.error ?? 'Failed to cancel invitation')
+        setCancelError(data.error ?? t('programDetail.failedToCancelInvitation'))
         return
       }
       if (kind === 'anchor') {
@@ -507,7 +514,7 @@ export default function ProgramDetailPage() {
         setPendingSuppliers(prev => prev.filter(p => p.id !== invId))
       }
     } catch (err) {
-      setCancelError(err instanceof Error ? err.message : 'Failed to cancel invitation')
+      setCancelError(err instanceof Error ? err.message : t('programDetail.failedToCancelInvitation'))
     }
   }
 
@@ -537,7 +544,15 @@ export default function ProgramDetailPage() {
   }
 
   const typeLabel = program?.financing_types?.length
-    ? program.financing_types.map(t => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())).join(', ')
+    ? program.financing_types.map(ft => {
+        switch (ft) {
+          case 'reverse_factoring':    return t('financing.type.reverseFactoring')
+          case 'invoice_factoring':    return t('financing.type.invoiceFactoring')
+          case 'po_financing':         return t('financing.type.poFinancing')
+          case 'dynamic_discounting':  return t('financing.type.dynamicDiscounting')
+          default: return ft.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        }
+      }).join(', ')
     : '—'
 
   if (loading) {
@@ -545,7 +560,7 @@ export default function ProgramDetailPage() {
       <PortalShell activeSection="programs">
         <Topbar
           onBack={() => router.push('/programs')}
-          crumbs={[{ label: 'My Programs', onClick: () => router.push('/programs') }, { label: '…' }]}
+          crumbs={[{ label: t('programsPage.title'), onClick: () => router.push('/programs') }, { label: '…' }]}
           actions={<NotifBell />}
         />
         <div className="page">
@@ -563,8 +578,8 @@ export default function ProgramDetailPage() {
       <Topbar
         onBack={() => router.push('/programs')}
         crumbs={[
-          { label: 'My Programs', onClick: () => router.push('/programs') },
-          { label: program?.name ?? 'Program' },
+          { label: t('programsPage.title'), onClick: () => router.push('/programs') },
+          { label: program?.name ?? t('programDetail.program') },
         ]}
         actions={
           <>
@@ -573,12 +588,12 @@ export default function ProgramDetailPage() {
                 terminal by this program's financing type + currency. */}
             {portal === 'bank' && program && (
               <button className="btn btn-primary btn-sm" type="button" onClick={goToStrikePlace}>
-                Source deals on Strike Place →
+                {t('programDetail.sourceDealsOnStrikePlace')}
               </button>
             )}
             {portal === 'anchor' && (
               <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
-                <Icon name="plus" size={14} /> Invite Supplier
+                <Icon name="plus" size={14} /> {t('programDetail.inviteSupplier')}
               </button>
             )}
             <NotifBell />
@@ -601,7 +616,7 @@ export default function ProgramDetailPage() {
                 {program.name}
                 <span style={{ marginLeft: 10 }}>
                   <span className={`badge ${statusBadge(program.status)}`}>
-                    {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
+                    {t(`programsPage.status.${program.status}`)}
                   </span>
                 </span>
               </h1>
@@ -613,13 +628,13 @@ export default function ProgramDetailPage() {
               <>
                 {editSuccess && (
                   <div className="alert alert-success" style={{ marginBottom: 16 }}>
-                    <div className="alert-body">Program updated successfully.</div>
+                    <div className="alert-body">{t('programDetail.programUpdatedSuccessfully')}</div>
                   </div>
                 )}
 
                 <div className="card" style={{ marginBottom: 24 }}>
                   <div className="card-head">
-                    <h3 className="t-card-head">Program details</h3>
+                    <h3 className="t-card-head">{t('programDetail.programDetails')}</h3>
                     {!editing && (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {program.status === 'draft' && (
@@ -629,7 +644,7 @@ export default function ProgramDetailPage() {
                               type="button"
                               onClick={handleActivate}
                               disabled={activating}>
-                              {activating ? 'Activating…' : 'Activate'}
+                              {activating ? t('programDetail.activating') : t('programDetail.activate')}
                             </button>
                             <button
                               className="btn btn-danger btn-sm"
@@ -637,11 +652,11 @@ export default function ProgramDetailPage() {
                               onClick={handleDelete}
                               disabled={deleting}
                               style={{ color: '#DC2626' }}>
-                              {deleting ? 'Deleting…' : 'Delete program'}
+                              {deleting ? t('programDetail.deleting') : t('programDetail.deleteProgram')}
                             </button>
                           </>
                         )}
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={startEdit}>Edit</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={startEdit}>{t('dealDetail.editStep')}</button>
                       </div>
                     )}
                   </div>
@@ -649,59 +664,59 @@ export default function ProgramDetailPage() {
                     <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {editError && <div style={{ color: '#DC2626', fontSize: 13 }}>{editError}</div>}
                       <div>
-                        <label className="form-label">Program name</label>
+                        <label className="form-label">{t('newProgram.programName')}</label>
                         <input className="form-input" value={editName} onChange={e => setEditName(e.target.value)} />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
-                          <label className="form-label">Program limit ($)</label>
+                          <label className="form-label">{t('programDetail.programLimitDollar')}</label>
                           <input className="form-input" value={editLimit} onChange={e => setEditLimit(e.target.value)} placeholder="e.g. 5000000" />
                         </div>
                         <div>
-                          <label className="form-label">Per-supplier sublimit ($)</label>
+                          <label className="form-label">{t('programDetail.perSupplierSublimitDollar')}</label>
                           <input className="form-input" value={editSubLimit} onChange={e => setEditSubLimit(e.target.value)} placeholder="e.g. 500000" />
                         </div>
                         <div>
-                          <label className="form-label">Min deal size ($)</label>
+                          <label className="form-label">{t('programDetail.minDealSizeDollar')}</label>
                           <input className="form-input" value={editMinDeal} onChange={e => setEditMinDeal(e.target.value)} placeholder="e.g. 10000" />
                         </div>
                         <div>
-                          <label className="form-label">Max deal size ($)</label>
+                          <label className="form-label">{t('programDetail.maxDealSizeDollar')}</label>
                           <input className="form-input" value={editMaxDeal} onChange={e => setEditMaxDeal(e.target.value)} placeholder="e.g. 1000000" />
                         </div>
                         <div>
-                          <label className="form-label">Status</label>
+                          <label className="form-label">{t('deals.col.status')}</label>
                           <select className="form-input" value={editStatus} onChange={e => setEditStatus(e.target.value)}>
-                            <option value="draft">Draft</option>
-                            <option value="active">Active</option>
-                            <option value="paused">Paused</option>
+                            <option value="draft">{t('programsPage.status.draft')}</option>
+                            <option value="active">{t('programsPage.status.active')}</option>
+                            <option value="paused">{t('programsPage.status.paused')}</option>
                           </select>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                         <button className="btn btn-primary btn-sm" type="button" disabled={editSaving} onClick={handleSaveEdit}>
-                          {editSaving ? 'Saving…' : 'Save changes'}
+                          {editSaving ? t('programDetail.savingEllipsis') : t('programDetail.saveChanges')}
                         </button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(false)}>Cancel</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(false)}>{t('common.cancel')}</button>
                       </div>
                     </div>
                   ) : (
                     <div className="kv-rows">
-                      <div className="kv-row"><span className="k">Financing type</span><span className="v plain">{typeLabel}</span></div>
+                      <div className="kv-row"><span className="k">{t('newProgram.financingType')}</span><span className="v plain">{typeLabel}</span></div>
                       {/* <div className="kv-row"><span className="k">Currency</span><span className="v plain">{program.currency ?? 'USD'}</span></div> */}
                       {program.min_deal_size != null && (
-                        <div className="kv-row"><span className="k">Min deal size</span><span className="v plain">{fmtMoney(program.min_deal_size)}</span></div>
+                        <div className="kv-row"><span className="k">{t('newProgram.minDealSize')}</span><span className="v plain">{fmtMoney(program.min_deal_size)}</span></div>
                       )}
                       {program.max_deal_size != null && (
-                        <div className="kv-row"><span className="k">Max deal size</span><span className="v plain">{fmtMoney(program.max_deal_size)}</span></div>
+                        <div className="kv-row"><span className="k">{t('newProgram.maxDealSize')}</span><span className="v plain">{fmtMoney(program.max_deal_size)}</span></div>
                       )}
                       {program.program_limit != null && (
-                        <div className="kv-row"><span className="k">Program limit</span><span className="v plain">{fmtMoney(program.program_limit)}</span></div>
+                        <div className="kv-row"><span className="k">{t('newProgram.programLimit')}</span><span className="v plain">{fmtMoney(program.program_limit)}</span></div>
                       )}
                       {program.per_supplier_sublimit != null && (
-                        <div className="kv-row"><span className="k">Per-supplier sublimit</span><span className="v plain">{fmtMoney(program.per_supplier_sublimit)}</span></div>
+                        <div className="kv-row"><span className="k">{t('newProgram.perSupplierSublimit')}</span><span className="v plain">{fmtMoney(program.per_supplier_sublimit)}</span></div>
                       )}
-                      <div className="kv-row"><span className="k">Created</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
+                      <div className="kv-row"><span className="k">{t('programDetail.created')}</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
                     </div>
                   )}
                 </div>
@@ -709,16 +724,16 @@ export default function ProgramDetailPage() {
                 {/* TC.4 — Program-first: capacity, linked deals, offer pipeline */}
                 <div className="card" style={{ marginBottom: 24 }}>
                   <div className="card-head">
-                    <h3 className="t-card-head">Deal sourcing</h3>
+                    <h3 className="t-card-head">{t('programDetail.dealSourcing')}</h3>
                     <button className="btn btn-ghost btn-sm" type="button" onClick={goToStrikePlace}>
-                      Source on Strike Place →
+                      {t('programDetail.sourceOnStrikePlace')}
                     </button>
                   </div>
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                     {/* Available capacity */}
                     <div>
                       <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-                        Available capacity
+                        {t('programDetail.availableCapacity')}
                       </div>
                       {pipeline?.capacity.program_limit != null ? (
                         <>
@@ -727,7 +742,7 @@ export default function ProgramDetailPage() {
                               {fmtMoney(pipeline.capacity.available ?? 0)}
                             </span>
                             <span style={{ fontSize: 12, color: 'var(--gray)' }}>
-                              of {fmtMoney(pipeline.capacity.program_limit)} ({fmtMoney(pipeline.capacity.committed)} committed)
+                              {t('programDetail.ofLimitCommitted', { limit: fmtMoney(pipeline.capacity.program_limit), committed: fmtMoney(pipeline.capacity.committed) })}
                             </span>
                           </div>
                           <div style={{ marginTop: 8, height: 6, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>
@@ -739,7 +754,7 @@ export default function ProgramDetailPage() {
                         </>
                       ) : (
                         <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          No program limit set · {pipeline ? fmtMoney(pipeline.capacity.committed) : '—'} committed
+                          {t('programDetail.noProgramLimitSetCommitted', { committed: pipeline ? fmtMoney(pipeline.capacity.committed) : '—' })}
                         </div>
                       )}
                     </div>
@@ -747,13 +762,13 @@ export default function ProgramDetailPage() {
                     {/* Offer pipeline (pending) */}
                     <div>
                       <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-                        Offer pipeline {pipeline?.offer_pipeline.length ? `(${pipeline.offer_pipeline.length} pending)` : ''}
+                        {t('programDetail.offerPipeline')} {pipeline?.offer_pipeline.length ? t('programDetail.nPending', { count: pipeline.offer_pipeline.length }) : ''}
                       </div>
                       {!pipeline || pipeline.offer_pipeline.length === 0 ? (
                         <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-                          No pending offers matching this program.{' '}
+                          {t('programDetail.noPendingOffersMatching')}{' '}
                           <button className="btn-link" type="button" onClick={goToStrikePlace} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', padding: 0, fontWeight: 500 }}>
-                            Browse Strike Place →
+                            {t('programDetail.browseStrikePlace')}
                           </button>
                         </div>
                       ) : (
@@ -771,9 +786,9 @@ export default function ProgramDetailPage() {
                                 {fmtMoney(o.amount)}
                               </span>
                               <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--gray)' }}>
-                                {o.tenor_days}d · {o.structure_type.replace(/_/g, ' ')}
+                                {o.tenor_days}{t('programsPage.daysSuffix')} · {o.structure_type.replace(/_/g, ' ')}
                               </span>
-                              <span className="badge badge-pending">Pending</span>
+                              <span className="badge badge-pending">{t('transactionsPage.pending')}</span>
                             </div>
                           ))}
                         </div>
@@ -785,21 +800,21 @@ export default function ProgramDetailPage() {
                 {analytics && (
                   <div className="card" style={{ marginBottom: 24 }}>
                     <div className="card-head">
-                      <h3 className="t-card-head">Program analytics</h3>
+                      <h3 className="t-card-head">{t('programDetail.programAnalytics')}</h3>
                       <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                     </div>
                     <div className="card-body">
                       <div className="kpi-strip" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
                         <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Transactions</div>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.totalTransactions')}</div>
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.total_transactions}</div>
                         </div>
                         <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.invoiceVolume')}</div>
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(analytics.total_invoice_amount)}</div>
                         </div>
                         <div className="kpi-card" style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
-                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                          <div className="kpi-label" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.avgRate')}</div>
                           <div className="kpi-value" style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics.avg_financing_rate ? analytics.avg_financing_rate.toFixed(1) + '%' : '—'}</div>
                         </div>
                       </div>
@@ -813,16 +828,16 @@ export default function ProgramDetailPage() {
             {/* ── ANCHOR / SUPPLIER: Simplified program card ── */}
             {portal !== 'bank' && (
               <div className="card" style={{ marginBottom: 24 }}>
-                <div className="card-head"><h3 className="t-card-head">Program details</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('programDetail.programDetails')}</h3></div>
                 <div className="kv-rows">
-                  <div className="kv-row"><span className="k">Offered By</span><span className="v plain">{program.name}</span></div>
-                  <div className="kv-row"><span className="k">Started on</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
-                  <div className="kv-row"><span className="k">Type</span><span className="v plain">{typeLabel}</span></div>
+                  <div className="kv-row"><span className="k">{t('programDetail.offeredBy')}</span><span className="v plain">{program.name}</span></div>
+                  <div className="kv-row"><span className="k">{t('programDetail.startedOn')}</span><span className="v plain">{fmtDate(program.created_at)}</span></div>
+                  <div className="kv-row"><span className="k">{t('newTransaction.type')}</span><span className="v plain">{typeLabel}</span></div>
                   <div className="kv-row">
-                    <span className="k">Status</span>
+                    <span className="k">{t('deals.col.status')}</span>
                     <span className="v">
                       <span className={`badge ${statusBadge(program.status)}`}>
-                        {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
+                        {t(`programsPage.status.${program.status}`)}
                       </span>
                     </span>
                   </div>
@@ -835,20 +850,20 @@ export default function ProgramDetailPage() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div className="section-title">
-                    Financed Deals{pipeline?.linked_deals.length ? ` (${pipeline.linked_deals.length})` : ''}
+                    {t('programDetail.financedDeals')}{pipeline?.linked_deals.length ? ` (${pipeline.linked_deals.length})` : ''}
                   </div>
                   <button className="btn btn-ghost btn-sm" type="button" onClick={goToStrikePlace}>
-                    Source on Strike Place →
+                    {t('programDetail.sourceOnStrikePlace')}
                   </button>
                 </div>
                 {!pipeline || pipeline.linked_deals.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>
-                        No financed deals yet. When you accept a financing request from Strike Place, it will appear here.
+                        {t('programDetail.noFinancedDealsYet')}
                       </div>
                       <button className="btn btn-primary btn-sm" type="button" onClick={goToStrikePlace}>
-                        Browse Strike Place →
+                        {t('programDetail.browseStrikePlace')}
                       </button>
                     </div>
                   </div>
@@ -874,7 +889,7 @@ export default function ProgramDetailPage() {
                         onMouseLeave={d.deal_id ? e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none' } : undefined}
                       >
                         <div style={{ minWidth: 110 }}>
-                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>Financed</div>
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{t('programDetail.financed')}</div>
                           <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--blue)' }}>
                             {fmtMoney(d.amount)}
                           </div>
@@ -934,7 +949,7 @@ export default function ProgramDetailPage() {
                         countryOfOrigin={s.country_of_origin}
                         stats={[
                           { label: 'Transactions', value: s.transaction_count },
-                          { label: 'KYB Status',   value: kybLabel(s.kyb_status) },
+                          { label: 'KYB Status',   value: kybLabel(s.kyb_status, t) },
                           { label: 'Joined',       value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
                         ]}
                         onClick={() => router.push(`/programs/${id}/supplier/${s.id}`)}
@@ -1031,7 +1046,7 @@ export default function ProgramDetailPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="network-name">{org.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status, t)}</span>
                               <span style={{ fontSize: 11, color: 'var(--gray)' }}>Review KYB →</span>
                             </div>
                           </div>
@@ -1058,7 +1073,7 @@ export default function ProgramDetailPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="network-name">{org.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                              <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status, t)}</span>
                               <span style={{ fontSize: 11, color: 'var(--gray)' }}>Supplier · Review KYB →</span>
                             </div>
                           </div>
@@ -1068,7 +1083,7 @@ export default function ProgramDetailPage() {
                             <div key={label}>
                               <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
                               <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                                {label === 'KYB Status' ? kybLabel(org.kyb_status) : '—'}
+                                {label === 'KYB Status' ? kybLabel(org.kyb_status, t) : '—'}
                               </div>
                             </div>
                           ))}
@@ -1236,20 +1251,20 @@ export default function ProgramDetailPage() {
             {portal === 'anchor' && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <div className="section-title">My Suppliers</div>
+                  <div className="section-title">{t('programDetail.mySuppliers')}</div>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => setShowBulkInvite(true)}>
-                    ↑ CSV Import
+                    ↑ {t('programDetail.csvImport')}
                   </button>
                 </div>
                 {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>No suppliers yet.</div>
+                      <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>{t('programDetail.noSuppliersYet')}</div>
                       {user?.org_id && (
                         <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
-                          <Icon name="plus" size={14} /> Invite a supplier
+                          <Icon name="plus" size={14} /> {t('programDetail.inviteASupplier')}
                         </button>
                       )}
                     </div>
@@ -1271,9 +1286,9 @@ export default function ProgramDetailPage() {
                         riskFlags={s.risk_flags}
                         countryOfOrigin={s.country_of_origin}
                         stats={[
-                          { label: 'Transactions',  value: s.transaction_count },
-                          { label: 'Latest status', value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
-                          { label: 'Joined',        value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
+                          { label: t('programDetail.transactions'),  value: s.transaction_count },
+                          { label: t('programDetail.latestStatus'), value: s.latest_transaction_status ? s.latest_transaction_status.replace(/_/g, ' ') : '—' },
+                          { label: t('programDetail.joined'),        value: s.enrolled_at ? fmtDate(s.enrolled_at) : '—' },
                         ]}
                         onClick={() => router.push(`/programs/${id}/anchor/${user?.org_id}/supplier/${s.id}`)}
                       />
@@ -1294,14 +1309,14 @@ export default function ProgramDetailPage() {
                               </div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 {inv.status === 'pending_bank_review' ? (
-                                  <span className="badge badge-draft">Awaiting bank review</span>
+                                  <span className="badge badge-draft">{t('programDetail.awaitingBankReview')}</span>
                                 ) : (
-                                  <span className="badge badge-pending">Invited</span>
+                                  <span className="badge badge-pending">{t('programDetail.invited')}</span>
                                 )}
                                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>
                                   {inv.status === 'pending_bank_review'
-                                    ? `Submitted ${fmtDate(inv.invited_at)}`
-                                    : `Invitation sent ${fmtDate(inv.invited_at)}`}
+                                    ? t('programDetail.submittedOn', { date: fmtDate(inv.invited_at) })
+                                    : t('programDetail.invitationSentOn', { date: fmtDate(inv.invited_at) })}
                                 </span>
                               </div>
                             </div>
@@ -1312,12 +1327,12 @@ export default function ProgramDetailPage() {
                                 style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0 }}
                                 onClick={() => cancelInvite(inv.id, 'supplier')}
                               >
-                                Cancel
+                                {t('common.cancel')}
                               </button>
                             )}
                           </div>
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-                            {['Transactions', 'Latest status'].map(label => (
+                            {[t('programDetail.transactions'), t('programDetail.latestStatus')].map(label => (
                               <div key={label}>
                                 <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
                                 <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
@@ -1342,15 +1357,15 @@ export default function ProgramDetailPage() {
                               <div className="network-name">{org.legal_name}</div>
                               <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 {isApproved && <span className="verified-dot" />}
-                                <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status)}</span>
+                                <span className={`badge ${kybBadge(org.kyb_status)}`}>{kybLabel(org.kyb_status, t)}</span>
                                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>
-                                  {isApproved ? 'View supplier →' : 'Awaiting KYB approval'}
+                                  {isApproved ? t('programDetail.viewSupplier') : t('programDetail.awaitingKybApproval')}
                                 </span>
                               </div>
                             </div>
                           </div>
                           <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-                            {['Transactions', 'Latest status'].map(label => (
+                            {[t('programDetail.transactions'), t('programDetail.latestStatus')].map(label => (
                               <div key={label}>
                                 <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
                                 <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
@@ -1371,13 +1386,13 @@ export default function ProgramDetailPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className="badge badge-draft">Setting up</span>
-                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Completing onboarding</span>
+                              <span className="badge badge-draft">{t('programDetail.settingUp')}</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('programDetail.completingOnboarding')}</span>
                             </div>
                           </div>
                         </div>
                         <div className="network-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-                          {['Transactions', 'Latest status'].map(label => (
+                          {[t('programDetail.transactions'), t('programDetail.latestStatus')].map(label => (
                             <div key={label}>
                               <div className="network-stat-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>{label}</div>
                               <div className="network-stat-value" style={{ fontSize: 13, color: 'var(--gray)' }}>—</div>
@@ -1394,11 +1409,11 @@ export default function ProgramDetailPage() {
             {/* ── SUPPLIER + IF: Anchor cards ── */}
             {portal === 'supplier' && isIFOnly && (
               <div>
-                <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
+                <div className="section-title" style={{ marginBottom: 12 }}>{t('programDetail.myAnchor')}</div>
                 {anchorList.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
-                      No anchor relationships yet.
+                      {t('programDetail.noAnchorRelationshipsYet')}
                     </div>
                   </div>
                 ) : (
@@ -1411,8 +1426,8 @@ export default function ProgramDetailPage() {
                       riskFlags={a.risk_flags}
                       countryOfOrigin={a.country_of_origin}
                       stats={[
-                        { label: 'Transactions', value: a.transaction_count },
-                        { label: 'KYB Status',   value: kybLabel(a.kyb_status) },
+                        { label: t('programDetail.transactions'), value: a.transaction_count },
+                        { label: t('programDetail.kybStatus'),   value: kybLabel(a.kyb_status, t) },
                       ]}
                       onClick={() => router.push(`/programs/${id}/anchor/${a.id}`)}
                     />
@@ -1424,11 +1439,11 @@ export default function ProgramDetailPage() {
             {/* ── SUPPLIER: My Anchor ── */}
             {portal === 'supplier' && !isIFOnly && (
               <div>
-                <div className="section-title" style={{ marginBottom: 12 }}>My Anchor</div>
+                <div className="section-title" style={{ marginBottom: 12 }}>{t('programDetail.myAnchor')}</div>
                 {anchorList.length === 0 ? (
                   <div className="card">
                     <div className="card-body" style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>
-                      No anchor connected yet.
+                      {t('programDetail.noAnchorConnectedYet')}
                     </div>
                   </div>
                 ) : (
@@ -1441,8 +1456,8 @@ export default function ProgramDetailPage() {
                       riskFlags={a.risk_flags}
                       countryOfOrigin={a.country_of_origin}
                       stats={[
-                        { label: 'Transactions',        value: a.transaction_count },
-                        { label: 'Outstanding balance', value: a.outstanding_balance > 0 ? fmtMoney(a.outstanding_balance) : '—' },
+                        { label: t('programDetail.transactions'),        value: a.transaction_count },
+                        { label: t('programDetail.outstandingBalance'), value: a.outstanding_balance > 0 ? fmtMoney(a.outstanding_balance) : '—' },
                       ]}
                       onClick={() => router.push(`/programs/${id}/anchor/${a.id}`)}
                     />
@@ -1480,13 +1495,13 @@ export default function ProgramDetailPage() {
             onClick={e => e.stopPropagation()}
           >
             <div className="card-head">
-              <h3 className="t-card-head">Invite {inviteRole === 'anchor' ? 'Anchor' : 'Supplier'}</h3>
+              <h3 className="t-card-head">{inviteRole === 'anchor' ? t('programDetail.inviteAnchor') : t('programDetail.inviteSupplier')}</h3>
               <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowInviteModal(false)}>✕</button>
             </div>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minHeight: 200 }}>
               {inviteSent ? (
                 <div style={{ fontSize: 14, color: 'var(--color-green)', textAlign: 'center', padding: '12px 0' }}>
-                  Invitation sent!
+                  {t('programDetail.invitationSent')}
                 </div>
               ) : (
                 <>
@@ -1498,9 +1513,9 @@ export default function ProgramDetailPage() {
                     marginBottom: 20,
                   }}>
                     {([
-                      { id: 'standard'           as const, label: 'Standard',    desc: 'Counterparty completes\nfull onboarding' },
-                      { id: 'known_counterparty' as const, label: 'Known Party', desc: 'Pre-fill their details,\nskip re-onboarding' },
-                      { id: 'custom_kyb'         as const, label: 'Custom KYB',  desc: 'Specify exactly what\ndocs you require' },
+                      { id: 'standard'           as const, label: t('programDetail.standard'),    desc: t('programDetail.standardDesc') },
+                      { id: 'known_counterparty' as const, label: t('programDetail.knownParty'), desc: t('programDetail.knownPartyDesc') },
+                      { id: 'custom_kyb'         as const, label: t('programDetail.customKyb'),  desc: t('programDetail.customKybDesc') },
                     ]).map(m => (
                       <button
                         key={m.id}
@@ -1533,37 +1548,37 @@ export default function ProgramDetailPage() {
                     ))}
                   </div>
                   <div>
-                    <label className="field-label">Contact name</label>
+                    <label className="field-label">{t('programDetail.contactName')}</label>
                     <input className="input" placeholder="Jane Smith" value={inviteName} onChange={e => setInviteName(e.target.value)} />
                   </div>
                   <div>
-                    <label className="field-label">Work email</label>
+                    <label className="field-label">{t('programDetail.workEmail')}</label>
                     <input className="input" type="email" placeholder="jane@company.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
                   </div>
                   {inviteMode === 'known_counterparty' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                       <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                        Pre-fill their organization details
+                        {t('programDetail.prefillOrgDetails')}
                       </div>
-                      <input className="input" placeholder="Legal name" value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
-                      <input className="input" placeholder="EIN / Tax ID" value={prefilledKyb.ein ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, ein: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.legalName')} value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.einTaxId')} value={prefilledKyb.ein ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, ein: e.target.value }))} />
                       <select className="input" value={prefilledKyb.entity_type ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, entity_type: e.target.value }))}>
-                        <option value="">Entity type</option>
+                        <option value="">{t('programDetail.entityType')}</option>
                         <option value="LLC">LLC</option>
-                        <option value="Corporation">Corporation</option>
-                        <option value="Partnership">Partnership</option>
-                        <option value="Sole Proprietor">Sole Proprietor</option>
+                        <option value="Corporation">{t('programDetail.corporation')}</option>
+                        <option value="Partnership">{t('programDetail.partnership')}</option>
+                        <option value="Sole Proprietor">{t('programDetail.soleProprietor')}</option>
                       </select>
-                      <input className="input" placeholder="State of incorporation" value={prefilledKyb.state_of_incorporation ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state_of_incorporation: e.target.value }))} />
-                      <input className="input" placeholder="Address line 1" value={prefilledKyb.address_line_1 ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, address_line_1: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.stateOfIncorporation')} value={prefilledKyb.state_of_incorporation ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state_of_incorporation: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.addressLine1')} value={prefilledKyb.address_line_1 ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, address_line_1: e.target.value }))} />
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8 }}>
-                        <input className="input" placeholder="City" value={prefilledKyb.city ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, city: e.target.value }))} />
-                        <input className="input" placeholder="State" value={prefilledKyb.state ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state: e.target.value }))} />
-                        <input className="input" placeholder="ZIP" value={prefilledKyb.zip ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, zip: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.city')} value={prefilledKyb.city ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, city: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.state')} value={prefilledKyb.state ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.zip')} value={prefilledKyb.zip ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, zip: e.target.value }))} />
                       </div>
-                      <input className="input" placeholder="Industry NAICS" value={prefilledKyb.industry_naics ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, industry_naics: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.industryNaics')} value={prefilledKyb.industry_naics ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, industry_naics: e.target.value }))} />
                       <select className="input" value={prefilledKyb.annual_revenue_range ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, annual_revenue_range: e.target.value }))}>
-                        <option value="">Annual revenue range</option>
+                        <option value="">{t('programDetail.annualRevenueRange')}</option>
                         <option value="<$1M">&lt;$1M</option>
                         <option value="$1M-$5M">$1M–$5M</option>
                         <option value="$5M-$10M">$5M–$10M</option>
@@ -1571,7 +1586,7 @@ export default function ProgramDetailPage() {
                         <option value="$50M-$100M">$50M–$100M</option>
                         <option value="$100M+">$100M+</option>
                       </select>
-                      <input className="input" placeholder="Primary contact phone" value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
+                      <input className="input" placeholder={t('programDetail.primaryContactPhone')} value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
                       <div style={{
                         fontFamily: 'var(--font-mono)',
                         fontSize: 10,
@@ -1581,16 +1596,16 @@ export default function ProgramDetailPage() {
                         background: 'var(--offwhite)',
                         border: '1px solid var(--border)',
                       }}>
-                        These details will be pre-filled in their onboarding. They will only need to create credentials — no KYB application required.
+                        {t('programDetail.prefillHint')}
                       </div>
                     </div>
                   )}
                   {inviteMode === 'custom_kyb' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                       <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-                        Required documents
+                        {t('programDetail.requiredDocuments')}
                       </div>
-                      {AVAILABLE_DOCS.map(doc => (
+                      {availableDocs(t).map(doc => (
                         <label key={doc.id} style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1620,20 +1635,20 @@ export default function ProgramDetailPage() {
                       {requiredDocs.includes('custom_document') && (
                         <input
                           className="input"
-                          placeholder="Document name..."
+                          placeholder={t('programDetail.documentNamePlaceholder')}
                           value={customDocName}
                           onChange={e => setCustomDocName(e.target.value)}
                           style={{ marginTop: 8 }}
                         />
                       )}
                       <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
-                        The counterparty will be guided to upload exactly these documents during onboarding.
+                        {t('programDetail.customKybHint')}
                       </div>
                     </div>
                   )}
                   {inviteError && <div style={{ color: '#DC2626', fontSize: 13 }}>{inviteError}</div>}
                   <button className="btn btn-primary" type="button" disabled={inviteLoading} onClick={handleSendInvite}>
-                    {inviteLoading ? 'Sending…' : 'Send invite'}
+                    {inviteLoading ? t('txnDetail.sending') : t('programDetail.sendInvite')}
                   </button>
                 </>
               )}

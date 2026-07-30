@@ -30,11 +30,19 @@ interface SceneBase {
 export type TourScene = SceneBase &
   (
     | {
-        kind: 'title'
-        eyebrow: string
+        kind: 'ai-open'
+        sceneLabel: string
+        /** Sequential assistant lines revealed on a short timer before the
+         *  tool-call card appears — the "AI actively sourcing" beat. */
+        thinking: string[]
+        badge: string
         title: string
-        subtitle: string
-        cta: string
+        body: string
+        toolName: string
+        summaryLine: string
+        guardrailLine?: string
+        approveLabel: string
+        footer: string
       }
     | {
         kind: 'dashboard'
@@ -116,34 +124,45 @@ export type TourScene = SceneBase &
       }
   )
 
-// Sidebar nav labels the tour chrome shows, and which scene id clicking each
-// one jumps to. A few real nav items (Networks, Strike Passport, Analytics)
-// don't have a dedicated scene in this simplified tour, so they route to the
-// closest thematic scene rather than dead-ending.
-export const TOUR_NAV: { label: string; icon: string; sceneId: string }[] = [
+// Sidebar nav labels the tour chrome shows. `sceneId: null` means this item
+// has no corresponding scene in this simplified tour — it renders disabled
+// rather than being wired to a scene it doesn't actually represent (no
+// "closest thematic match" guessing; if we're not visiting that page, it's
+// not clickable).
+export const TOUR_NAV: { label: string; icon: string; sceneId: string | null }[] = [
   { label: 'Strike AI', icon: 'ai', sceneId: 'chat' },
   { label: 'Dashboard', icon: 'dashboard', sceneId: 'dashboard' },
   { label: 'Strike Place', icon: 'marketplace', sceneId: 'negotiation' },
-  { label: 'My Deals', icon: 'deals', sceneId: 'gate2' },
+  { label: 'My Deals', icon: 'deals', sceneId: null },
   { label: 'Financing', icon: 'financing', sceneId: 'financing' },
-  { label: 'Networks', icon: 'networks', sceneId: 'erp' },
+  { label: 'Networks', icon: 'networks', sceneId: null },
   { label: 'Strike Rooms', icon: 'rooms', sceneId: 'room' },
-  { label: 'Strike Passport', icon: 'passport', sceneId: 'chat' },
-  { label: 'Analytics', icon: 'analytics', sceneId: 'chat' },
+  { label: 'Strike Passport', icon: 'passport', sceneId: null },
+  { label: 'Analytics', icon: 'analytics', sceneId: null },
 ]
 
 export const TOUR_SCENES: TourScene[] = [
   {
-    kind: 'title',
-    id: 'title',
-    eyebrow: 'STRIKE SCF — PRODUCT TOUR',
-    title: 'Watch Strike AI run a trade — start to finish.',
-    subtitle:
-      'A guided walkthrough of sourcing, autonomous negotiation, financing, and capital reasoning — on real product screens. No login, no scheduled call.',
-    cta: 'Begin the tour',
+    kind: 'ai-open',
+    id: 'ai-open',
+    sceneLabel: 'Strike AI',
+    thinking: [
+      "Walmart's ERP shows STEEL-HRC-500 critically low — 12 on hand against 45 reserved.",
+      'Scanning Strike Place for a matching supplier…',
+      'Found it — Rocket Corp has 505 MT of steel that fits the shortage and delivery window.',
+    ],
+    badge: 'Needs Approval',
+    title: 'Submit an offer on "505 MT Steel Products — July 2026 Delivery"',
+    body: "Rocket Corp is offering steel that matches Walmart's shortage exactly — 505 MT, deliverable in time for the Bentonville replenishment window. Recommending an opening offer of $475,000, based on current HRC benchmarks and Rocket Corp's PassportScore of 69.",
+    toolName: 'submit_marketplace_offer',
+    summaryLine: 'Offer: $475,000 · CFR · Net 30 · Delivery Jul 31, 2026',
+    guardrailLine: 'Guardrails: price ceiling $520,000 · max 10 rounds',
+    approveLabel: 'Approve & Submit',
+    footer:
+      "Once approved, Strike AI negotiates the rest on its own — you'll only be asked again before anything is finalized.",
     guide: {
-      title: 'Welcome',
-      body: "I'll walk you through a real trade — sourcing, negotiating, financing, and reasoning about your books. Click Begin whenever you're ready.",
+      title: 'Watch me source this',
+      body: "This is Strike AI actively working — I'm reading your ERP, searching Strike Place, and drafting an offer in real time. Approve the card below once it appears to continue.",
     },
   },
   {
@@ -188,24 +207,6 @@ export const TOUR_SCENES: TourScene[] = [
     guide: {
       title: "Here's the data behind that",
       body: "This is the ERP connection I'm reading from — inventory, cash, and receivables, synced automatically. It's why I noticed the shortage before anyone had to look for it.",
-    },
-  },
-  {
-    kind: 'gate',
-    id: 'gate1',
-    sceneLabel: 'Strike AI — Agent',
-    badge: 'Needs Approval',
-    title: 'Submit an offer on "505 MT Steel Products — July 2026 Delivery"',
-    body: "Rocket Corp is offering steel that matches Walmart's shortage exactly — 505 MT, deliverable in time for the Bentonville replenishment window. Strike AI recommends opening at $475,000, based on current HRC benchmarks and Rocket Corp's PassportScore of 69.",
-    toolName: 'submit_marketplace_offer',
-    summaryLine: 'Offer: $475,000 · CFR · Net 30 · Delivery Jul 31, 2026',
-    guardrailLine: 'Guardrails: price ceiling $520,000 · max 10 rounds',
-    approveLabel: 'Approve & Submit',
-    footer:
-      "Once approved, Strike AI negotiates the rest on its own — you'll only be asked again before anything is finalized.",
-    guide: {
-      title: 'I found a match',
-      body: 'I scanned Strike Place and found a supplier that solves your shortage. I drafted an offer — approve the plan once, and I take it from here.',
     },
   },
   {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Organization } from '@strike-scf/types'
 import { useWizard, TOTAL_STEPS } from '../wizard-context'
+import { useT } from '@/lib/i18n/locale-context'
 
 // ─────────────────────────────────────────────────────────────
 // Reference data (hardcoded — there is no lib/naics or lib/countries)
@@ -238,13 +239,72 @@ function mapOrgToForm(org: Organization): Form {
     country_of_origin: org.country_of_origin ?? '',
     sourcing_countries: org.sourcing_countries ?? [],
     product_categories: org.product_categories ?? [],
-    payment_terms_preference: '', // not persisted (no column) — see route note
+    payment_terms_preference: org.payment_terms_preference ?? '',
     network_visible: !!org.network_visible,
   }
 }
 
-// Build the PATCH payload. payment_terms_preference is intentionally omitted —
-// there is no such column on `organizations`.
+function mapOrgToProfile(org: Organization) {
+  const yn = (v: boolean | null): '' | 'yes' | 'no' => (v == null ? '' : v ? 'yes' : 'no')
+  return {
+    ceo_name: org.ceo_name ?? '',
+    ubo_summary: org.ubo_summary ?? '',
+    pep: yn(org.is_pep),
+    sanctioned: yn(org.has_sanctioned_exposure),
+    bankruptcy: yn(org.bankruptcy_filed),
+    litigation: yn(org.material_litigation),
+    primary_currency: org.primary_currency ?? '',
+    avg_invoice_size: org.avg_invoice_size ?? '',
+    payment_terms_offered: org.payment_terms_offered ?? '',
+    payment_terms_received: org.payment_terms_received ?? '',
+    customer_count: org.customer_count ?? '',
+    largest_customer_pct: org.largest_customer_pct ?? '',
+    financing_need: org.financing_need ?? '',
+    supplier_count: org.supplier_count ?? '',
+    largest_supplier_pct: org.largest_supplier_pct ?? '',
+    supplier_payment_terms: org.supplier_payment_terms ?? '',
+    erp_system: org.erp_system ?? '',
+    primary_bank_name: org.primary_bank_name ?? '',
+    intent: org.platform_intent ?? [],
+    ai_matching: org.ai_matching_opt_in ?? true,
+  }
+}
+
+function mapProfileToData(profile: {
+  ceo_name: string; ubo_summary: string
+  pep: '' | 'yes' | 'no'; sanctioned: '' | 'yes' | 'no'; bankruptcy: '' | 'yes' | 'no'; litigation: '' | 'yes' | 'no'
+  primary_currency: string; avg_invoice_size: string
+  payment_terms_offered: string; payment_terms_received: string
+  customer_count: string; largest_customer_pct: string; financing_need: string
+  supplier_count: string; largest_supplier_pct: string; supplier_payment_terms: string
+  erp_system: string; primary_bank_name: string; intent: string[]; ai_matching: boolean
+}): Record<string, unknown> {
+  const bool = (v: '' | 'yes' | 'no'): boolean | undefined => (v === '' ? undefined : v === 'yes')
+  return {
+    ceo_name: profile.ceo_name || undefined,
+    ubo_summary: profile.ubo_summary || undefined,
+    is_pep: bool(profile.pep),
+    has_sanctioned_exposure: bool(profile.sanctioned),
+    bankruptcy_filed: bool(profile.bankruptcy),
+    material_litigation: bool(profile.litigation),
+    primary_currency: profile.primary_currency || undefined,
+    avg_invoice_size: profile.avg_invoice_size || undefined,
+    payment_terms_offered: profile.payment_terms_offered || undefined,
+    payment_terms_received: profile.payment_terms_received || undefined,
+    customer_count: profile.customer_count || undefined,
+    largest_customer_pct: profile.largest_customer_pct || undefined,
+    financing_need: profile.financing_need || undefined,
+    supplier_count: profile.supplier_count || undefined,
+    largest_supplier_pct: profile.largest_supplier_pct || undefined,
+    supplier_payment_terms: profile.supplier_payment_terms || undefined,
+    erp_system: profile.erp_system || undefined,
+    primary_bank_name: profile.primary_bank_name || undefined,
+    platform_intent: profile.intent.length > 0 ? profile.intent : undefined,
+    ai_matching_opt_in: profile.ai_matching,
+  }
+}
+
+// Build the PATCH payload.
 function mapFormToData(form: Form): Record<string, unknown> {
   return {
     legal_name: form.legal_name,
@@ -271,6 +331,7 @@ function mapFormToData(form: Form): Record<string, unknown> {
     country_of_origin: form.country_of_origin,
     sourcing_countries: form.sourcing_countries,
     product_categories: form.product_categories,
+    payment_terms_preference: form.payment_terms_preference,
     network_visible: form.network_visible,
   }
 }
@@ -391,6 +452,7 @@ function YesNo({
   value: '' | 'yes' | 'no'
   onChange: (v: 'yes' | 'no') => void
 }) {
+  const t = useT()
   return (
     <div className="form-field">
       <div className="form-label-row">
@@ -407,7 +469,7 @@ function YesNo({
               className={`radio-card ${on ? 'selected' : ''}`.trim()}
               style={{ flex: 1, justifyContent: 'center', textTransform: 'capitalize' }}
             >
-              {opt}
+              {opt === 'yes' ? t('common.yes') : t('common.no')}
             </button>
           )
         })}
@@ -443,6 +505,7 @@ function DropZone({
   state: DocState
   onFile: (file: File) => void
 }) {
+  const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const [drag, setDrag] = useState(false)
   const done = state.status === 'done'
@@ -509,7 +572,7 @@ function DropZone({
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-ink-1)' }}>
               {spec.label}
               {!spec.required && (
-                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: 'var(--color-ink-4)' }}>Optional</span>
+                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: 'var(--color-ink-4)' }}>{t('common.optional')}</span>
               )}
             </div>
             <div
@@ -523,17 +586,17 @@ function DropZone({
               }}
             >
               {uploading
-                ? 'Uploading…'
+                ? t('onboarding.misc.uploading')
                 : done
                   ? `${state.name} - ${formatBytes(state.size)}`
                   : state.status === 'error'
-                    ? 'Upload failed — click to retry'
-                    : 'Drag & drop or click to upload - PDF, max 20MB'}
+                    ? t('onboarding.misc.uploadFailed')
+                    : t('onboarding.misc.dragDropHint')}
             </div>
           </div>
         </div>
         <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', whiteSpace: 'nowrap' }}>
-          {done ? 'Replace' : uploading ? '' : 'Upload'}
+          {done ? t('onboarding.misc.replace') : uploading ? '' : t('onboarding.misc.upload')}
         </span>
       </div>
       <input
@@ -654,6 +717,7 @@ function businessTypeLabel(value: string): string {
 // ─────────────────────────────────────────────────────────────
 export default function OnboardingWizard() {
   const router = useRouter()
+  const t = useT()
   const { step, setStep } = useWizard()
 
   const [org, setOrg] = useState<Organization | null>(null)
@@ -818,6 +882,7 @@ export default function OnboardingWizard() {
         if (!cancelled && data.org) {
           setOrg(data.org)
           setForm(mapOrgToForm(data.org))
+          setProfile(p => ({ ...p, ...mapOrgToProfile(data.org) }))
         }
       } catch {
         /* fall through — wizard still renders */
@@ -849,7 +914,7 @@ export default function OnboardingWizard() {
       const res = await fetch('/api/onboarding/progress', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step, data: mapFormToData(form) }),
+        body: JSON.stringify({ step, data: { ...mapFormToData(form), ...mapProfileToData(profile) } }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save your progress.')
@@ -866,59 +931,59 @@ export default function OnboardingWizard() {
   function validate(current: number): string | null {
     // Step 1 — Identity & Legal
     if (current === 1) {
-      if (!form.legal_name.trim()) return 'Legal business name is required.'
-      if (!form.business_type) return 'Please select a business type.'
-      if (!form.country_of_incorporation) return 'Country of incorporation is required.'
-      if (!form.years_in_operation.trim()) return 'Years in operation is required.'
-      if (!form.industry_naics) return 'Please select your industry.'
-      if (!form.ein.trim()) return 'Tax ID / EIN is required.'
+      if (!form.legal_name.trim()) return t('onboarding.validation.legalName')
+      if (!form.business_type) return t('onboarding.validation.businessType')
+      if (!form.country_of_incorporation) return t('onboarding.validation.countryIncorp')
+      if (!form.years_in_operation.trim()) return t('onboarding.validation.yearsOperation')
+      if (!form.industry_naics) return t('onboarding.validation.industry')
+      if (!form.ein.trim()) return t('onboarding.validation.taxId')
     }
     // Step 2 — Address & Contact
     if (current === 2) {
-      if (!form.primary_contact_name.trim()) return 'Primary contact name is required.'
-      if (!form.primary_contact_title.trim()) return 'Primary contact title is required.'
-      if (!form.primary_contact_phone.trim()) return 'Primary contact phone is required.'
-      if (!form.address_line1.trim()) return 'Address is required.'
-      if (!form.city.trim()) return 'City is required.'
-      if (!form.state.trim()) return 'State is required.'
-      if (!form.zip.trim()) return 'ZIP is required.'
-      if (!form.country) return 'Country is required.'
+      if (!form.primary_contact_name.trim()) return t('onboarding.validation.primaryContactName')
+      if (!form.primary_contact_title.trim()) return t('onboarding.validation.primaryContactTitle')
+      if (!form.primary_contact_phone.trim()) return t('onboarding.validation.primaryContactPhone')
+      if (!form.address_line1.trim()) return t('onboarding.validation.address')
+      if (!form.city.trim()) return t('onboarding.validation.city')
+      if (!form.state.trim()) return t('onboarding.validation.state')
+      if (!form.zip.trim()) return t('onboarding.validation.zip')
+      if (!form.country) return t('onboarding.validation.country')
     }
     // Step 3 — Ownership & Compliance
     if (current === 3) {
-      if (!profile.ceo_name.trim()) return 'CEO / director name is required.'
-      if (!profile.pep) return 'Please answer the PEP declaration.'
-      if (!profile.sanctioned) return 'Please answer the sanctioned-countries declaration.'
-      if (!profile.bankruptcy) return 'Please answer the bankruptcy declaration.'
-      if (!profile.litigation) return 'Please answer the material-litigation declaration.'
+      if (!profile.ceo_name.trim()) return t('onboarding.validation.ceoName')
+      if (!profile.pep) return t('onboarding.validation.pep')
+      if (!profile.sanctioned) return t('onboarding.validation.sanctioned')
+      if (!profile.bankruptcy) return t('onboarding.validation.bankruptcy')
+      if (!profile.litigation) return t('onboarding.validation.litigation')
     }
     // Step 4 — Financial & Trade Profile
     if (current === 4) {
-      if (!form.annual_revenue_range) return 'Annual revenue range is required.'
-      if (!form.employee_count_range) return 'Employee count range is required.'
-      if (!profile.primary_currency) return 'Primary operating currency is required.'
+      if (!form.annual_revenue_range) return t('onboarding.validation.annualRevenue')
+      if (!form.employee_count_range) return t('onboarding.validation.employeeCount')
+      if (!profile.primary_currency) return t('onboarding.validation.primaryCurrency')
       if (orgType === 'supplier') {
-        if (!form.country_of_origin) return 'Country of origin is required.'
-        if (form.sourcing_countries.length === 0) return 'Select at least one sourcing country.'
-        if (!profile.financing_need) return 'Please select your financing need.'
+        if (!form.country_of_origin) return t('onboarding.validation.countryOfOrigin')
+        if (form.sourcing_countries.length === 0) return t('onboarding.validation.sourcingCountries')
+        if (!profile.financing_need) return t('onboarding.validation.financingNeed')
       } else {
-        if (form.product_categories.length === 0) return 'Select at least one product category.'
+        if (form.product_categories.length === 0) return t('onboarding.validation.productCategories')
       }
-      if (!form.payment_terms_preference) return 'Payment terms preference is required.'
+      if (!form.payment_terms_preference) return t('onboarding.validation.paymentTermsPreference')
     }
     // Step 5 — Systems & Intent
     if (current === 5) {
-      if (!profile.erp_system) return 'Please select your ERP system (or None).'
-      if (profile.intent.length === 0) return 'Select at least one thing you want to do on Strike.'
+      if (!profile.erp_system) return t('onboarding.validation.erpSystem')
+      if (profile.intent.length === 0) return t('onboarding.validation.intent')
     }
     // Step 6 — Bank Accounts (at least one required)
     if (current === 6) {
-      if (bankAccounts.length === 0) return 'Add at least one bank account to continue.'
+      if (bankAccounts.length === 0) return t('onboarding.validation.bankAccounts')
     }
     // Step 7 — Documents
     if (current === 7) {
       const missing = docSpecs.filter((d) => d.required && docs[d.kind]?.status !== 'done')
-      if (missing.length > 0) return `Please upload: ${missing.map((d) => d.label).join(', ')}.`
+      if (missing.length > 0) return t('onboarding.validation.documentsMissing', { list: missing.map((d) => d.label).join(', ') })
     }
     return null
   }
@@ -959,7 +1024,7 @@ export default function OnboardingWizard() {
 
   async function uploadDoc(kind: string, file: File) {
     if (!org) {
-      setError('We could not find your organization. Please refresh and try again.')
+      setError(t('onboarding.error.orgNotFound'))
       return
     }
     setDocs((p) => ({ ...p, [kind]: { status: 'uploading', name: file.name, size: file.size } }))
@@ -982,13 +1047,13 @@ export default function OnboardingWizard() {
 
   async function submit() {
     if (!attested) {
-      setError('Please confirm the information is accurate to activate your Passport.')
+      setError(t('onboarding.error.confirmAttestation'))
       return
     }
     const ok = await saveProgress()
     if (!ok) return
     if (!org) {
-      setError('We could not find your organization. Please refresh and try again.')
+      setError(t('onboarding.error.orgNotFound'))
       return
     }
     setSaving(true)
@@ -1000,12 +1065,12 @@ export default function OnboardingWizard() {
         body: JSON.stringify({ org_id: org.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Submission failed.')
-      // Platform unlocks immediately on submit (TD.4). Land on the dashboard with
-      // the success banner (TD.3).
+      if (!res.ok) throw new Error(data.error || t('onboarding.error.submissionFailed'))
+      // Submission moves kyb_status to under_review/approved (or 'submitted'); the
+      // KYB access gate in (portal)/layout.tsx shows the status page until approved.
       router.push('/dashboard?activated=1')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Submission failed.')
+      setError(e instanceof Error ? e.message : t('onboarding.error.submissionFailed'))
       setSaving(false)
     }
   }
@@ -1021,46 +1086,46 @@ export default function OnboardingWizard() {
       {/* ── Step 1 — Identity & Legal ────────────────────────── */}
       {step === 1 && (
         <>
-          <StepHeader step={1} title="Identity & Legal" sub="Start with your legal details. We cross-check these against public records." />
+          <StepHeader step={1} title={t('onboarding.step1.title')} sub={t('onboarding.step1.sub')} />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
-                <Field label="Legal business name">
+                <Field label={t('onboarding.field.legalName')}>
                   <input className="form-input" value={form.legal_name} onChange={(e) => update({ legal_name: e.target.value })} placeholder="Acme Corp LLC" />
                 </Field>
-                <Field label="Doing business as" optional>
+                <Field label={t('onboarding.field.dba')} optional>
                   <input className="form-input" value={form.doing_business_as} onChange={(e) => update({ doing_business_as: e.target.value })} placeholder="Acme" />
                 </Field>
               </div>
               <div className="form-row-3">
-                <Field label="Business type">
+                <Field label={t('onboarding.field.businessType')}>
                   <select className="form-input form-select" value={form.business_type} onChange={(e) => update({ business_type: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {BUSINESS_TYPES.map((b) => (
                       <option key={b.value} value={b.value}>{b.label}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Country of incorporation">
+                <Field label={t('onboarding.field.countryIncorp')}>
                   <select className="form-input form-select" value={form.country_of_incorporation} onChange={(e) => update({ country_of_incorporation: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {COUNTRIES.map((c) => (
                       <option key={c.code} value={c.code}>{c.name}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="State / province of incorp." optional>
+                <Field label={t('onboarding.field.stateIncorp')} optional>
                   <input className="form-input" value={form.state_of_incorporation} onChange={(e) => update({ state_of_incorporation: e.target.value })} placeholder="DE" />
                 </Field>
               </div>
               <div className="form-row-3">
-                <Field label="Years in operation">
+                <Field label={t('onboarding.field.yearsOperation')}>
                   <input className="form-input" type="number" min={0} value={form.years_in_operation} onChange={(e) => update({ years_in_operation: e.target.value })} placeholder="5" />
                 </Field>
-                <Field label="Website" optional>
+                <Field label={t('onboarding.field.website')} optional>
                   <input className="form-input" value={form.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://acme.com" />
                 </Field>
-                <Field label="Tax ID / EIN" hint="Stored securely — only shared with verification partners.">
+                <Field label={t('onboarding.field.taxId')} hint={t('onboarding.field.taxIdHint')}>
                   <div className="input-with-status">
                     <input
                       className="form-input mono"
@@ -1080,17 +1145,17 @@ export default function OnboardingWizard() {
                   </div>
                 </Field>
               </div>
-              <Field label="Industry (NAICS)">
+              <Field label={t('onboarding.field.industry')}>
                 <NaicsSelect value={form.industry_naics} onChange={(code) => update({ industry_naics: code })} />
               </Field>
-              <Field label="Products / services" optional hint="2–3 sentences on what your business does.">
+              <Field label={t('onboarding.field.productsServices')} optional hint={t('onboarding.field.productsServicesHint')}>
                 <textarea
                   className="form-textarea"
                   rows={3}
                   maxLength={500}
                   value={form.description}
                   onChange={(e) => update({ description: e.target.value })}
-                  placeholder="What does your business do?"
+                  placeholder={t('onboarding.field.productsServicesPlaceholder')}
                 />
                 <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--color-ink-4)', marginTop: 4 }}>
                   {form.description.length}/500
@@ -1104,41 +1169,41 @@ export default function OnboardingWizard() {
       {/* ── Step 2 — Address & Contact ───────────────────────── */}
       {step === 2 && (
         <>
-          <StepHeader step={2} title="Address & Contact" sub="Who should we reach out to, and where is your business registered?" />
+          <StepHeader step={2} title={t('onboarding.step2.title')} sub={t('onboarding.step2.sub')} />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-3">
-                <Field label="Primary contact name">
+                <Field label={t('onboarding.field.primaryContactName')}>
                   <input className="form-input" value={form.primary_contact_name} onChange={(e) => update({ primary_contact_name: e.target.value })} placeholder="Jane Doe" />
                 </Field>
-                <Field label="Title">
+                <Field label={t('onboarding.field.title')}>
                   <input className="form-input" value={form.primary_contact_title} onChange={(e) => update({ primary_contact_title: e.target.value })} placeholder="CFO" />
                 </Field>
-                <Field label="Phone">
+                <Field label={t('onboarding.field.phone')}>
                   <input className="form-input" type="tel" value={form.primary_contact_phone} onChange={(e) => update({ primary_contact_phone: e.target.value })} placeholder="+1 (555) 010-0100" />
                 </Field>
               </div>
               <div className="form-row-2">
-                <Field label="Address line 1">
+                <Field label={t('onboarding.field.addressLine1')}>
                   <input className="form-input" value={form.address_line1} onChange={(e) => update({ address_line1: e.target.value })} placeholder="123 Main St" />
                 </Field>
-                <Field label="Address line 2" optional>
+                <Field label={t('onboarding.field.addressLine2')} optional>
                   <input className="form-input" value={form.address_line2} onChange={(e) => update({ address_line2: e.target.value })} placeholder="Suite 400" />
                 </Field>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 2fr', gap: 12 }}>
-                <Field label="City">
+                <Field label={t('onboarding.field.city')}>
                   <input className="form-input" value={form.city} onChange={(e) => update({ city: e.target.value })} placeholder="Portland" />
                 </Field>
-                <Field label="State">
+                <Field label={t('onboarding.field.state')}>
                   <input className="form-input" value={form.state} onChange={(e) => update({ state: e.target.value })} placeholder="OR" />
                 </Field>
-                <Field label="ZIP">
+                <Field label={t('onboarding.field.zip')}>
                   <input className="form-input" value={form.zip} onChange={(e) => update({ zip: e.target.value })} placeholder="97201" />
                 </Field>
-                <Field label="Country">
+                <Field label={t('onboarding.field.country')}>
                   <select className="form-input form-select" value={form.country} onChange={(e) => update({ country: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {COUNTRIES.map((c) => (
                       <option key={c.code} value={c.code}>{c.name}</option>
                     ))}
@@ -1153,24 +1218,24 @@ export default function OnboardingWizard() {
       {/* ── Step 3 — Ownership & Compliance ──────────────────── */}
       {step === 3 && (
         <>
-          <StepHeader step={3} title="Ownership & Compliance" sub="Tell us who controls the business and confirm a few compliance declarations." />
+          <StepHeader step={3} title={t('onboarding.step3.title')} sub={t('onboarding.step3.sub')} />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
-                <Field label="CEO / director name(s)">
+                <Field label={t('onboarding.field.ceoName')}>
                   <input className="form-input" value={profile.ceo_name} onChange={(e) => updateProfile({ ceo_name: e.target.value })} placeholder="Jane Doe, John Smith" />
                 </Field>
-                <Field label="Ultimate beneficial owner(s) & ownership %" optional hint="List each UBO and ownership stake.">
+                <Field label={t('onboarding.field.uboSummary')} optional hint={t('onboarding.field.uboSummaryHint')}>
                   <input className="form-input" value={profile.ubo_summary} onChange={(e) => updateProfile({ ubo_summary: e.target.value })} placeholder="Jane Doe — 60%, John Smith — 40%" />
                 </Field>
               </div>
               <div className="form-row-2">
-                <YesNo label="Is any owner, director or officer a Politically Exposed Person (PEP)?" value={profile.pep} onChange={(v) => updateProfile({ pep: v })} />
-                <YesNo label="Does the business operate in, or source from, sanctioned countries?" value={profile.sanctioned} onChange={(v) => updateProfile({ sanctioned: v })} />
+                <YesNo label={t('onboarding.field.pep')} value={profile.pep} onChange={(v) => updateProfile({ pep: v })} />
+                <YesNo label={t('onboarding.field.sanctioned')} value={profile.sanctioned} onChange={(v) => updateProfile({ sanctioned: v })} />
               </div>
               <div className="form-row-2">
-                <YesNo label="Has the business filed for bankruptcy in the last 7 years?" value={profile.bankruptcy} onChange={(v) => updateProfile({ bankruptcy: v })} />
-                <YesNo label="Is the business subject to any material litigation?" value={profile.litigation} onChange={(v) => updateProfile({ litigation: v })} />
+                <YesNo label={t('onboarding.field.bankruptcy')} value={profile.bankruptcy} onChange={(v) => updateProfile({ bankruptcy: v })} />
+                <YesNo label={t('onboarding.field.litigation')} value={profile.litigation} onChange={(v) => updateProfile({ litigation: v })} />
               </div>
             </div>
           </div>
@@ -1180,21 +1245,21 @@ export default function OnboardingWizard() {
       {/* ── Step 4 — Financial & Trade Profile ───────────────── */}
       {step === 4 && (
         <>
-          <StepHeader step={4} title="Financial & Trade Profile" sub="This helps us size financing and tailor your Strike Passport." />
+          <StepHeader step={4} title={t('onboarding.step4.title')} sub={t('onboarding.step4.sub')} />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
-                <Field label="Annual revenue range">
+                <Field label={t('onboarding.field.annualRevenue')}>
                   <select className="form-input form-select" value={form.annual_revenue_range} onChange={(e) => update({ annual_revenue_range: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {REVENUE_RANGES.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Number of employees">
+                <Field label={t('onboarding.field.employeeCount')}>
                   <select className="form-input form-select" value={form.employee_count_range} onChange={(e) => update({ employee_count_range: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {EMPLOYEE_RANGES.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
@@ -1202,17 +1267,17 @@ export default function OnboardingWizard() {
                 </Field>
               </div>
               <div className="form-row-2">
-                <Field label="Primary operating currency">
+                <Field label={t('onboarding.field.primaryCurrency')}>
                   <select className="form-input form-select" value={profile.primary_currency} onChange={(e) => updateProfile({ primary_currency: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {CURRENCIES.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Average invoice size" optional>
+                <Field label={t('onboarding.field.avgInvoiceSize')} optional>
                   <select className="form-input form-select" value={profile.avg_invoice_size} onChange={(e) => updateProfile({ avg_invoice_size: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {INVOICE_SIZES.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -1222,15 +1287,15 @@ export default function OnboardingWizard() {
 
               {orgType === 'supplier' ? (
                 <>
-                  <Field label="Country of origin">
+                  <Field label={t('onboarding.field.countryOfOrigin')}>
                     <select className="form-input form-select" value={form.country_of_origin} onChange={(e) => update({ country_of_origin: e.target.value })}>
-                      <option value="">Select…</option>
+                      <option value="">{t('common.select')}</option>
                       {COUNTRIES.map((c) => (
                         <option key={c.code} value={c.code}>{c.name}</option>
                       ))}
                     </select>
                   </Field>
-                  <Field label="Countries you source from">
+                  <Field label={t('onboarding.field.sourcingCountries')}>
                     <MultiSelect
                       options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
                       selected={form.sourcing_countries}
@@ -1239,29 +1304,29 @@ export default function OnboardingWizard() {
                     />
                   </Field>
                   <div className="form-row-2">
-                    <Field label="Number of active customers" optional>
+                    <Field label={t('onboarding.field.customerCount')} optional>
                       <select className="form-input form-select" value={profile.customer_count} onChange={(e) => updateProfile({ customer_count: e.target.value })}>
-                        <option value="">Select…</option>
+                        <option value="">{t('common.select')}</option>
                         {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
                       </select>
                     </Field>
-                    <Field label="Largest customer % of revenue" optional>
+                    <Field label={t('onboarding.field.largestCustomerPct')} optional>
                       <select className="form-input form-select" value={profile.largest_customer_pct} onChange={(e) => updateProfile({ largest_customer_pct: e.target.value })}>
-                        <option value="">Select…</option>
+                        <option value="">{t('common.select')}</option>
                         {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
                       </select>
                     </Field>
                   </div>
-                  <Field label="Financing need">
+                  <Field label={t('onboarding.field.financingNeed')}>
                     <select className="form-input form-select" value={profile.financing_need} onChange={(e) => updateProfile({ financing_need: e.target.value })}>
-                      <option value="">Select…</option>
+                      <option value="">{t('common.select')}</option>
                       {FINANCING_NEEDS.map((c) => (<option key={c} value={c}>{c}</option>))}
                     </select>
                   </Field>
                 </>
               ) : (
                 <>
-                  <Field label="Product categories">
+                  <Field label={t('onboarding.field.productCategories')}>
                     <MultiSelect
                       options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
                       selected={form.product_categories}
@@ -1270,22 +1335,22 @@ export default function OnboardingWizard() {
                     />
                   </Field>
                   <div className="form-row-2">
-                    <Field label="Number of active suppliers" optional>
+                    <Field label={t('onboarding.field.supplierCount')} optional>
                       <select className="form-input form-select" value={profile.supplier_count} onChange={(e) => updateProfile({ supplier_count: e.target.value })}>
-                        <option value="">Select…</option>
+                        <option value="">{t('common.select')}</option>
                         {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
                       </select>
                     </Field>
-                    <Field label="Largest supplier % of spend" optional>
+                    <Field label={t('onboarding.field.largestSupplierPct')} optional>
                       <select className="form-input form-select" value={profile.largest_supplier_pct} onChange={(e) => updateProfile({ largest_supplier_pct: e.target.value })}>
-                        <option value="">Select…</option>
+                        <option value="">{t('common.select')}</option>
                         {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
                       </select>
                     </Field>
                   </div>
-                  <Field label="Typical payment terms offered to suppliers" optional>
+                  <Field label={t('onboarding.field.supplierPaymentTerms')} optional>
                     <select className="form-input form-select" value={profile.supplier_payment_terms} onChange={(e) => updateProfile({ supplier_payment_terms: e.target.value })}>
-                      <option value="">Select…</option>
+                      <option value="">{t('common.select')}</option>
                       {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
                     </select>
                   </Field>
@@ -1293,25 +1358,25 @@ export default function OnboardingWizard() {
               )}
 
               <div className="form-row-2">
-                <Field label="Payment terms offered" optional>
+                <Field label={t('onboarding.field.paymentTermsOffered')} optional>
                   <select className="form-input form-select" value={profile.payment_terms_offered} onChange={(e) => updateProfile({ payment_terms_offered: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
                   </select>
                 </Field>
-                <Field label="Payment terms received" optional>
+                <Field label={t('onboarding.field.paymentTermsReceived')} optional>
                   <select className="form-input form-select" value={profile.payment_terms_received} onChange={(e) => updateProfile({ payment_terms_received: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
                   </select>
                 </Field>
               </div>
 
-              <Field label="Payment terms preference">
+              <Field label={t('onboarding.field.paymentTermsPreference')}>
                 <select className="form-input form-select" value={form.payment_terms_preference} onChange={(e) => update({ payment_terms_preference: e.target.value })}>
-                  <option value="">Select…</option>
-                  {PAYMENT_TERMS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  <option value="">{t('common.select')}</option>
+                  {PAYMENT_TERMS.map((tv) => (
+                    <option key={tv} value={tv}>{tv}</option>
                   ))}
                 </select>
               </Field>
@@ -1323,21 +1388,21 @@ export default function OnboardingWizard() {
       {/* ── Step 5 — Systems & Intent ────────────────────────── */}
       {step === 5 && (
         <>
-          <StepHeader step={5} title="Systems & Intent" sub="Tell us how you operate and what you want to do on Strike." />
+          <StepHeader step={5} title={t('onboarding.step5.title')} sub={t('onboarding.step5.sub')} />
           <div className="card">
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-row-2">
-                <Field label="ERP system">
+                <Field label={t('onboarding.field.erpSystem')}>
                   <select className="form-input form-select" value={profile.erp_system} onChange={(e) => updateProfile({ erp_system: e.target.value })}>
-                    <option value="">Select…</option>
+                    <option value="">{t('common.select')}</option>
                     {ERP_SYSTEMS.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
                 </Field>
-                <Field label="Primary bank name" optional>
+                <Field label={t('onboarding.field.primaryBankName')} optional>
                   <input className="form-input" value={profile.primary_bank_name} onChange={(e) => updateProfile({ primary_bank_name: e.target.value })} placeholder="e.g. Atlas Bank" />
                 </Field>
               </div>
-              <Field label="What do you want to do on Strike?">
+              <Field label={t('onboarding.field.platformIntent')}>
                 <MultiSelect
                   options={INTENT_OPTIONS.map((c) => ({ value: c, label: c }))}
                   selected={profile.intent}
@@ -1357,7 +1422,7 @@ export default function OnboardingWizard() {
                   <span style={{ position: 'absolute', top: 2, left: profile.ai_matching ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--color-ink-1)' }}>
-                  Let Strike AI suggest matching counterparties and financing
+                  {t('onboarding.misc.aiMatchingLabel')}
                 </span>
               </label>
             </div>
@@ -1368,7 +1433,7 @@ export default function OnboardingWizard() {
       {/* ── Step 6 — Bank Accounts ───────────────────────────── */}
       {step === 6 && (
         <>
-          <StepHeader step={6} title="Bank Accounts" sub="Add the bank accounts where you'll send and receive payments on Strike. You can add more later in Settings." />
+          <StepHeader step={6} title={t('onboarding.step6.title')} sub={t('onboarding.step6.sub')} />
 
           {/* Account list */}
           {bankAccounts.length > 0 && !addingAccount && (
@@ -1397,21 +1462,21 @@ export default function OnboardingWizard() {
                       <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>
                         {acc.nickname || acc.bank_name}
                         {acc.is_primary && (
-                          <span className="badge" style={{ marginLeft: 8, color: 'var(--blue)', fontSize: 10 }}>Primary</span>
+                          <span className="badge" style={{ marginLeft: 8, color: 'var(--blue)', fontSize: 10 }}>{t('onboarding.misc.primary')}</span>
                         )}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
-                        {acc.bank_name} - {acc.account_type === 'checking' ? 'Checking' : 'Savings'} - ****{acc.account_number.slice(-4)}
+                        {acc.bank_name} - {acc.account_type === 'checking' ? t('onboarding.misc.checking') : t('onboarding.misc.savings')} - ****{acc.account_number.slice(-4)}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       {!acc.is_primary && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimary(acc.id)}>
-                          Set primary
+                          {t('onboarding.misc.setAsPrimary')}
                         </button>
                       )}
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEditAccount(acc)}>
-                        Edit
+                        {t('onboarding.misc.editAccount')}
                       </button>
                       <button
                         type="button"
@@ -1420,7 +1485,7 @@ export default function OnboardingWizard() {
                         onClick={() => deleteAccount(acc.id)}
                         disabled={accountSaving}
                       >
-                        Remove
+                        {t('onboarding.misc.remove')}
                       </button>
                     </div>
                   </div>
@@ -1433,22 +1498,22 @@ export default function OnboardingWizard() {
           {addingAccount ? (
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">{editingAccountId ? 'Edit account' : 'Add bank account'}</h3>
+                <h3 className="t-card-head">{editingAccountId ? t('onboarding.misc.editAccount') : t('onboarding.misc.addBankAccountTitle')}</h3>
               </div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div className="form-row-2">
-                  <Field label="Account nickname" optional hint="e.g. Operating Account, USD Account">
+                  <Field label={t('onboarding.field.accountNickname')} optional hint={t('onboarding.field.accountNicknameHint')}>
                     <input className="form-input" value={accountDraft.nickname} onChange={e => setAccountDraft(d => ({ ...d, nickname: e.target.value }))} placeholder="Operating Account" />
                   </Field>
-                  <Field label="Bank name">
+                  <Field label={t('onboarding.field.bankName')}>
                     <input className="form-input" value={accountDraft.bank_name} onChange={e => setAccountDraft(d => ({ ...d, bank_name: e.target.value }))} placeholder="Chase" />
                   </Field>
                 </div>
-                <Field label="Account holder name">
+                <Field label={t('onboarding.field.accountHolderName')}>
                   <input className="form-input" value={accountDraft.account_holder_name} onChange={e => setAccountDraft(d => ({ ...d, account_holder_name: e.target.value }))} placeholder="Acme Corp LLC" />
                 </Field>
                 <div className="form-row-2">
-                  <Field label="Account number">
+                  <Field label={t('onboarding.field.accountNumber')}>
                     <div className="input-with-status">
                       <input
                         className="form-input mono"
@@ -1463,22 +1528,22 @@ export default function OnboardingWizard() {
                         className="input-status"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)' }}
                       >
-                        {showAccountNumber ? 'Hide' : 'Show'}
+                        {showAccountNumber ? t('onboarding.misc.hide') : t('onboarding.misc.show')}
                       </button>
                     </div>
                   </Field>
-                  <Field label="Routing number">
+                  <Field label={t('onboarding.field.routingNumber')}>
                     <input className="form-input mono" value={accountDraft.routing_number} onChange={e => setAccountDraft(d => ({ ...d, routing_number: e.target.value }))} placeholder="021000021" />
                   </Field>
                 </div>
                 <div className="form-row-2">
-                  <Field label="Account type">
+                  <Field label={t('onboarding.field.accountType')}>
                     <select className="form-input form-select" value={accountDraft.account_type} onChange={e => setAccountDraft(d => ({ ...d, account_type: e.target.value as 'checking' | 'savings' }))}>
-                      <option value="checking">Checking</option>
-                      <option value="savings">Savings</option>
+                      <option value="checking">{t('onboarding.misc.checking')}</option>
+                      <option value="savings">{t('onboarding.misc.savings')}</option>
                     </select>
                   </Field>
-                  <Field label="SWIFT / IBAN" optional hint="For international transfers">
+                  <Field label={t('onboarding.field.swiftIban')} optional hint={t('onboarding.field.swiftIbanHint')}>
                     <input className="form-input mono" value={accountDraft.swift_iban} onChange={e => setAccountDraft(d => ({ ...d, swift_iban: e.target.value }))} placeholder="CHASUS33 / DE89…" />
                   </Field>
                 </div>
@@ -1493,19 +1558,19 @@ export default function OnboardingWizard() {
                   >
                     <span style={{ position: 'absolute', top: 2, left: accountDraft.is_primary ? 18 : 2, width: 18, height: 18, background: '#fff', borderRadius: '50%', transition: 'left 0.15s' }} />
                   </span>
-                  <span style={{ fontSize: 13, color: 'var(--ink)' }}>Set as primary account</span>
+                  <span style={{ fontSize: 13, color: 'var(--ink)' }}>{t('onboarding.misc.setAsPrimary')}</span>
                 </label>
                 <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
                   <button type="button" className="btn btn-blue" onClick={saveAccount} disabled={accountSaving}>
-                    {accountSaving ? 'Saving…' : editingAccountId ? 'Update account' : 'Add account'}
+                    {accountSaving ? t('onboarding.btn.saving') : editingAccountId ? t('onboarding.btn.updateAccount') : t('onboarding.btn.addAccount')}
                   </button>
-                  <button type="button" className="btn btn-secondary" onClick={cancelAccountForm}>Cancel</button>
+                  <button type="button" className="btn btn-secondary" onClick={cancelAccountForm}>{t('onboarding.btn.cancel')}</button>
                 </div>
               </div>
             </div>
           ) : (
             <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={startAddAccount}>
-              + Add bank account
+              {t('onboarding.btn.addBankAccount')}
             </button>
           )}
         </>
@@ -1514,11 +1579,13 @@ export default function OnboardingWizard() {
       {/* ── Step 7 — Document upload ──────────────────────────── */}
       {step === 7 && (
         <>
-          <StepHeader step={7} title="Upload your documents" sub="We'll save your progress — you can return to finish any time." />
+          <StepHeader step={7} title={t('onboarding.step7.title')} sub={t('onboarding.step7.sub')} />
           <div className="info-box" style={{ margin: '0 0 16px' }}>
             <span>
-              {docSpecs.filter((d) => d.required && docs[d.kind]?.status === 'done').length} of{' '}
-              {docSpecs.filter((d) => d.required).length} required documents uploaded
+              {t('onboarding.misc.requiredDocsUploaded', {
+                done: String(docSpecs.filter((d) => d.required && docs[d.kind]?.status === 'done').length),
+                total: String(docSpecs.filter((d) => d.required).length),
+              })}
             </span>
           </div>
           {docSpecs.map((spec) => (
@@ -1535,7 +1602,7 @@ export default function OnboardingWizard() {
       {/* ── Step 8 — Review & Submit ─────────────────────────── */}
       {step === 8 && (
         <>
-          <StepHeader step={8} title="Review & Submit" sub="Check everything looks right, then activate your Passport." />
+          <StepHeader step={8} title={t('onboarding.step8.title')} sub={t('onboarding.step8.sub')} />
 
           {/* Passport preview */}
           <div
@@ -1546,7 +1613,7 @@ export default function OnboardingWizard() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-ink-1)' }}>
-                    {form.legal_name || 'Your organization'}
+                    {form.legal_name || t('onboarding.review.yourOrganization')}
                   </div>
                   <span
                     className="badge"
@@ -1555,16 +1622,16 @@ export default function OnboardingWizard() {
                       color: orgType === 'anchor' ? 'var(--blue)' : 'var(--color-green)',
                     }}
                   >
-                    {orgType === 'anchor' ? 'Anchor / Buyer' : 'Supplier'}
+                    {orgType === 'anchor' ? t('onboarding.review.anchorBuyer') : t('onboarding.review.supplier')}
                   </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-ink-1)' }}>55–75</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>Est. PassportScore</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{t('onboarding.review.estScore')}</div>
                 </div>
               </div>
               <p style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 12, lineHeight: 1.6 }}>
-                Your PassportScore will be calculated upon verification. Based on your submission, estimated range: 55–75.
+                {t('onboarding.review.scoreNote')}
               </p>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, cursor: 'pointer' }}>
                 <span
@@ -1593,7 +1660,7 @@ export default function OnboardingWizard() {
                   />
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--color-ink-1)' }}>
-                  Make my profile visible on the Strike Place marketplace
+                  {t('onboarding.review.visibilityToggle')}
                 </span>
               </label>
             </div>
@@ -1602,23 +1669,23 @@ export default function OnboardingWizard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
             <div>
               {/* Business */}
-              <ReviewSection label="Business" onEdit={() => goTo(1)}>
-                <ReviewRow k="Legal name" v={form.legal_name} />
-                <ReviewRow k="Doing business as" v={form.doing_business_as} />
-                <ReviewRow k="Business type" v={businessTypeLabel(form.business_type)} />
-                <ReviewRow k="Country of incorporation" v={countryName(form.country_of_incorporation)} />
-                <ReviewRow k="State of incorporation" v={form.state_of_incorporation} />
-                <ReviewRow k="Years in operation" v={form.years_in_operation} />
-                <ReviewRow k="Industry" v={naicsLabel(form.industry_naics)} />
-                <ReviewRow k="Website" v={form.website} />
+              <ReviewSection label={t('onboarding.review.business')} onEdit={() => goTo(1)}>
+                <ReviewRow k={t('onboarding.field.legalName')} v={form.legal_name} />
+                <ReviewRow k={t('onboarding.field.dba')} v={form.doing_business_as} />
+                <ReviewRow k={t('onboarding.field.businessType')} v={businessTypeLabel(form.business_type)} />
+                <ReviewRow k={t('onboarding.field.countryIncorp')} v={countryName(form.country_of_incorporation)} />
+                <ReviewRow k={t('onboarding.field.stateIncorp')} v={form.state_of_incorporation} />
+                <ReviewRow k={t('onboarding.field.yearsOperation')} v={form.years_in_operation} />
+                <ReviewRow k={t('onboarding.field.industry')} v={naicsLabel(form.industry_naics)} />
+                <ReviewRow k={t('onboarding.field.website')} v={form.website} />
               </ReviewSection>
 
               {/* Contact */}
-              <ReviewSection label="Contact & address" onEdit={() => goTo(2)}>
-                <ReviewRow k="Contact" v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' - ')} />
-                <ReviewRow k="Phone" v={form.primary_contact_phone} />
+              <ReviewSection label={t('onboarding.review.contactAddress')} onEdit={() => goTo(2)}>
+                <ReviewRow k={t('onboarding.review.contact')} v={[form.primary_contact_name, form.primary_contact_title].filter(Boolean).join(' - ')} />
+                <ReviewRow k={t('onboarding.review.phone')} v={form.primary_contact_phone} />
                 <ReviewRow
-                  k="Address"
+                  k={t('onboarding.review.address')}
                   v={[form.address_line1, form.address_line2, form.city, form.state, form.zip, countryName(form.country)]
                     .filter(Boolean)
                     .join(', ')}
@@ -1626,53 +1693,53 @@ export default function OnboardingWizard() {
               </ReviewSection>
 
               {/* Ownership & Compliance */}
-              <ReviewSection label="Ownership & compliance" onEdit={() => goTo(3)}>
-                <ReviewRow k="CEO / director(s)" v={profile.ceo_name} />
-                <ReviewRow k="Beneficial owners" v={profile.ubo_summary} />
-                <ReviewRow k="PEP" v={profile.pep ? profile.pep.toUpperCase() : ''} />
-                <ReviewRow k="Sanctioned exposure" v={profile.sanctioned ? profile.sanctioned.toUpperCase() : ''} />
-                <ReviewRow k="Bankruptcy (7y)" v={profile.bankruptcy ? profile.bankruptcy.toUpperCase() : ''} />
-                <ReviewRow k="Material litigation" v={profile.litigation ? profile.litigation.toUpperCase() : ''} />
+              <ReviewSection label={t('onboarding.review.ownershipCompliance')} onEdit={() => goTo(3)}>
+                <ReviewRow k={t('onboarding.field.ceoName')} v={profile.ceo_name} />
+                <ReviewRow k={t('onboarding.review.beneficialOwners')} v={profile.ubo_summary} />
+                <ReviewRow k={t('onboarding.review.pep')} v={profile.pep ? profile.pep.toUpperCase() : ''} />
+                <ReviewRow k={t('onboarding.review.sanctionedExposure')} v={profile.sanctioned ? profile.sanctioned.toUpperCase() : ''} />
+                <ReviewRow k={t('onboarding.review.bankruptcy7y')} v={profile.bankruptcy ? profile.bankruptcy.toUpperCase() : ''} />
+                <ReviewRow k={t('onboarding.review.materialLitigation')} v={profile.litigation ? profile.litigation.toUpperCase() : ''} />
               </ReviewSection>
             </div>
 
             <div>
               {/* Financial & Trade */}
-              <ReviewSection label="Financial & trade profile" onEdit={() => goTo(4)}>
-                <ReviewRow k="Annual revenue" v={form.annual_revenue_range} />
-                <ReviewRow k="Employees" v={form.employee_count_range} />
-                <ReviewRow k="Operating currency" v={profile.primary_currency} />
+              <ReviewSection label={t('onboarding.review.financialTradeProfile')} onEdit={() => goTo(4)}>
+                <ReviewRow k={t('onboarding.review.annualRevenue')} v={form.annual_revenue_range} />
+                <ReviewRow k={t('onboarding.review.employees')} v={form.employee_count_range} />
+                <ReviewRow k={t('onboarding.review.operatingCurrency')} v={profile.primary_currency} />
                 {orgType === 'supplier' ? (
                   <>
-                    <ReviewRow k="Country of origin" v={countryName(form.country_of_origin)} />
-                    <ReviewRow k="Sourcing countries" v={form.sourcing_countries.map(countryName).join(', ')} />
-                    <ReviewRow k="Financing need" v={profile.financing_need} />
+                    <ReviewRow k={t('onboarding.field.countryOfOrigin')} v={countryName(form.country_of_origin)} />
+                    <ReviewRow k={t('onboarding.field.sourcingCountries')} v={form.sourcing_countries.map(countryName).join(', ')} />
+                    <ReviewRow k={t('onboarding.field.financingNeed')} v={profile.financing_need} />
                   </>
                 ) : (
-                  <ReviewRow k="Product categories" v={form.product_categories.join(', ')} />
+                  <ReviewRow k={t('onboarding.field.productCategories')} v={form.product_categories.join(', ')} />
                 )}
-                <ReviewRow k="Payment terms" v={form.payment_terms_preference} />
+                <ReviewRow k={t('onboarding.review.paymentTerms')} v={form.payment_terms_preference} />
               </ReviewSection>
 
               {/* Systems & Intent */}
-              <ReviewSection label="Systems & intent" onEdit={() => goTo(5)}>
-                <ReviewRow k="ERP system" v={profile.erp_system} />
-                <ReviewRow k="Primary bank" v={profile.primary_bank_name} />
-                <ReviewRow k="Intent" v={profile.intent.join(', ')} />
-                <ReviewRow k="AI matching" v={profile.ai_matching ? 'Enabled' : 'Disabled'} />
+              <ReviewSection label={t('onboarding.review.systemsIntent')} onEdit={() => goTo(5)}>
+                <ReviewRow k={t('onboarding.field.erpSystem')} v={profile.erp_system} />
+                <ReviewRow k={t('onboarding.field.primaryBankName')} v={profile.primary_bank_name} />
+                <ReviewRow k={t('onboarding.review.intent')} v={profile.intent.join(', ')} />
+                <ReviewRow k={t('onboarding.review.aiMatching')} v={profile.ai_matching ? t('onboarding.review.enabled') : t('onboarding.review.disabled')} />
               </ReviewSection>
 
               {/* Bank Accounts */}
-              <ReviewSection label="Bank accounts" onEdit={() => goTo(6)}>
+              <ReviewSection label={t('onboarding.review.bankAccounts')} onEdit={() => goTo(6)}>
                 {bankAccounts.length === 0 ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--gray)', padding: '4px 0' }}>No accounts added</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--gray)', padding: '4px 0' }}>{t('onboarding.misc.noAccountsAdded')}</div>
                 ) : (
                   bankAccounts.map(acc => (
                     <div key={acc.id} className="kv-row" style={{ padding: '6px 0' }}>
                       <span className="k">{acc.nickname || acc.bank_name}</span>
                       <span className="v plain">
                         {acc.bank_name} - {acc.account_type} - ****{acc.account_number.slice(-4)}
-                        {acc.is_primary ? ' - Primary' : ''}
+                        {acc.is_primary ? ` - ${t('onboarding.misc.primary')}` : ''}
                       </span>
                     </div>
                   ))
@@ -1680,7 +1747,7 @@ export default function OnboardingWizard() {
               </ReviewSection>
 
               {/* Documents */}
-              <ReviewSection label="Documents" onEdit={() => goTo(7)}>
+              <ReviewSection label={t('onboarding.review.documents')} onEdit={() => goTo(7)}>
                 <div className="doc-list-inset">
                   {docSpecs.map((spec) => {
                     const done = docs[spec.kind]?.status === 'done'
@@ -1703,7 +1770,7 @@ export default function OnboardingWizard() {
                           />
                         )}
                         <span className="doc-name">{spec.label}</span>
-                        <span className="doc-meta">{done ? 'Uploaded' : spec.required ? 'Missing' : 'Optional'}</span>
+                        <span className="doc-meta">{done ? t('onboarding.misc.uploaded') : spec.required ? t('onboarding.misc.missing') : t('common.optional')}</span>
                       </div>
                     )
                   })}
@@ -1723,8 +1790,7 @@ export default function OnboardingWizard() {
               style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--blue)' }}
             />
             <span>
-              I confirm all information is accurate and authorize Strike SCF to verify my business details
-              with third-party data providers.
+              {t('onboarding.misc.disclaimer')}
             </span>
           </label>
         </>
@@ -1747,43 +1813,17 @@ export default function OnboardingWizard() {
         }}
       >
         <button type="button" className="btn btn-secondary" onClick={back} disabled={step === 1 || saving} style={{ visibility: step === 1 ? 'hidden' : 'visible' }}>
-          ← Back
+          {t('onboarding.btn.back')}
         </button>
         {step < TOTAL_STEPS ? (
           <button type="button" className="btn btn-blue" onClick={next} disabled={saving}>
-            {saving ? 'Saving…' : 'Continue'}
+            {saving ? t('onboarding.btn.saving') : t('onboarding.btn.continue')}
           </button>
         ) : (
           <button type="button" className="btn btn-blue" onClick={submit} disabled={saving || !attested}>
-            {saving ? 'Submitting…' : 'Activate My Passport'}
+            {saving ? t('onboarding.btn.submitting') : t('onboarding.btn.activatePassport')}
           </button>
         )}
-      </div>
-
-      {/* Do later — enter as ghost */}
-      <div style={{ textAlign: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-        <button
-          type="button"
-          onClick={() => router.push('/dashboard')}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: 12.5,
-            color: 'var(--gray)',
-            fontFamily: 'inherit',
-            padding: '4px 8px',
-            borderRadius: 6,
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'var(--gray)')}
-        >
-          Do this later — explore as guest
-        </button>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--gray-soft)', lineHeight: 1.5 }}>
-          You can activate your Passport from your dashboard at any time.
-        </p>
       </div>
     </div>
   )

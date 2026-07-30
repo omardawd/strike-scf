@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Topbar } from '@/components/portal-shell'
+import { useT } from '@/lib/i18n/locale-context'
 
 // TA.6 — Supply Graph remains in the bank sidebar to signal future capability,
 // but it deliberately does NOT navigate to the real network visualization yet.
 // The nav item routes here and renders a full-page Strike-styled "Coming Soon"
 // card. The real graph data is intentionally never reached.
 export default function SupplyGraphComingSoon() {
+  const t = useT()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   useEffect(() => {
     setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light')
@@ -15,7 +17,7 @@ export default function SupplyGraphComingSoon() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Supply Graph' }]} />
+      <Topbar crumbs={[{ label: t('supplyGraph.title') }]} />
       <div
         data-page-name="Supply Graph"
         data-ai-context={JSON.stringify({ page: 'supply_graph', role: 'bank', status: 'coming_soon' })}
@@ -84,7 +86,7 @@ export default function SupplyGraphComingSoon() {
               borderRadius: 'var(--radius-badge)',
             }}
           >
-            Coming Soon
+            {t('supplyGraph.comingSoon')}
           </span>
 
           <h1
@@ -96,7 +98,7 @@ export default function SupplyGraphComingSoon() {
               margin: 0,
             }}
           >
-            Supply Graph
+            {t('supplyGraph.title')}
           </h1>
 
           <p
@@ -108,8 +110,7 @@ export default function SupplyGraphComingSoon() {
               margin: 0,
             }}
           >
-            Available in Phase 2. The full network visualization of your portfolio
-            relationships.
+            {t('supplyGraph.description')}
           </p>
         </div>
       </div>

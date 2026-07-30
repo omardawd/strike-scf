@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { getOrgTradeStats } from '@/lib/passport/trade-stats'
+import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -178,7 +179,33 @@ export async function GET(
     bank_view_count_30d: bankViewers.size,
     org_view_count_30d: orgViewers.size,
     network_passport_score_median: median((peers ?? []).map(p => Number(p.passport_score))),
+    catalog: await getOrgCatalog(org_id, me.org_id),
   })
+}
+
+// Active listings this org has posted that the viewer is allowed to see — same
+// visibility rule as the main Strike Place feed (lib/networks/visibility.ts),
+// just scoped to one org instead of the whole marketplace.
+async function getOrgCatalog(orgId: string, viewerOrgId: string | null) {
+  let query = adminClient
+    .from('marketplace_listings')
+    .select('id, title, listing_type, category, target_price, currency, unit, cover_image_url, delivery_deadline, created_at')
+    .eq('org_id', orgId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(24)
+
+  if (viewerOrgId) {
+    const visFilter = await getVisibilityFilter(adminClient, viewerOrgId)
+    const orFilter = buildListingVisibilityOr(visFilter, viewerOrgId)
+    query = (query as any).or(orFilter)
+  } else {
+    query = (query as any).eq('visibility', 'public')
+  }
+
+  const { data, error } = await query
+  if (error) console.error('[passport] getOrgCatalog error:', error)
+  return data ?? []
 }
 
 // PATCH /api/passport/[org_id] — owning org toggles "Visible on Strike Place".

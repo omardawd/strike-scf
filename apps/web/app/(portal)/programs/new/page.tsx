@@ -3,13 +3,18 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
+import { useT } from '@/lib/i18n/locale-context'
 
-const FIN_TYPES = [
-  { id: 'reverse_factoring',   icon: 'refresh', label: 'Reverse Factoring',   desc: 'Bank pays supplier, anchor repays' },
-  { id: 'invoice_factoring',   icon: 'invoice', label: 'Invoice Factoring',    desc: 'Supplier submits invoice, no anchor step' },
-  { id: 'po_financing',        icon: 'box',     label: 'PO Financing',         desc: 'Pre-shipment capital for purchase orders' },
-  { id: 'dynamic_discounting', icon: 'clock',   label: 'Dynamic Discounting',  desc: 'Anchor funds early payment from own cash' },
-]
+type TFn = (key: string, vars?: Record<string, string | number>) => string
+
+function finTypes(t: TFn) {
+  return [
+    { id: 'reverse_factoring',   icon: 'refresh', label: t('financing.type.reverseFactoring'),   desc: t('newProgram.descReverseFactoring') },
+    { id: 'invoice_factoring',   icon: 'invoice', label: t('financing.type.invoiceFactoring'),    desc: t('newProgram.descInvoiceFactoring') },
+    { id: 'po_financing',        icon: 'box',     label: t('financing.type.poFinancing'),         desc: t('newProgram.descPoFinancing') },
+    { id: 'dynamic_discounting', icon: 'clock',   label: t('financing.type.dynamicDiscounting'),  desc: t('newProgram.descDynamicDiscounting') },
+  ]
+}
 
 function parseMoney(raw: string): number {
   return Number(raw.replace(/[^0-9]/g, '')) || 0
@@ -20,11 +25,13 @@ type ScheduleTier = { days: number; rate: number }
 export default function NewProgramPage() {
   const user   = useUser()
   const router = useRouter()
+  const t = useT()
 
   const portal = user?.org?.type === 'anchor' ? 'anchor' : 'bank'
+  const allFinTypes = finTypes(t)
   const visibleFinTypes = portal === 'anchor'
-    ? FIN_TYPES.filter(t => t.id === 'dynamic_discounting')
-    : FIN_TYPES.filter(t => t.id !== 'dynamic_discounting')
+    ? allFinTypes.filter(ft => ft.id === 'dynamic_discounting')
+    : allFinTypes.filter(ft => ft.id !== 'dynamic_discounting')
 
   const [name, setName]           = useState('')
   const [finType, setFinType]     = useState('reverse_factoring')
@@ -58,7 +65,7 @@ export default function NewProgramPage() {
 
   const isDD    = finType === 'dynamic_discounting'
   const overflow = !isDD && limitMode === 'fixed' && maxDeal > programLimit
-  const finLabel = FIN_TYPES.find((f) => f.id === finType)?.label ?? '—'
+  const finLabel = allFinTypes.find((f) => f.id === finType)?.label ?? '—'
 
   // Schedule validation
   const scheduleValid = isDD
@@ -85,15 +92,15 @@ export default function NewProgramPage() {
   async function handleSubmit(asDraft: boolean) {
     setSubmitError(null)
     if (!name.trim()) {
-      setSubmitError('Program name is required')
+      setSubmitError(t('newProgram.errNameRequired'))
       return
     }
     if (isDD && schedule.length === 0) {
-      setSubmitError('At least one discount tier is required')
+      setSubmitError(t('newProgram.errAtLeastOneTier'))
       return
     }
     if (isDD && !scheduleValid) {
-      setSubmitError('Days must be ascending and rates must be descending')
+      setSubmitError(t('newProgram.errDaysAscendingRatesDescending'))
       return
     }
 
@@ -127,7 +134,7 @@ export default function NewProgramPage() {
       }
       router.push(`/programs/${data.program_id}`)
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Submission failed')
+      setSubmitError(err instanceof Error ? err.message : t('newProgram.submissionFailed'))
       setSubmitting(false)
     }
   }
@@ -139,19 +146,19 @@ export default function NewProgramPage() {
       <Topbar
         onBack={() => router.push('/programs')}
         crumbs={[
-          { label: 'My Programs', onClick: () => router.push('/programs') },
-          { label: 'New Program' },
+          { label: t('programsPage.title'), onClick: () => router.push('/programs') },
+          { label: t('programsPage.newProgram') },
         ]}
         actions={<NotifBell />}
       />
 
       <div className="page">
         <div className="page-header">
-          <h1 className="t-page-title" style={{ fontSize: 20 }}>Create program</h1>
+          <h1 className="t-page-title" style={{ fontSize: 20 }}>{t('newProgram.createProgram')}</h1>
           <div className="subtitle">
             {portal === 'anchor'
-              ? 'Set up a dynamic discounting program to offer early payment to your suppliers'
-              : 'Set up a new SCF program and invite counterparties'}
+              ? t('newProgram.setupDdSubtitle')
+              : t('newProgram.setupScfSubtitle')}
           </div>
         </div>
 
@@ -169,10 +176,10 @@ export default function NewProgramPage() {
 
               {/* Program name */}
               <div className="form-field">
-                <label className="form-label">Program name</label>
+                <label className="form-label">{t('newProgram.programName')}</label>
                 <input
                   className="form-input"
-                  placeholder="e.g. Early Payment Program Q3 2026"
+                  placeholder={t('newProgram.programNamePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -180,18 +187,18 @@ export default function NewProgramPage() {
 
               {/* Financing type */}
               <div className="form-field">
-                <label className="form-label">Financing type</label>
+                <label className="form-label">{t('newProgram.financingType')}</label>
                 <div className="fin-type-grid">
-                  {visibleFinTypes.map((t) => (
+                  {visibleFinTypes.map((ft) => (
                     <button
-                      key={t.id}
+                      key={ft.id}
                       type="button"
-                      className={`fin-type-card ${finType === t.id ? 'selected' : ''}`}
-                      onClick={() => setFinType(t.id)}
+                      className={`fin-type-card ${finType === ft.id ? 'selected' : ''}`}
+                      onClick={() => setFinType(ft.id)}
                     >
-                      <Icon name={t.icon} size={20} className="fin-type-icon" />
-                      <div className="fin-type-label">{t.label}</div>
-                      <div className="fin-type-desc">{t.desc}</div>
+                      <Icon name={ft.icon} size={20} className="fin-type-icon" />
+                      <div className="fin-type-label">{ft.label}</div>
+                      <div className="fin-type-desc">{ft.desc}</div>
                     </button>
                   ))}
                 </div>
@@ -200,15 +207,15 @@ export default function NewProgramPage() {
               {/* ── Discount Schedule (DD only) ── */}
               {isDD && (
                 <div className="form-field">
-                  <label className="form-label">Discount Schedule</label>
+                  <label className="form-label">{t('newProgram.discountSchedule')}</label>
                   <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>
-                    Early payment tiers — suppliers who request payment earlier receive a higher discount rate. You receive the discount as savings.
+                    {t('newProgram.discountScheduleHint')}
                   </div>
 
                   {schedule.map((tier, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', minWidth: 68 }}>
-                        Pay within
+                        {t('newProgram.payWithin')}
                       </span>
                       <input
                         className="form-input mono"
@@ -219,8 +226,8 @@ export default function NewProgramPage() {
                         onChange={(e) => updateTier(i, 'days', Number(e.target.value))}
                         style={{ width: 72 }}
                       />
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>days</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginLeft: 8 }}>Discount</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)' }}>{t('newProgram.days')}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gray)', marginLeft: 8 }}>{t('newProgram.discount')}</span>
                       <input
                         className="form-input mono"
                         type="number"
@@ -249,12 +256,12 @@ export default function NewProgramPage() {
                     onClick={addTier}
                     style={{ marginTop: 4 }}
                   >
-                    + Add tier
+                    + {t('newProgram.addTier')}
                   </button>
 
                   {!scheduleValid && schedule.length > 0 && (
                     <div style={{ fontSize: 12, color: '#DC2626', marginTop: 8 }}>
-                      Days must be ascending and rates must be descending across tiers.
+                      {t('newProgram.tiersOrderHint')}
                     </div>
                   )}
                 </div>
@@ -264,7 +271,7 @@ export default function NewProgramPage() {
               {!isDD && (
                 <>
                   <div className="form-field">
-                    <label className="form-label">Limit structure</label>
+                    <label className="form-label">{t('newProgram.limitStructure')}</label>
                     <div className="radio-cards">
                       <button
                         type="button"
@@ -273,8 +280,8 @@ export default function NewProgramPage() {
                       >
                         <div className="radio-card-radio" />
                         <div>
-                          <div className="radio-card-title">Fixed limit</div>
-                          <div className="radio-card-desc">Set a maximum program exposure</div>
+                          <div className="radio-card-title">{t('newProgram.fixedLimit')}</div>
+                          <div className="radio-card-desc">{t('newProgram.fixedLimitDesc')}</div>
                         </div>
                       </button>
                       <button
@@ -284,8 +291,8 @@ export default function NewProgramPage() {
                       >
                         <div className="radio-card-radio" />
                         <div>
-                          <div className="radio-card-title">Open account</div>
-                          <div className="radio-card-desc">Approve each deal at discretion</div>
+                          <div className="radio-card-title">{t('newProgram.openAccount')}</div>
+                          <div className="radio-card-desc">{t('newProgram.openAccountDesc')}</div>
                         </div>
                       </button>
                     </div>
@@ -294,7 +301,7 @@ export default function NewProgramPage() {
                   {limitMode === 'fixed' && (
                     <>
                       <div className="form-field">
-                        <label className="form-label">Program limit</label>
+                        <label className="form-label">{t('newProgram.programLimit')}</label>
                         <div className="currency-input-wrap">
                           <input
                             className="currency-input"
@@ -306,7 +313,7 @@ export default function NewProgramPage() {
 
                       <div className="form-row-2">
                         <div className="form-field">
-                          <label className="form-label">Per-supplier sublimit</label>
+                          <label className="form-label">{t('newProgram.perSupplierSublimit')}</label>
                           <input
                             className="form-input mono"
                             value={'$' + supplierSub.toLocaleString()}
@@ -314,7 +321,7 @@ export default function NewProgramPage() {
                           />
                         </div>
                         <div className="form-field">
-                          <label className="form-label">Min deal size</label>
+                          <label className="form-label">{t('newProgram.minDealSize')}</label>
                           <input
                             className="form-input mono"
                             value={'$' + minDeal.toLocaleString()}
@@ -325,7 +332,7 @@ export default function NewProgramPage() {
 
                       <div className="form-row-2">
                         <div className="form-field">
-                          <label className="form-label">Max deal size</label>
+                          <label className="form-label">{t('newProgram.maxDealSize')}</label>
                           <input
                             className="form-input mono"
                             value={'$' + maxDeal.toLocaleString()}
@@ -333,7 +340,7 @@ export default function NewProgramPage() {
                           />
                         </div>
                         <div className="form-field">
-                          <label className="form-label">Max invoice age (days)</label>
+                          <label className="form-label">{t('newProgram.maxInvoiceAge')}</label>
                           <input
                             className="form-input mono"
                             value={maxAge}
@@ -345,7 +352,7 @@ export default function NewProgramPage() {
                       {finType !== 'reverse_factoring' && (
                         <div className="form-row-2">
                           <div className="form-field">
-                            <label className="form-label">Standard tenor (days)</label>
+                            <label className="form-label">{t('newProgram.standardTenor')}</label>
                             <input
                               className="form-input mono"
                               value={tenor}
@@ -354,7 +361,7 @@ export default function NewProgramPage() {
                           </div>
                           {finType === 'po_financing' && (
                             <div className="form-field">
-                              <label className="form-label">Max PO fulfillment (days)</label>
+                              <label className="form-label">{t('newProgram.maxPoFulfillment')}</label>
                               <input
                                 className="form-input mono"
                                 value={maxFulfill}
@@ -369,7 +376,7 @@ export default function NewProgramPage() {
 
                   {limitMode === 'open' && finType !== 'reverse_factoring' && (
                     <div className="form-field">
-                      <label className="form-label">Standard tenor (days)</label>
+                      <label className="form-label">{t('newProgram.standardTenor')}</label>
                       <input
                         className="form-input mono"
                         value={tenor}
@@ -380,7 +387,7 @@ export default function NewProgramPage() {
 
                   <div className="info-box" style={{ margin: '16px 0 0', fontStyle: 'italic' }}>
                     <Icon name="info" size={14} className="info-box-icon" />
-                    <span>Program limits are internal only — counterparties never see these figures.</span>
+                    <span>{t('newProgram.internalOnlyHint')}</span>
                   </div>
                 </>
               )}
@@ -390,65 +397,65 @@ export default function NewProgramPage() {
           {/* ── Right: summary ── */}
           <div className="card form-summary">
             <div className="card-head">
-              <h3 className="t-card-head">Program summary</h3>
+              <h3 className="t-card-head">{t('newProgram.programSummary')}</h3>
             </div>
             <div className="kv-list">
               <div className="kv-row">
-                <span className="k">Program name</span>
+                <span className="k">{t('newProgram.programName')}</span>
                 <span className="v plain">{name || '—'}</span>
               </div>
               <div className="kv-row">
-                <span className="k">Type</span>
+                <span className="k">{t('newTransaction.type')}</span>
                 <span className="v plain">{finLabel}</span>
               </div>
               {!isDD && (
                 <>
                   <div className="kv-row">
-                    <span className="k">Limit structure</span>
+                    <span className="k">{t('newProgram.limitStructure')}</span>
                     <span className="v plain">
-                      {limitMode === 'fixed' ? `Fixed · ${fmtMoney(programLimit)}` : 'Open account'}
+                      {limitMode === 'fixed' ? `${t('newProgram.fixedLimit')} · ${fmtMoney(programLimit)}` : t('newProgram.openAccount')}
                     </span>
                   </div>
                   {limitMode === 'fixed' && (
                     <>
                       <div className="kv-row">
-                        <span className="k">Per-supplier cap</span>
+                        <span className="k">{t('newProgram.perSupplierCap')}</span>
                         <span className="v mono">{fmtMoney(supplierSub)}</span>
                       </div>
                       <div className="kv-row">
-                        <span className="k">Deal range</span>
+                        <span className="k">{t('newProgram.dealRange')}</span>
                         <span className="v mono">{fmtMoney(minDeal)} – {fmtMoney(maxDeal)}</span>
                       </div>
                       <div className="kv-row">
-                        <span className="k">Invoice age max</span>
-                        <span className="v plain">{maxAge} days</span>
+                        <span className="k">{t('newProgram.invoiceAgeMax')}</span>
+                        <span className="v plain">{t('newProgram.nDays', { count: maxAge })}</span>
                       </div>
                     </>
                   )}
                   {finType !== 'reverse_factoring' && (
                     <div className="kv-row">
-                      <span className="k">Tenor</span>
-                      <span className="v plain">{tenor} days</span>
+                      <span className="k">{t('newProgram.tenor')}</span>
+                      <span className="v plain">{t('newProgram.nDays', { count: tenor })}</span>
                     </div>
                   )}
                 </>
               )}
               {isDD && schedule.length > 0 && (
                 <div className="kv-row" style={{ alignItems: 'flex-start' }}>
-                  <span className="k">Discount tiers</span>
+                  <span className="k">{t('newProgram.discountTiers')}</span>
                   <div className="v plain" style={{ textAlign: 'right' }}>
-                    {schedule.map((t, i) => (
+                    {schedule.map((tier, i) => (
                       <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                        {t.days}d → {t.rate}%
+                        {tier.days}{t('programsPage.daysSuffix')} → {tier.rate}%
                       </div>
                     ))}
                   </div>
                 </div>
               )}
               <div className="kv-row">
-                <span className="k">Status</span>
+                <span className="k">{t('deals.col.status')}</span>
                 <span className="v">
-                  <span className="badge badge-draft">Draft</span>
+                  <span className="badge badge-draft">{t('programsPage.status.draft')}</span>
                 </span>
               </div>
             </div>
@@ -456,7 +463,7 @@ export default function NewProgramPage() {
             {overflow && (
               <div className="warn-box">
                 <Icon name="alert" size={14} />
-                <span>Max deal size exceeds program limit</span>
+                <span>{t('newProgram.maxDealExceedsLimit')}</span>
               </div>
             )}
 
@@ -468,7 +475,7 @@ export default function NewProgramPage() {
                 style={{ height: 40 }}
                 onClick={() => handleSubmit(false)}
               >
-                {submitting ? 'Creating…' : 'Activate program'}
+                {submitting ? t('newProgram.creating') : t('newProgram.activateProgram')}
               </button>
               <button
                 className="btn btn-ghost btn-block"
@@ -476,7 +483,7 @@ export default function NewProgramPage() {
                 disabled={submitting}
                 onClick={() => handleSubmit(true)}
               >
-                Save as draft
+                {t('newProgram.saveAsDraft')}
               </button>
             </div>
           </div>

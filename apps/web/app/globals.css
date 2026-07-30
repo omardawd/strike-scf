@@ -13,9 +13,12 @@
   --blue-light:    #EEF0FF;
   --blue-dim:      #1A3FA3;
 
-  /* ── Typography (2026 redesign — Plus Jakarta Sans) ── */
-  --font-display: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-body:    "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* ── Typography (2026 redesign — Plus Jakarta Sans) ──
+     "Noto Sans Arabic" appended as a Unicode-range fallback: Latin text keeps
+     rendering in Plus Jakarta Sans, Arabic glyphs (which Plus Jakarta Sans
+     doesn't cover) automatically fall through to it — no [lang] switching needed. */
+  --font-display: "Plus Jakarta Sans", "Noto Sans Arabic", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body:    "Plus Jakarta Sans", "Noto Sans Arabic", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono:    "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
 
   /* ── Radius scale (2026 redesign) ── */
@@ -1237,6 +1240,7 @@ a { color: inherit; }
 }
 .form-input:focus { border-color: var(--color-accent); }
 .form-input.mono { font-family: var(--font-mono); font-size: 14px; }
+.form-input::placeholder, .form-textarea::placeholder { color: var(--color-ink-4); }
 .readonly-input { background: var(--color-bg-2); color: var(--color-ink-3); }
 .form-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--color-ink-3) 50%), linear-gradient(135deg, var(--color-ink-3) 50%, transparent 50%); background-position: calc(100% - 16px) 17px, calc(100% - 11px) 17px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
 .form-helper { font-size: 11px; color: var(--color-ink-4); }

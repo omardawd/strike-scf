@@ -25,6 +25,16 @@ export type DealStatus =
   | 'financing_active'
   | 'disputed'
 
+// Single source of truth for "can this deal be financed right now" — a deal is
+// financeable once it's agreed but before it's fully wound down. Previously
+// duplicated independently in three places (the deals list page, the deal
+// detail page's button gate, and its ?action=finance deep-link effect) and
+// they'd drifted out of sync with each other, silently disabling "Request
+// Financing" for deals the rest of the app already treated as eligible.
+export const FINANCEABLE_STATUSES: DealStatus[] = [
+  'agreed', 'active', 'confirmed', 'in_preparation', 'delivery_confirmed', 'shipped', 'goods_received',
+]
+
 export type UserRole =
   | 'bank_admin'
   | 'bank_credit_officer'

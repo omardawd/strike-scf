@@ -227,6 +227,28 @@ export interface Organization {
   dispute_rate_network: number | null
   banks_transacted_with: string[] | null
   primary_bank_id: string | null
+  // Onboarding wizard step 3/4/5 fields — see migration 00000000000035
+  ceo_name: string | null
+  ubo_summary: string | null
+  is_pep: boolean | null
+  has_sanctioned_exposure: boolean | null
+  bankruptcy_filed: boolean | null
+  material_litigation: boolean | null
+  payment_terms_preference: string | null
+  primary_currency: string | null
+  avg_invoice_size: string | null
+  payment_terms_offered: string | null
+  payment_terms_received: string | null
+  customer_count: string | null
+  largest_customer_pct: string | null
+  financing_need: string | null
+  supplier_count: string | null
+  largest_supplier_pct: string | null
+  supplier_payment_terms: string | null
+  erp_system: string | null
+  primary_bank_name: string | null
+  platform_intent: string[] | null
+  ai_matching_opt_in: boolean | null
   created_at: string
   updated_at: string
 }
@@ -290,6 +312,7 @@ export interface MarketplaceListing {
   quantity: number | null
   unit: string | null
   target_price: number | null
+  cover_image_url: string | null
   currency: string
   incoterms: string | null
   shipping_cost: number | null

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
 import type { AnchorNetwork, AnchorNetworkMember } from '@strike-scf/types'
+import { useT } from '@/lib/i18n/locale-context'
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; text: string }> = {
@@ -63,6 +64,7 @@ function InviteModal({
   onClose: () => void
   onInvited: () => void
 }) {
+  const t = useT()
   const [tab, setTab]         = useState<'email' | 'existing'>('email')
   const [email, setEmail]     = useState('')
   const [company, setCompany] = useState('')
@@ -95,7 +97,7 @@ function InviteModal({
 
   async function handleEmailInvite(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim()) { setError('Email is required'); return }
+    if (!email.trim()) { setError(t('networksDetail.emailRequired')); return }
     setError('')
     setLoading(true)
     try {
@@ -105,8 +107,8 @@ function InviteModal({
         body: JSON.stringify({ type: 'email', email: email.trim(), prefill_company_name: company || undefined, prefill_country: country || undefined, notes: note || undefined }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
-      setSuccess(`Invitation sent to ${email}`)
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
+      setSuccess(t('networksDetail.invitationSentTo', { email }))
       onInvited()
     } catch (err: any) {
       setError(err.message)
@@ -125,8 +127,8 @@ function InviteModal({
         body: JSON.stringify({ type: 'existing_org', org_id: org.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
-      setSuccess(`${org.legal_name} has been invited`)
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
+      setSuccess(t('networksDetail.orgHasBeenInvited', { org: org.legal_name }))
       setConfirm(null)
       onInvited()
     } catch (err: any) {
@@ -147,7 +149,7 @@ function InviteModal({
         boxShadow: 'var(--shadow-elevated)',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700 }}>Invite Supplier to "{networkName}"</h2>
+          <h2 style={{ fontSize: 17, fontWeight: 700 }}>{t('networksDetail.inviteSupplierTo', { network: networkName })}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--gray)' }}>×</button>
         </div>
 
@@ -166,21 +168,21 @@ function InviteModal({
               marginTop: 20, padding: '10px 24px', background: 'var(--blue)',
               color: '#fff', border: 'none', borderRadius: 'var(--radius-button)',
               fontWeight: 600, fontSize: 14, cursor: 'pointer',
-            }}>Done</button>
+            }}>{t('networksDetail.done')}</button>
           </div>
         ) : (
           <>
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '1.5px solid var(--border)', marginBottom: 20 }}>
-              {(['email', 'existing'] as const).map(t => (
-                <button key={t} onClick={() => setTab(t)} style={{
+              {(['email', 'existing'] as const).map(tabKey => (
+                <button key={tabKey} onClick={() => setTab(tabKey)} style={{
                   padding: '8px 16px', background: 'none', border: 'none',
-                  borderBottom: tab === t ? '2.5px solid var(--blue)' : '2.5px solid transparent',
-                  color: tab === t ? 'var(--blue)' : 'var(--gray)',
-                  fontWeight: tab === t ? 700 : 500, fontSize: 14, cursor: 'pointer',
+                  borderBottom: tab === tabKey ? '2.5px solid var(--blue)' : '2.5px solid transparent',
+                  color: tab === tabKey ? 'var(--blue)' : 'var(--gray)',
+                  fontWeight: tab === tabKey ? 700 : 500, fontSize: 14, cursor: 'pointer',
                   marginBottom: -1.5,
                 }}>
-                  {t === 'email' ? 'Invite by Email' : 'Add Existing Org'}
+                  {tabKey === 'email' ? t('networksDetail.inviteByEmail') : t('networksDetail.addExistingOrg')}
                 </button>
               ))}
             </div>
@@ -190,23 +192,23 @@ function InviteModal({
             {tab === 'email' && (
               <form onSubmit={handleEmailInvite} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Email *</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.emailStar')}</label>
                   <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="supplier@company.com"
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Company name (optional)</label>
-                  <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Pre-fill for signup form"
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.companyNameOptional')}</label>
+                  <input value={company} onChange={e => setCompany(e.target.value)} placeholder={t('networksDetail.prefillSignup')}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Country (optional)</label>
-                  <input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. United States"
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.countryOptional')}</label>
+                  <input value={country} onChange={e => setCountry(e.target.value)} placeholder={t('networksDetail.countryPlaceholder')}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Personal note (optional)</label>
-                  <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Shown in invitation email"
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.personalNoteOptional')}</label>
+                  <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder={t('networksDetail.shownInEmail')}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
                 <button type="submit" disabled={loading} style={{
@@ -214,7 +216,7 @@ function InviteModal({
                   borderRadius: 'var(--radius-button)', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer',
                   opacity: loading ? 0.6 : 1,
                 }}>
-                  {loading ? 'Sending…' : 'Send Invitation'}
+                  {loading ? t('networksDetail.sending') : t('networksDetail.sendInvitation')}
                 </button>
               </form>
             )}
@@ -222,9 +224,9 @@ function InviteModal({
             {tab === 'existing' && (
               <div>
                 <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search by organization name…"
+                  placeholder={t('networksDetail.searchByOrgName')}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, marginBottom: 14, boxSizing: 'border-box' }} />
-                {searching && <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--gray)', fontSize: 13 }}>Searching…</div>}
+                {searching && <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--gray)', fontSize: 13 }}>{t('networksDetail.searching')}</div>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
                   {results.map(org => (
                     <div key={org.id} style={{
@@ -245,14 +247,14 @@ function InviteModal({
                             padding: '7px 14px', background: 'var(--blue)', color: '#fff',
                             border: 'none', borderRadius: 'var(--radius-button)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                           }}>
-                            {loading ? '…' : 'Confirm'}
+                            {loading ? '…' : t('networksDetail.confirm')}
                           </button>
                         ) : (
                           <button onClick={() => setConfirm(org)} style={{
                             padding: '7px 14px', background: 'none', color: 'var(--blue)',
                             border: '1.5px solid var(--blue)', borderRadius: 'var(--radius-button)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                           }}>
-                            Add
+                            {t('networksDetail.addBtn')}
                           </button>
                         )}
                       </div>
@@ -260,7 +262,7 @@ function InviteModal({
                   ))}
                   {!searching && search.length > 0 && results.length === 0 && (
                     <div style={{ textAlign: 'center', color: 'var(--gray)', fontSize: 13, padding: '20px 0' }}>
-                      No organizations found
+                      {t('networksDetail.noOrgsFound')}
                     </div>
                   )}
                 </div>
@@ -276,6 +278,7 @@ function InviteModal({
 // ── Network Detail Page ──────────────────────────────────────
 
 export default function NetworkDetailPage() {
+  const t = useT()
   const portal = usePortal()
   const { id } = useParams<{ id: string }>()
   const router  = useRouter()
@@ -330,7 +333,7 @@ export default function NetworkDetailPage() {
     try {
       const res = await fetch(`/api/networks/${id}/members/${orgId}`, { method: 'DELETE' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
       loadNetwork()
     } catch (err: any) {
       setAE(err.message)
@@ -346,7 +349,7 @@ export default function NetworkDetailPage() {
         body: JSON.stringify({ status }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
       loadNetwork()
     } catch (err: any) {
       setAE(err.message)
@@ -365,7 +368,7 @@ export default function NetworkDetailPage() {
         body: JSON.stringify({ name: editName, description: editDesc || null, visibility_default: editVis }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
       setNetwork(data.network)
       setSS(true)
     } catch (err: any) {
@@ -376,12 +379,12 @@ export default function NetworkDetailPage() {
   }
 
   async function handleDeleteNetwork() {
-    if (!window.confirm(`Delete "${network?.name}"? This cannot be undone.`)) return
+    if (!window.confirm(t('networksDetail.deleteConfirm', { network: network?.name ?? '' }))) return
     setAE('')
     try {
       const res = await fetch(`/api/networks/${id}`, { method: 'DELETE' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
       router.push('/networks')
     } catch (err: any) {
       setAE(err.message)
@@ -389,11 +392,11 @@ export default function NetworkDetailPage() {
   }
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>Loading…</div>
+    return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
   }
 
   if (!network) {
-    return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>Network not found.</div>
+    return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>{t('networksDetail.notFound')}</div>
   }
 
   return (
@@ -403,7 +406,7 @@ export default function NetworkDetailPage() {
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16,
         }}>
-          ← Back to Networks
+          ← {t('networksDetail.backToNetworks')}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800 }}>{network.name}</h1>
@@ -412,7 +415,7 @@ export default function NetworkDetailPage() {
             borderRadius: 'var(--radius-button)', padding: '10px 20px',
             fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>
-            + Invite Supplier
+            {t('networksDetail.inviteSupplierPlus')}
           </button>
         </div>
         {network.description && (
@@ -421,16 +424,16 @@ export default function NetworkDetailPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1.5px solid var(--border)', marginTop: 8 }}>
-          {(['members', 'listings', 'settings'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
+          {(['members', 'listings', 'settings'] as const).map(tabKey => (
+            <button key={tabKey} onClick={() => setTab(tabKey)} style={{
               padding: '10px 18px', background: 'none', border: 'none',
-              borderBottom: tab === t ? '2.5px solid var(--blue)' : '2.5px solid transparent',
-              color: tab === t ? 'var(--blue)' : 'var(--gray)',
-              fontWeight: tab === t ? 700 : 500, fontSize: 14, cursor: 'pointer',
+              borderBottom: tab === tabKey ? '2.5px solid var(--blue)' : '2.5px solid transparent',
+              color: tab === tabKey ? 'var(--blue)' : 'var(--gray)',
+              fontWeight: tab === tabKey ? 700 : 500, fontSize: 14, cursor: 'pointer',
               marginBottom: -1.5, textTransform: 'capitalize',
             }}>
-              {t}
-              {t === 'members' && ` (${members.length})`}
+              {tabKey === 'members' ? t('networksDetail.tab.members') : tabKey === 'listings' ? t('networksDetail.tab.listings') : t('networksDetail.tab.settings')}
+              {tabKey === 'members' && ` (${members.length})`}
             </button>
           ))}
         </div>
@@ -448,14 +451,14 @@ export default function NetworkDetailPage() {
           <div>
             {members.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
-                No members yet. Use "Invite Supplier" to add your first member.
+                {t('networksDetail.noMembersYet')}
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid var(--border)', textAlign: 'left' }}>
-                      {['Supplier', 'Score', 'KYB', 'Member Since', 'Status', 'Notes', 'Actions'].map(h => (
+                      {[t('networksDetail.col.supplier'), t('networksDetail.col.score'), t('networksDetail.col.kyb'), t('networksDetail.col.memberSince'), t('collateral.col.status'), t('networksDetail.col.notes'), t('bankKyb.col.action')].map(h => (
                         <th key={h} style={{ padding: '10px 12px', fontWeight: 600, fontSize: 12, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
                       ))}
                     </tr>
@@ -486,7 +489,7 @@ export default function NetworkDetailPage() {
                                 padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
                                 border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer',
                               }}>
-                                Suspend
+                                {t('networksDetail.suspend')}
                               </button>
                             )}
                             {m.status === 'suspended' && (
@@ -494,14 +497,14 @@ export default function NetworkDetailPage() {
                                 padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
                                 border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer',
                               }}>
-                                Reactivate
+                                {t('networksDetail.reactivate')}
                               </button>
                             )}
                             <button onClick={() => handleRemoveMember(m.supplier_org_id)} style={{
                               padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
                               border: '1.5px solid #fecaca', background: '#fee2e2', color: '#dc2626', cursor: 'pointer',
                             }}>
-                              Remove
+                              {t('networksDetail.remove')}
                             </button>
                           </div>
                         </td>
@@ -518,18 +521,18 @@ export default function NetworkDetailPage() {
         {tab === 'listings' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <p style={{ color: 'var(--gray)', fontSize: 14 }}>Network-only listings posted to this network.</p>
+              <p style={{ color: 'var(--gray)', fontSize: 14 }}>{t('networksDetail.networkOnlyListings')}</p>
               <a href={`/marketplace/listings/new?network_id=${id}&visibility=network_only`} style={{
                 background: 'var(--blue)', color: '#fff', textDecoration: 'none',
                 borderRadius: 'var(--radius-button)', padding: '9px 18px',
                 fontSize: 14, fontWeight: 600,
               }}>
-                Post New Listing
+                {t('networksDetail.postNewListing')}
               </a>
             </div>
             <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
-              View and manage listings on{' '}
-              <a href={`/marketplace?network_id=${id}`} style={{ color: 'var(--blue)', fontWeight: 600 }}>Strike Place</a>
+              {t('networksDetail.viewManageOn')}{' '}
+              <a href={`/marketplace?network_id=${id}`} style={{ color: 'var(--blue)', fontWeight: 600 }}>{t('networksDetail.strikePlace')}</a>
             </div>
           </div>
         )}
@@ -538,54 +541,54 @@ export default function NetworkDetailPage() {
         {tab === 'settings' && (
           <div style={{ maxWidth: 500 }}>
             <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 40 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Network Settings</h3>
+              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('networksDetail.networkSettings')}</h3>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Name</label>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.name')}</label>
                 <input value={editName} onChange={e => setEditName(e.target.value)} maxLength={60}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>Description</label>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networks.description')}</label>
                 <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={3} maxLength={200}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 10, color: 'var(--ink-soft)' }}>Default Visibility</label>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 10, color: 'var(--ink-soft)' }}>{t('networks.defaultVisibility')}</label>
                 {(['public', 'network_only'] as const).map(v => (
                   <label key={v} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
                     <input type="radio" name="editVis" checked={editVis === v} onChange={() => setEditVis(v)} style={{ marginTop: 2 }} />
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{v === 'public' ? 'Public' : 'Network Only'}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{v === 'public' ? t('networks.public') : t('networks.networkOnly')}</div>
                       <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                        {v === 'public' ? 'New listings default to visible to all' : 'New listings default to network-only'}
+                        {v === 'public' ? t('networksDetail.newListingsPublic') : t('networksDetail.newListingsPrivate')}
                       </div>
                     </div>
                   </label>
                 ))}
               </div>
 
-              {saveSuccess && <p style={{ color: 'var(--color-green)', fontSize: 13 }}>Settings saved.</p>}
+              {saveSuccess && <p style={{ color: 'var(--color-green)', fontSize: 13 }}>{t('networksDetail.settingsSaved')}</p>}
 
               <button type="submit" disabled={saving} style={{
                 padding: '11px 24px', background: 'var(--blue)', color: '#fff', border: 'none',
                 borderRadius: 'var(--radius-button)', fontWeight: 600, fontSize: 14, cursor: saving ? 'default' : 'pointer',
                 alignSelf: 'flex-start', opacity: saving ? 0.6 : 1,
               }}>
-                {saving ? 'Saving…' : 'Save Changes'}
+                {saving ? t('networksDetail.savingBtn') : t('networksDetail.saveChanges')}
               </button>
             </form>
 
             <hr style={{ border: 'none', borderTop: '1.5px solid var(--border)', marginBottom: 24 }} />
 
             <div>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>Danger Zone</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>{t('networksDetail.dangerZone')}</h3>
               <button
                 onClick={handleDeleteNetwork}
                 disabled={network.member_count > 0}
-                title={network.member_count > 0 ? 'Remove all active members before deleting' : ''}
+                title={network.member_count > 0 ? t('networksDetail.removeMembersFirst') : ''}
                 style={{
                   padding: '10px 20px', background: network.member_count > 0 ? '#f3f4f6' : '#fee2e2',
                   color: network.member_count > 0 ? '#9ca3af' : '#dc2626',
@@ -594,10 +597,10 @@ export default function NetworkDetailPage() {
                   cursor: network.member_count > 0 ? 'not-allowed' : 'pointer',
                 }}
               >
-                Delete Network
+                {t('networksDetail.deleteNetwork')}
               </button>
               {network.member_count > 0 && (
-                <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>Remove all active members before deleting this network.</p>
+                <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>{t('networksDetail.removeMembersFirst')}</p>
               )}
             </div>
           </div>

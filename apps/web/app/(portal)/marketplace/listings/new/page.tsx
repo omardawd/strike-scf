@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import type { ListingType } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { useT } from '@/lib/i18n/locale-context'
 
 interface LineItem {
   id: string
@@ -81,6 +82,7 @@ const DEFAULT_FORM: FormState = {
 function NewListingPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useT()
   const [listingType, setListingType] = useState<ListingType>('po_request')
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [loading, setLoading] = useState(false)
@@ -93,6 +95,9 @@ function NewListingPageInner() {
   const [extractError, setExtractError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null)
+  const coverImageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const qNetworkId  = searchParams.get('network_id')
@@ -137,7 +142,7 @@ function NewListingPageInner() {
       const res = await fetch('/api/marketplace/listings/extract', { method: 'POST', body: fd })
       const data = await res.json()
       if (!res.ok) {
-        setExtractError(data.error ?? 'Extraction failed. Please enter details manually.')
+        setExtractError(data.error ?? t('newListing.extractionFailed'))
         return
       }
 
@@ -167,7 +172,7 @@ function NewListingPageInner() {
         })))
       }
     } catch {
-      setExtractError('Could not reach extraction service. Please try again.')
+      setExtractError(t('newListing.extractionUnreachable'))
     } finally {
       setExtracting(false)
     }
@@ -207,15 +212,15 @@ function NewListingPageInner() {
 
   const submit = async (asDraft: boolean) => {
     if (!form.title.trim()) {
-      setError('Title is required.')
+      setError(t('newListing.titleRequired'))
       return
     }
     if (!asDraft && visibility === 'network_only' && !networkId) {
-      setError('Please select a network for this private listing.')
+      setError(t('newListing.selectNetworkRequired'))
       return
     }
     if (!asDraft && shippingCostRequired && !form.shipping_cost) {
-      setError(`Shipping cost is required for ${form.incoterms} — you arrange and pay for shipping under this incoterm.`)
+      setError(t('newListing.shippingCostRequiredError', { incoterms: form.incoterms }))
       return
     }
     setError(null)
@@ -228,7 +233,7 @@ function NewListingPageInner() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'Something went wrong. Please try again.')
+        setError(data.error ?? t('newListing.somethingWentWrong'))
         return
       }
       const listingId = data.listing.id
@@ -276,9 +281,19 @@ function NewListingPageInner() {
         }).catch(() => {})
       }
 
+      // Upload cover image to the listing
+      if (coverImageFile) {
+        const fd = new FormData()
+        fd.append('file', coverImageFile)
+        await fetch(`/api/marketplace/listings/${listingId}/image`, {
+          method: 'POST',
+          body: fd,
+        }).catch(() => {})
+      }
+
       router.push(asDraft ? '/marketplace' : `/marketplace/listings/${listingId}`)
     } catch {
-      setError('Network error. Please try again.')
+      setError(t('common.networkError'))
     } finally {
       setLoading(false)
     }
@@ -288,17 +303,17 @@ function NewListingPageInner() {
     <>
       <Topbar
         crumbs={[
-          { label: 'Strike Place', onClick: () => router.push('/marketplace') },
-          { label: 'New Listing' },
+          { label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') },
+          { label: t('newListing.newListing') },
         ]}
         onBack={() => router.push('/marketplace')}
         actions={
           <div className="topbar-right">
             <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => submit(true)}>
-              {loading ? 'Saving…' : 'Save Draft'}
+              {loading ? t('newListing.saving') : t('newListing.saveDraft')}
             </button>
             <button className="btn btn-blue btn-sm shine" disabled={loading} onClick={() => submit(false)}>
-              {loading ? 'Publishing…' : 'Publish Listing'}
+              {loading ? t('newListing.publishing') : t('newListing.publishListing')}
             </button>
           </div>
         }
@@ -307,9 +322,9 @@ function NewListingPageInner() {
       <div className="page" style={{ maxWidth: 1200 }}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            Create a Listing
+            {t('newListing.createAListing')}
           </h1>
-          <p className="subtitle">Post a purchase request or offer a product to Strike Place.</p>
+          <p className="subtitle">{t('newListing.subtitle')}</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }}>
@@ -319,7 +334,7 @@ function NewListingPageInner() {
             {/* Listing type toggle */}
             <div className="card">
               <div className="card-body" style={{ padding: '20px 24px' }}>
-                <div className="mp-form-section-label">Listing Type</div>
+                <div className="mp-form-section-label">{t('newListing.listingType')}</div>
                 <div className="listing-type-toggle">
                   <button
                     type="button"
@@ -329,8 +344,8 @@ function NewListingPageInner() {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
                     </svg>
-                    PO Request
-                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>— I want to buy</span>
+                    {t('passport.poRequest')}
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>— {t('newListing.iWantToBuy')}</span>
                   </button>
                   <button
                     type="button"
@@ -340,8 +355,8 @@ function NewListingPageInner() {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6" />
                     </svg>
-                    Product / Service
-                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>— I want to sell</span>
+                    {t('passport.productService')}
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>— {t('newListing.iWantToSell')}</span>
                   </button>
                 </div>
               </div>
@@ -349,12 +364,55 @@ function NewListingPageInner() {
 
             {/* Core listing fields */}
             <div className="card">
-              <div className="card-head">Listing Details</div>
+              <div className="card-head">{t('newListing.listingDetails')}</div>
               <div className="card-body">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                   <div className="form-field">
-                    <label className="field-label">Title</label>
+                    <label className="field-label">{t('newListing.coverImage')}</label>
+                    <input
+                      ref={coverImageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          setCoverImageFile(file)
+                          setCoverImagePreview(URL.createObjectURL(file))
+                        }
+                        e.target.value = ''
+                      }}
+                    />
+                    {coverImagePreview ? (
+                      <div style={{ position: 'relative', width: 220, height: 140, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={coverImagePreview} alt="Listing cover preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <button
+                          type="button"
+                          onClick={() => { setCoverImageFile(null); setCoverImagePreview(null) }}
+                          style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', lineHeight: 1, fontSize: 13 }}
+                          title={t('newListing.removeImage')}
+                        >×</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => coverImageInputRef.current?.click()}
+                        style={{ width: 220, height: 140, borderRadius: 10, border: '1.5px dashed var(--border-strong)', background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12 }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                          <circle cx="5.5" cy="6.5" r="1" />
+                          <path d="M2 11l3.5-3.5 2 2L11 6l3 3" />
+                        </svg>
+                        {t('newListing.addAPhoto')}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">{t('newListing.titleLabel')}</label>
                     <input
                       type="text"
                       name="title"
@@ -362,33 +420,33 @@ function NewListingPageInner() {
                       value={form.title}
                       onChange={handleChange}
                       placeholder={listingType === 'po_request'
-                        ? 'e.g. 500 MT of HDPE Pellets — Q3 Delivery'
-                        : 'e.g. Stainless Steel Sheet 304 Grade — Ex-Works Shanghai'}
+                        ? t('newListing.titlePlaceholderPo')
+                        : t('newListing.titlePlaceholderProduct')}
                     />
                   </div>
 
                   <div className="form-field">
-                    <label className="field-label">Description</label>
+                    <label className="field-label">{t('newListing.descriptionLabel')}</label>
                     <textarea
                       name="description"
                       className="input"
                       rows={4}
                       value={form.description}
                       onChange={handleChange}
-                      placeholder="Describe the goods, specifications, quality standards, certifications required, etc."
+                      placeholder={t('newListing.descriptionPlaceholder')}
                       style={{ height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: 1.6 }}
                     />
                   </div>
 
                   <div className="form-field">
-                    <label className="field-label">Category</label>
+                    <label className="field-label">{t('newListing.categoryLabel')}</label>
                     <select
                       name="category"
                       className="input form-select"
                       value={form.category}
                       onChange={handleChange}
                     >
-                      <option value="">Select category</option>
+                      <option value="">{t('newListing.selectCategory')}</option>
                       {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
@@ -400,7 +458,7 @@ function NewListingPageInner() {
             {/* Line Items */}
             <div className="card">
               <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Line Items</span>
+                <span>{t('newListing.lineItems')}</span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     ref={fileInputRef}
@@ -423,7 +481,7 @@ function NewListingPageInner() {
                       <path d="M8 12V4M4 8l4-4 4 4"/>
                       <path d="M2 14h12"/>
                     </svg>
-                    {uploadedFile ? 'Replace Document' : 'Upload PO / Invoice'}
+                    {uploadedFile ? t('newListing.replaceDocument') : t('newListing.uploadPoInvoice')}
                   </button>
                   {uploadedFile && (
                     <button
@@ -438,14 +496,14 @@ function NewListingPageInner() {
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ animation: 'spin 1s linear infinite' }}>
                             <path d="M8 2a6 6 0 1 0 6 6"/>
                           </svg>
-                          Extracting…
+                          {t('newListing.extracting')}
                         </>
                       ) : (
                         <>
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M13 3l-7 7-3-3"/>
                           </svg>
-                          Auto complete
+                          {t('newListing.autoComplete')}
                         </>
                       )}
                     </button>
@@ -463,7 +521,7 @@ function NewListingPageInner() {
                     type="button"
                     onClick={() => { setUploadedFile(null); setExtractError(null) }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: 2, lineHeight: 1 }}
-                    title="Remove file"
+                    title={t('newListing.removeFile')}
                   >×</button>
                 </div>
               )}
@@ -477,10 +535,10 @@ function NewListingPageInner() {
 
                 {/* Header row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 32px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
-                  <span>Item / Specs</span>
-                  <span>Qty</span>
-                  <span>Unit</span>
-                  <span>Price/Unit</span>
+                  <span>{t('newListing.itemSpecs')}</span>
+                  <span>{t('newListing.qty')}</span>
+                  <span>{t('newListing.unit')}</span>
+                  <span>{t('newListing.pricePerUnit')}</span>
                   <span></span>
                 </div>
 
@@ -491,7 +549,7 @@ function NewListingPageInner() {
                         type="text"
                         className="input"
                         style={{ fontSize: 13, padding: '6px 10px' }}
-                        placeholder="Item name"
+                        placeholder={t('newListing.itemName')}
                         value={item.name}
                         onChange={e => updateLineItem(item.id, 'name', e.target.value)}
                       />
@@ -499,7 +557,7 @@ function NewListingPageInner() {
                         type="text"
                         className="input"
                         style={{ fontSize: 12, padding: '4px 10px', color: 'var(--gray)' }}
-                        placeholder="Specs — grade, dimensions, certifications…"
+                        placeholder={t('newListing.specsPlaceholder')}
                         value={item.description}
                         onChange={e => updateLineItem(item.id, 'description', e.target.value)}
                       />
@@ -544,7 +602,7 @@ function NewListingPageInner() {
                       onClick={() => removeLineItem(item.id)}
                       style={{ background: 'none', border: 'none', cursor: lineItems.length === 1 ? 'not-allowed' : 'pointer', color: lineItems.length === 1 ? 'var(--border)' : 'var(--color-red)', padding: 4, borderRadius: 4, marginTop: 4 }}
                       disabled={lineItems.length === 1}
-                      title="Remove line item"
+                      title={t('newListing.removeLineItem')}
                     >
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                         <path d="M4 4l8 8M12 4l-8 8"/>
@@ -563,7 +621,7 @@ function NewListingPageInner() {
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                       <path d="M8 3v10M3 8h10"/>
                     </svg>
-                    Add Line Item
+                    {t('newListing.addLineItem')}
                   </button>
                 </div>
               </div>
@@ -571,32 +629,32 @@ function NewListingPageInner() {
 
             {/* Logistics & Terms */}
             <div className="card">
-              <div className="card-head">Logistics &amp; Terms</div>
+              <div className="card-head">{t('newListing.logisticsTerms')}</div>
               <div className="card-body">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="field-label">Incoterms</label>
+                      <label className="field-label">{t('newListing.incoterms')}</label>
                       <select
                         name="incoterms"
                         className="input form-select"
                         value={form.incoterms}
                         onChange={handleChange}
                       >
-                        <option value="">Select Incoterms</option>
-                        {INCOTERMS.map((t) => <option key={t}>{t}</option>)}
+                        <option value="">{t('newListing.selectIncoterms')}</option>
+                        {INCOTERMS.map((it) => <option key={it}>{it}</option>)}
                       </select>
                     </div>
                     <div className="form-field">
-                      <label className="field-label">Delivery Location</label>
+                      <label className="field-label">{t('newListing.deliveryLocation')}</label>
                       <input
                         type="text"
                         name="delivery_location"
                         className="input"
                         value={form.delivery_location}
                         onChange={handleChange}
-                        placeholder="e.g. Port of Jebel Ali, AE"
+                        placeholder={t('newListing.deliveryLocationPlaceholder')}
                       />
                     </div>
                   </div>
@@ -604,7 +662,7 @@ function NewListingPageInner() {
                   {shippingCostRequired && (
                     <div className="form-field">
                       <label className="field-label">
-                        Shipping Cost ({form.currency})
+                        {t('newListing.shippingCost')} ({form.currency})
                         <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
                       </label>
                       <input
@@ -618,14 +676,14 @@ function NewListingPageInner() {
                         step="0.01"
                       />
                       <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-                        Required for {form.incoterms} — you (the supplier) arrange and pay for shipping under this incoterm.
+                        {t('newListing.shippingCostHint', { incoterms: form.incoterms })}
                       </div>
                     </div>
                   )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="field-label">Required Delivery by</label>
+                      <label className="field-label">{t('newListing.requiredDeliveryBy')}</label>
                       <input
                         type="date"
                         name="delivery_deadline"
@@ -635,7 +693,7 @@ function NewListingPageInner() {
                       />
                     </div>
                     <div className="form-field">
-                      <label className="field-label">Listing Expires</label>
+                      <label className="field-label">{t('newListing.listingExpires')}</label>
                       <input
                         type="date"
                         name="expires_at"
@@ -648,19 +706,19 @@ function NewListingPageInner() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-field">
-                      <label className="field-label">Payment Terms</label>
+                      <label className="field-label">{t('newListing.paymentTerms')}</label>
                       <select
                         name="payment_terms"
                         className="input form-select"
                         value={form.payment_terms}
                         onChange={handleChange}
                       >
-                        <option value="">Select payment terms</option>
-                        {PAYMENT_TERMS.map((t) => <option key={t}>{t}</option>)}
+                        <option value="">{t('newListing.selectPaymentTerms')}</option>
+                        {PAYMENT_TERMS.map((pt) => <option key={pt}>{pt}</option>)}
                       </select>
                     </div>
                     <div className="form-field">
-                      <label className="field-label">Currency</label>
+                      <label className="field-label">{t('newListing.currency')}</label>
                       <select
                         name="currency"
                         className="input form-select"
@@ -678,28 +736,28 @@ function NewListingPageInner() {
 
             {/* Visibility selector */}
             <div style={{ background: 'var(--offwhite)', borderRadius: 'var(--radius-card)', padding: '20px 20px', marginBottom: 16, border: '1.5px solid var(--border)' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Visibility</div>
-              <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 14 }}>Who can see this listing?</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{t('newListing.visibility')}</div>
+              <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 14 }}>{t('newListing.whoCanSee')}</div>
 
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 12 }}>
                 <input type="radio" name="vis" checked={visibility === 'public'} onChange={() => setVisibility('public')} style={{ marginTop: 2 }} />
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>Public</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>Visible to all verified organizations on Strike Place</div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t('newListing.public')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('newListing.publicHint')}</div>
                 </div>
               </label>
 
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                 <input type="radio" name="vis" checked={visibility === 'network_only'} onChange={() => setVisibility('network_only')} style={{ marginTop: 2 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>My Network</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>Visible only to suppliers in one of your networks</div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t('newListing.myNetwork')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('newListing.myNetworkHint')}</div>
                   {visibility === 'network_only' && (
                     <div style={{ marginTop: 10 }}>
                       {networks.length === 0 ? (
                         <p style={{ fontSize: 13, color: 'var(--color-amber)' }}>
-                          You don't have any networks yet.{' '}
-                          <a href="/networks" style={{ color: 'var(--blue)', fontWeight: 600 }}>Create one →</a>
+                          {t('newListing.noNetworksYet')}{' '}
+                          <a href="/networks" style={{ color: 'var(--blue)', fontWeight: 600 }}>{t('newListing.createOne')}</a>
                         </p>
                       ) : (
                         <select
@@ -710,7 +768,7 @@ function NewListingPageInner() {
                             border: '1.5px solid var(--border)', fontSize: 13, background: 'var(--white)',
                           }}
                         >
-                          <option value="">Select a network…</option>
+                          <option value="">{t('newListing.selectANetwork')}</option>
                           {networks.map((n: any) => (
                             <option key={n.id} value={n.id}>{n.name}</option>
                           ))}
@@ -736,7 +794,7 @@ function NewListingPageInner() {
                 disabled={loading}
                 onClick={() => submit(false)}
               >
-                {loading ? 'Publishing…' : 'Publish Listing'}
+                {loading ? t('newListing.publishing') : t('newListing.publishListing')}
               </button>
               <button
                 className="btn btn-ghost"
@@ -744,7 +802,7 @@ function NewListingPageInner() {
                 disabled={loading}
                 onClick={() => submit(true)}
               >
-                {loading ? 'Saving…' : 'Save Draft'}
+                {loading ? t('newListing.saving') : t('newListing.saveDraft')}
               </button>
               <button
                 className="btn btn-ghost"
@@ -752,7 +810,7 @@ function NewListingPageInner() {
                 disabled={loading}
                 onClick={() => router.push('/marketplace')}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
 
@@ -761,15 +819,15 @@ function NewListingPageInner() {
           {/* Right — Preview + AI tip */}
           <div>
             <div className="listing-preview-card">
-              <div className="listing-preview-label">Preview</div>
+              <div className="listing-preview-label">{t('newListing.preview')}</div>
               <div className="listing-preview-body">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
                   <span className={`listing-type-badge ${listingType === 'po_request' ? 'listing-type-po' : 'listing-type-product'}`}>
-                    {listingType === 'po_request' ? 'PO Request' : 'Product / Service'}
+                    {listingType === 'po_request' ? t('passport.poRequest') : t('passport.productService')}
                   </span>
                   {form.category
                     ? <span className="listing-category-tag">{form.category}</span>
-                    : <span className="listing-category-tag">Category</span>}
+                    : <span className="listing-category-tag">{t('newListing.categoryLabel')}</span>}
                 </div>
                 {form.title
                   ? <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>{form.title}</div>
@@ -795,9 +853,9 @@ function NewListingPageInner() {
             <div className="ai-tip-card" style={{ marginTop: 12 }}>
               <div className="ai-tip-icon">✦</div>
               <div className="ai-tip-body">
-                <div className="ai-tip-label">Strike AI Tip</div>
+                <div className="ai-tip-label">{t('newListing.strikeAiTip')}</div>
                 <div className="ai-tip-text">
-                  Upload your PO or Invoice and click <strong>Auto complete</strong> — Strike AI will fill in your title, description, line items, and delivery terms automatically.
+                  {t('newListing.aiTipTextBefore')} <strong>{t('newListing.autoComplete')}</strong> {t('newListing.aiTipTextAfter')}
                 </div>
               </div>
             </div>
@@ -805,9 +863,9 @@ function NewListingPageInner() {
             <div className="ai-tip-card" style={{ marginTop: 8, background: 'var(--color-accent-light)', borderColor: 'var(--blue)', borderLeft: '3px solid var(--blue)' }}>
               <div className="ai-tip-icon" style={{ color: 'var(--blue)' }}>ℹ</div>
               <div className="ai-tip-body">
-                <div className="ai-tip-label" style={{ color: 'var(--blue)' }}>Passport Visibility</div>
+                <div className="ai-tip-label" style={{ color: 'var(--blue)' }}>{t('newListing.passportVisibility')}</div>
                 <div className="ai-tip-text" style={{ color: 'var(--blue)' }}>
-                  Your PassportScore is shown to all counterparties who view this listing. A higher score builds trust and accelerates offers.
+                  {t('newListing.passportVisibilityHint')}
                 </div>
               </div>
             </div>

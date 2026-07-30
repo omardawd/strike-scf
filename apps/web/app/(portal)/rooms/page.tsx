@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { SkeletonCard } from '@/components/motion'
+import { useT } from '@/lib/i18n/locale-context'
 
 const CATEGORIES = [
   'Steel Trading',
@@ -27,6 +28,7 @@ interface PublicRoom {
 }
 
 export default function RoomsPage() {
+  const t = useT()
   const router = useRouter()
 
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([])
@@ -62,24 +64,24 @@ export default function RoomsPage() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Strike Rooms' }]} />
+      <Topbar crumbs={[{ label: t('rooms.title') }]} />
 
       <div className="page" style={{ maxWidth: 1100, overflowY: 'auto' }} data-page-name="Rooms" data-ai-context={JSON.stringify({ total_rooms: publicRooms.length, active_category: activeCategory, visible_count: filteredPublic.length })}>
         <div className="page-header">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            Discover Rooms
+            {t('rooms.discoverRooms')}
           </h1>
           <p className="subtitle">
-            Pick a conversation from the left, or browse and join public community rooms by sector.
+            {t('rooms.discoverSubtitle')}
           </p>
         </div>
 
         {/* Public room discovery */}
         <div className="section">
           <div className="rooms-section-head">
-            <span className="rooms-section-title">Public Rooms</span>
+            <span className="rooms-section-title">{t('rooms.publicRooms')}</span>
             <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
-              {loadingPublic ? '…' : `${publicRooms.length} room${publicRooms.length !== 1 ? 's' : ''}`}
+              {loadingPublic ? '…' : t('rooms.roomCount', { count: String(publicRooms.length) })}
             </span>
           </div>
 
@@ -89,7 +91,7 @@ export default function RoomsPage() {
               className={`range-pill${!activeCategory ? ' selected' : ''}`}
               onClick={() => setActiveCategory(null)}
             >
-              All
+              {t('common.all')}
             </button>
             {CATEGORIES.map(cat => (
               <button
@@ -116,8 +118,8 @@ export default function RoomsPage() {
               </svg>
               <p className="rooms-empty-text">
                 {activeCategory
-                  ? `No public rooms in ${activeCategory} yet. Use “New Room” to create one.`
-                  : 'No public rooms yet. Use “New Room” in the panel to create one.'}
+                  ? t('rooms.emptyInCategory', { category: activeCategory })
+                  : t('rooms.emptyGeneral')}
               </p>
             </div>
           ) : (
@@ -147,7 +149,7 @@ export default function RoomsPage() {
                         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M14 5H2a1 1 0 00-1 1v5a1 1 0 001 1h1v2l3-2h8a1 1 0 001-1V6a1 1 0 00-1-1z" />
                         </svg>
-                        {room.message_count ?? 0} msg{room.message_count !== 1 ? 's' : ''}
+                        {t('rooms.msgCount', { count: String(room.message_count ?? 0) })}
                       </span>
                     </div>
                     <button
@@ -155,7 +157,7 @@ export default function RoomsPage() {
                       disabled={joiningId === room.id}
                       onClick={() => handleJoin(room.id)}
                     >
-                      {joiningId === room.id ? 'Joining…' : 'Join →'}
+                      {joiningId === room.id ? t('rooms.joining') : t('rooms.join')}
                     </button>
                   </div>
                 </div>

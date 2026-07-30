@@ -4,6 +4,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { Topbar, NotifBell } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface OrgMini {
   id: string
@@ -27,12 +30,14 @@ interface DealMini {
 }
 
 type CategoryKey = 'payment_speed' | 'communication' | 'accuracy' | 'reliability'
-const CATEGORIES: { key: CategoryKey; label: string }[] = [
-  { key: 'payment_speed',  label: 'Payment Speed' },
-  { key: 'communication', label: 'Communication' },
-  { key: 'accuracy',      label: 'Accuracy' },
-  { key: 'reliability',   label: 'Reliability' },
-]
+function categories(t: TFn): { key: CategoryKey; label: string }[] {
+  return [
+    { key: 'payment_speed', label: t('reviewForm.category.paymentSpeed') },
+    { key: 'communication', label: t('reviewForm.category.communication') },
+    { key: 'accuracy',      label: t('reviewForm.category.accuracy') },
+    { key: 'reliability',   label: t('reviewForm.category.reliability') },
+  ]
+}
 
 function StarRow({
   value,
@@ -94,6 +99,7 @@ function StarRow({
 }
 
 function PassportMini({ org }: { org: OrgMini }) {
+  const t = useT()
   const isBuyer = org.type === 'anchor'
   return (
     <div
@@ -127,7 +133,7 @@ function PassportMini({ org }: { org: OrgMini }) {
               color: 'var(--ink)',
             }}
           >
-            {org.legal_name ?? 'Unknown organization'}
+            {org.legal_name ?? t('passportPublic.unknownOrganization')}
           </span>
           <span
             className="badge"
@@ -137,12 +143,12 @@ function PassportMini({ org }: { org: OrgMini }) {
               borderColor: isBuyer ? 'var(--blue)' : 'var(--color-green)',
             }}
           >
-            {isBuyer ? 'BUYER' : 'SUPPLIER'}
+            {isBuyer ? t('passport.buyer') : t('passport.supplier')}
           </span>
         </div>
         {org.doing_business_as && org.doing_business_as !== org.legal_name && (
           <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
-            doing business as {org.doing_business_as}
+            {t('passport.doingBusinessAs')} {org.doing_business_as}
           </div>
         )}
         {org.country_of_origin && (
@@ -168,6 +174,7 @@ export default function ReviewFormPage() {
   const params  = useParams()
   const router  = useRouter()
   const user    = useUser()
+  const t       = useT()
   const reviewedOrgId = params.org_id as string
 
   const [reviewedOrg, setReviewedOrg]   = useState<OrgMini | null>(null)
@@ -193,7 +200,7 @@ export default function ReviewFormPage() {
       const passportRes = await fetch(`/api/passport/${reviewedOrgId}`)
       if (!passportRes.ok) {
         const b = await passportRes.json().catch(() => ({}))
-        setLoadError((b as { error?: string }).error ?? 'Could not load organization')
+        setLoadError((b as { error?: string }).error ?? t('reviewForm.couldNotLoadOrg'))
         return
       }
       const passportData = await passportRes.json()
@@ -211,7 +218,7 @@ export default function ReviewFormPage() {
       // Find a completed deal between current org and target org
       const dealsRes = await fetch('/api/deals?status=completed')
       if (!dealsRes.ok) {
-        setLoadError('Failed to load deals')
+        setLoadError(t('reviewForm.failedLoadDeals'))
         return
       }
       const dealsData = await dealsRes.json()
@@ -220,22 +227,22 @@ export default function ReviewFormPage() {
           d.counterparty?.id === reviewedOrgId
       )
       if (!matchingDeal) {
-        setLoadError('No completed deal found with this organization. A review can only be submitted after a deal is completed.')
+        setLoadError(t('reviewForm.noCompletedDeal'))
         return
       }
       setDeal(matchingDeal)
     } catch {
-      setLoadError('Failed to load data')
+      setLoadError(t('reviewForm.failedLoadData'))
     } finally {
       setLoadingPage(false)
     }
-  }, [reviewedOrgId])
+  }, [reviewedOrgId, t])
 
   useEffect(() => { load() }, [load])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (rating === 0) { setSubmitError('Please select an overall rating'); return }
+    if (rating === 0) { setSubmitError(t('reviewForm.selectOverallRating')); return }
     if (!deal) return
 
     setSubmitting(true)
@@ -258,18 +265,18 @@ export default function ReviewFormPage() {
       })
 
       if (res.status === 409) {
-        setSubmitError('You have already submitted a review for this deal.')
+        setSubmitError(t('reviewForm.alreadySubmitted'))
         return
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setSubmitError((body as { error?: string }).error ?? 'Submission failed')
+        setSubmitError((body as { error?: string }).error ?? t('reviewForm.submissionFailed'))
         return
       }
 
       router.push(`/passport/${reviewedOrgId}?reviewed=true`)
     } catch {
-      setSubmitError('Network error. Please try again.')
+      setSubmitError(t('common.networkError'))
     } finally {
       setSubmitting(false)
     }
@@ -281,9 +288,9 @@ export default function ReviewFormPage() {
     <>
       <Topbar
         crumbs={[
-          { label: 'Strike' },
-          { label: 'My Passport', onClick: () => router.push('/passport') },
-          { label: 'Write Review' },
+          { label: t('passport.strike') },
+          { label: t('passport.myPassport'), onClick: () => router.push('/passport') },
+          { label: t('reviewForm.writeReview') },
         ]}
         actions={<NotifBell />}
       />
@@ -299,14 +306,14 @@ export default function ReviewFormPage() {
         })}
       >
         <div className="page-header">
-          <h1 className="t-page-title">Write a Review</h1>
-          <div className="subtitle">Share your experience trading with this organization.</div>
+          <h1 className="t-page-title">{t('reviewForm.writeAReview')}</h1>
+          <div className="subtitle">{t('reviewForm.subtitle')}</div>
         </div>
 
         {loadingPage ? (
           <div className="card">
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--gray)' }}>
-              Loading…
+              {t('common.loading')}
             </div>
           </div>
         ) : loadError ? (
@@ -320,7 +327,7 @@ export default function ReviewFormPage() {
                 className="btn btn-ghost btn-sm"
                 onClick={() => router.back()}
               >
-                Go back
+                {t('reviewForm.goBack')}
               </button>
             </div>
           </div>
@@ -331,7 +338,7 @@ export default function ReviewFormPage() {
 
             {/* Deal context */}
             <div className="card">
-              <div className="card-head">Deal being reviewed</div>
+              <div className="card-head">{t('reviewForm.dealBeingReviewed')}</div>
               <div className="card-body" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                 <div>
                   <div
@@ -345,7 +352,7 @@ export default function ReviewFormPage() {
                       marginBottom: 4,
                     }}
                   >
-                    Value
+                    {t('reviewForm.value')}
                   </div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600 }}>
                     {fmtCurrency(deal.agreed_price, deal.agreed_currency)}
@@ -364,7 +371,7 @@ export default function ReviewFormPage() {
                         marginBottom: 4,
                       }}
                     >
-                      Goods / Services
+                      {t('reviewForm.goodsServices')}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                       {deal.goods_description}
@@ -384,7 +391,7 @@ export default function ReviewFormPage() {
                         marginBottom: 4,
                       }}
                     >
-                      Completed
+                      {t('reviewForm.completed')}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--gray)' }}>
                       {new Date(deal.completed_at).toLocaleDateString('en-US', {
@@ -401,15 +408,15 @@ export default function ReviewFormPage() {
             {/* Review form */}
             <form onSubmit={handleSubmit}>
               <div className="card">
-                <div className="card-head">Your review</div>
+                <div className="card-head">{t('reviewForm.yourReview')}</div>
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                   {/* Overall star rating */}
                   <div>
-                    <div className="field-label" style={{ marginBottom: 10 }}>Overall rating *</div>
+                    <div className="field-label" style={{ marginBottom: 10 }}>{t('reviewForm.overallRating')} *</div>
                     <StarRow value={rating} onChange={setRating} size={32} />
                     {rating === 0 && (
                       <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>
-                        Click a star to rate
+                        {t('reviewForm.clickStarToRate')}
                       </div>
                     )}
                   </div>
@@ -419,11 +426,11 @@ export default function ReviewFormPage() {
                   {/* Category scores */}
                   <div>
                     <div className="field-label" style={{ marginBottom: 12 }}>
-                      Category ratings{' '}
-                      <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
+                      {t('reviewForm.categoryRatings')}{' '}
+                      <span style={{ fontWeight: 400, color: 'var(--gray)' }}>({t('reviewForm.optional')})</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {CATEGORIES.map(({ key, label }) => (
+                      {categories(t).map(({ key, label }) => (
                         <StarRow
                           key={key}
                           label={label}
@@ -442,14 +449,14 @@ export default function ReviewFormPage() {
                   {/* Comment */}
                   <div>
                     <label className="field-label" htmlFor="review-comment">
-                      Comment{' '}
-                      <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
+                      {t('reviewForm.comment')}{' '}
+                      <span style={{ fontWeight: 400, color: 'var(--gray)' }}>({t('reviewForm.optional')})</span>
                     </label>
                     <textarea
                       id="review-comment"
                       className="input"
                       rows={4}
-                      placeholder="Share your experience with this organization…"
+                      placeholder={t('reviewForm.commentPlaceholder')}
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
                       maxLength={500}
@@ -490,12 +497,12 @@ export default function ReviewFormPage() {
                     </button>
                     <div>
                       <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500 }}>
-                        {isPublic ? 'Public review' : 'Private review'}
+                        {isPublic ? t('reviewForm.publicReview') : t('reviewForm.privateReview')}
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 1 }}>
                         {isPublic
-                          ? 'Your organization name will be visible alongside this review'
-                          : 'Only the score will be visible; your identity will be hidden'}
+                          ? t('reviewForm.publicReviewHint')
+                          : t('reviewForm.privateReviewHint')}
                       </div>
                     </div>
                   </div>
@@ -512,14 +519,14 @@ export default function ReviewFormPage() {
                       className="btn btn-blue"
                       disabled={submitting || rating === 0}
                     >
-                      {submitting ? 'Submitting…' : 'Submit review'}
+                      {submitting ? t('reviewForm.submitting') : t('reviewForm.submitReview')}
                     </button>
                     <button
                       type="button"
                       className="btn btn-ghost"
                       onClick={() => router.back()}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 </div>

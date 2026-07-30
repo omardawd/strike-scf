@@ -7,6 +7,9 @@ import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-ref
 import { pushKybDetail } from '@/lib/kyb-referrer'
 import { PortalShell, Topbar, Icon, NotifBell, fmtMoney } from '@/components/portal-shell'
 import { LineChart, PeriodToggle, type Period } from '@/components/charts'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 const PULSE_KF = `@keyframes chart-pulse{0%,100%{opacity:1}50%{opacity:.45}}`
 
@@ -133,11 +136,11 @@ function kybBadge(s: string) {
   return m[s] ?? 'badge-draft'
 }
 
-function kybLabel(s: string) {
+function kybLabel(s: string, t: TFn) {
   const m: Record<string, string> = {
-    approved: 'Approved', submitted: 'Submitted', under_review: 'Under Review',
-    more_info_requested: 'Info Requested', rejected: 'Rejected', draft: 'Draft',
-    not_started: 'Not started', in_progress: 'In progress',
+    approved: t('programDetail.kyb.approved'), submitted: t('programDetail.kyb.submitted'), under_review: t('programDetail.kyb.underReview'),
+    more_info_requested: t('programDetail.kyb.infoRequested'), rejected: t('programDetail.kyb.rejected'), draft: t('programsPage.status.draft'),
+    not_started: t('anchorDetail.notStarted'), in_progress: t('anchorDetail.inProgress'),
   }
   return m[s] ?? s
 }
@@ -155,14 +158,16 @@ function txnBadge(s: string) {
   return 'badge-pending'
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_anchor_approval: 'Pending Anchor',
-  pending_bank_review:     'Pending Bank',
-  more_info_requested:     'More Info',
-  financing_approved:      'Approved',
-  funded:                  'Funded',
-  completed:               'Completed',
-  rejected:                'Rejected',
+function statusLabels(t: TFn): Record<string, string> {
+  return {
+    pending_anchor_approval: t('anchorDetail.status.pendingAnchor'),
+    pending_bank_review:     t('anchorDetail.status.pendingBank'),
+    more_info_requested:     t('anchorDetail.status.moreInfo'),
+    financing_approved:      t('transactionsPage.approved'),
+    funded:                  t('transactionsPage.funded'),
+    completed:               t('deals.status.completed'),
+    rejected:                t('transactionsPage.rejected'),
+  }
 }
 
 function initials(name: string) {
@@ -193,30 +198,32 @@ function KybSection({
   orgType: 'Anchor' | 'Supplier'
   router: ReturnType<typeof useRouter>
 }) {
+  const t = useT()
   const s = status ?? 'draft'
   const isSubmitted = s === 'submitted' || s === 'under_review'
+  const orgTypeLabel = orgType === 'Anchor' ? t('transactionsPage.anchor') : t('transactionsPage.supplier')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {isSubmitted && <span className="badge badge-active">Ready for review</span>}
-        {s === 'approved' && <span className="badge badge-funded">Approved</span>}
-        {s === 'rejected' && <span className="badge badge-rejected">Rejected</span>}
-        {s === 'more_info_requested' && <span className="badge badge-pending">More info requested</span>}
-        {s === 'in_progress' && <span className="badge badge-pending">Application in progress</span>}
-        {(s === 'not_started' || s === 'draft') && <span className="badge badge-draft">Not started</span>}
+        {isSubmitted && <span className="badge badge-active">{t('anchorDetail.readyForReview')}</span>}
+        {s === 'approved' && <span className="badge badge-funded">{t('programDetail.kyb.approved')}</span>}
+        {s === 'rejected' && <span className="badge badge-rejected">{t('programDetail.kyb.rejected')}</span>}
+        {s === 'more_info_requested' && <span className="badge badge-pending">{t('anchorDetail.moreInfoRequested')}</span>}
+        {s === 'in_progress' && <span className="badge badge-pending">{t('anchorDetail.applicationInProgress')}</span>}
+        {(s === 'not_started' || s === 'draft') && <span className="badge badge-draft">{t('anchorDetail.notStarted')}</span>}
         {!['submitted', 'under_review', 'approved', 'rejected', 'more_info_requested', 'in_progress', 'not_started', 'draft'].includes(s) && (
-          <span className={`badge ${kybBadge(s)}`}>{kybLabel(s)}</span>
+          <span className={`badge ${kybBadge(s)}`}>{kybLabel(s, t)}</span>
         )}
         {s === 'approved' && creditScore?.risk_tier && (
-          <span className={`badge ${riskTierBadge(creditScore.risk_tier)}`}>Risk {creditScore.risk_tier}</span>
+          <span className={`badge ${riskTierBadge(creditScore.risk_tier)}`}>{t('anchorDetail.riskTier', { tier: creditScore.risk_tier })}</span>
         )}
         {creditReviewedAt && s === 'approved' && (
-          <span style={{ fontSize: 12, color: 'var(--gray)' }}>Reviewed {fmtDate(creditReviewedAt)}</span>
+          <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('anchorDetail.reviewedOn', { date: fmtDate(creditReviewedAt) })}</span>
         )}
       </div>
       {(s === 'not_started' || s === 'draft') && (
-        <div style={{ fontSize: 13, color: 'var(--gray)' }}>KYB not submitted yet.</div>
+        <div style={{ fontSize: 13, color: 'var(--gray)' }}>{t('anchorDetail.kybNotSubmittedYet')}</div>
       )}
       {s === 'approved' && creditScore?.total_score != null && (
         <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--ink)', lineHeight: 1 }}>
@@ -225,12 +232,12 @@ function KybSection({
       )}
       {s === 'rejected' && (
         <div style={{ fontSize: 13, color: '#DC2626' }}>
-          KYB rejected. {orgType} cannot participate in financing.
+          {t('anchorDetail.kybRejectedCannotParticipate', { orgType: orgTypeLabel })}
         </div>
       )}
       {s === 'more_info_requested' && (
         <div style={{ fontSize: 13, color: 'var(--gray)' }}>
-          Additional information requested from {orgType.toLowerCase()}.
+          {t('anchorDetail.additionalInfoRequestedFrom', { orgType: orgTypeLabel.toLowerCase() })}
         </div>
       )}
       <div>
@@ -239,23 +246,25 @@ function KybSection({
           type="button"
           onClick={() => pushKybDetail(router, orgId)}
         >
-          {isSubmitted ? 'Review KYB application' : 'View KYB record'}
+          {isSubmitted ? t('anchorDetail.reviewKybApplication') : t('anchorDetail.viewKybRecord')}
         </button>
       </div>
     </div>
   )
 }
 
-const AVAILABLE_DOCS = [
-  { id: 'certificate_of_incorporation', label: 'Certificate of Incorporation' },
-  { id: 'ein_letter',                   label: 'IRS EIN Confirmation Letter' },
-  { id: 'ownership_structure',          label: 'Ownership Structure' },
-  { id: 'audited_financials',           label: 'Audited Financials (2 years)' },
-  { id: 'bank_statements',              label: 'Bank Statements (6 months)' },
-  { id: 'insurance_certificate',        label: 'Certificate of Insurance' },
-  { id: 'aml_kyc_policy',              label: 'AML / KYC Policy' },
-  { id: 'custom_document',              label: 'Custom document (specify below)' },
-]
+function availableDocs(t: TFn) {
+  return [
+    { id: 'certificate_of_incorporation', label: t('programDetail.doc.certificateOfIncorporation') },
+    { id: 'ein_letter',                   label: t('programDetail.doc.einLetter') },
+    { id: 'ownership_structure',          label: t('programDetail.doc.ownershipStructure') },
+    { id: 'audited_financials',           label: t('programDetail.doc.auditedFinancials') },
+    { id: 'bank_statements',              label: t('programDetail.doc.bankStatements') },
+    { id: 'insurance_certificate',        label: t('programDetail.doc.insuranceCertificate') },
+    { id: 'aml_kyc_policy',              label: t('programDetail.doc.amlKycPolicy') },
+    { id: 'custom_document',              label: t('programDetail.doc.customDocument') },
+  ]
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function AnchorDetailPage() {
@@ -265,6 +274,7 @@ export default function AnchorDetailPage() {
   const params    = useParams()
   const programId = params.id as string
   const anchorId  = params.anchor_id as string
+  const t = useT()
 
   const [org, setOrg]                           = useState<OrgDetail | null>(null)
   const [suppliers, setSuppliers]               = useState<SupplierEntry[]>([])
@@ -375,11 +385,11 @@ export default function AnchorDetailPage() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
+      setError(e instanceof Error ? e.message : t('txnDetail.failedToLoadGeneric'))
     } finally {
       setLoading(false)
     }
-  }, [portal, programId, anchorId, networkVersion, volPeriod])
+  }, [portal, programId, anchorId, networkVersion, volPeriod, t])
 
   useEffect(() => { load() }, [load])
 
@@ -390,7 +400,7 @@ export default function AnchorDetailPage() {
   }, [org?.legal_name])
 
   async function handleSendInvite() {
-    if (!inviteEmail.includes('@')) { setInviteError('Enter a valid email'); return }
+    if (!inviteEmail.includes('@')) { setInviteError(t('programDetail.enterValidEmail')); return }
     setInviteLoading(true); setInviteError(null)
     try {
       const reqBody: Record<string, unknown> = {
@@ -402,7 +412,7 @@ export default function AnchorDetailPage() {
         reqBody.required_documents = requiredDocs.map(docId =>
           docId === 'custom_document'
             ? { id: docId, label: customDocName }
-            : AVAILABLE_DOCS.find(d => d.id === docId)
+            : availableDocs(t).find(d => d.id === docId)
         )
       }
       const res = await fetch(`/api/programs/${programId}/invite`, {
@@ -411,11 +421,11 @@ export default function AnchorDetailPage() {
         body: JSON.stringify(reqBody),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Failed')
+      if (!res.ok) throw new Error(d.error ?? t('programDetail.failed'))
       setInviteSent(true)
       setNetworkVersion(v => v + 1)
     } catch (e) {
-      setInviteError(e instanceof Error ? e.message : 'Failed')
+      setInviteError(e instanceof Error ? e.message : t('programDetail.failed'))
     } finally {
       setInviteLoading(false)
     }
@@ -445,7 +455,7 @@ export default function AnchorDetailPage() {
     }
   }
 
-  const orgName = org?.legal_name ?? 'Anchor'
+  const orgName = org?.legal_name ?? t('transactionsPage.anchor')
 
   if (loading) {
     return (
@@ -453,7 +463,7 @@ export default function AnchorDetailPage() {
         <Topbar
           onBack={() => router.push(`/programs/${programId}`)}
           crumbs={[
-            { label: 'My Programs', onClick: () => router.push('/programs') },
+            { label: t('programsPage.title'), onClick: () => router.push('/programs') },
             { label: '…', onClick: () => router.push(`/programs/${programId}`) },
             { label: '…' },
           ]}
@@ -475,14 +485,14 @@ export default function AnchorDetailPage() {
         <Topbar
           onBack={() => router.push(`/programs/${programId}`)}
           crumbs={[
-            { label: 'My Programs', onClick: () => router.push('/programs') },
-            { label: 'Program', onClick: () => router.push(`/programs/${programId}`) },
+            { label: t('programsPage.title'), onClick: () => router.push('/programs') },
+            { label: t('programDetail.program'), onClick: () => router.push(`/programs/${programId}`) },
             { label: orgName },
           ]}
           actions={
             <>
               <button className="btn btn-primary btn-sm" type="button" onClick={openInviteModal}>
-                <Icon name="plus" size={14} /> Invite Supplier
+                <Icon name="plus" size={14} /> {t('programDetail.inviteSupplier')}
               </button>
               <NotifBell />
             </>
@@ -498,68 +508,68 @@ export default function AnchorDetailPage() {
 
           <div className="page-header">
             <h1 className="t-page-title">{orgName}</h1>
-            <div className="subtitle">Anchor · Program network</div>
+            <div className="subtitle">{t('anchorDetail.anchorProgramNetwork')}</div>
           </div>
 
           <div className="split-60">
             {/* ── LEFT: Org details + analytics + suppliers ── */}
             <div>
               <div className="card" style={{ marginBottom: 16 }}>
-                <div className="card-head"><h3 className="t-card-head">Organization</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('anchorDetail.organization')}</h3></div>
                 <div className="kv-rows">
-                  <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
+                  <div className="kv-row"><span className="k">{t('programDetail.legalName')}</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
                   {org?.business_type && (
-                    <div className="kv-row"><span className="k">Industry</span><span className="v plain">{org.business_type}</span></div>
+                    <div className="kv-row"><span className="k">{t('anchorDetail.industry')}</span><span className="v plain">{org.business_type}</span></div>
                   )}
                   {org?.ein && (
                     <div className="kv-row"><span className="k">EIN</span><span className="v mono">{org.ein}</span></div>
                   )}
                   {(org?.city || org?.state) && (
                     <div className="kv-row">
-                      <span className="k">Location</span>
+                      <span className="k">{t('anchorDetail.location')}</span>
                       <span className="v plain">{[org.city, org.state].filter(Boolean).join(', ')}</span>
                     </div>
                   )}
-                  
+
                   {org?.annual_revenue_range != null && (
-                    <div className="kv-row"><span className="k">Annual revenue</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
+                    <div className="kv-row"><span className="k">{t('anchorDetail.annualRevenue')}</span><span className="v plain">{fmtMoney(org.annual_revenue_range)}</span></div>
                   )}
                   {org?.industry_naics && (
                     <div className="kv-row"><span className="k">NAICS</span><span className="v mono">{org.industry_naics}</span></div>
                   )}
                   {org?.primary_contact_name && (
-                    <div className="kv-row"><span className="k">Contact</span><span className="v plain">{org.primary_contact_name}</span></div>
+                    <div className="kv-row"><span className="k">{t('anchorDetail.contact')}</span><span className="v plain">{org.primary_contact_name}</span></div>
                   )}
                   {org?.primary_contact_email && (
-                    <div className="kv-row"><span className="k">Email</span><span className="v plain">{org.primary_contact_email}</span></div>
+                    <div className="kv-row"><span className="k">{t('anchorDetail.email')}</span><span className="v plain">{org.primary_contact_email}</span></div>
                   )}
                   {org?.kyb_submitted_at && (
-                    <div className="kv-row"><span className="k">KYB submitted</span><span className="v plain">{fmtDate(org.kyb_submitted_at)}</span></div>
+                    <div className="kv-row"><span className="k">{t('anchorDetail.kybSubmitted')}</span><span className="v plain">{fmtDate(org.kyb_submitted_at)}</span></div>
                   )}
                 </div>
               </div>
 
               <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-head">
-                  <h3 className="t-card-head">Program Analytics</h3>
+                  <h3 className="t-card-head">{t('anchorDetail.programAnalytics')}</h3>
                   <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
                 </div>
                 <div className="card-body">
                   <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                     <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.transactions')}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
                     </div>
                     <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.invoiceVolume')}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
                     </div>
                     <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('anchorDetail.totalFinanced')}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                     </div>
                     <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
-                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Avg Rate</div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.avgRate')}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.avg_financing_rate ? `${analytics.avg_financing_rate.toFixed(1)}%` : '—'}</div>
                     </div>
                   </div>
@@ -573,14 +583,14 @@ export default function AnchorDetailPage() {
 
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">Suppliers in this program</h3>
+                  <h3 className="t-card-head">{t('anchorDetail.suppliersInThisProgram')}</h3>
                   <button className="btn btn-ghost btn-sm" type="button" onClick={openInviteModal}>
-                    <Icon name="plus" size={14} /> Invite
+                    <Icon name="plus" size={14} /> {t('anchorDetail.invite')}
                   </button>
                 </div>
                 {suppliers.length === 0 && pendingSuppliers.length === 0 && kybSuppliers.length === 0 && signedUpSuppliers.length === 0 ? (
                   <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                    No suppliers yet.
+                    {t('programDetail.noSuppliersYet')}
                   </div>
                 ) : (
                   <div className="card-body" style={{ padding: 0 }}>
@@ -597,7 +607,7 @@ export default function AnchorDetailPage() {
                             <div className="network-name">{s.legal_name}</div>
                             <div className="network-meta">
                               {s.kyb_status === 'approved' && <span className="verified-dot" />}
-                              <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
+                              <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status, t)}</span>
                             </div>
                           </div>
                           {s.country_of_origin && (
@@ -619,8 +629,8 @@ export default function AnchorDetailPage() {
                           <div style={{ flex: 1 }}>
                             <div className="network-name">{s.legal_name}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status)}</span>
-                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Review KYB →</span>
+                              <span className={`badge ${kybBadge(s.kyb_status)}`}>{kybLabel(s.kyb_status, t)}</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('anchorDetail.reviewKyb')}</span>
                             </div>
                           </div>
                           {s.country_of_origin && (
@@ -641,8 +651,8 @@ export default function AnchorDetailPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="network-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{su.email}</div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className="badge badge-draft">Setting up</span>
-                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>Completing onboarding</span>
+                              <span className="badge badge-draft">{t('programDetail.settingUp')}</span>
+                              <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('programDetail.completingOnboarding')}</span>
                             </div>
                           </div>
                         </div>
@@ -661,7 +671,7 @@ export default function AnchorDetailPage() {
                               {inv.email}
                             </div>
                             <div className="network-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className="badge badge-pending">Invited</span>
+                              <span className="badge badge-pending">{t('programDetail.invited')}</span>
                               <span style={{ fontSize: 11, color: 'var(--gray)' }}>{fmtDate(inv.invited_at)}</span>
                             </div>
                           </div>
@@ -671,7 +681,7 @@ export default function AnchorDetailPage() {
                             style={{ fontSize: 11, padding: '2px 8px' }}
                             onClick={e => { e.stopPropagation(); cancelInvite(inv.id) }}
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         </div>
                       </div>
@@ -684,7 +694,7 @@ export default function AnchorDetailPage() {
             {/* ── RIGHT: KYB + Documents ── */}
             <div>
               <div className="card" style={{ marginBottom: 16 }}>
-                <div className="card-head"><h3 className="t-card-head">KYB Status</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('anchorDetail.kybStatus')}</h3></div>
                 <div className="card-body">
                   <KybSection
                     status={org?.kyb_status}
@@ -698,10 +708,10 @@ export default function AnchorDetailPage() {
               </div>
 
               <div className="card">
-                <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
+                <div className="card-head"><h3 className="t-card-head">{t('txnDetail.documents')}</h3></div>
                 {docs.length === 0 ? (
                   <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                    No documents uploaded.
+                    {t('anchorDetail.noDocumentsUploaded')}
                   </div>
                 ) : (
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -713,7 +723,7 @@ export default function AnchorDetailPage() {
                         </div>
                         {doc.signed_url && (
                           <a href={doc.signed_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-                            Download
+                            {t('txnDetail.download')}
                           </a>
                         )}
                       </div>
@@ -784,13 +794,13 @@ export default function AnchorDetailPage() {
               onClick={e => e.stopPropagation()}
             >
               <div className="card-head">
-                <h3 className="t-card-head">Invite Supplier</h3>
+                <h3 className="t-card-head">{t('programDetail.inviteSupplier')}</h3>
                 <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowInviteModal(false)}>✕</button>
               </div>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
                 {inviteSent ? (
                   <div style={{ fontSize: 14, color: 'var(--color-green)', textAlign: 'center', padding: '12px 0' }}>
-                    Invitation sent!
+                    {t('programDetail.invitationSent')}
                   </div>
                 ) : (
                   <>
@@ -802,9 +812,9 @@ export default function AnchorDetailPage() {
                       marginBottom: 20,
                     }}>
                       {([
-                        { id: 'standard'           as const, label: 'Standard',    desc: 'Counterparty completes\nfull onboarding' },
-                        { id: 'known_counterparty' as const, label: 'Known Party', desc: 'Pre-fill their details,\nskip re-onboarding' },
-                        { id: 'custom_kyb'         as const, label: 'Custom KYB',  desc: 'Specify exactly what\ndocs you require' },
+                        { id: 'standard'           as const, label: t('programDetail.standard'),    desc: t('programDetail.standardDesc') },
+                        { id: 'known_counterparty' as const, label: t('programDetail.knownParty'), desc: t('programDetail.knownPartyDesc') },
+                        { id: 'custom_kyb'         as const, label: t('programDetail.customKyb'),  desc: t('programDetail.customKybDesc') },
                       ]).map(m => (
                         <button
                           key={m.id}
@@ -838,37 +848,37 @@ export default function AnchorDetailPage() {
                       ))}
                     </div>
                     <div>
-                      <label className="field-label">Contact name</label>
+                      <label className="field-label">{t('programDetail.contactName')}</label>
                       <input className="input" placeholder="Jane Smith" value={inviteName} onChange={e => setInviteName(e.target.value)} />
                     </div>
                     <div>
-                      <label className="field-label">Work email</label>
+                      <label className="field-label">{t('programDetail.workEmail')}</label>
                       <input className="input" type="email" placeholder="jane@company.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
                     </div>
                     {inviteMode === 'known_counterparty' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                         <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                          Pre-fill their organization details
+                          {t('programDetail.prefillOrgDetails')}
                         </div>
-                        <input className="input" placeholder="Legal name" value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
-                        <input className="input" placeholder="EIN / Tax ID" value={prefilledKyb.ein ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, ein: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.legalName')} value={prefilledKyb.legal_name ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, legal_name: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.einTaxId')} value={prefilledKyb.ein ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, ein: e.target.value }))} />
                         <select className="input" value={prefilledKyb.entity_type ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, entity_type: e.target.value }))}>
-                          <option value="">Entity type</option>
+                          <option value="">{t('programDetail.entityType')}</option>
                           <option value="LLC">LLC</option>
-                          <option value="Corporation">Corporation</option>
-                          <option value="Partnership">Partnership</option>
-                          <option value="Sole Proprietor">Sole Proprietor</option>
+                          <option value="Corporation">{t('programDetail.corporation')}</option>
+                          <option value="Partnership">{t('programDetail.partnership')}</option>
+                          <option value="Sole Proprietor">{t('programDetail.soleProprietor')}</option>
                         </select>
-                        <input className="input" placeholder="State of incorporation" value={prefilledKyb.state_of_incorporation ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state_of_incorporation: e.target.value }))} />
-                        <input className="input" placeholder="Address line 1" value={prefilledKyb.address_line_1 ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, address_line_1: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.stateOfIncorporation')} value={prefilledKyb.state_of_incorporation ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state_of_incorporation: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.addressLine1')} value={prefilledKyb.address_line_1 ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, address_line_1: e.target.value }))} />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: 8 }}>
-                          <input className="input" placeholder="City" value={prefilledKyb.city ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, city: e.target.value }))} />
-                          <input className="input" placeholder="State" value={prefilledKyb.state ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state: e.target.value }))} />
-                          <input className="input" placeholder="ZIP" value={prefilledKyb.zip ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, zip: e.target.value }))} />
+                          <input className="input" placeholder={t('programDetail.city')} value={prefilledKyb.city ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, city: e.target.value }))} />
+                          <input className="input" placeholder={t('programDetail.state')} value={prefilledKyb.state ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, state: e.target.value }))} />
+                          <input className="input" placeholder={t('programDetail.zip')} value={prefilledKyb.zip ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, zip: e.target.value }))} />
                         </div>
-                        <input className="input" placeholder="Industry NAICS" value={prefilledKyb.industry_naics ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, industry_naics: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.industryNaics')} value={prefilledKyb.industry_naics ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, industry_naics: e.target.value }))} />
                         <select className="input" value={prefilledKyb.annual_revenue_range ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, annual_revenue_range: e.target.value }))}>
-                          <option value="">Annual revenue range</option>
+                          <option value="">{t('programDetail.annualRevenueRange')}</option>
                           <option value="<$1M">&lt;$1M</option>
                           <option value="$1M-$5M">$1M–$5M</option>
                           <option value="$5M-$10M">$5M–$10M</option>
@@ -876,7 +886,7 @@ export default function AnchorDetailPage() {
                           <option value="$50M-$100M">$50M–$100M</option>
                           <option value="$100M+">$100M+</option>
                         </select>
-                        <input className="input" placeholder="Primary contact phone" value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
+                        <input className="input" placeholder={t('programDetail.primaryContactPhone')} value={prefilledKyb.primary_contact_phone ?? ''} onChange={e => setPrefilledKyb(p => ({ ...p, primary_contact_phone: e.target.value }))} />
                         <div style={{
                           fontFamily: 'var(--font-body)',
                           fontSize: 12,
@@ -887,16 +897,16 @@ export default function AnchorDetailPage() {
                           borderRadius: 'var(--radius-sm)',
                           lineHeight: 1.5,
                         }}>
-                          These details will be pre-filled in their onboarding. They will only need to create credentials — no KYB application required.
+                          {t('programDetail.prefillHint')}
                         </div>
                       </div>
                     )}
                     {inviteMode === 'custom_kyb' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 4 }}>
                         <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
-                          Required documents
+                          {t('programDetail.requiredDocuments')}
                         </div>
-                        {AVAILABLE_DOCS.map(doc => (
+                        {availableDocs(t).map(doc => (
                           <label key={doc.id} style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -926,20 +936,20 @@ export default function AnchorDetailPage() {
                         {requiredDocs.includes('custom_document') && (
                           <input
                             className="input"
-                            placeholder="Document name..."
+                            placeholder={t('programDetail.documentNamePlaceholder')}
                             value={customDocName}
                             onChange={e => setCustomDocName(e.target.value)}
                             style={{ marginTop: 8 }}
                           />
                         )}
                         <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8 }}>
-                          The counterparty will be guided to upload exactly these documents during onboarding.
+                          {t('programDetail.customKybHint')}
                         </div>
                       </div>
                     )}
                     {inviteError && <div style={{ color: '#DC2626', fontSize: 13 }}>{inviteError}</div>}
                     <button className="btn btn-primary" type="button" disabled={inviteLoading} onClick={handleSendInvite}>
-                      {inviteLoading ? 'Sending…' : 'Send invite'}
+                      {inviteLoading ? t('txnDetail.sending') : t('programDetail.sendInvite')}
                     </button>
                   </>
                 )}
@@ -957,8 +967,8 @@ export default function AnchorDetailPage() {
       <Topbar
         onBack={() => router.push(`/programs/${programId}`)}
         crumbs={[
-          { label: 'My Programs', onClick: () => router.push('/programs') },
-          { label: 'Program', onClick: () => router.push(`/programs/${programId}`) },
+          { label: t('programsPage.title'), onClick: () => router.push('/programs') },
+          { label: t('programDetail.program'), onClick: () => router.push(`/programs/${programId}`) },
           { label: orgName },
         ]}
         actions={<NotifBell />}
@@ -973,23 +983,23 @@ export default function AnchorDetailPage() {
 
         <div className="page-header">
           <h1 className="t-page-title">{orgName}</h1>
-          <div className="subtitle">Your anchor</div>
+          <div className="subtitle">{t('anchorDetail.yourAnchor')}</div>
         </div>
 
         <div className="split-65">
           {/* ── LEFT: Anchor info + analytics + transactions ── */}
           <div>
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-head"><h3 className="t-card-head">Anchor Info</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('anchorDetail.anchorInfo')}</h3></div>
               <div className="kv-rows">
-                <div className="kv-row"><span className="k">Legal name</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
-                <div className="kv-row"><span className="k">Trade name</span><span className="v plain">{org?.doing_business_as ?? '—'}</span></div>
+                <div className="kv-row"><span className="k">{t('programDetail.legalName')}</span><span className="v plain">{org?.legal_name ?? '—'}</span></div>
+                <div className="kv-row"><span className="k">{t('anchorDetail.tradeName')}</span><span className="v plain">{org?.doing_business_as ?? '—'}</span></div>
                 <div className="kv-row">
-                  <span className="k">Location</span>
+                  <span className="k">{t('anchorDetail.location')}</span>
                   <span className="v plain">{[org?.city, org?.state].filter(Boolean).join(', ') || '—'}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Primary contact</span>
+                  <span className="k">{t('anchorDetail.primaryContact')}</span>
                   <span className="v plain">{org?.primary_contact_name ?? '—'}</span>
                 </div>
                 {/* <div className="kv-row">
@@ -997,17 +1007,17 @@ export default function AnchorDetailPage() {
                   <span className="v plain">{org?.primary_contact_email ?? '—'}</span>
                 </div> */}
                 <div className="kv-row">
-                  <span className="k">Industry / NAICS</span>
+                  <span className="k">{t('anchorDetail.industryNaics')}</span>
                   <span className="v plain">{org?.industry_naics ?? org?.business_type ?? '—'}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Member since</span>
+                  <span className="k">{t('anchorDetail.memberSince')}</span>
                   <span className="v plain">{org?.created_at ? fmtDate(org.created_at) : '—'}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">KYB status</span>
+                  <span className="k">{t('anchorDetail.kybStatusLower')}</span>
                   <span className="v">
-                    <span className={`badge ${kybBadge(org?.kyb_status ?? 'draft')}`}>{kybLabel(org?.kyb_status ?? 'draft')}</span>
+                    <span className={`badge ${kybBadge(org?.kyb_status ?? 'draft')}`}>{kybLabel(org?.kyb_status ?? 'draft', t)}</span>
                   </span>
                 </div>
               </div>
@@ -1015,21 +1025,21 @@ export default function AnchorDetailPage() {
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-head">
-                <h3 className="t-card-head">Analytics</h3>
+                <h3 className="t-card-head">{t('anchorDetail.analytics')}</h3>
                 <PeriodToggle value={volPeriod} onChange={setVolPeriod} />
               </div>
               <div className="card-body">
                 <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                   <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Transactions</div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.transactions')}</div>
                     <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics?.total_transactions ?? 0}</div>
                   </div>
                   <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)', borderRight: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Invoice Volume</div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('programDetail.invoiceVolume')}</div>
                     <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_invoice_amount) : '—'}</div>
                   </div>
                   <div style={{ flex: 1, padding: '12px 16px', background: 'var(--offwhite)' }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>Total Financed</div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 4, fontWeight: 500 }}>{t('anchorDetail.totalFinanced')}</div>
                     <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{analytics ? fmtMoney(analytics.total_financed) : '—'}</div>
                   </div>
                 </div>
@@ -1042,41 +1052,41 @@ export default function AnchorDetailPage() {
 
             <div className="card">
               <div className="card-head">
-                <h3 className="t-card-head">Transactions</h3>
+                <h3 className="t-card-head">{t('programDetail.transactions')}</h3>
                 <button className="btn btn-primary btn-sm" type="button" onClick={() => pushTransactionNew(router)}>
-                  <Icon name="plus" size={14} /> New
+                  <Icon name="plus" size={14} /> {t('anchorDetail.new')}
                 </button>
               </div>
               {transactions.length === 0 ? (
                 <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                  No transactions yet with this anchor.
+                  {t('anchorDetail.noTransactionsYetWithAnchor')}
                 </div>
               ) : (
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Invoice #</th>
-                      <th style={{ textAlign: 'right' }}>Amount</th>
-                      <th>Status</th>
-                      <th>Date</th>
+                      <th>{t('newTransaction.invoiceHash')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('txnDetail.amount')}</th>
+                      <th>{t('deals.col.status')}</th>
+                      <th>{t('txnDetail.date')}</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map(t => (
-                      <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, t.id)}>
-                        <td style={{ fontSize: 13 }}>{t.invoice_number ?? t.id.slice(0, 8) + '…'}</td>
+                    {transactions.map(tx => (
+                      <tr key={tx.id} style={{ cursor: 'pointer' }} onClick={() => pushTransactionDetail(router, tx.id)}>
+                        <td style={{ fontSize: 13 }}>{tx.invoice_number ?? tx.id.slice(0, 8) + '…'}</td>
                         <td style={{ textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-                          {t.financing_amount_approved != null
-                            ? fmtCurrency(t.financing_amount_approved)
-                            : t.invoice_amount != null
-                              ? fmtCurrency(t.invoice_amount)
+                          {tx.financing_amount_approved != null
+                            ? fmtCurrency(tx.financing_amount_approved)
+                            : tx.invoice_amount != null
+                              ? fmtCurrency(tx.invoice_amount)
                               : '—'}
                         </td>
                         <td>
-                          <span className={`badge ${txnBadge(t.status)}`}>{STATUS_LABELS[t.status] ?? t.status}</span>
+                          <span className={`badge ${txnBadge(tx.status)}`}>{statusLabels(t)[tx.status] ?? tx.status}</span>
                         </td>
-                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(t.created_at)}</td>
+                        <td style={{ fontSize: 12, color: 'var(--gray)' }}>{fmtDate(tx.created_at)}</td>
                         <td style={{ color: 'var(--gray)', fontSize: 16, textAlign: 'right' }}>›</td>
                       </tr>
                     ))}
@@ -1106,9 +1116,9 @@ export default function AnchorDetailPage() {
             </div> */}
 
             <div className="card">
-              <div className="card-head"><h3 className="t-card-head">Documents</h3></div>
+              <div className="card-head"><h3 className="t-card-head">{t('txnDetail.documents')}</h3></div>
               <div className="card-body" style={{ fontSize: 13, color: 'var(--gray)' }}>
-                No documents shared by anchor.
+                {t('anchorDetail.noDocumentsSharedByAnchor')}
               </div>
             </div>
           </div>

@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { usePortal, type PortalType } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
+import { useT } from '@/lib/i18n/locale-context'
+import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
 import { useRoomsUnread } from '@/lib/use-rooms-unread'
 
@@ -24,6 +26,7 @@ const COLLAPSE_KEY = 'strike_sidebar_collapsed'
 // `icon` is a key into NAV_ICONS (20×20 stroke-based inline SVGs, currentColor).
 interface NavItem {
   label: string
+  labelKey: string
   href: string
   icon: NavIconName
   badge?: string
@@ -40,14 +43,14 @@ interface NavSection {
 const ANCHOR_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike Place',    href: '/marketplace',           icon: 'marketplace' },
-      { label: 'My Deals',        href: '/deals',                 icon: 'deals' },
-      { label: 'Financing',       href: '/marketplace/financing', icon: 'financing' },
-      { label: 'Networks',        href: '/networks',              icon: 'networks' },
-      { label: 'Strike Rooms',    href: '/rooms',                 icon: 'rooms' },
-      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
-      { label: 'Analytics',       href: '/reporting',             icon: 'analytics' },
+      { label: 'Dashboard',       labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace',           icon: 'marketplace' },
+      { label: 'My Deals',        labelKey: 'nav.myDeals',       href: '/deals',                 icon: 'deals' },
+      { label: 'Financing',       labelKey: 'nav.financing',     href: '/marketplace/financing', icon: 'financing' },
+      { label: 'Networks',        labelKey: 'nav.networks',      href: '/networks',              icon: 'networks' },
+      { label: 'Strike Rooms',    labelKey: 'nav.strikeRooms',   href: '/rooms',                 icon: 'rooms' },
+      { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',              icon: 'passport' },
+      { label: 'Analytics',       labelKey: 'nav.analytics',     href: '/reporting',             icon: 'analytics' },
     ],
   },
 ]
@@ -55,14 +58,14 @@ const ANCHOR_NAV: NavSection[] = [
 const SUPPLIER_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike Place',    href: '/marketplace',           icon: 'marketplace' },
-      { label: 'My Deals',        href: '/deals',                 icon: 'deals' },
-      { label: 'Financing',       href: '/marketplace/financing', icon: 'financing' },
-      { label: 'Networks',        href: '/networks',              icon: 'networks' },
-      { label: 'Strike Rooms',    href: '/rooms',                 icon: 'rooms' },
-      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
-      { label: 'Analytics',       href: '/reporting',             icon: 'analytics' },
+      { label: 'Dashboard',       labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace',           icon: 'marketplace' },
+      { label: 'My Deals',        labelKey: 'nav.myDeals',       href: '/deals',                 icon: 'deals' },
+      { label: 'Financing',       labelKey: 'nav.financing',     href: '/marketplace/financing', icon: 'financing' },
+      { label: 'Networks',        labelKey: 'nav.networks',      href: '/networks',              icon: 'networks' },
+      { label: 'Strike Rooms',    labelKey: 'nav.strikeRooms',   href: '/rooms',                 icon: 'rooms' },
+      { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',              icon: 'passport' },
+      { label: 'Analytics',       labelKey: 'nav.analytics',     href: '/reporting',             icon: 'analytics' },
     ],
   },
 ]
@@ -72,12 +75,12 @@ const SUPPLIER_NAV: NavSection[] = [
 const BANK_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',       href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Strike Place',    href: '/marketplace/financing', icon: 'marketplace' },
-      { label: 'Programs',        href: '/programs',              icon: 'programs' },
-      { label: 'Strike Passport', href: '/passport',              icon: 'passport' },
-      { label: 'Reporting',       href: '/reporting',             icon: 'analytics' },
-      { label: 'Supply Graph',    href: '/supply-graph',          icon: 'supply-graph' },
+      { label: 'Dashboard',       labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
+      { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace/financing', icon: 'marketplace' },
+      { label: 'Programs',        labelKey: 'nav.programs',      href: '/programs',              icon: 'programs' },
+      { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',              icon: 'passport' },
+      { label: 'Reporting',       labelKey: 'nav.reporting',     href: '/reporting',             icon: 'analytics' },
+      { label: 'Supply Graph',    labelKey: 'nav.supplyGraph',   href: '/supply-graph',          icon: 'supply-graph' },
     ],
   },
 ]
@@ -85,11 +88,11 @@ const BANK_NAV: NavSection[] = [
 const ADMIN_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard',       href: '/dashboard', icon: 'dashboard' },
-      { label: 'KYB Queue',       href: '/admin',     icon: 'analytics' },
-      { label: 'Platform Stats',  href: '/admin',     icon: 'programs' },
-      { label: 'Room Reports',    href: '/admin',     icon: 'rooms' },
-      { label: 'Strike Passport', href: '/passport',  icon: 'passport' },
+      { label: 'Dashboard',       labelKey: 'nav.dashboard',     href: '/dashboard', icon: 'dashboard' },
+      { label: 'KYB Queue',       labelKey: 'nav.kybQueue',      href: '/admin',     icon: 'analytics' },
+      { label: 'Platform Stats',  labelKey: 'nav.platformStats', href: '/admin',     icon: 'programs' },
+      { label: 'Room Reports',    labelKey: 'nav.roomReports',   href: '/admin',     icon: 'rooms' },
+      { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',  icon: 'passport' },
     ],
   },
 ]
@@ -292,6 +295,7 @@ export function Sidebar() {
   const user     = useUser()
   const router   = useRouter()
   const pathname = usePathname()
+  const t        = useT()
 
   // TG.3 — live unread-rooms count for the Strike Rooms badge (ORG_NAV only).
   // Called unconditionally (hooks rule). Safe for every portal: the hook and its
@@ -396,12 +400,12 @@ export function Sidebar() {
         <Link
           href="/ai"
           className={`nav-item shine${aiActive ? ' active' : ''}`}
-          title={collapsed ? 'Strike AI' : undefined}
-          aria-label="Strike AI"
+          title={collapsed ? t('nav.strikeAi') : undefined}
+          aria-label={t('nav.strikeAi')}
           style={{ transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)` }}
         >
           <NavIcon name="ai" size={18} />
-          {!collapsed && <span>Strike AI</span>}
+          {!collapsed && <span>{t('nav.strikeAi')}</span>}
         </Link>
 
         {sections.map((section, si) => (
@@ -417,6 +421,7 @@ export function Sidebar() {
               const badge = isRooms
                 ? (roomsUnread > 0 ? (roomsUnread > 99 ? '99+' : String(roomsUnread)) : undefined)
                 : item.badge
+              const label = t(item.labelKey)
               return (
                 <Link
                   key={`${item.label}-${item.href}`}
@@ -430,8 +435,8 @@ export function Sidebar() {
                     transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)`,
                   }}
                   // TA.2 — native tooltip surfaces the label when collapsed (icons-only).
-                  title={collapsed ? item.label : undefined}
-                  aria-label={badge ? `${item.label} (${badge} unread)` : item.label}
+                  title={collapsed ? label : undefined}
+                  aria-label={badge ? `${label} (${badge} unread)` : label}
                 >
                   {/* TG.3 — collapsed mode hides .nav-badge, so overlay a small dot on
                       the rooms icon to keep the unread signal visible icons-only. */}
@@ -455,7 +460,7 @@ export function Sidebar() {
                   ) : (
                     <NavIcon name={item.icon} />
                   )}
-                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && <span>{label}</span>}
                   {badge && !collapsed && <span className="nav-badge">{badge}</span>}
                 </Link>
               )
@@ -496,11 +501,11 @@ export function Sidebar() {
               }}
             >
               <SpriteIcon name="settings" size={14} />
-              Settings
+              {t('userMenu.settings')}
             </button>
             <button
               type="button"
-              onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+              onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
@@ -509,8 +514,12 @@ export function Sidebar() {
               }}
             >
               <SpriteIcon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
-              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              {theme === 'dark' ? t('userMenu.lightMode') : t('userMenu.darkMode')}
             </button>
+            <div style={{ padding: '8px 12px' }}>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 6 }}>{t('userMenu.language')}</div>
+              <LanguageSwitcher />
+            </div>
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button
               type="button"
@@ -523,7 +532,7 @@ export function Sidebar() {
               }}
             >
               <SpriteIcon name="logout" size={14} />
-              Sign out
+              {t('userMenu.signOut')}
             </button>
           </div>
         )}

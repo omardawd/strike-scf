@@ -8,6 +8,9 @@ import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
 import type { MarketplaceListing, MarketplaceOffer } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,11 +26,11 @@ function fmtDate(d: string | null | undefined): string {
   return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function timeAgo(d: string): string {
+function timeAgo(d: string, t: TFn): string {
   const diff = Date.now() - new Date(d).getTime()
   const days = Math.floor(diff / 86400000)
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Yesterday'
+  if (days === 0) return t('rooms.today')
+  if (days === 1) return t('rooms.yesterday')
   return `${days}d ago`
 }
 
@@ -43,6 +46,30 @@ const OFFER_STATUS_CLASS: Record<string, string> = {
 
 const INCOTERMS = ['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DAP','DPU','DDP']
 const PAYMENT_TERMS = ['Net 30','Net 60','Net 90','LC at sight','30% advance + 70% BL','50/50','CAD','Open Account']
+
+function listingStatusLabel(status: string, t: TFn): string {
+  const map: Record<string, string> = {
+    active: t('listingDetail.status.active'),
+    draft: t('listingDetail.status.draft'),
+    matched: t('listingDetail.status.matched'),
+    closed: t('listingDetail.status.closed'),
+    expired: t('listingDetail.status.expired'),
+    cancelled: t('listingDetail.status.cancelled'),
+  }
+  return map[status] ?? status
+}
+
+function offerStatusLabel(status: string, t: TFn): string {
+  const map: Record<string, string> = {
+    pending: t('listingDetail.offerStatus.pending'),
+    accepted: t('listingDetail.offerStatus.accepted'),
+    countered: t('listingDetail.offerStatus.countered'),
+    rejected: t('listingDetail.offerStatus.rejected'),
+    withdrawn: t('listingDetail.offerStatus.withdrawn'),
+    expired: t('listingDetail.offerStatus.expired'),
+  }
+  return map[status] ?? status
+}
 
 // ── Offer form ────────────────────────────────────────────────────────────────
 
@@ -102,6 +129,7 @@ function ItemPricingTable({
   currency: string
   onChange: (items: OfferItem[]) => void
 }) {
+  const t = useT()
   const total = computeOfferTotal(items)
   const updateItem = (idx: number, field: 'quantity' | 'unit_price', val: string) => {
     const next = items.map((it, i) => i === idx ? { ...it, [field]: val } : it)
@@ -110,7 +138,7 @@ function ItemPricingTable({
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '6px 0', fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
-        <span>Item</span><span>Qty</span><span>Unit</span><span>Price / Unit</span>
+        <span>{t('listingDetail.item')}</span><span>{t('newListing.qty')}</span><span>{t('newListing.unit')}</span><span>{t('listingDetail.pricePerUnitSlash')}</span>
       </div>
       {items.map((item, idx) => (
         <div key={item.listing_item_id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 110px', gap: 6, padding: '8px 0', borderBottom: '1px solid var(--border-light)' }}>
@@ -137,7 +165,7 @@ function ItemPricingTable({
       ))}
       {total > 0 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 0 0', gap: 8, alignItems: 'baseline' }}>
-          <span style={{ fontSize: 12, color: 'var(--gray)' }}>Total Offer</span>
+          <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('listingDetail.totalOffer')}</span>
           <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>
             {total.toLocaleString()}
           </span>
@@ -163,6 +191,7 @@ function OfferForm({
   error: string | null
   bankAccounts: BankAccount[]
 }) {
+  const t = useT()
   const isPORequest = listing.listing_type === 'po_request'
   const primaryAcct = bankAccounts.find(a => a.is_primary) ?? bankAccounts[0]
   const hasItems = listingLineItems.length > 0
@@ -186,13 +215,13 @@ function OfferForm({
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
-      <div className="card-head">Submit Your Offer</div>
+      <div className="card-head">{t('listingDetail.submitYourOffer')}</div>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Per-item pricing table */}
         {hasItems && (
           <div className="form-field">
-            <label className="field-label">Your Pricing per Item</label>
+            <label className="field-label">{t('listingDetail.yourPricingPerItem')}</label>
             <ItemPricingTable
               items={form.offer_items}
               currency={listing.currency ?? 'USD'}
@@ -203,16 +232,16 @@ function OfferForm({
 
         <div className="form-row-2">
           <div className="form-field">
-            <label className="field-label">Proposed Delivery Date</label>
+            <label className="field-label">{t('listingDetail.proposedDeliveryDate')}</label>
             <input type="date" className="input" value={form.proposed_delivery_date}
               onChange={e => setForm(p => ({ ...p, proposed_delivery_date: e.target.value }))} />
           </div>
           <div className="form-field">
-            <label className="field-label">Incoterms</label>
+            <label className="field-label">{t('newListing.incoterms')}</label>
             <select className="input form-select" value={form.proposed_incoterms}
               onChange={e => setForm(p => ({ ...p, proposed_incoterms: e.target.value }))}>
-              <option value="">Select Incoterms</option>
-              {INCOTERMS.map(t => <option key={t}>{t}</option>)}
+              <option value="">{t('newListing.selectIncoterms')}</option>
+              {INCOTERMS.map(it => <option key={it}>{it}</option>)}
             </select>
           </div>
         </div>
@@ -220,65 +249,65 @@ function OfferForm({
         {shippingCostRequired && (
           <div className="form-field">
             <label className="field-label">
-              Shipping Cost ({listing.currency ?? 'USD'})
+              {t('newListing.shippingCost')} ({listing.currency ?? 'USD'})
               <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
             </label>
             <input type="number" className="input" min="0" step="0.01" value={form.shipping_cost}
               onChange={e => setForm(p => ({ ...p, shipping_cost: e.target.value }))} placeholder="0.00" />
             <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-              Required for {form.proposed_incoterms} — you arrange and pay for shipping under this incoterm.
+              {t('listingDetail.shippingRequiredForHint', { incoterms: form.proposed_incoterms })}
             </div>
           </div>
         )}
 
         <div className="form-field">
-          <label className="field-label">Payment Terms</label>
+          <label className="field-label">{t('newListing.paymentTerms')}</label>
           <select className="input form-select" value={form.proposed_payment_terms}
             onChange={e => setForm(p => ({ ...p, proposed_payment_terms: e.target.value }))}>
-            <option value="">Select Payment Terms</option>
-            {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
+            <option value="">{t('listingDetail.selectPaymentTerms')}</option>
+            {PAYMENT_TERMS.map(pt => <option key={pt}>{pt}</option>)}
           </select>
         </div>
 
         {isPORequest && (
           <div className="form-field">
             <label className="field-label">
-              Payment Receiving Account
+              {t('listingDetail.paymentReceivingAccount')}
               <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
             </label>
             {bankAccounts.length === 0 ? (
               <div style={{ padding: '10px 12px', background: 'rgba(245,158,11,0.08)', borderRadius: 8, border: '1px solid rgba(245,158,11,0.25)', fontSize: 13, color: '#92400e' }}>
-                You have no bank accounts set up.{' '}
-                <a href="/settings#bank-accounts" target="_blank" style={{ color: 'var(--blue)', fontWeight: 600 }}>Add one in Settings</a>{' '}before submitting.
+                {t('listingDetail.noBankAccountsSetUp')}{' '}
+                <a href="/settings#bank-accounts" target="_blank" style={{ color: 'var(--blue)', fontWeight: 600 }}>{t('listingDetail.addOneInSettings')}</a>{' '}{t('listingDetail.beforeSubmitting')}
               </div>
             ) : (
               <select className="input form-select" value={form.bank_account_id}
                 onChange={e => setForm(p => ({ ...p, bank_account_id: e.target.value }))}>
-                <option value="">Select bank account to receive payment</option>
+                <option value="">{t('listingDetail.selectBankAccountReceive')}</option>
                 {bankAccounts.map(a => (
                   <option key={a.id} value={a.id}>
                     {a.nickname || a.bank_name} — {a.account_holder_name} (...{a.account_number.slice(-4)})
-                    {a.is_primary ? ' (Primary)' : ''}
+                    {a.is_primary ? ` (${t('listingDetail.primary')})` : ''}
                   </option>
                 ))}
               </select>
             )}
             <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>
-              The buyer will pay to this account after delivery confirmation.
+              {t('listingDetail.buyerWillPayHint')}
             </p>
           </div>
         )}
 
         <div className="form-field">
-          <label className="field-label">Notes (optional)</label>
-          <textarea className="input" rows={3} placeholder="Add any context, conditions, or details..."
+          <label className="field-label">{t('listingDetail.notesOptional')}</label>
+          <textarea className="input" rows={3} placeholder={t('listingDetail.notesPlaceholder')}
             value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
         </div>
 
         {error && <p className="field-error">{error}</p>}
 
         <button className="btn btn-blue shine" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
-          {submitting ? 'Submitting…' : `Submit Offer${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
+          {submitting ? t('listingDetail.submitting') : `${t('listingDetail.submitOffer')}${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
         </button>
       </div>
     </div>
@@ -306,6 +335,7 @@ function CounterForm({
   submitting: boolean
   error: string | null
 }) {
+  const t = useT()
   const rounds = Array.isArray(offer.offer_rounds) ? offer.offer_rounds : []
   const lastRound = rounds.length > 0 ? (rounds[rounds.length - 1] as any) : null
   const prevItems: any[] = lastRound?.offer_items ?? []
@@ -342,12 +372,12 @@ function CounterForm({
   return (
     <div style={{ margin: '0 20px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
       <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
-        Counter Offer — Round {(offer.current_round ?? 1) + 1}
+        {t('listingDetail.counterOfferRound', { round: (offer.current_round ?? 1) + 1 })}
       </p>
 
       {hasItems && (
         <div className="form-field" style={{ marginBottom: 10 }}>
-          <label className="field-label">Your Counter Pricing</label>
+          <label className="field-label">{t('listingDetail.yourCounterPricing')}</label>
           <ItemPricingTable
             items={form.offer_items}
             currency={listing.currency ?? 'USD'}
@@ -358,23 +388,23 @@ function CounterForm({
 
       <div className="form-row-2" style={{ marginBottom: 10 }}>
         <div className="form-field">
-          <label className="field-label">Delivery Date</label>
+          <label className="field-label">{t('listingDetail.deliveryDate')}</label>
           <input type="date" className="input" value={form.proposed_delivery_date}
             onChange={e => setForm(p => ({ ...p, proposed_delivery_date: e.target.value }))} />
         </div>
         <div className="form-field">
-          <label className="field-label">Incoterms</label>
+          <label className="field-label">{t('newListing.incoterms')}</label>
           <select className="input form-select" value={form.proposed_incoterms}
             onChange={e => setForm(p => ({ ...p, proposed_incoterms: e.target.value }))}>
-            <option value="">Select</option>
-            {INCOTERMS.map(t => <option key={t}>{t}</option>)}
+            <option value="">{t('common.select')}</option>
+            {INCOTERMS.map(it => <option key={it}>{it}</option>)}
           </select>
         </div>
       </div>
       {shippingCostRequired && (
         <div className="form-field" style={{ marginBottom: 10 }}>
           <label className="field-label">
-            Shipping Cost ({listing.currency ?? 'USD'})
+            {t('newListing.shippingCost')} ({listing.currency ?? 'USD'})
             <span style={{ color: 'var(--color-red)', marginLeft: 3 }}>*</span>
           </label>
           <input type="number" className="input" min="0" step="0.01" value={form.shipping_cost}
@@ -382,24 +412,24 @@ function CounterForm({
         </div>
       )}
       <div className="form-field" style={{ marginBottom: 10 }}>
-        <label className="field-label">Payment Terms</label>
+        <label className="field-label">{t('newListing.paymentTerms')}</label>
         <select className="input form-select" value={form.proposed_payment_terms}
           onChange={e => setForm(p => ({ ...p, proposed_payment_terms: e.target.value }))}>
-          <option value="">Select</option>
-          {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
+          <option value="">{t('common.select')}</option>
+          {PAYMENT_TERMS.map(pt => <option key={pt}>{pt}</option>)}
         </select>
       </div>
       <div className="form-field" style={{ marginBottom: 12 }}>
-        <label className="field-label">Notes</label>
+        <label className="field-label">{t('listingDetail.notes')}</label>
         <textarea className="input" rows={2} value={form.notes}
           onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
       </div>
       {error && <p className="field-error" style={{ marginBottom: 8 }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-blue btn-sm" disabled={submitting || !canSubmit} onClick={() => onSubmit(form)}>
-          {submitting ? 'Sending…' : `Send Counter${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
+          {submitting ? t('listingDetail.sending') : `${t('listingDetail.sendCounter')}${total > 0 ? ` — ${total.toLocaleString()} ${listing.currency ?? ''}` : ''}`}
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}>{t('common.cancel')}</button>
       </div>
     </div>
   )
@@ -443,6 +473,7 @@ function OfferCard({
   actionError: string | null
 }) {
   const router = useRouter()
+  const t = useT()
   const { offer, offeror_org, ai_analysis, ai_recommendation } = item
   const isInactive = ['withdrawn', 'rejected', 'expired'].includes(offer.status)
   const isActive = ['pending', 'countered'].includes(offer.status)
@@ -564,10 +595,10 @@ function OfferCard({
 
       {/* ── Status + round ── */}
       <div className="mp-offer-card-status">
-        <span className={`badge ${OFFER_STATUS_CLASS[offer.status] ?? 'badge-draft'}`}>{offer.status}</span>
+        <span className={`badge ${OFFER_STATUS_CLASS[offer.status] ?? 'badge-draft'}`}>{offerStatusLabel(offer.status, t)}</span>
         {offer.current_round > 1 && (
           <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', letterSpacing: '0.08em' }}>
-            Round {offer.current_round}
+            {t('listingDetail.round', { round: offer.current_round })}
           </span>
         )}
       </div>
@@ -575,7 +606,7 @@ function OfferCard({
       {/* ── Total price ── */}
       <div style={{ padding: '4px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
         <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 4 }}>
-          Total Offer
+          {t('listingDetail.totalOffer')}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ink)', lineHeight: 1 }}>
@@ -605,7 +636,7 @@ function OfferCard({
       {offeror_org && (
         <div style={{ padding: '14px 20px 16px', borderBottom: '1px solid var(--border-light)' }}>
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
-            Offered By
+            {t('listingDetail.offeredBy')}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
             {/* Score ring */}
@@ -636,7 +667,7 @@ function OfferCard({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || 'Unknown'}
+                  {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || t('listingDetail.unknown')}
                 </span>
                 <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', border: '1px solid var(--border-strong)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
                   {offeror_org.type as string}
@@ -645,20 +676,20 @@ function OfferCard({
 
               <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Trades</div>
+                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>{t('marketplace.trades')}</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                     {(offeror_org.trade_count_total as number | null) ?? '—'}
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Avg Pay</div>
+                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>{t('listingDetail.avgPay')}</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                     {(offeror_org.avg_payment_days as number | null) != null ? `${offeror_org.avg_payment_days}d` : '—'}
                   </div>
                 </div>
                 {(offeror_org.dispute_rate_network as number | null) != null && (
                   <div>
-                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>Disputes</div>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>{t('listingDetail.disputes')}</div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 1 }}>
                       {((offeror_org.dispute_rate_network as number) * 100).toFixed(1)}%
                     </div>
@@ -670,7 +701,7 @@ function OfferCard({
                 className="btn btn-ghost btn-sm"
                 onClick={() => router.push(`/passport/${offeror_org.id as string}`)}
               >
-                View Passport →
+                {t('listingDetail.viewPassport')}
               </button>
             </div>
           </div>
@@ -681,7 +712,7 @@ function OfferCard({
       {rounds.length >= 2 && (
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border-light)' }}>
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
-            Negotiation History
+            {t('listingDetail.negotiationHistory')}
           </div>
           <div className="reveal-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {(rounds as any[]).map((r, idx) => {
@@ -723,11 +754,11 @@ function OfferCard({
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{senderName}</span>
                       {isMe && (
                         <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 6px', marginLeft: 6, letterSpacing: '0.04em' }}>
-                          You
+                          {t('listingDetail.you')}
                         </span>
                       )}
                       {isCurrent && (
-                        <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 6 }}>· Current</span>
+                        <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 6 }}>· {t('listingDetail.current')}</span>
                       )}
                     </div>
 
@@ -737,7 +768,7 @@ function OfferCard({
                           {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toLocaleString()}
                         </span>
                       ) : idx === 0 ? (
-                        <span style={{ color: 'var(--gray)', fontSize: 10 }}>Initial</span>
+                        <span style={{ color: 'var(--gray)', fontSize: 10 }}>{t('listingDetail.initial')}</span>
                       ) : null}
                     </div>
 
@@ -755,7 +786,7 @@ function OfferCard({
                     <div style={{ marginLeft: 30 }}>
                       {/* Header */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 44px 80px 80px', gap: '0 6px', padding: '0 0 4px', borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-body)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
-                        <span>Item</span><span>Qty</span><span>Unit</span><span>Unit Price</span><span style={{ textAlign: 'right' }}>Total</span>
+                        <span>{t('listingDetail.item')}</span><span>{t('newListing.qty')}</span><span>{t('newListing.unit')}</span><span>{t('listingDetail.unitPrice')}</span><span style={{ textAlign: 'right' }}>{t('listingDetail.total')}</span>
                       </div>
                       {items.map((it: any, iIdx: number) => {
                         const qty = Number(it.quantity) || 0
@@ -793,8 +824,8 @@ function OfferCard({
                     <div style={{ marginLeft: 30, marginTop: items.length > 0 ? 6 : 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {r.proposed_incoterms && <span className="mp-offer-term-pill">{r.proposed_incoterms}</span>}
                       {r.proposed_payment_terms && <span className="mp-offer-term-pill">{r.proposed_payment_terms}</span>}
-                      {r.proposed_delivery_date && <span className="mp-offer-term-pill">Delivery: {fmtDate(r.proposed_delivery_date)}</span>}
-                      {r.shipping_cost != null && <span className="mp-offer-term-pill">Shipping: {Number(r.shipping_cost).toLocaleString()} {listing.currency}</span>}
+                      {r.proposed_delivery_date && <span className="mp-offer-term-pill">{t('listingDetail.deliveryColon')} {fmtDate(r.proposed_delivery_date)}</span>}
+                      {r.shipping_cost != null && <span className="mp-offer-term-pill">{t('listingDetail.shippingColon')} {Number(r.shipping_cost).toLocaleString()} {listing.currency}</span>}
                     </div>
                   )}
                 </div>
@@ -808,10 +839,10 @@ function OfferCard({
       {lastRoundItems.length > 0 && (
         <div style={{ padding: '14px 20px 4px', borderBottom: '1px solid var(--border-light)' }}>
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
-            Item Breakdown
+            {t('listingDetail.itemBreakdown')}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 90px 90px', gap: 6, paddingBottom: 6, borderBottom: '1px solid var(--border-light)', fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray-soft)' }}>
-            <span>Item</span><span>Qty</span><span>Unit</span><span>Unit Price</span><span style={{ textAlign: 'right' }}>Total</span>
+            <span>{t('listingDetail.item')}</span><span>{t('newListing.qty')}</span><span>{t('newListing.unit')}</span><span>{t('listingDetail.unitPrice')}</span><span style={{ textAlign: 'right' }}>{t('listingDetail.total')}</span>
           </div>
           {lastRoundItems.map((it: any, idx: number) => {
             const qty = Number(it.quantity) || 0
@@ -834,7 +865,7 @@ function OfferCard({
           })}
           {offerTotal != null && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 8, padding: '10px 0 6px' }}>
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)' }}>Total</span>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)' }}>{t('listingDetail.total')}</span>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{offerTotal.toLocaleString()}</span>
               <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, color: 'var(--gray)' }}>{listing.currency}</span>
             </div>
@@ -846,14 +877,14 @@ function OfferCard({
       <div className="mp-offer-terms-row">
         {offer.proposed_incoterms && <span className="mp-offer-term-pill">{offer.proposed_incoterms}</span>}
         {offer.proposed_payment_terms && <span className="mp-offer-term-pill">{offer.proposed_payment_terms}</span>}
-        {offer.proposed_delivery_date && <span className="mp-offer-term-pill">Delivery: {fmtDate(offer.proposed_delivery_date)}</span>}
-        {offer.shipping_cost != null && <span className="mp-offer-term-pill">Shipping: {offer.shipping_cost.toLocaleString()} {listing.currency}</span>}
+        {offer.proposed_delivery_date && <span className="mp-offer-term-pill">{t('listingDetail.deliveryColon')} {fmtDate(offer.proposed_delivery_date)}</span>}
+        {offer.shipping_cost != null && <span className="mp-offer-term-pill">{t('listingDetail.shippingColon')} {offer.shipping_cost.toLocaleString()} {listing.currency}</span>}
       </div>
 
       {/* ── AI analysis strip ── */}
       {(ai_analysis || ai_recommendation) && (
         <div className="mp-offer-ai-strip">
-          <div className="mp-offer-ai-label">Strike AI</div>
+          <div className="mp-offer-ai-label">{t('nav.strikeAi')}</div>
           <div className="mp-offer-ai-text">
             {ai_analysis} {ai_recommendation}
           </div>
@@ -868,25 +899,25 @@ function OfferCard({
 
       <div className="mp-offer-card-footer">
         <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray-soft)', letterSpacing: '0.06em' }}>
-          {timeAgo(offer.created_at)}
+          {timeAgo(offer.created_at, t)}
         </span>
 
         {/* Room button — always visible for active offers parties are involved in */}
         {(isListingOwner || isMyOffer) && isActive && (
           roomId ? (
             <button className="btn btn-sm btn-ghost" onClick={() => router.push(`/rooms/${roomId}`)}>
-              Go to Strike Room →
+              {t('listingDetail.goToStrikeRoom')}
             </button>
           ) : (
             <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onOpenRoom(offer.id)}>
-              Open Strike Room
+              {t('listingDetail.openStrikeRoom')}
             </button>
           )
         )}
 
         {offer.status === 'accepted' && offer.deal_id && (
           <button className="btn btn-sm btn-blue" onClick={() => router.push(`/deals/${offer.deal_id}`)}>
-            View Deal →
+            {t('listingDetail.viewDeal')}
           </button>
         )}
 
@@ -895,42 +926,42 @@ function OfferCard({
           <div className="mp-offer-actions">
             {iWaitingForOther ? (
               <span style={{ fontSize: 12, color: 'var(--gray)', fontStyle: 'italic', padding: '0 4px' }}>
-                Counter submitted — awaiting their response
+                {t('listingDetail.counterAwaitingResponse')}
               </span>
             ) : (
               <>
                 {/* Listing owner actions */}
                 {isListingOwner && offer.status === 'pending' && (
                   <>
-                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
-                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>Reject</button>
-                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>{t('listingDetail.counter')}</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>{t('listingDetail.reject')}</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>{t('listingDetail.accept')}</button>
                   </>
                 )}
                 {isListingOwner && offer.status === 'countered' && isListingOwnerTurn && (
                   <>
-                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
-                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>Reject</button>
-                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept Counter</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>{t('listingDetail.counter')}</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onReject(offer.id)}>{t('listingDetail.reject')}</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>{t('listingDetail.acceptCounter')}</button>
                   </>
                 )}
 
                 {/* Offeror actions */}
                 {isMyOffer && offer.status === 'pending' && (
-                  <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
+                  <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>{t('listingDetail.withdraw')}</button>
                 )}
                 {isMyOffer && offer.status === 'countered' && isOfferorTurn && (
                   <>
-                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>Counter</button>
-                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>Accept Counter</button>
-                    <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
+                    <button className="btn btn-sm btn-ghost" disabled={actionSubmitting} onClick={() => onCounterStart(offer.id)}>{t('listingDetail.counter')}</button>
+                    <button className="btn btn-sm btn-blue" disabled={actionSubmitting} onClick={() => onAccept(offer.id)}>{t('listingDetail.acceptCounter')}</button>
+                    <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>{t('listingDetail.withdraw')}</button>
                   </>
                 )}
               </>
             )}
             {/* Offeror can always withdraw even while waiting */}
             {isMyOffer && iWaitingForOther && (
-              <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>Withdraw</button>
+              <button className="btn btn-sm btn-danger" disabled={actionSubmitting} onClick={() => onWithdraw(offer.id)}>{t('listingDetail.withdraw')}</button>
             )}
           </div>
         )}
@@ -971,6 +1002,7 @@ export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const user = useUser()
+  const t = useT()
 
   const [data, setData] = useState<ListingDetailData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -987,22 +1019,37 @@ export default function ListingDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [counteringOfferId, setCounteringOfferId] = useState<string | null>(null)
 
+  const [imageUploading, setImageUploading] = useState(false)
+  const coverImageInputRef = useRef<HTMLInputElement>(null)
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
       const res = await fetch(`/api/marketplace/listings/${id}`)
-      if (!res.ok) throw new Error('Failed to load listing')
+      if (!res.ok) throw new Error(t('listingDetail.failedToLoad'))
       const json = await res.json()
       setData(json)
     } catch (e) {
-      setFetchError(e instanceof Error ? e.message : 'Error loading listing')
+      setFetchError(e instanceof Error ? e.message : t('listingDetail.errorLoading'))
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, t])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  async function handleCoverImageSelect(file: File) {
+    setImageUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/marketplace/listings/${id}/image`, { method: 'POST', body: fd })
+      if (res.ok) await fetchData()
+    } finally {
+      setImageUploading(false)
+    }
+  }
 
   // Fetch line items and bank accounts in parallel when listing loads
   useEffect(() => {
@@ -1056,13 +1103,13 @@ export default function ListingDetailPage() {
         body: JSON.stringify({ action: 'create_room' }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed to create room')
+      if (!res.ok) throw new Error(json.error ?? t('listingDetail.failedCreateRoom'))
       if (json.room_id) {
         await fetchData()
         router.push(`/rooms/${json.room_id}`)
       }
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Error creating room')
+      setActionError(e instanceof Error ? e.message : t('listingDetail.errorCreatingRoom'))
     } finally {
       setActionSubmitting(false)
     }
@@ -1090,10 +1137,10 @@ export default function ListingDetailPage() {
         }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed to submit offer')
+      if (!res.ok) throw new Error(json.error ?? t('listingDetail.failedSubmitOffer'))
       await fetchData()
     } catch (e) {
-      setOfferError(e instanceof Error ? e.message : 'Error submitting offer')
+      setOfferError(e instanceof Error ? e.message : t('listingDetail.errorSubmittingOffer'))
     } finally {
       setOfferSubmitting(false)
     }
@@ -1120,7 +1167,7 @@ export default function ListingDetailPage() {
         body: JSON.stringify(body),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Action failed')
+      if (!res.ok) throw new Error(json.error ?? t('listingDetail.actionFailed'))
 
       setCounteringOfferId(null)
 
@@ -1136,7 +1183,7 @@ export default function ListingDetailPage() {
 
       await fetchData()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Error performing action')
+      setActionError(e instanceof Error ? e.message : t('listingDetail.errorPerformingAction'))
     } finally {
       setActionSubmitting(false)
     }
@@ -1146,8 +1193,8 @@ export default function ListingDetailPage() {
     return (
       <>
         <Topbar crumbs={[
-          { label: 'Strike Place', onClick: () => router.push('/marketplace') },
-          { label: 'Listing' },
+          { label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') },
+          { label: t('listingDetail.listing') },
         ]} />
         <div className="page mp-page">
           <div className="split-panel">
@@ -1180,11 +1227,11 @@ export default function ListingDetailPage() {
   if (fetchError || !data) {
     return (
       <>
-        <Topbar crumbs={[{ label: 'Strike Place', onClick: () => router.push('/marketplace') }, { label: 'Listing' }]} />
+        <Topbar crumbs={[{ label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') }, { label: t('listingDetail.listing') }]} />
         <div className="page">
           <div className="mp-empty-state">
-            <p className="mp-empty-title">Listing not found</p>
-            <p className="mp-empty-sub">{fetchError ?? 'Unable to load this listing.'}</p>
+            <p className="mp-empty-title">{t('listingDetail.listingNotFound')}</p>
+            <p className="mp-empty-sub">{fetchError ?? t('listingDetail.unableToLoad')}</p>
           </div>
         </div>
       </>
@@ -1202,11 +1249,11 @@ export default function ListingDetailPage() {
   const canSubmitOffer = !isListingOwner && !hasActiveOffer && listing.status === 'active' && !!viewer_org_id
 
   const typeBadgeClass = listing.listing_type === 'po_request' ? 'listing-type-po' : 'listing-type-product'
-  const typeLabel = listing.listing_type === 'po_request' ? 'PO Request' : 'Product / Service'
+  const typeLabel = listing.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService')
 
   const priceBenchmark = listing.ai_price_benchmark
 
-  const posterName = (poster_org?.doing_business_as as string | null) || (poster_org?.legal_name as string | null) || 'Listing Owner'
+  const posterName = (poster_org?.doing_business_as as string | null) || (poster_org?.legal_name as string | null) || t('listingDetail.listingOwner')
 
   function buildRoundHistory(offerItem: typeof offers[0]) {
     const offerRounds = Array.isArray((offerItem.offer as any).offer_rounds) ? (offerItem.offer as any).offer_rounds as any[] : []
@@ -1316,13 +1363,13 @@ export default function ListingDetailPage() {
     <>
       <Topbar
         crumbs={[
-          { label: 'Strike Place', onClick: () => router.push('/marketplace') },
+          { label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') },
           { label: listing.title },
         ]}
         actions={
           <div className="topbar-right">
             {isListingOwner && (
-              <span style={{ fontSize: 12, color: 'var(--gray)' }}>Your listing</span>
+              <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('listingDetail.yourListing')}</span>
             )}
           </div>
         }
@@ -1340,12 +1387,45 @@ export default function ListingDetailPage() {
               {listing.category && (
                 <span className="listing-category-tag">{listing.category}</span>
               )}
-              <span className={`badge ${STATUS_CLASS[listing.status] ?? 'badge-draft'}`}>{listing.status}</span>
+              <span className={`badge ${STATUS_CLASS[listing.status] ?? 'badge-draft'}`}>{listingStatusLabel(listing.status, t)}</span>
             </div>
 
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink)', marginTop: 10 }}>
               {listing.title}
             </h1>
+
+            {listing.cover_image_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={listing.cover_image_url}
+                alt={listing.title}
+                style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 'var(--radius-card)', marginTop: 16, display: 'block' }}
+              />
+            )}
+
+            {isListingOwner && (
+              <div style={{ marginTop: 12 }}>
+                <input
+                  ref={coverImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (file) handleCoverImageSelect(file)
+                    e.target.value = ''
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={imageUploading}
+                  onClick={() => coverImageInputRef.current?.click()}
+                >
+                  {imageUploading ? t('listingDetail.uploading') : listing.cover_image_url ? t('listingDetail.replaceCoverImage') : t('listingDetail.addCoverImage')}
+                </button>
+              </div>
+            )}
 
             {/* Trade terms card */}
             {(() => {
@@ -1358,10 +1438,10 @@ export default function ListingDetailPage() {
               const isTotal = lineItemsTotal > 0
               return (
             <div className="card">
-              <div className="card-head">Trade Terms</div>
+              <div className="card-head">{t('listingDetail.tradeTerms')}</div>
               <div style={{ padding: '8px 0' }}>
                 <div className="kv-row">
-                  <span className="k">{isTotal ? 'Total Value' : 'Target Price'}</span>
+                  <span className="k">{isTotal ? t('listingDetail.totalValue') : t('listingDetail.targetPrice')}</span>
                   <span className="v" style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
                     <CountUp value={displayPrice ?? NaN} format={n => n.toLocaleString()} />&nbsp;
                     <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--gray)' }}>
@@ -1371,31 +1451,31 @@ export default function ListingDetailPage() {
                 </div>
                 {listing.quantity != null && (
                   <div className="kv-row">
-                    <span className="k">Quantity</span>
+                    <span className="k">{t('marketplace.quantity')}</span>
                     <span className="v">{listing.quantity} {listing.unit ?? ''}</span>
                   </div>
                 )}
                 {listing.incoterms && (
                   <div className="kv-row">
-                    <span className="k">Incoterms</span>
+                    <span className="k">{t('newListing.incoterms')}</span>
                     <span className="v">{listing.incoterms}</span>
                   </div>
                 )}
                 {listing.shipping_cost != null && (
                   <div className="kv-row">
-                    <span className="k">Shipping Cost</span>
+                    <span className="k">{t('newListing.shippingCost')}</span>
                     <span className="v">{listing.shipping_cost.toLocaleString()} {listing.currency}</span>
                   </div>
                 )}
                 {listing.delivery_location && (
                   <div className="kv-row">
-                    <span className="k">Delivery Location</span>
+                    <span className="k">{t('marketplace.location')}</span>
                     <span className="v plain">{listing.delivery_location}</span>
                   </div>
                 )}
                 {listing.delivery_deadline && (
                   <div className="kv-row">
-                    <span className="k">Deadline</span>
+                    <span className="k">{t('marketplace.deadline')}</span>
                     <span className="v" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       {fmtDate(listing.delivery_deadline)}
                       {deliveryPast && (
@@ -1410,7 +1490,7 @@ export default function ListingDetailPage() {
                           border: '1px solid rgba(217,119,6,0.25)',
                           padding: '1px 6px',
                         }}>
-                          Delivery date has passed
+                          {t('listingDetail.deliveryDatePassed')}
                         </span>
                       )}
                     </span>
@@ -1418,7 +1498,7 @@ export default function ListingDetailPage() {
                 )}
                 {listing.payment_terms && (
                   <div className="kv-row">
-                    <span className="k">Payment Terms</span>
+                    <span className="k">{t('newListing.paymentTerms')}</span>
                     <span className="v plain">{listing.payment_terms}</span>
                   </div>
                 )}
@@ -1430,7 +1510,7 @@ export default function ListingDetailPage() {
             {/* Description */}
             {listing.description && (
               <div className="card">
-                <div className="card-head">Description</div>
+                <div className="card-head">{t('listingDetail.description')}</div>
                 <div className="card-body" style={{ fontSize: 14, color: 'var(--color-ink-2)', lineHeight: 1.65 }}>
                   {listing.description}
                 </div>
@@ -1440,13 +1520,13 @@ export default function ListingDetailPage() {
             {/* Line Items */}
             {lineItems.length > 0 && (
               <div className="card">
-                <div className="card-head">Line Items</div>
+                <div className="card-head">{t('newListing.lineItems')}</div>
                 <div style={{ padding: '0 0 8px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '8px 20px', fontSize: 11, fontFamily: 'var(--font-body)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
-                    <span>Item</span>
-                    <span>Qty</span>
-                    <span>Unit</span>
-                    <span>Price/Unit</span>
+                    <span>{t('listingDetail.item')}</span>
+                    <span>{t('newListing.qty')}</span>
+                    <span>{t('newListing.unit')}</span>
+                    <span>{t('newListing.pricePerUnit')}</span>
                   </div>
                   {lineItems.map((item: any) => (
                     <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 8, padding: '10px 20px', alignItems: 'start', borderBottom: '1px solid var(--border-light)' }}>
@@ -1471,7 +1551,7 @@ export default function ListingDetailPage() {
             {listing.ai_summary && (
               <div style={{ borderLeft: '3px solid var(--teal)', background: 'var(--teal-dim)', padding: '12px 16px' }}>
                 <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)', marginBottom: 4 }}>
-                  Strike AI Summary
+                  {t('listingDetail.strikeAiSummary')}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--teal)', lineHeight: 1.6, fontStyle: 'italic' }}>
                   {listing.ai_summary}
@@ -1484,7 +1564,7 @@ export default function ListingDetailPage() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                    Offers Received
+                    {t('listingDetail.offersReceived')}
                   </span>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, color: 'var(--blue)', fontWeight: 600 }}>
                     {offer_count ?? offers.length}
@@ -1493,8 +1573,8 @@ export default function ListingDetailPage() {
 
                 {offers.length === 0 && (
                   <div className="mp-empty-state">
-                    <p className="mp-empty-title">No offers yet</p>
-                    <p className="mp-empty-sub">Offers from network participants will appear here.</p>
+                    <p className="mp-empty-title">{t('listingDetail.noOffersYet')}</p>
+                    <p className="mp-empty-sub">{t('listingDetail.noOffersHint')}</p>
                   </div>
                 )}
 
@@ -1528,7 +1608,7 @@ export default function ListingDetailPage() {
             ) : offers.length > 0 ? (
               <div>
                 <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 12 }}>
-                  Your Offer
+                  {t('listingDetail.yourOffer')}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {offers.map(item => (
@@ -1575,7 +1655,7 @@ export default function ListingDetailPage() {
             {!isListingOwner && hasActiveOffer === false && myOffer && listing.status === 'active' && canSubmitOffer === false && (
               <div className="alert alert-info" style={{ marginTop: 12 }}>
                 <span className="alert-body" style={{ fontSize: 13 }}>
-                  Your previous offer was {myOffer.offer.status}. You can submit a new one.
+                  {t('listingDetail.previousOfferWas', { status: offerStatusLabel(myOffer.offer.status, t) })}
                 </span>
               </div>
             )}
@@ -1587,7 +1667,7 @@ export default function ListingDetailPage() {
             {/* Poster passport */}
             {poster_org && (
               <Reveal delay={0} className="card">
-                <div className="card-head">Listing Posted By</div>
+                <div className="card-head">{t('listingDetail.listingPostedBy')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px 16px' }}>
                   <PassportScoreRing
                     score={poster_org.passport_score as number | null}
@@ -1596,7 +1676,7 @@ export default function ListingDetailPage() {
                   />
                   <div style={{ marginTop: 12, textAlign: 'center' }}>
                     <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
-                      {(poster_org.doing_business_as as string | null) || (poster_org.legal_name as string | null) || 'Unknown'}
+                      {(poster_org.doing_business_as as string | null) || (poster_org.legal_name as string | null) || t('listingDetail.unknown')}
                     </div>
                     <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
                       {poster_org.type as string}
@@ -1605,21 +1685,21 @@ export default function ListingDetailPage() {
                 </div>
                 <div style={{ padding: '0 0 8px' }}>
                   <div className="kv-row">
-                    <span className="k">Trades</span>
+                    <span className="k">{t('marketplace.trades')}</span>
                     <span className="v">{(poster_org.trade_count_total as number | null) ?? '—'}</span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Volume</span>
+                    <span className="k">{t('marketplace.volume')}</span>
                     <span className="v">{fmtPrice(poster_org.trade_volume_total as number | null)}</span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Avg Payment</span>
+                    <span className="k">{t('listingDetail.avgPayment')}</span>
                     <span className="v">
                       {(poster_org.avg_payment_days as number | null) != null ? `${poster_org.avg_payment_days as number}d` : '—'}
                     </span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Dispute Rate</span>
+                    <span className="k">{t('listingDetail.disputeRate')}</span>
                     <span className="v">
                       {(poster_org.dispute_rate_network as number | null) != null
                         ? `${((poster_org.dispute_rate_network as number) * 100).toFixed(1)}%`
@@ -1628,7 +1708,7 @@ export default function ListingDetailPage() {
                   </div>
                   {(poster_org.country_of_origin as string | null) && (
                     <div className="kv-row">
-                      <span className="k">Country</span>
+                      <span className="k">{t('listingDetail.country')}</span>
                       <span className="v plain">{poster_org.country_of_origin as string}</span>
                     </div>
                   )}
@@ -1639,7 +1719,7 @@ export default function ListingDetailPage() {
                     style={{ width: '100%' }}
                     onClick={() => router.push(`/passport/${poster_org.id as string}`)}
                   >
-                    View Passport →
+                    {t('listingDetail.viewPassport')}
                   </button>
                 </div>
               </Reveal>
@@ -1647,23 +1727,23 @@ export default function ListingDetailPage() {
 
             {/* About this listing */}
             <Reveal delay={80} className="card">
-              <div className="card-head">About This Listing</div>
+              <div className="card-head">{t('listingDetail.aboutThisListing')}</div>
               <div style={{ padding: '0 0 8px' }}>
                 <div className="kv-row">
-                  <span className="k">Posted</span>
+                  <span className="k">{t('listingDetail.posted')}</span>
                   <span className="v">{fmtDate(listing.created_at)}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Views</span>
+                  <span className="k">{t('listingDetail.views')}</span>
                   <span className="v">{listing.view_count ?? 0}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Offers</span>
+                  <span className="k">{t('marketplace.offersPlural')}</span>
                   <span className="v">{listing.offer_count ?? 0}</span>
                 </div>
                 {listing.expires_at && (
                   <div className="kv-row">
-                    <span className="k">Expires</span>
+                    <span className="k">{t('listingDetail.expires')}</span>
                     <span className="v">{fmtDate(listing.expires_at)}</span>
                   </div>
                 )}
@@ -1673,7 +1753,7 @@ export default function ListingDetailPage() {
             {/* Documents */}
             {documents.length > 0 && (
               <Reveal delay={160} className="card">
-                <div className="card-head">Documents</div>
+                <div className="card-head">{t('listingDetail.documents')}</div>
                 <div style={{ padding: '4px 0 8px' }}>
                   {documents.map((doc: any) => (
                     <a

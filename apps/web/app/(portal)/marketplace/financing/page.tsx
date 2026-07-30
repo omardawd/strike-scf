@@ -10,6 +10,9 @@ import { createClient } from '@/lib/supabase/client'
 import { CreateProgramFlow } from '@/components/create-program-flow'
 import { SkeletonCard } from '@/components/motion'
 import type { FinancingRequest } from '@strike-scf/types'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface OrgPassport {
@@ -77,10 +80,10 @@ function fmtDate(d: string | null | undefined): string {
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function timeAgo(d: string): string {
+function timeAgo(d: string, t: TFn): string {
   const diff = Date.now() - new Date(d).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'now'
+  if (mins < 1) return t('financing.now')
   if (mins < 60) return `${mins}m`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h`
@@ -102,15 +105,15 @@ function scoreBg(score: number | null | undefined): string {
 }
 
 // Type code + badge class for RF / IF / PO / DD / Custom / Open
-function typeMeta(req: FinancingRequest): { code: string; cls: string; label: string } {
+function typeMeta(req: FinancingRequest, t: TFn): { code: string; cls: string; label: string } {
   const ft = req.financing_type
-  if (ft === 'reverse_factoring')  return { code: 'RF', cls: 't-rf',  label: 'Reverse Factoring' }
-  if (ft === 'invoice_factoring')  return { code: 'IF', cls: 't-if',  label: 'Invoice Factoring' }
-  if (ft === 'po_financing')       return { code: 'PO', cls: 't-po',  label: 'PO Financing' }
-  if (ft === 'dynamic_discounting') return { code: 'DD', cls: 't-dd', label: 'Dynamic Discounting' }
+  if (ft === 'reverse_factoring')  return { code: 'RF', cls: 't-rf',  label: t('financing.type.reverseFactoring') }
+  if (ft === 'invoice_factoring')  return { code: 'IF', cls: 't-if',  label: t('financing.type.invoiceFactoring') }
+  if (ft === 'po_financing')       return { code: 'PO', cls: 't-po',  label: t('financing.type.poFinancing') }
+  if (ft === 'dynamic_discounting') return { code: 'DD', cls: 't-dd', label: t('financing.type.dynamicDiscounting') }
   // fall back to structure type
-  if (req.structure_type === 'custom') return { code: 'CUS', cls: 't-custom', label: 'Custom' }
-  return { code: 'OPN', cls: 't-open', label: 'Open' }
+  if (req.structure_type === 'custom') return { code: 'CUS', cls: 't-custom', label: t('financing.type.custom') }
+  return { code: 'OPN', cls: 't-open', label: t('financing.type.open') }
 }
 
 function statusDotColor(status: string): string {
@@ -123,15 +126,17 @@ function statusDotColor(status: string): string {
   }
 }
 
-const TYPE_FILTERS = [
-  { value: '', label: 'All types' },
-  { value: 'reverse_factoring', label: 'RF · Reverse Factoring' },
-  { value: 'invoice_factoring', label: 'IF · Invoice Factoring' },
-  { value: 'po_financing', label: 'PO · PO Financing' },
-  { value: 'dynamic_discounting', label: 'DD · Dynamic Discounting' },
-  { value: 'custom', label: 'Custom' },
-  { value: 'open', label: 'Open' },
-]
+function typeFilters(t: TFn) {
+  return [
+    { value: '', label: t('financing.allTypes') },
+    { value: 'reverse_factoring', label: `RF · ${t('financing.type.reverseFactoring')}` },
+    { value: 'invoice_factoring', label: `IF · ${t('financing.type.invoiceFactoring')}` },
+    { value: 'po_financing', label: `PO · ${t('financing.type.poFinancing')}` },
+    { value: 'dynamic_discounting', label: `DD · ${t('financing.type.dynamicDiscounting')}` },
+    { value: 'custom', label: t('financing.type.custom') },
+    { value: 'open', label: t('financing.type.open') },
+  ]
+}
 
 type SortKey = 'posted' | 'amount' | 'tenor' | 'rate' | 'score'
 type SortDir = 'asc' | 'desc'
@@ -151,6 +156,7 @@ function TradingTerminal({
   const router = useRouter()
   const searchParams = useSearchParams()
   const user = useUser()
+  const t = useT()
 
   // Filters (pre-filled from query string for TC.4 program → Strike Place linkage)
   const [fType, setFType]       = useState(searchParams.get('type') ?? '')
@@ -393,14 +399,14 @@ function TradingTerminal({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h1 className="t-page-title">Strike Place</h1>
+          <h1 className="t-page-title">{t('nav.strikePlace')}</h1>
           <p style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', margin: '2px 0 0' }}>
-            Live financing order book
+            {t('financing.liveOrderBook')}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-green)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)' }} /> Live
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)' }} /> {t('financing.live')}
           </span>
         </div>
       </div>
@@ -408,19 +414,19 @@ function TradingTerminal({
       {/* Stats bar (TC.2 top bar) */}
       <div className="term-statbar">
         <div className="term-stat">
-          <span className="term-stat-label">Active Requests</span>
+          <span className="term-stat-label">{t('financing.activeRequests')}</span>
           <span className="term-stat-value">{stats.activeCount}</span>
         </div>
         <div className="term-stat">
-          <span className="term-stat-label">Avg Rate Guidance</span>
+          <span className="term-stat-label">{t('financing.avgRateGuidance')}</span>
           <span className="term-stat-value is-blue">{stats.avgRate != null ? `${stats.avgRate.toFixed(2)}%` : '—'}</span>
         </div>
         <div className="term-stat">
-          <span className="term-stat-label">Total Volume</span>
+          <span className="term-stat-label">{t('financing.totalVolume')}</span>
           <span className="term-stat-value">{fmtCompact(stats.totalVolume)}</span>
         </div>
         <div className="term-stat">
-          <span className="term-stat-label">Open Offers</span>
+          <span className="term-stat-label">{t('financing.openOffers')}</span>
           <span className="term-stat-value is-green">{stats.openOffers}</span>
         </div>
       </div>
@@ -428,44 +434,44 @@ function TradingTerminal({
       {/* Filters */}
       <div className="term-filters">
         <div className="term-filter">
-          <span className="term-filter-label">Type</span>
+          <span className="term-filter-label">{t('financing.type')}</span>
           <select className="term-select" value={fType} onChange={e => setFType(e.target.value)}>
-            {TYPE_FILTERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {typeFilters(t).map(tf => <option key={tf.value} value={tf.value}>{tf.label}</option>)}
           </select>
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Currency</span>
+          <span className="term-filter-label">{t('newListing.currency')}</span>
           <select className="term-select" value={fCurrency} onChange={e => setFCurrency(e.target.value)}>
-            <option value="">All</option>
+            <option value="">{t('common.all')}</option>
             {currencyOptions.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Min Amt</span>
+          <span className="term-filter-label">{t('financing.minAmt')}</span>
           <input className="term-input" inputMode="numeric" placeholder="0" value={fMinAmt} onChange={e => setFMinAmt(e.target.value.replace(/[^0-9.]/g, ''))} style={{ minWidth: 80 }} />
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Max Amt</span>
+          <span className="term-filter-label">{t('financing.maxAmt')}</span>
           <input className="term-input" inputMode="numeric" placeholder="∞" value={fMaxAmt} onChange={e => setFMaxAmt(e.target.value.replace(/[^0-9.]/g, ''))} style={{ minWidth: 80 }} />
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Geography</span>
+          <span className="term-filter-label">{t('financing.geography')}</span>
           <select className="term-select" value={fGeo} onChange={e => setFGeo(e.target.value)}>
-            <option value="">All</option>
+            <option value="">{t('common.all')}</option>
             {geoOptions.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Score Floor</span>
+          <span className="term-filter-label">{t('financing.scoreFloor')}</span>
           <input className="term-input" inputMode="numeric" placeholder="0" value={fScore} onChange={e => setFScore(e.target.value.replace(/[^0-9]/g, ''))} style={{ minWidth: 64 }} />
         </div>
         <div className="term-filter">
-          <span className="term-filter-label">Posted Since</span>
+          <span className="term-filter-label">{t('financing.postedSince')}</span>
           <input className="term-input" type="date" value={fSince} onChange={e => setFSince(e.target.value)} style={{ minWidth: 120 }} />
         </div>
         <div className="term-filters-spacer" />
         {(fType || fCurrency || fMinAmt || fMaxAmt || fGeo || fScore || fSince) && (
-          <button className="term-filter-reset" onClick={resetFilters}>Reset</button>
+          <button className="term-filter-reset" onClick={resetFilters}>{t('financing.reset')}</button>
         )}
         <span className="term-count">{filtered.length} / {items.length}</span>
       </div>
@@ -477,14 +483,14 @@ function TradingTerminal({
           <table className="term-table">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Requestor</th>
-                <th className="num is-sortable" onClick={() => toggleSort('amount')}>Amount{sortArrow('amount')}</th>
-                <th className="num is-sortable" onClick={() => toggleSort('tenor')}>Term{sortArrow('tenor')}</th>
-                <th className="num is-sortable" onClick={() => toggleSort('rate')}>Rate Gd.{sortArrow('rate')}</th>
-                <th>Geo</th>
-                <th className="num is-sortable" onClick={() => toggleSort('posted')}>Posted{sortArrow('posted')}</th>
-                <th>Status</th>
+                <th>{t('financing.type')}</th>
+                <th>{t('financing.requestor')}</th>
+                <th className="num is-sortable" onClick={() => toggleSort('amount')}>{t('financing.amount')}{sortArrow('amount')}</th>
+                <th className="num is-sortable" onClick={() => toggleSort('tenor')}>{t('financing.term')}{sortArrow('tenor')}</th>
+                <th className="num is-sortable" onClick={() => toggleSort('rate')}>{t('financing.rateGd')}{sortArrow('rate')}</th>
+                <th>{t('financing.geo')}</th>
+                <th className="num is-sortable" onClick={() => toggleSort('posted')}>{t('financing.posted')}{sortArrow('posted')}</th>
+                <th>{t('financing.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -492,14 +498,14 @@ function TradingTerminal({
                 <tr>
                   <td colSpan={8}>
                     <div className="term-empty">
-                      <div className="term-empty-title">No matching requests</div>
-                      <div className="term-empty-sub">Adjust filters · new requests stream in live</div>
+                      <div className="term-empty-title">{t('financing.noMatchingRequests')}</div>
+                      <div className="term-empty-sub">{t('financing.adjustFiltersHint')}</div>
                     </div>
                   </td>
                 </tr>
               ) : filtered.map(item => {
                 const r = item.request
-                const tm = typeMeta(r)
+                const tm = typeMeta(r, t)
                 const sc = reqScore(item)
                 const cp = item.requestor_passport ?? item.supplier_passport ?? item.buyer_passport
                 const isNew = newIds.has(r.id)
@@ -514,18 +520,18 @@ function TradingTerminal({
                     <td>
                       <div className="term-requestor">
                         <span className="term-pscore" style={{ color: scoreColor(sc), background: scoreBg(sc) }}>{sc ?? '—'}</span>
-                        <span className="term-requestor-name">{cp?.legal_name ?? 'Verified counterparty'}</span>
+                        <span className="term-requestor-name">{cp?.legal_name ?? t('financing.verifiedCounterparty')}</span>
                       </div>
                     </td>
                     <td className="num">{fmtCompact(r.amount_requested, r.currency)}</td>
                     <td className="num">{r.preferred_tenor_days ? `${r.preferred_tenor_days}d` : '—'}</td>
-                    <td className="num">{r.preferred_rate_max != null ? `${r.preferred_rate_max}%` : <span className="term-cell-muted">mkt</span>}</td>
+                    <td className="num">{r.preferred_rate_max != null ? `${r.preferred_rate_max}%` : <span className="term-cell-muted">{t('financing.mkt')}</span>}</td>
                     <td className="term-cell-muted">{reqGeo(item) ?? '—'}</td>
-                    <td className="num term-cell-muted">{timeAgo(r.created_at)}</td>
+                    <td className="num term-cell-muted">{timeAgo(r.created_at, t)}</td>
                     <td>
                       <span className="term-status">
                         <span className="term-status-dot" style={{ background: statusDotColor(r.status) }} />
-                        {r.status === 'offers_received' ? `${item.all_offers_count} off` : r.status.replace(/_/g, ' ')}
+                        {r.status === 'offers_received' ? t('financing.offCount', { count: item.all_offers_count }) : r.status.replace(/_/g, ' ')}
                       </span>
                     </td>
                   </tr>
@@ -541,7 +547,7 @@ function TradingTerminal({
             <div className="term-detail">
               <div className="term-detail-empty">
                 <span className="term-detail-empty-mark">◧</span>
-                <span className="term-detail-empty-text">Select a request to inspect</span>
+                <span className="term-detail-empty-text">{t('financing.selectRequestToInspect')}</span>
               </div>
             </div>
           ) : (
@@ -568,12 +574,13 @@ function TradingTerminal({
 
 // ── Passport party card ───────────────────────────────────────────────────────────
 function PassportPartyCard({ passport, role, isRequester }: { passport: OrgPassport; role: string; isRequester: boolean }) {
+  const t = useT()
   return (
     <div>
       <div className="term-detail-section-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {role}
         {isRequester && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 7px', letterSpacing: '0.04em' }}>Requester</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-light)', borderRadius: 999, padding: '1px 7px', letterSpacing: '0.04em' }}>{t('financing.requester')}</span>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -581,13 +588,13 @@ function PassportPartyCard({ passport, role, isRequester }: { passport: OrgPassp
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{passport.legal_name}</div>
           <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--gray)', display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginTop: 2 }}>
-            {passport.kyb_status && <span style={{ textTransform: 'capitalize' }}>KYB: {passport.kyb_status.replace(/_/g, ' ')}</span>}
+            {passport.kyb_status && <span style={{ textTransform: 'capitalize' }}>{t('financing.kybColon')} {passport.kyb_status.replace(/_/g, ' ')}</span>}
             {passport.performance_tier && <span style={{ textTransform: 'capitalize' }}>{passport.performance_tier}</span>}
-            {passport.avg_payment_days != null && <span>{passport.avg_payment_days}d avg pay</span>}
-            {passport.dispute_rate_network != null && passport.dispute_rate_network > 0 && <span>{(passport.dispute_rate_network * 100).toFixed(1)}% dispute</span>}
+            {passport.avg_payment_days != null && <span>{t('financing.avgPaySuffix', { days: passport.avg_payment_days })}</span>}
+            {passport.dispute_rate_network != null && passport.dispute_rate_network > 0 && <span>{t('financing.disputeSuffix', { pct: (passport.dispute_rate_network * 100).toFixed(1) })}</span>}
             {passport.country_of_origin && <span>{passport.country_of_origin}</span>}
           </div>
-          <Link href={`/passport/${passport.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-body)' }}>View Passport →</Link>
+          <Link href={`/passport/${passport.id}`} style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-body)' }}>{t('listingDetail.viewPassport')}</Link>
         </div>
       </div>
     </div>
@@ -604,8 +611,9 @@ function DetailPanel({
   onSubmitOffer: () => void
   onOpenRoom: () => void
 }) {
+  const t = useT()
   const r = item.request
-  const tm = typeMeta(r)
+  const tm = typeMeta(r, t)
   const cur = r.currency ?? 'USD'
 
   return (
@@ -613,7 +621,7 @@ function DetailPanel({
       <div className="term-detail-head">
         <span className="term-detail-sub"><span className={`term-tbadge ${tm.cls}`}>{tm.code}</span> &nbsp;{tm.label}</span>
         <span className="term-detail-amount">{fmt(r.amount_requested, cur)}</span>
-        <span className="term-detail-sub">Request #{r.id.slice(0, 8).toUpperCase()} · {timeAgo(r.created_at)} ago</span>
+        <span className="term-detail-sub">{t('financing.requestHash', { id: r.id.slice(0, 8).toUpperCase() })} · {timeAgo(r.created_at, t)} {t('financing.ago')}</span>
       </div>
 
       <div className="term-detail-body">
@@ -621,7 +629,7 @@ function DetailPanel({
         {item.buyer_passport && (
           <PassportPartyCard
             passport={item.buyer_passport}
-            role="Buyer"
+            role={t('passport.buyer')}
             isRequester={item.requesting_org_id === item.buyer_passport.id}
           />
         )}
@@ -630,45 +638,45 @@ function DetailPanel({
         {item.supplier_passport && (
           <PassportPartyCard
             passport={item.supplier_passport}
-            role="Supplier"
+            role={t('passport.supplier')}
             isRequester={item.requesting_org_id === item.supplier_passport.id}
           />
         )}
 
         {/* Terms */}
         <div>
-          <div className="term-detail-section-label">Request Terms</div>
-          <div className="term-kv"><span className="term-kv-k">Amount</span><span className="term-kv-v">{fmt(r.amount_requested, cur)}</span></div>
-          <div className="term-kv"><span className="term-kv-k">Preferred Tenor</span><span className="term-kv-v">{r.preferred_tenor_days ? `${r.preferred_tenor_days}d` : '—'}</span></div>
-          <div className="term-kv"><span className="term-kv-k">Max Rate</span><span className="term-kv-v">{r.preferred_rate_max != null ? `${r.preferred_rate_max}%` : 'Market'}</span></div>
-          <div className="term-kv"><span className="term-kv-k">Structure</span><span className="term-kv-v">{r.structure_type.replace(/_/g, ' ')}</span></div>
-          <div className="term-kv"><span className="term-kv-k">Offers</span><span className="term-kv-v">{item.all_offers_count}</span></div>
-          {r.expires_at && <div className="term-kv"><span className="term-kv-k">Expires</span><span className="term-kv-v">{fmtDate(r.expires_at)}</span></div>}
+          <div className="term-detail-section-label">{t('financing.requestTerms')}</div>
+          <div className="term-kv"><span className="term-kv-k">{t('financing.amount')}</span><span className="term-kv-v">{fmt(r.amount_requested, cur)}</span></div>
+          <div className="term-kv"><span className="term-kv-k">{t('financing.preferredTenor')}</span><span className="term-kv-v">{r.preferred_tenor_days ? `${r.preferred_tenor_days}d` : '—'}</span></div>
+          <div className="term-kv"><span className="term-kv-k">{t('financing.maxRate')}</span><span className="term-kv-v">{r.preferred_rate_max != null ? `${r.preferred_rate_max}%` : t('financing.market')}</span></div>
+          <div className="term-kv"><span className="term-kv-k">{t('financing.structure')}</span><span className="term-kv-v">{r.structure_type.replace(/_/g, ' ')}</span></div>
+          <div className="term-kv"><span className="term-kv-k">{t('marketplace.offersPlural')}</span><span className="term-kv-v">{item.all_offers_count}</span></div>
+          {r.expires_at && <div className="term-kv"><span className="term-kv-k">{t('listingDetail.expires')}</span><span className="term-kv-v">{fmtDate(r.expires_at)}</span></div>}
         </div>
 
         {/* Deal context */}
         {item.deal && (
           <div>
-            <div className="term-detail-section-label">Underlying Deal</div>
+            <div className="term-detail-section-label">{t('financing.underlyingDeal')}</div>
             {item.deal.listing_title && (
-              <div className="term-kv"><span className="term-kv-k">Listing</span><span className="term-kv-v" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.deal.listing_title}</span></div>
+              <div className="term-kv"><span className="term-kv-k">{t('financing.listing')}</span><span className="term-kv-v" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.deal.listing_title}</span></div>
             )}
-            <div className="term-kv"><span className="term-kv-k">Deal Value</span><span className="term-kv-v">{fmt(item.deal.total_value ?? item.deal.agreed_price, item.deal.agreed_currency)}</span></div>
-            <div className="term-kv"><span className="term-kv-k">Delivery</span><span className="term-kv-v">{fmtDate(item.deal.agreed_delivery_date)}</span></div>
+            <div className="term-kv"><span className="term-kv-k">{t('financing.dealValue')}</span><span className="term-kv-v">{fmt(item.deal.total_value ?? item.deal.agreed_price, item.deal.agreed_currency)}</span></div>
+            <div className="term-kv"><span className="term-kv-k">{t('listingDetail.deliveryDate')}</span><span className="term-kv-v">{fmtDate(item.deal.agreed_delivery_date)}</span></div>
             {item.deal.agreed_incoterms && (
-              <div className="term-kv"><span className="term-kv-k">Incoterms</span><span className="term-kv-v">{item.deal.agreed_incoterms}</span></div>
+              <div className="term-kv"><span className="term-kv-k">{t('newListing.incoterms')}</span><span className="term-kv-v">{item.deal.agreed_incoterms}</span></div>
             )}
             {/* Line items table */}
             {item.deal.line_items && item.deal.line_items.length > 0 && (
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Goods / Line Items</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{t('financing.goodsLineItems')}</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: 'var(--font-body)' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Item</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Qty</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Unit Price</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>Total</th>
+                      <th style={{ textAlign: 'left', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>{t('listingDetail.item')}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>{t('newListing.qty')}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>{t('listingDetail.unitPrice')}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 4, color: 'var(--gray)', fontWeight: 500 }}>{t('listingDetail.total')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -696,7 +704,7 @@ function DetailPanel({
         {/* AI market intelligence */}
         {(r.ai_market_context || r.ai_risk_assessment) && (
           <div className="term-ai-note">
-            <span className="term-ai-note-label">Strike AI · Market Intel</span>
+            <span className="term-ai-note-label">{t('financing.strikeAiMarketIntel')}</span>
             {r.ai_market_context && <p style={{ margin: 0 }}>{r.ai_market_context}</p>}
             {r.ai_risk_assessment && <p style={{ margin: '6px 0 0', opacity: 0.85 }}>{r.ai_risk_assessment}</p>}
           </div>
@@ -705,9 +713,9 @@ function DetailPanel({
         {/* Actions */}
         <div className="term-detail-actions">
           <button className={`btn btn-sm ${item.my_offer ? 'btn-ghost' : 'btn-blue'}`} onClick={onSubmitOffer}>
-            {item.my_offer ? `Edit Offer · ${item.my_offer.offered_rate_apr}% APR` : 'Submit Offer'}
+            {item.my_offer ? t('financing.editOfferApr', { rate: item.my_offer.offered_rate_apr }) : t('listingDetail.submitOffer')}
           </button>
-          <button className="btn btn-sm btn-ghost" onClick={onOpenRoom}>Open Room</button>
+          <button className="btn btn-sm btn-ghost" onClick={onOpenRoom}>{t('financing.openRoom')}</button>
         </div>
       </div>
     </div>
@@ -760,6 +768,7 @@ function statusBadge(status: string) {
 
 function OrgList({ items }: { items: OrgRequestItem[] }) {
   const router = useRouter()
+  const t = useT()
 
   if (items.length === 0) {
     return (
@@ -769,10 +778,10 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
             <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
           </svg>
         </div>
-        <div className="mp-empty-title">No financing requests yet</div>
+        <div className="mp-empty-title">{t('financing.noRequestsYet')}</div>
         <div className="mp-empty-sub">
-          Go to your deals to request financing from competing banks.{' '}
-          <Link href="/deals" style={{ color: 'var(--blue)', fontWeight: 500 }}>View deals →</Link>
+          {t('financing.noRequestsHint')}{' '}
+          <Link href="/deals" style={{ color: 'var(--blue)', fontWeight: 500 }}>{t('financing.viewDeals')}</Link>
         </div>
       </div>
     )
@@ -788,7 +797,7 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
             </span>
             {structureBadge(item.financing_type ?? item.structure_type)}
             <span className={statusBadge(item.status)} style={{ marginLeft: 4 }}>{item.status.replace(/_/g, ' ')}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>{timeAgo(item.created_at)}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>{timeAgo(item.created_at, t)}</span>
           </div>
           <div className="listing-card-body" style={{ gap: 8 }}>
             {item.deal?.goods_description && (
@@ -796,7 +805,7 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
             )}
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <div className="listing-detail-item">
-                <span className="listing-detail-label">Max Rate</span>
+                <span className="listing-detail-label">{t('financing.maxRate')}</span>
                 <span className="listing-detail-value">{item.preferred_rate_max ? `${item.preferred_rate_max}%` : '—'}</span>
               </div>
             </div>
@@ -804,9 +813,9 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
           <div className="listing-card-footer">
             <div className="listing-offer-badge">
               <span className="listing-offer-badge-count">{item.offer_count}</span>
-              {' '}offer{item.offer_count !== 1 ? 's' : ''}
+              {' '}{item.offer_count !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
             </div>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>View →</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>{t('financing.viewArrow')}</span>
           </div>
         </div>
       ))}
@@ -819,6 +828,7 @@ export default function FinancingMarketplacePage() {
   const portal = usePortal()
   const user   = useUser()
   const router = useRouter()
+  const t = useT()
   const isBank = portal === 'bank'
 
   const [loading, setLoading] = useState(true)
@@ -897,8 +907,8 @@ export default function FinancingMarketplacePage() {
     return (
       <>
         <Topbar crumbs={[
-          { label: 'Strike Place', onClick: () => router.push('/marketplace') },
-          { label: 'Financing Order Book' },
+          { label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') },
+          { label: t('financing.financingOrderBook') },
         ]} />
         {loading
           ? <TerminalSkeleton />
@@ -911,13 +921,13 @@ export default function FinancingMarketplacePage() {
   return (
     <>
       <Topbar crumbs={[
-        { label: 'Strike Place', onClick: () => router.push('/marketplace') },
-        { label: 'My Financing Requests' },
+        { label: t('nav.strikePlace'), onClick: () => router.push('/marketplace') },
+        { label: t('financing.myFinancingRequests') },
       ]} />
       <div className="mp-page page" data-page-name="My Financing Requests" data-ai-context={JSON.stringify({ role: portal, total_requests: items.length, pending: items.filter((i: any) => i.status === 'pending_bank_review' || i.status === 'pending_anchor_approval').length, approved: items.filter((i: any) => i.status === 'financing_approved').length, funded: items.filter((i: any) => i.status === 'funded' || i.status === 'completed').length })}>
         <div className="page-header" style={{ marginBottom: 20 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
-            My Financing Requests
+            {t('financing.myFinancingRequests')}
           </h1>
         </div>
         {loading ? (

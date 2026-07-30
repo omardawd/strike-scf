@@ -5,6 +5,9 @@ import { usePortal } from '@/lib/portal-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon, NotifBell } from '@/components/portal-shell'
 import { AIInsightCard } from '@/components/ai-insight-card'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface Transaction {
   id: string
@@ -22,13 +25,15 @@ interface Transaction {
 
 type FilterKey = 'all' | 'pending' | 'approved' | 'funded' | 'rejected'
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all',      label: 'All' },
-  { key: 'pending',  label: 'Pending' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'funded',   label: 'Funded' },
-  { key: 'rejected', label: 'Rejected' },
-]
+function filters(t: TFn): { key: FilterKey; label: string }[] {
+  return [
+    { key: 'all',      label: t('common.all') },
+    { key: 'pending',  label: t('transactionsPage.pending') },
+    { key: 'approved', label: t('transactionsPage.approved') },
+    { key: 'funded',   label: t('transactionsPage.funded') },
+    { key: 'rejected', label: t('transactionsPage.rejected') },
+  ]
+}
 
 function matchesFilter(status: string, filter: FilterKey): boolean {
   if (filter === 'all') return true
@@ -52,15 +57,15 @@ function statusBadge(status: string): string {
   }
 }
 
-function statusLabel(status: string): string {
+function statusLabel(status: string, t: TFn): string {
   switch (status) {
-    case 'pending_anchor_approval': return 'Pending Approval'
-    case 'pending_bank_review':     return 'Pending Bank Review'
-    case 'more_info_requested':     return 'More Info Needed'
-    case 'financing_approved':      return 'Approved'
-    case 'funded':                  return 'Funded'
-    case 'completed':               return 'Completed'
-    case 'rejected':                return 'Rejected'
+    case 'pending_anchor_approval': return t('transactionsPage.pendingApproval')
+    case 'pending_bank_review':     return t('transactionsPage.pendingBankReview')
+    case 'more_info_requested':     return t('transactionsPage.moreInfoNeeded')
+    case 'financing_approved':      return t('transactionsPage.approved')
+    case 'funded':                  return t('transactionsPage.funded')
+    case 'completed':               return t('deals.status.completed')
+    case 'rejected':                return t('transactionsPage.rejected')
     default:                        return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   }
 }
@@ -82,6 +87,7 @@ function shortId(id: string): string {
 export default function TransactionsPage() {
   const portal = usePortal()
   const router = useRouter()
+  const t = useT()
   const [txns, setTxns] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -103,19 +109,19 @@ export default function TransactionsPage() {
       })
   }, [])
 
-  const visible = txns.filter(t => matchesFilter(t.status, filter))
+  const visible = txns.filter(tx => matchesFilter(tx.status, filter))
 
-  function counterparty(t: Transaction): string {
-    if (portal === 'supplier') return t.anchor_name ?? '—'
-    if (portal === 'anchor')   return t.supplier_name ?? '—'
-    const parts = [t.supplier_name, t.anchor_name].filter(Boolean)
+  function counterparty(txn: Transaction): string {
+    if (portal === 'supplier') return txn.anchor_name ?? '—'
+    if (portal === 'anchor')   return txn.supplier_name ?? '—'
+    const parts = [txn.supplier_name, txn.anchor_name].filter(Boolean)
     return parts.length > 0 ? parts.join(' → ') : '—'
   }
 
   return (
     <PortalShell activeSection="transactions">
       <Topbar
-        crumbs={[{ label: 'Transactions' }]}
+        crumbs={[{ label: t('transactionsPage.title') }]}
         actions={
           <>
             <NotifBell />
@@ -125,23 +131,23 @@ export default function TransactionsPage() {
                 type="button"
                 onClick={() => pushTransactionNew(router)}
               >
-                <Icon name="plus" size={14} /> New Transaction
+                <Icon name="plus" size={14} /> {t('transactionsPage.newTransaction')}
               </button>
             )}
           </>
         }
       />
 
-      <div className="page" data-page-name="Transactions" data-ai-context={JSON.stringify({ role: portal, total: txns.length, pending: txns.filter(t => matchesFilter(t.status, 'pending')).length, approved: txns.filter(t => matchesFilter(t.status, 'approved')).length, funded: txns.filter(t => matchesFilter(t.status, 'funded')).length, rejected: txns.filter(t => matchesFilter(t.status, 'rejected')).length, active_filter: filter })}>
+      <div className="page" data-page-name="Transactions" data-ai-context={JSON.stringify({ role: portal, total: txns.length, pending: txns.filter(tx => matchesFilter(tx.status, 'pending')).length, approved: txns.filter(tx => matchesFilter(tx.status, 'approved')).length, funded: txns.filter(tx => matchesFilter(tx.status, 'funded')).length, rejected: txns.filter(tx => matchesFilter(tx.status, 'rejected')).length, active_filter: filter })}>
         <div className="page-header">
-          <h1 className="t-page-title">Transactions</h1>
+          <h1 className="t-page-title">{t('transactionsPage.title')}</h1>
           {!loading && !error && (
             <div className="subtitle">
-              {txns.length} transaction{txns.length !== 1 ? 's' : ''}
+              {txns.length === 1 ? t('transactionsPage.oneTransaction') : t('transactionsPage.nTransactions', { count: txns.length })}
               {txns.length > 0 && (
                 <>
                   {' '}·{' '}
-                  {txns.filter(t => matchesFilter(t.status, 'pending')).length} pending
+                  {t('transactionsPage.nPending', { count: txns.filter(tx => matchesFilter(tx.status, 'pending')).length })}
                 </>
               )}
             </div>
@@ -156,8 +162,8 @@ export default function TransactionsPage() {
               page="transactions"
               context={{
                 transactionCount: txns.length,
-                pendingCount: txns.filter(t => t.status.includes('pending')).length,
-                totalValue: txns.reduce((s, t) => s + (t.invoice_amount ?? 0), 0),
+                pendingCount: txns.filter(tx => tx.status.includes('pending')).length,
+                totalValue: txns.reduce((s, tx) => s + (tx.invoice_amount ?? 0), 0),
               }}
             />
           </div>
@@ -165,8 +171,8 @@ export default function TransactionsPage() {
 
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
-          {FILTERS.map(f => {
-            const cnt = f.key === 'all' ? txns.length : txns.filter(t => matchesFilter(t.status, f.key)).length
+          {filters(t).map(f => {
+            const cnt = f.key === 'all' ? txns.length : txns.filter(tx => matchesFilter(tx.status, f.key)).length
             return (
               <button
                 key={f.key}
@@ -188,14 +194,14 @@ export default function TransactionsPage() {
         {error && (
           <div className="alert alert-error" style={{ marginBottom: 16 }}>
             <Icon name="error" size={16} className="alert-icon" />
-            <div className="alert-body">Failed to load transactions: {error}</div>
+            <div className="alert-body">{t('transactionsPage.failedToLoad', { error })}</div>
           </div>
         )}
 
         {loading ? (
           <div className="card">
             <div className="card-body" style={{ padding: 32, textAlign: 'center', color: 'var(--gray)', opacity: 0.6 }}>
-              Loading transactions…
+              {t('transactionsPage.loadingTransactions')}
             </div>
           </div>
         ) : visible.length === 0 ? (
@@ -205,12 +211,12 @@ export default function TransactionsPage() {
                 <Icon name="invoice" size={32} />
               </div>
               <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>
-                {filter !== 'all' ? `No ${filter} transactions` : 'No transactions yet'}
+                {filter !== 'all' ? t('transactionsPage.noFilteredTransactions', { filter: filters(t).find(f => f.key === filter)?.label ?? filter }) : t('transactionsPage.noTransactionsYet')}
               </div>
               <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>
                 {portal === 'supplier'
-                  ? 'Submit your first invoice to get started'
-                  : 'Transactions will appear here'}
+                  ? t('transactionsPage.submitFirstInvoice')
+                  : t('transactionsPage.willAppearHere')}
               </div>
               {portal === 'supplier' && filter === 'all' && (
                 <button
@@ -218,7 +224,7 @@ export default function TransactionsPage() {
                   type="button"
                   onClick={() => pushTransactionNew(router)}
                 >
-                  <Icon name="plus" size={14} /> New Transaction
+                  <Icon name="plus" size={14} /> {t('transactionsPage.newTransaction')}
                 </button>
               )}
             </div>
@@ -228,41 +234,41 @@ export default function TransactionsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Transaction ID</th>
+                  <th>{t('transactionsPage.transactionId')}</th>
                   <th>
-                    {portal === 'bank' ? 'Supplier · Anchor' : portal === 'supplier' ? 'Anchor' : 'Supplier'}
+                    {portal === 'bank' ? t('transactionsPage.supplierAnchor') : portal === 'supplier' ? t('transactionsPage.anchor') : t('transactionsPage.supplier')}
                   </th>
-                  <th className="amount">Invoice Amount</th>
-                  <th className="amount">Financing Req.</th>
-                  <th>Status</th>
-                  <th>Created</th>
+                  <th className="amount">{t('transactionsPage.invoiceAmount')}</th>
+                  <th className="amount">{t('transactionsPage.financingReq')}</th>
+                  <th>{t('deals.col.status')}</th>
+                  <th>{t('transactionsPage.created')}</th>
                   <th className="row-actions" />
                 </tr>
               </thead>
               <tbody>
-                {visible.map(t => (
+                {visible.map(txn => (
                   <tr
-                    key={t.id}
+                    key={txn.id}
                     style={{ cursor: 'pointer' }}
-                    onClick={() => pushTransactionDetail(router, t.id)}
+                    onClick={() => pushTransactionDetail(router, txn.id)}
                   >
-                    <td className="strike-id">{shortId(t.id)}</td>
-                    <td style={{ color: 'var(--ink)' }}>{counterparty(t)}</td>
-                    <td className="amount">{fmtAmt(t.invoice_amount)}</td>
-                    <td className="amount">{fmtAmt(t.financing_amount_requested)}</td>
+                    <td className="strike-id">{shortId(txn.id)}</td>
+                    <td style={{ color: 'var(--ink)' }}>{counterparty(txn)}</td>
+                    <td className="amount">{fmtAmt(txn.invoice_amount)}</td>
+                    <td className="amount">{fmtAmt(txn.financing_amount_requested)}</td>
                     <td>
-                      <span className={`badge ${statusBadge(t.status)}`}>
-                        {statusLabel(t.status)}
+                      <span className={`badge ${statusBadge(txn.status)}`}>
+                        {statusLabel(txn.status, t)}
                       </span>
                     </td>
-                    <td className="mono">{fmtDate(t.created_at)}</td>
+                    <td className="mono">{fmtDate(txn.created_at)}</td>
                     <td className="row-actions">
                       <button
                         className="btn btn-ghost btn-sm"
                         type="button"
-                        onClick={e => { e.stopPropagation(); pushTransactionDetail(router, t.id) }}
+                        onClick={e => { e.stopPropagation(); pushTransactionDetail(router, txn.id) }}
                       >
-                        View →
+                        {t('financing.viewArrow')}
                       </button>
                     </td>
                   </tr>

@@ -9,6 +9,9 @@ import { FinancingManagementCard, type ManagementTransaction, type RequesterBank
 import { CountUp, Reveal, Skeleton, SkeletonText } from '@/components/motion'
 import type { FinancingRequest, FinancingRequestOffer, FinancingType } from '@strike-scf/types'
 import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface OrgPassport {
   id: string
@@ -93,6 +96,7 @@ function statusBadge(status: string) {
 }
 
 function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; label: string }) {
+  const t = useT()
   if (!passport) return null
   const score = passport.passport_score
   const color = score == null ? 'var(--gray)' : score >= 70 ? 'var(--color-green)' : score >= 45 ? 'var(--color-amber)' : 'var(--color-red)'
@@ -110,7 +114,7 @@ function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; l
         <div className="passport-mini-stats">
           {passport.avg_payment_days != null && (
             <div className="passport-mini-stat">
-              <span className="passport-mini-stat-label">Avg Pay</span>
+              <span className="passport-mini-stat-label">{t('listingDetail.avgPay')}</span>
               <span className="passport-mini-stat-value">{passport.avg_payment_days}d</span>
             </div>
           )}
@@ -118,7 +122,7 @@ function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; l
             <>
               <div className="passport-mini-sep" />
               <div className="passport-mini-stat">
-                <span className="passport-mini-stat-label">Avg Pay</span>
+                <span className="passport-mini-stat-label">{t('listingDetail.avgPay')}</span>
                 <span className="passport-mini-stat-value">{passport.avg_payment_days}d</span>
               </div>
             </>
@@ -127,7 +131,7 @@ function PassportMiniCard({ passport, label }: { passport: OrgPassport | null; l
             <>
               <div className="passport-mini-sep" />
               <div className="passport-mini-stat">
-                <span className="passport-mini-stat-label">Disputes</span>
+                <span className="passport-mini-stat-label">{t('listingDetail.disputes')}</span>
                 <span className="passport-mini-stat-value">{(passport.dispute_rate_network * 100).toFixed(1)}%</span>
               </div>
             </>
@@ -158,6 +162,7 @@ function BankOfferForm({
   onSubmit: (offer: FinancingRequestOffer) => void
 }) {
   const router = useRouter()
+  const t = useT()
   const [editing, setEditing]   = useState(!existingOffer)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -210,7 +215,7 @@ function BankOfferForm({
         }),
       })
       const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Submission failed'); return }
+      if (!res.ok) { setError(json.error ?? t('financingDetail.submissionFailed')); return }
       onSubmit(json.offer)
       setEditing(false)
     } finally {
@@ -222,37 +227,37 @@ function BankOfferForm({
     return (
       <div className="card">
         <div className="card-head">
-          Your Offer
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit Offer</button>
+          {t('financingDetail.yourOffer')}
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>{t('financingDetail.editOffer')}</button>
         </div>
         <div className="kv-list">
           <div className="kv-row">
-            <span className="k">Rate APR</span>
+            <span className="k">{t('financingDetail.rateApr')}</span>
             <span className="v" style={{ color: 'var(--color-green)', fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700 }}>
               {existingOffer.offered_rate_apr}%
             </span>
           </div>
           <div className="kv-row">
-            <span className="k">Amount</span>
+            <span className="k">{t('financing.amount')}</span>
             <span className="v">{fmt(existingOffer.offered_amount, request.currency)}</span>
           </div>
           <div className="kv-row">
-            <span className="k">Tenor</span>
+            <span className="k">{t('financingDetail.tenor')}</span>
             <span className="v">{existingOffer.offered_tenor_days}d</span>
           </div>
           <div className="kv-row">
-            <span className="k">Structure</span>
+            <span className="k">{t('financing.structure')}</span>
             <span className="v plain">{existingOffer.structure_type.replace(/_/g, ' ')}</span>
           </div>
           {existingOffer.conditions && (
             <div className="kv-row">
-              <span className="k">Conditions</span>
+              <span className="k">{t('financingDetail.conditions')}</span>
               <span className="v plain" style={{ fontSize: 12 }}>{existingOffer.conditions}</span>
             </div>
           )}
           {existingOffer.ai_score != null && (
             <div className="kv-row">
-              <span className="k">AI Score</span>
+              <span className="k">{t('financingDetail.aiScore')}</span>
               <span className="v">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ flex: 1, height: 4, background: 'var(--border)', maxWidth: 80 }}>
@@ -272,7 +277,7 @@ function BankOfferForm({
   if (programsLoaded && programs.length === 0) {
     return (
       <div className="card">
-        <div className="card-head">Submit an Offer</div>
+        <div className="card-head">{t('financingDetail.submitAnOffer')}</div>
         <div className="card-body">
           <div style={{
             borderLeft: '3px solid var(--teal)',
@@ -285,10 +290,10 @@ function BankOfferForm({
             <div style={{ fontSize: 16, color: 'var(--teal)', flexShrink: 0, marginTop: 2 }}>✦</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
-                Strike AI · Action Required
+                {t('financingDetail.strikeAiActionRequired')}
               </span>
               <p style={{ fontSize: 13.5, color: 'var(--teal)', lineHeight: 1.6, margin: 0 }}>
-                You don't have any active programs set up. Strike AI recommends creating a program first — it lets you track all financed deals, manage capacity, and monitor performance in one place.
+                {t('financingDetail.noProgramsHint')}
               </p>
             </div>
           </div>
@@ -298,7 +303,7 @@ function BankOfferForm({
             style={{ width: '100%' }}
             onClick={() => router.push('/programs/new')}
           >
-            Create a Program →
+            {t('financingDetail.createAProgram')}
           </button>
         </div>
       </div>
@@ -307,7 +312,7 @@ function BankOfferForm({
 
   return (
     <div className="card">
-      <div className="card-head">{existingOffer ? 'Edit Your Offer' : 'Submit an Offer'}</div>
+      <div className="card-head">{existingOffer ? t('financingDetail.editYourOffer') : t('financingDetail.submitAnOffer')}</div>
       <form onSubmit={handleSubmit}>
         <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <div className="alert alert-error">{error}</div>}
@@ -315,22 +320,22 @@ function BankOfferForm({
           {/* Program selector */}
           {programsLoaded && programs.length > 0 && (
             <div className="form-field">
-              <label className="field-label">Book under Program</label>
+              <label className="field-label">{t('financingDetail.bookUnderProgram')}</label>
               <select
                 className="input form-select"
                 value={programId}
                 onChange={e => setProgramId(e.target.value)}
               >
-                <option value="">— No program (unlinked) —</option>
+                <option value="">{t('financingDetail.noProgramUnlinked')}</option>
                 {programs.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.name} · {p.financing_types.map(t => t.replace(/_/g, ' ')).join(', ')} · {p.currency ?? 'USD'}
+                    {p.name} · {p.financing_types.map(ft => ft.replace(/_/g, ' ')).join(', ')} · {p.currency ?? 'USD'}
                   </option>
                 ))}
               </select>
               {programId && (
                 <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-                  If accepted, this deal will appear under the selected program's deal pipeline.
+                  {t('financingDetail.programPipelineHint')}
                 </div>
               )}
             </div>
@@ -338,7 +343,7 @@ function BankOfferForm({
 
           <div className="form-row-2">
             <div className="form-field">
-              <label className="field-label">Rate APR (%)</label>
+              <label className="field-label">{t('financingDetail.rateAprPct')}</label>
               <input
                 className="input"
                 type="number"
@@ -351,7 +356,7 @@ function BankOfferForm({
               />
             </div>
             <div className="form-field">
-              <label className="field-label">Offered Amount ({request.currency})</label>
+              <label className="field-label">{t('financingDetail.offeredAmount')} ({request.currency})</label>
               <input
                 className="input"
                 type="number"
@@ -365,7 +370,7 @@ function BankOfferForm({
 
           <div className="form-row-2">
             <div className="form-field">
-              <label className="field-label">Tenor (days)</label>
+              <label className="field-label">{t('financingDetail.tenorDays')}</label>
               <input
                 className="input"
                 type="number"
@@ -376,49 +381,49 @@ function BankOfferForm({
               />
             </div>
             <div className="form-field">
-              <label className="field-label">Structure Type</label>
+              <label className="field-label">{t('financingDetail.structureType')}</label>
               <select
                 className="input form-select"
                 value={structure}
                 onChange={e => setStructure(e.target.value as FinancingType)}
                 required
               >
-                {FINANCING_TYPES.map(t => (
-                  <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                {FINANCING_TYPES.map(ft => (
+                  <option key={ft} value={ft}>{ft.replace(/_/g, ' ')}</option>
                 ))}
               </select>
             </div>
           </div>
 
           <div className="form-field">
-            <label className="field-label">Conditions</label>
+            <label className="field-label">{t('financingDetail.conditions')}</label>
             <textarea
               className="input"
               rows={2}
               value={conditions}
               onChange={e => setConditions(e.target.value)}
-              placeholder="Any specific conditions attached to this offer…"
+              placeholder={t('financingDetail.conditionsPlaceholder')}
             />
           </div>
 
           <div className="form-field">
-            <label className="field-label">Notes</label>
+            <label className="field-label">{t('listingDetail.notes')}</label>
             <textarea
               className="input"
               rows={2}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Internal notes or additional context…"
+              placeholder={t('financingDetail.notesPlaceholder')}
             />
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-blue shine" disabled={loading} style={{ flex: 1 }}>
-              {loading ? 'Submitting…' : existingOffer ? 'Update Offer' : 'Submit Offer'}
+              {loading ? t('listingDetail.submitting') : existingOffer ? t('financingDetail.updateOffer') : t('listingDetail.submitOffer')}
             </button>
             {existingOffer && (
               <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)}>
-                Cancel
+                {t('common.cancel')}
               </button>
             )}
           </div>
@@ -439,14 +444,15 @@ function OrgOffersList({
   onAccept: (offerId: string) => void
   accepting: string | null
 }) {
+  const t = useT()
   const sorted = [...offers].sort((a, b) => (b.ai_score ?? 0) - (a.ai_score ?? 0))
   const topOfferId = sorted[0]?.id
 
   if (offers.length === 0) {
     return (
       <div className="mp-empty-state">
-        <div className="mp-empty-title">No offers yet</div>
-        <div className="mp-empty-sub">Banks will submit offers once they review your request.</div>
+        <div className="mp-empty-title">{t('financingDetail.noOffersYet')}</div>
+        <div className="mp-empty-sub">{t('financingDetail.noOffersHint')}</div>
       </div>
     )
   }
@@ -474,7 +480,7 @@ function OrgOffersList({
                 gap: 8,
               }}>
                 <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  ✦ Strike AI Recommends
+                  {t('financingDetail.strikeAiRecommends')}
                 </span>
                 {offer.ai_score_reasoning && (
                   <span style={{ fontSize: 11.5, color: 'var(--teal)', fontStyle: 'italic' }}>
@@ -486,7 +492,7 @@ function OrgOffersList({
 
             <div className="mp-offer-card-head">
               <div className="mp-offer-price-block">
-                <span className="mp-offer-price-label">Rate APR</span>
+                <span className="mp-offer-price-label">{t('financingDetail.rateApr')}</span>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                   <span
                     className="mp-offer-price"
@@ -499,11 +505,11 @@ function OrgOffersList({
 
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 20 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
-                  {offer.bank?.display_name ?? 'Bank'}
+                  {offer.bank?.display_name ?? t('financingDetail.bank')}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span className="mp-offer-term-pill">{fmt(offer.offered_amount, request.currency)}</span>
-                  <span className="mp-offer-term-pill">{offer.offered_tenor_days}d tenor</span>
+                  <span className="mp-offer-term-pill">{t('financingDetail.tenorSuffix', { days: offer.offered_tenor_days })}</span>
                   <span className="mp-offer-term-pill">{offer.structure_type.replace(/_/g, ' ')}</span>
                 </div>
               </div>
@@ -526,7 +532,7 @@ function OrgOffersList({
             {offer.ai_score != null && (
               <div style={{ padding: '0 20px 12px' }}>
                 <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)', marginBottom: 4 }}>
-                  AI Score
+                  {t('financingDetail.aiScore')}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ flex: 1, height: 4, background: 'var(--border)' }}>
@@ -555,7 +561,7 @@ function OrgOffersList({
                     disabled={accepting !== null}
                     onClick={() => onAccept(offer.id)}
                   >
-                    {accepting === offer.id ? 'Accepting…' : 'Accept This Offer'}
+                    {accepting === offer.id ? t('financingDetail.accepting') : t('financingDetail.acceptThisOffer')}
                   </button>
                 )}
               </div>
@@ -572,6 +578,7 @@ export default function FinancingDetailPage() {
   const router   = useRouter()
   const search   = useSearchParams()
   const portal   = usePortal()
+  const t        = useT()
   const id       = params?.id as string
   const isBank   = portal === 'bank'
   // TC.5 — set when the user arrives here right after Strike AI created a matching
@@ -591,8 +598,8 @@ export default function FinancingDetailPage() {
         else setData(d)
         setLoading(false)
       })
-      .catch(() => { setError('Failed to load'); setLoading(false) })
-  }, [id])
+      .catch(() => { setError(t('financingDetail.failedToLoad')); setLoading(false) })
+  }, [id, t])
 
   useEffect(() => { load() }, [load])
 
@@ -605,7 +612,7 @@ export default function FinancingDetailPage() {
         body: JSON.stringify({ offer_id: offerId }),
       })
       const json = await res.json()
-      if (!res.ok) { alert(json.error ?? 'Failed to accept offer'); return }
+      if (!res.ok) { alert(json.error ?? t('financingDetail.failedAcceptOffer')); return }
       load()
     } finally {
       setAccepting(null)
@@ -630,8 +637,8 @@ export default function FinancingDetailPage() {
     return (
       <>
         <Topbar crumbs={[
-          { label: 'Financing', onClick: () => router.push('/marketplace/financing') },
-          { label: 'Loading…' },
+          { label: t('financingDetail.financing'), onClick: () => router.push('/marketplace/financing') },
+          { label: t('common.loading') },
         ]} />
         <div className="page" style={{ maxWidth: 1280 }}>
           {/* Hero band skeleton */}
@@ -667,10 +674,10 @@ export default function FinancingDetailPage() {
     return (
       <>
         <Topbar crumbs={[
-          { label: 'Financing', onClick: () => router.push('/marketplace/financing') },
-          { label: 'Error' },
+          { label: t('financingDetail.financing'), onClick: () => router.push('/marketplace/financing') },
+          { label: t('rooms.error') },
         ]} />
-        <div className="page"><div className="alert alert-error">{error ?? 'Not found'}</div></div>
+        <div className="page"><div className="alert alert-error">{error ?? t('financingDetail.notFound')}</div></div>
       </>
     )
   }
@@ -753,8 +760,8 @@ export default function FinancingDetailPage() {
     <>
       <Topbar
         crumbs={[
-          { label: 'Financing', onClick: () => router.push('/marketplace/financing') },
-          { label: `Request #${id.slice(0, 8).toUpperCase()}` },
+          { label: t('financingDetail.financing'), onClick: () => router.push('/marketplace/financing') },
+          { label: t('financing.requestHash', { id: id.slice(0, 8).toUpperCase() }) },
         ]}
       />
 
@@ -772,9 +779,9 @@ export default function FinancingDetailPage() {
             )}
           </div>
           <p className="subtitle" style={{ marginTop: 4 }}>
-            Structure: {request.structure_type.replace(/_/g, ' ')}
-            {request.preferred_tenor_days && ` · ${request.preferred_tenor_days}d preferred tenor`}
-            {request.preferred_rate_max && ` · Max rate ${request.preferred_rate_max}%`}
+            {t('financingDetail.structureColon')} {request.structure_type.replace(/_/g, ' ')}
+            {request.preferred_tenor_days && ` · ${t('financingDetail.preferredTenorSuffix', { days: request.preferred_tenor_days })}`}
+            {request.preferred_rate_max && ` · ${t('financingDetail.maxRateSuffix', { rate: request.preferred_rate_max })}`}
           </p>
         </div>
 
@@ -785,33 +792,33 @@ export default function FinancingDetailPage() {
             {/* Deal context */}
             {deal && (
               <div className="card">
-                <div className="card-head">Deal Context</div>
+                <div className="card-head">{t('financingDetail.dealContext')}</div>
                 <div className="kv-list">
                   {deal.listing_title && (
                     <div className="kv-row">
-                      <span className="k">Listing</span>
+                      <span className="k">{t('financing.listing')}</span>
                       <span className="v plain">{deal.listing_title}</span>
                     </div>
                   )}
                   {(deal.goods_description || deal.listing_description) && (
                     <div className="kv-row">
-                      <span className="k">Goods</span>
+                      <span className="k">{t('financingDetail.goods')}</span>
                       <span className="v plain">{deal.goods_description ?? deal.listing_description}</span>
                     </div>
                   )}
                   <div className="kv-row">
-                    <span className="k">Deal Value</span>
+                    <span className="k">{t('financing.dealValue')}</span>
                     <span className="v" style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600 }}>
                       {fmt(deal.total_value ?? deal.agreed_price, deal.agreed_currency)}
                     </span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Delivery Date</span>
+                    <span className="k">{t('listingDetail.deliveryDate')}</span>
                     <span className="v">{fmtDate(deal.agreed_delivery_date)}</span>
                   </div>
                   {deal.agreed_incoterms && (
                     <div className="kv-row">
-                      <span className="k">Incoterms</span>
+                      <span className="k">{t('newListing.incoterms')}</span>
                       <span className="v">{deal.agreed_incoterms}</span>
                     </div>
                   )}
@@ -821,15 +828,15 @@ export default function FinancingDetailPage() {
                 {deal.line_items && deal.line_items.length > 0 && (
                   <div style={{ borderTop: '1px solid var(--border)', margin: '0 20px', paddingTop: 14, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)', marginBottom: 10 }}>
-                      Line Items
+                      {t('newListing.lineItems')}
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <th style={{ textAlign: 'left', padding: '4px 8px 8px 0', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Item</th>
-                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Qty</th>
-                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Unit Price</th>
-                          <th style={{ textAlign: 'right', padding: '4px 0 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>Total</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px 8px 0', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>{t('listingDetail.item')}</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>{t('newListing.qty')}</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>{t('listingDetail.unitPrice')}</th>
+                          <th style={{ textAlign: 'right', padding: '4px 0 8px 8px', fontWeight: 600, color: 'var(--gray)', fontSize: 11 }}>{t('listingDetail.total')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -883,7 +890,7 @@ export default function FinancingDetailPage() {
                 <div style={{ fontSize: 16, color: 'var(--teal)', flexShrink: 0, marginTop: 2 }}>✦</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--teal)' }}>
-                    Strike AI · Market Intelligence
+                    {t('financingDetail.strikeAiMarketIntelligence')}
                   </span>
                   {request.ai_market_context && (
                     <p style={{ fontSize: 13.5, color: 'var(--teal)', lineHeight: 1.6, margin: 0 }}>
@@ -903,9 +910,9 @@ export default function FinancingDetailPage() {
             {!isBank && (
               <div className="card">
                 <div className="card-head">
-                  Competing Offers
+                  {t('financingDetail.competingOffers')}
                   <span style={{ fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, color: 'var(--gray)' }}>
-                    {all_offers_count} total
+                    {t('financingDetail.totalCount', { count: all_offers_count })}
                   </span>
                 </div>
                 <div className="card-body" style={{ padding: 0 }}>
@@ -923,14 +930,14 @@ export default function FinancingDetailPage() {
             {isBank && (
               <>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <PassportMiniCard passport={buyer_passport}    label="Buyer" />
-                  <PassportMiniCard passport={supplier_passport} label="Supplier" />
+                  <PassportMiniCard passport={buyer_passport}    label={t('passport.buyer')} />
+                  <PassportMiniCard passport={supplier_passport} label={t('passport.supplier')} />
                 </div>
 
                 {newProgramId && (
                   <div className="alert alert-success">
                     <div className="alert-body">
-                      Program created by Strike AI and selected for this offer. You can now submit.
+                      {t('financingDetail.programCreatedHint')}
                     </div>
                   </div>
                 )}
@@ -949,15 +956,15 @@ export default function FinancingDetailPage() {
 
             {/* Passport cards — show both parties, label who is the requester */}
             {[
-              { passport: buyer_passport,    role: 'Buyer',    isRequester: deal?.buyer_org_id === request.requesting_org_id },
-              { passport: supplier_passport, role: 'Supplier', isRequester: deal?.supplier_org_id === request.requesting_org_id },
+              { passport: buyer_passport,    role: t('passport.buyer'),    isRequester: deal?.buyer_org_id === request.requesting_org_id },
+              { passport: supplier_passport, role: t('passport.supplier'), isRequester: deal?.supplier_org_id === request.requesting_org_id },
             ].map(({ passport, role, isRequester }, i) => passport && (
               <Reveal delay={i * 90} className="card" key={role}>
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {role}
                   {isRequester && (
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: 'var(--color-accent-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Requester
+                      {t('financing.requester')}
                     </span>
                   )}
                 </div>
@@ -969,25 +976,25 @@ export default function FinancingDetailPage() {
                   <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {passport.kyb_status && (
                       <div className="kv-row" style={{ fontSize: 11.5 }}>
-                        <span className="k">KYB</span>
+                        <span className="k">{t('financingDetail.kyb')}</span>
                         <span className="v plain" style={{ textTransform: 'capitalize' }}>{passport.kyb_status.replace(/_/g, ' ')}</span>
                       </div>
                     )}
                     {passport.performance_tier && (
                       <div className="kv-row" style={{ fontSize: 11.5 }}>
-                        <span className="k">Performance</span>
+                        <span className="k">{t('financingDetail.performance')}</span>
                         <span className="v plain" style={{ textTransform: 'capitalize' }}>{passport.performance_tier.replace(/_/g, ' ')}</span>
                       </div>
                     )}
                     {passport.avg_payment_days != null && (
                       <div className="kv-row" style={{ fontSize: 11.5 }}>
-                        <span className="k">Avg Pay</span>
+                        <span className="k">{t('listingDetail.avgPay')}</span>
                         <span className="v plain">{passport.avg_payment_days}d</span>
                       </div>
                     )}
                     {passport.dispute_rate_network != null && (
                       <div className="kv-row" style={{ fontSize: 11.5 }}>
-                        <span className="k">Dispute Rate</span>
+                        <span className="k">{t('listingDetail.disputeRate')}</span>
                         <span className="v plain">{(passport.dispute_rate_network * 100).toFixed(1)}%</span>
                       </div>
                     )}
@@ -997,7 +1004,7 @@ export default function FinancingDetailPage() {
                     className="btn btn-ghost btn-sm"
                     style={{ width: '100%', justifyContent: 'center' }}
                   >
-                    View Full Passport →
+                    {t('financingDetail.viewFullPassport')}
                   </Link>
                 </div>
               </Reveal>
@@ -1005,35 +1012,35 @@ export default function FinancingDetailPage() {
 
             {/* Request stats */}
             <div className="card">
-              <div className="card-head">Request Details</div>
+              <div className="card-head">{t('financingDetail.requestDetails')}</div>
               <div className="kv-list">
                 <div className="kv-row">
-                  <span className="k">Amount</span>
+                  <span className="k">{t('financing.amount')}</span>
                   <span className="v">{fmt(request.amount_requested, currency)}</span>
                 </div>
                 <div className="kv-row">
-                  <span className="k">Max Rate</span>
+                  <span className="k">{t('financing.maxRate')}</span>
                   <span className="v">{request.preferred_rate_max ? `${request.preferred_rate_max}%` : '—'}</span>
                 </div>
                 {transaction?.financing_rate_apr != null && (
                   <div className="kv-row">
-                    <span className="k">Accepted APR</span>
+                    <span className="k">{t('financingDetail.acceptedApr')}</span>
                     <span className="v" style={{ fontWeight: 700, color: 'var(--color-green)' }}>{transaction.financing_rate_apr}%</span>
                   </div>
                 )}
                 {transaction?.tenor_days != null && (
                   <div className="kv-row">
-                    <span className="k">Tenor</span>
+                    <span className="k">{t('financingDetail.tenor')}</span>
                     <span className="v">{transaction.tenor_days}d</span>
                   </div>
                 )}
                 <div className="kv-row">
-                  <span className="k">Offers</span>
+                  <span className="k">{t('marketplace.offersPlural')}</span>
                   <span className="v">{all_offers_count}</span>
                 </div>
                 {days != null && (
                   <div className="kv-row">
-                    <span className="k">Expires In</span>
+                    <span className="k">{t('financingDetail.expiresIn')}</span>
                     <span className={`days-pill ${days > 7 ? 'days-green' : days > 2 ? 'days-amber' : 'days-red'}`}>
                       {days}d
                     </span>
@@ -1047,15 +1054,15 @@ export default function FinancingDetailPage() {
                   return (
                     <>
                       <div className="kv-row">
-                        <span className="k">Strike Service Fee — Requester (0.15%)</span>
+                        <span className="k">{t('financingDetail.serviceFeeRequester')}</span>
                         <span className="v">{fmt(requesterFee, currency)}</span>
                       </div>
                       <div className="kv-row">
-                        <span className="k">Strike Service Fee — Bank (0.15%)</span>
+                        <span className="k">{t('financingDetail.serviceFeeBank')}</span>
                         <span className="v">{fmt(bankFee, currency)}</span>
                       </div>
                       <div className="kv-row">
-                        <span className="k">Net Disbursement</span>
+                        <span className="k">{t('financingDetail.netDisbursement')}</span>
                         <span className="v" style={{ fontWeight: 700 }}>{fmt(net, currency)}</span>
                       </div>
                     </>

@@ -8,6 +8,9 @@ import { useGhost } from '@/lib/use-ghost'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { SkeletonCard, Skeleton, SkeletonText } from '@/components/motion'
 import type { ListingWithPassport } from '@strike-scf/types'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 interface OwnPassport {
   passport_score: number | null
@@ -50,6 +53,7 @@ function formatDeadline(iso: string | null | undefined): string | null {
 }
 
 function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']> }) {
+  const t = useT()
   return (
     <div style={{
       display: 'flex',
@@ -79,7 +83,7 @@ function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']
           color: 'var(--gray)',
           marginTop: 1,
         }}>
-          {org.type} · {org.trade_count_total ?? 0} trades · {formatVolume(org.trade_volume_total)}
+          {org.type} · {t('marketplace.tradeCount', { count: org.trade_count_total ?? 0 })} · {formatVolume(org.trade_volume_total)}
         </div>
       </div>
     </div>
@@ -88,6 +92,7 @@ function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']
 
 function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { line_items_total?: number | null }; isOwn?: boolean }) {
   const router = useRouter()
+  const t = useT()
   const { listing, poster_org } = item
 
   const rawPrice = (item as any).line_items_total ?? listing.target_price
@@ -102,9 +107,13 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
       className="listing-card card-interactive"
       onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
     >
+      {listing.cover_image_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={listing.cover_image_url} alt={listing.title} className="listing-card-image" />
+      )}
       <div className="listing-card-head">
         <span className={`listing-type-badge ${listing.listing_type === 'po_request' ? 'listing-type-po' : 'listing-type-product'}`}>
-          {listing.listing_type === 'po_request' ? 'PO Request' : 'Product / Service'}
+          {listing.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService')}
         </span>
         {listing.category && (
           <span className="listing-category-tag">{listing.category}</span>
@@ -129,7 +138,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
             <span className="listing-price">{price}</span>
             <span className="listing-price-currency">{listing.currency}</span>
             {isTotal
-              ? <span className="listing-price-unit">total</span>
+              ? <span className="listing-price-unit">{t('marketplace.total')}</span>
               : listing.unit && <span className="listing-price-unit">/ {listing.unit}</span>
             }
           </div>
@@ -138,19 +147,19 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
         <div className="listing-details-row">
           {listing.quantity != null && listing.unit && (
             <div className="listing-detail-item">
-              <span className="listing-detail-label">Quantity</span>
+              <span className="listing-detail-label">{t('marketplace.quantity')}</span>
               <span className="listing-detail-value">{listing.quantity} {listing.unit}</span>
             </div>
           )}
           {deadline && (
             <div className="listing-detail-item">
-              <span className="listing-detail-label">Deadline</span>
-              <span className="listing-detail-value">Due {deadline}</span>
+              <span className="listing-detail-label">{t('marketplace.deadline')}</span>
+              <span className="listing-detail-value">{t('marketplace.due')} {deadline}</span>
             </div>
           )}
           {listing.delivery_location && (
             <div className="listing-detail-item">
-              <span className="listing-detail-label">Location</span>
+              <span className="listing-detail-label">{t('marketplace.location')}</span>
               <span className="listing-detail-value">{listing.delivery_location}</span>
             </div>
           )}
@@ -167,7 +176,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
         {!isOwn && (
           <span className="listing-offer-badge">
             <span className="listing-offer-badge-count">{listing.offer_count ?? 0}</span>
-            &nbsp;offer{listing.offer_count !== 1 ? 's' : ''}
+            &nbsp;{(listing.offer_count ?? 0) !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
           </span>
         )}
         <div style={{ marginLeft: 'auto' }}>
@@ -178,7 +187,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
               router.push(`/marketplace/listings/${listing.id}`)
             }}
           >
-            {isOwn ? 'View' : 'View & Offer'}
+            {isOwn ? t('marketplace.view') : t('marketplace.viewAndOffer')}
           </button>
         </div>
       </div>
@@ -192,6 +201,7 @@ type TypeFilter = 'all' | 'po' | 'product'
 export default function MarketplacePage() {
   const router = useRouter()
   const user = useUser()
+  const t = useT()
   const { isGhost } = useGhost()
 
   const [mainTab, setMainTab] = useState<MainTab>('marketplace')
@@ -316,7 +326,7 @@ export default function MarketplacePage() {
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'Strike Place' }]}
+        crumbs={[{ label: t('nav.strikePlace') }]}
         actions={
           <div className="topbar-right">
             {/* Ghost orgs browse only — actions route to Passport activation. */}
@@ -324,13 +334,13 @@ export default function MarketplacePage() {
               className="btn btn-ghost btn-sm"
               onClick={() => router.push(isGhost ? '/onboarding' : '/marketplace/listings/new')}
             >
-              {isGhost ? 'Activate to Post' : 'Post a Listing'}
+              {isGhost ? t('marketplace.activateToPost') : t('marketplace.postAListing')}
             </button>
             <button
               className="btn btn-blue btn-sm"
               onClick={() => { if (isGhost) router.push('/onboarding') }}
             >
-              {isGhost ? 'Activate to Finance' : 'Finance an Existing Trade'}
+              {isGhost ? t('marketplace.activateToFinance') : t('marketplace.financeExistingTrade')}
             </button>
           </div>
         }
@@ -376,13 +386,13 @@ export default function MarketplacePage() {
             className={`mp-tab${mainTab === 'marketplace' ? ' mp-tab-active' : ''}`}
             onClick={() => setMainTab('marketplace')}
           >
-            Strike Place
+            {t('nav.strikePlace')}
           </button>
           <button
             className={`mp-tab${mainTab === 'my_listings' ? ' mp-tab-active' : ''}`}
             onClick={() => setMainTab('my_listings')}
           >
-            My Listings
+            {t('marketplace.myListings')}
           </button>
         </div>
 
@@ -394,7 +404,7 @@ export default function MarketplacePage() {
                 <input
                   type="text"
                   className="mp-search-input"
-                  placeholder="Search listings by product, category, or organization..."
+                  placeholder={t('marketplace.searchPlaceholder')}
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
@@ -403,7 +413,7 @@ export default function MarketplacePage() {
                   className="btn btn-primary btn-sm"
                   onClick={() => setCommittedSearch(searchInput)}
                 >
-                  Search
+                  {t('marketplace.search')}
                 </button>
               </div>
 
@@ -414,20 +424,20 @@ export default function MarketplacePage() {
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                 >
-                  <option value="">All Categories</option>
+                  <option value="">{t('marketplace.allCategories')}</option>
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
 
                 <div className="mp-type-toggle">
-                  {(['all', 'po', 'product'] as TypeFilter[]).map((t) => (
+                  {(['all', 'po', 'product'] as TypeFilter[]).map((tf) => (
                     <button
-                      key={t}
-                      className={`mp-type-btn${typeFilter === t ? ' mp-type-btn-active' : ''}`}
-                      onClick={() => setTypeFilter(t)}
+                      key={tf}
+                      className={`mp-type-btn${typeFilter === tf ? ' mp-type-btn-active' : ''}`}
+                      onClick={() => setTypeFilter(tf)}
                     >
-                      {t === 'all' ? 'All' : t === 'po' ? 'PO Request' : 'Product / Service'}
+                      {tf === 'all' ? t('common.all') : tf === 'po' ? t('passport.poRequest') : t('passport.productService')}
                     </button>
                   ))}
                 </div>
@@ -439,30 +449,30 @@ export default function MarketplacePage() {
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
                 >
-                  <option value="newest">Sort: Most Recent</option>
-                  <option value="price_asc">Sort: Price ↑</option>
-                  <option value="price_desc">Sort: Price ↓</option>
+                  <option value="newest">{t('marketplace.sortMostRecent')}</option>
+                  <option value="price_asc">{t('marketplace.sortPriceAsc')}</option>
+                  <option value="price_desc">{t('marketplace.sortPriceDesc')}</option>
                 </select>
               </div>
 
               {/* Ghost browse-only notice — listings stay visible; actions gated. */}
               {isGhost && (
                 <div className="ghost-action-lock" style={{ marginBottom: 16 }}>
-                  <p className="ghost-action-lock-title">You're browsing Strike Place</p>
+                  <p className="ghost-action-lock-title">{t('marketplace.browsingStrikePlace')}</p>
                   <p className="ghost-action-lock-body">
-                    Listings are visible to everyone. Activate your Passport to submit offers and request financing.
+                    {t('marketplace.browsingHint')}
                   </p>
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={() => router.push('/onboarding')}
                   >
-                    Activate Passport →
+                    {t('marketplace.activatePassport')}
                   </button>
                 </div>
               )}
 
               {/* Feed */}
-              <div className="mp-listing-feed reveal-stagger">
+              <div className="mp-listing-grid reveal-stagger">
                 {loading
                   ? skeletons.map((_, i) => (
                       <SkeletonCard key={i} height={220} />
@@ -479,25 +489,25 @@ export default function MarketplacePage() {
                       <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
                     </svg>
                   </div>
-                  <p className="mp-empty-title">No listings yet</p>
+                  <p className="mp-empty-title">{t('marketplace.noListingsYet')}</p>
                   <p className="mp-empty-sub">
                     {committedSearch || category || typeFilter !== 'all'
-                      ? 'No listings match your filters. Try adjusting your search.'
-                      : 'Listings from verified organizations will appear here. Be one of the first.'}
+                      ? t('marketplace.noListingsMatchFilters')
+                      : t('marketplace.noListingsHint')}
                   </p>
                   <button
                     className="btn btn-ghost btn-sm"
                     style={{ marginTop: 16 }}
                     onClick={() => router.push('/marketplace/listings/new')}
                   >
-                    Post the first listing
+                    {t('marketplace.postFirstListing')}
                   </button>
                 </div>
               )}
 
               {!loading && total > 0 && (
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--gray)', textAlign: 'center' }}>
-                  Showing {listings.length} of {total} listings
+                  {t('marketplace.showingOfListings', { shown: listings.length, total })}
                 </div>
               )}
             </div>
@@ -505,32 +515,32 @@ export default function MarketplacePage() {
             {/* Right sidebar */}
             <div className="mp-sidebar">
               <div className="card">
-                <div className="card-head">Quick Stats</div>
+                <div className="card-head">{t('marketplace.quickStats')}</div>
                 <div className="mp-quick-stats">
                   <div className="mp-stat-cell">
-                    <span className="mp-stat-label">Listings</span>
+                    <span className="mp-stat-label">{t('marketplace.listings')}</span>
                     <span className="mp-stat-value">{loading ? '—' : total}</span>
                   </div>
                   <div className="mp-stat-cell">
-                    <span className="mp-stat-label">Active Deals</span>
+                    <span className="mp-stat-label">{t('marketplace.activeDeals')}</span>
                     <span className="mp-stat-value">{quickStats ? quickStats.active_deals : '—'}</span>
                   </div>
                   <div className="mp-stat-cell">
-                    <span className="mp-stat-label">Orgs</span>
+                    <span className="mp-stat-label">{t('marketplace.orgs')}</span>
                     <span className="mp-stat-value">{quickStats ? quickStats.orgs : '—'}</span>
                   </div>
                   <div className="mp-stat-cell">
-                    <span className="mp-stat-label">Volume</span>
+                    <span className="mp-stat-label">{t('marketplace.volume')}</span>
                     <span className="mp-stat-value">{quickStats ? formatVolume(quickStats.volume) : '—'}</span>
                   </div>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-head">Your Passport</div>
+                <div className="card-head">{t('marketplace.yourPassport')}</div>
                 {!user?.org_id ? (
                   <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--gray)', textAlign: 'center' }}>
-                    Your account is not linked to an organization.
+                    {t('marketplace.accountNotLinked')}
                   </div>
                 ) : passportLoading ? (
                   <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
@@ -540,16 +550,16 @@ export default function MarketplacePage() {
                   </div>
                 ) : ownPassport && !ownPassport.network_visible ? (
                   <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', textAlign: 'center' }}>
-                    <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel pendingLabel="Passport Inactive" />
+                    <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel pendingLabel={t('marketplace.passportInactive')} />
                     <p style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
-                      Activate your Passport to publish your profile and appear in search results.
+                      {t('marketplace.activatePassportHint')}
                     </p>
                     <button
                       className="btn btn-blue btn-sm"
                       style={{ width: '100%' }}
                       onClick={() => router.push('/onboarding')}
                     >
-                      Activate Passport →
+                      {t('marketplace.activatePassport')}
                     </button>
                   </div>
                 ) : ownPassport ? (
@@ -558,7 +568,7 @@ export default function MarketplacePage() {
                       <PassportScoreRing score={ownPassport.passport_score} size="md" showLabel />
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
-                          {ownPassport.doing_business_as ?? ownPassport.legal_name ?? 'Your Organization'}
+                          {ownPassport.doing_business_as ?? ownPassport.legal_name ?? t('marketplace.yourOrganization')}
                         </div>
                         <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
                           {ownPassport.type}
@@ -569,13 +579,13 @@ export default function MarketplacePage() {
                           <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
                             {ownPassport.trade_count_total ?? '—'}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>Trades</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>{t('marketplace.trades')}</div>
                         </div>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
                             {formatVolume(ownPassport.trade_volume_total)}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>Volume</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>{t('marketplace.volume')}</div>
                         </div>
                       </div>
                     </div>
@@ -585,13 +595,13 @@ export default function MarketplacePage() {
                         style={{ width: '100%' }}
                         onClick={() => router.push('/passport')}
                       >
-                        View Full Passport
+                        {t('marketplace.viewFullPassport')}
                       </button>
                     </div>
                   </>
                 ) : (
                   <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--gray)', textAlign: 'center' }}>
-                    Passport not available.
+                    {t('marketplace.passportNotAvailable')}
                   </div>
                 )}
               </div>
@@ -607,7 +617,7 @@ export default function MarketplacePage() {
                   className="btn btn-ghost btn-sm"
                   onClick={() => router.push('/marketplace/listings/new')}
                 >
-                  + Post New Listing
+                  + {t('marketplace.postNewListing')}
                 </button>
               </div>
               {myListingsLoading ? (
@@ -623,18 +633,18 @@ export default function MarketplacePage() {
                       <path d="M3 2h10v12l-2-1.2-2 1.2-2-1.2-2 1.2L3 13zM5.5 6h5M5.5 9h5" />
                     </svg>
                   </div>
-                  <p className="mp-empty-title">No listings yet</p>
-                  <p className="mp-empty-sub">Post your first listing to appear on Strike Place.</p>
+                  <p className="mp-empty-title">{t('marketplace.noListingsYet')}</p>
+                  <p className="mp-empty-sub">{t('marketplace.postFirstListingHint')}</p>
                   <button
                     className="btn btn-ghost btn-sm"
                     style={{ marginTop: 16 }}
                     onClick={() => router.push('/marketplace/listings/new')}
                   >
-                    Post a Listing
+                    {t('marketplace.postAListing')}
                   </button>
                 </div>
               ) : (
-                <div className="mp-listing-feed reveal-stagger">
+                <div className="mp-listing-grid reveal-stagger">
                   {myListings.map((item) => (
                     <ListingCard key={item.listing.id} item={item} isOwn />
                   ))}

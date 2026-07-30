@@ -8,6 +8,9 @@ import { useUser } from '@/lib/user-context'
 import { SkeletonCard } from '@/components/motion'
 import { STRIKE_BLOCK_RE, StrikeBlockFromJson } from '@/components/ai-blocks'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ============== Types ==============
 interface Message {
@@ -39,13 +42,13 @@ function newId(): string {
   return `c_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: TFn): string {
   const diff = Date.now() - new Date(iso).getTime()
   if (Number.isNaN(diff)) return ''
-  if (diff < 60_000) return 'Just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
+  if (diff < 60_000) return t('aiPage.justNow')
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ${t('aiPage.ago')}`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ${t('aiPage.ago')}`
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ${t('aiPage.ago')}`
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -89,10 +92,10 @@ function saveConversations(convos: Conversation[]) {
   } catch {}
 }
 
-function deriveTitle(messages: Message[]): string {
+function deriveTitle(messages: Message[], t: TFn): string {
   const firstUser = messages.find(m => m.role === 'user')
-  if (!firstUser) return 'New conversation'
-  return firstUser.content.slice(0, 40) || 'New conversation'
+  if (!firstUser) return t('aiPage.newConversation')
+  return firstUser.content.slice(0, 40) || t('aiPage.newConversation')
 }
 
 function buildSystemPrompt(portal: string, page: string, userName?: string, orgId?: string, bankId?: string): string {
@@ -169,14 +172,14 @@ const QUICK_PROMPTS: Record<string, string[]> = {
 // Keywords that should surface an agentic confirmation card before executing.
 const ACTION_KEYWORDS = ['list', 'create listing', 'request financing', 'upload', 'generate document', 'get score']
 
-function describeAction(text: string): string | null {
-  const t = text.toLowerCase()
-  if (t.includes('create listing') || t.includes('list ')) return 'Create a new listing on Strike Place from your catalog data.'
-  if (t.includes('request financing')) return 'Submit a financing request on your behalf using current invoice data.'
-  if (t.includes('upload')) return 'Upload and attach a document to the relevant entity.'
-  if (t.includes('generate document')) return 'Generate a professional document from the current context.'
-  if (t.includes('get score')) return 'Retrieve PassportScore and risk data for the relevant organization.'
-  if (t.includes('list')) return 'Create a new listing on Strike Place from your catalog data.'
+function describeAction(text: string, t: TFn): string | null {
+  const lower = text.toLowerCase()
+  if (lower.includes('create listing') || lower.includes('list ')) return t('aiPage.actionCreateListing')
+  if (lower.includes('request financing')) return t('aiPage.actionRequestFinancing')
+  if (lower.includes('upload')) return t('aiPage.actionUpload')
+  if (lower.includes('generate document')) return t('aiPage.actionGenerateDocument')
+  if (lower.includes('get score')) return t('aiPage.actionGetScore')
+  if (lower.includes('list')) return t('aiPage.actionCreateListing')
   return null
 }
 
@@ -348,24 +351,26 @@ interface TaskThreadMessage {
   created_at: string
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  get_active_deals: 'Review active deals',
-  create_financing_request: 'Submit financing request',
-  create_marketplace_listing: 'Create marketplace listing',
-  submit_marketplace_offer: 'Submit offer',
-  counter_marketplace_offer: 'Send counter-offer',
-  accept_marketplace_offer: 'Finalize deal',
-  reject_marketplace_offer: 'Reject offer',
-  search_marketplace_listings: 'Search marketplace',
-  get_agent_tasks: 'Check agent tasks',
+function toolLabels(t: TFn): Record<string, string> {
+  return {
+    get_active_deals: t('aiPage.tool.reviewActiveDeals'),
+    create_financing_request: t('aiPage.tool.submitFinancingRequest'),
+    create_marketplace_listing: t('aiPage.tool.createMarketplaceListing'),
+    submit_marketplace_offer: t('aiPage.tool.submitOffer'),
+    counter_marketplace_offer: t('aiPage.tool.sendCounterOffer'),
+    accept_marketplace_offer: t('aiPage.tool.finalizeDeal'),
+    reject_marketplace_offer: t('aiPage.tool.rejectOffer'),
+    search_marketplace_listings: t('aiPage.tool.searchMarketplace'),
+    get_agent_tasks: t('aiPage.tool.checkAgentTasks'),
+  }
 }
 
-function friendlyToolLabel(tool: string | undefined): string {
-  if (!tool) return 'Advisory'
-  return TOOL_LABELS[tool] ?? tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+function friendlyToolLabel(tool: string | undefined, t: TFn): string {
+  if (!tool) return t('aiPage.advisory')
+  return toolLabels(t)[tool] ?? tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function describeOutcome(task: AgentTask): { summary: string; href?: string } | null {
+function describeOutcome(task: AgentTask, t: TFn): { summary: string; href?: string } | null {
   const tool = task.proposed_action?.tool_name
   const result = task.result
   if (!result || 'error' in result) return null
@@ -375,60 +380,62 @@ function describeOutcome(task: AgentTask): { summary: string; href?: string } | 
       const amount = Number(result.amount_requested ?? 0)
       const currency = String(result.currency ?? 'USD')
       return {
-        summary: `Financing request for ${currency} ${amount.toLocaleString()} was submitted and is now visible to banks on Strike Place.`,
+        summary: t('aiPage.outcome.financingRequestSubmitted', { currency, amount: amount.toLocaleString() }),
         href: typeof result.url === 'string' ? result.url : undefined,
       }
     }
     case 'create_marketplace_listing': {
       const listingId = result.listing_id
       return {
-        summary: 'Listing was created and published to Strike Place.',
+        summary: t('aiPage.outcome.listingCreated'),
         href: typeof listingId === 'string' ? `/marketplace/listings/${listingId}` : undefined,
       }
     }
     case 'submit_marketplace_offer':
-      return { summary: 'Offer was submitted on the listing.' }
+      return { summary: t('aiPage.outcome.offerSubmitted') }
     case 'counter_marketplace_offer':
-      return { summary: 'Counter-offer was sent to the counterparty.' }
+      return { summary: t('aiPage.outcome.counterOfferSent') }
     case 'accept_marketplace_offer': {
       const dealId = result.deal_id
       return {
-        summary: 'Terms were finalized — a deal was created.',
+        summary: t('aiPage.outcome.termsFinalized'),
         href: typeof dealId === 'string' ? `/deals/${dealId}` : undefined,
       }
     }
     case 'reject_marketplace_offer':
-      return { summary: 'The offer was rejected and the negotiation ended.' }
+      return { summary: t('aiPage.outcome.offerRejected') }
     case 'get_active_deals':
-      return { summary: 'Deals reviewed — no changes were made to your account.' }
+      return { summary: t('aiPage.outcome.dealsReviewed') }
     case 'get_agent_tasks':
-      return { summary: 'Task list reviewed — no changes were made to your account.' }
+      return { summary: t('aiPage.outcome.taskListReviewed') }
     default:
-      return { summary: 'Action completed successfully.' }
+      return { summary: t('aiPage.outcome.actionCompleted') }
   }
 }
 
-const NEGOTIATION_STATUS_LABELS: Record<string, string> = {
-  active:                'Negotiating',
-  awaiting_finalization: 'Awaiting finalization',
-  halted_by_user:        'Stopped',
-  halted_guardrail:      'Halted — agent deactivated',
-  completed_accepted:    'Deal finalized',
-  completed_rejected:    'Rejected',
-  completed_withdrawn:   'Withdrawn',
-  completed_deadline:    'Deadline reached',
-  failed:                'Failed',
+function negotiationStatusLabels(t: TFn): Record<string, string> {
+  return {
+    active:                t('aiPage.negStatus.negotiating'),
+    awaiting_finalization: t('aiPage.negStatus.awaitingFinalization'),
+    halted_by_user:        t('aiPage.negStatus.stopped'),
+    halted_guardrail:      t('aiPage.negStatus.haltedDeactivated'),
+    completed_accepted:    t('aiPage.negStatus.dealFinalized'),
+    completed_rejected:    t('aiPage.negStatus.rejected'),
+    completed_withdrawn:   t('aiPage.negStatus.withdrawn'),
+    completed_deadline:    t('aiPage.negStatus.deadlineReached'),
+    failed:                t('aiPage.negStatus.failed'),
+  }
 }
 
-function timeSince(iso: string | null): string {
-  if (!iso) return 'not yet'
+function timeSince(iso: string | null, t: TFn): string {
+  if (!iso) return t('aiPage.notYet')
   const ms = Date.now() - new Date(iso).getTime()
   const mins = Math.round(ms / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t('aiPage.justNowLower')
+  if (mins < 60) return `${mins}m ${t('aiPage.ago')}`
   const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
+  if (hours < 24) return `${hours}h ${t('aiPage.ago')}`
+  return `${Math.round(hours / 24)}d ${t('aiPage.ago')}`
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -447,23 +454,26 @@ const STATUS_BG: Record<string, string> = {
   rejected:          'var(--offwhite)',
   failed:            '#FEE2E2',
 }
-const STATUS_LABEL: Record<string, string> = {
-  awaiting_approval: 'Needs approval',
-  approved:          'Approved',
-  executing:         'Negotiating',
-  completed:         'Completed',
-  rejected:          'Rejected',
-  failed:            'Failed',
+function statusLabels(t: TFn): Record<string, string> {
+  return {
+    awaiting_approval: t('aiPage.taskStatus.needsApproval'),
+    approved:          t('aiPage.taskStatus.approved'),
+    executing:         t('aiPage.negStatus.negotiating'),
+    completed:         t('deals.status.completed'),
+    rejected:          t('listingDetail.offerStatus.rejected'),
+    failed:            t('aiPage.negStatus.failed'),
+  }
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const t = useT()
   return (
     <span style={{
       padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600,
       background: STATUS_BG[status] ?? 'var(--offwhite)',
       color: STATUS_COLOR[status] ?? 'var(--gray)',
     }}>
-      {STATUS_LABEL[status] ?? status}
+      {statusLabels(t)[status] ?? status}
     </span>
   )
 }
@@ -471,6 +481,7 @@ function StatusBadge({ status }: { status: string }) {
 function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTaskId?: string | null }) {
   void orgId
   const router = useRouter()
+  const t = useT()
   const [tasks, setTasks]         = useState<AgentTask[]>([])
   const [counts, setCounts]       = useState({ pending: 0, completed: 0 })
   const [loading, setLoading]     = useState(true)
@@ -504,7 +515,7 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
     try {
       const res = await fetch('/api/agents/scan', { method: 'POST' })
       const json = await res.json()
-      setScanMsg(json.message ?? 'Scan complete.')
+      setScanMsg(json.message ?? t('agentSettings.scanComplete'))
       await loadTasks()
     } finally { setScanRunning(false) }
   }
@@ -523,23 +534,23 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', margin: 0 }}>Agent Task Queue</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', margin: 0 }}>{t('aiPage.agentTaskQueue')}</h2>
           <p style={{ fontSize: 13, color: 'var(--gray)', margin: '3px 0 0' }}>
-            {counts.pending} pending · {counts.completed} completed
+            {t('aiPage.pendingCompletedCounts', { pending: counts.pending, completed: counts.completed })}
           </p>
         </div>
         <button
           className="btn btn-ghost btn-sm"
           onClick={() => router.push('/settings/agent')}
         >
-          Agent Settings
+          {t('aiPage.agentSettings')}
         </button>
         <button
           className="btn btn-primary btn-sm"
           onClick={runScan}
           disabled={scanRunning}
         >
-          {scanRunning ? 'Scanning…' : 'Run Scan'}
+          {scanRunning ? t('agentSettings.scanning') : t('aiPage.runScan')}
         </button>
       </div>
 
@@ -562,7 +573,7 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
               color: filter === f ? 'var(--blue)' : undefined,
             }}
           >
-            {f === 'all' ? 'All' : f === 'awaiting_approval' ? `Pending (${counts.pending})` : `Done (${counts.completed})`}
+            {f === 'all' ? t('common.all') : f === 'awaiting_approval' ? t('aiPage.pendingCount', { count: counts.pending }) : t('aiPage.doneCount', { count: counts.completed })}
           </button>
         ))}
       </div>
@@ -573,8 +584,8 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
         </div>
       ) : tasks.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--gray)' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No tasks yet</div>
-          <div style={{ fontSize: 13 }}>Run a scan to let your agent analyse your ERP data and propose actions.</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>{t('aiPage.noTasksYet')}</div>
+          <div style={{ fontSize: 13 }}>{t('aiPage.runScanHint')}</div>
         </div>
       ) : (
         <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
@@ -598,7 +609,7 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <StatusBadge status={task.status} />
                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>
-                  {friendlyToolLabel(task.proposed_action?.tool_name)}
+                  {friendlyToolLabel(task.proposed_action?.tool_name, t)}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--gray-soft)', marginLeft: 'auto' }}>
                   {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -618,15 +629,15 @@ function AgentPanel({ orgId, initialOpenTaskId }: { orgId: string; initialOpenTa
                   {task.negotiation.status === 'active' && !task.negotiation.halt_requested && (
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)', animation: 'badge-pulse 2.4s ease infinite', flexShrink: 0 }} />
                   )}
-                  Round {task.negotiation.current_round} of {task.plan?.max_rounds ?? '—'} · last checked {timeSince(task.negotiation.last_tick_at)}
+                  {t('aiPage.roundOfLastChecked', { round: task.negotiation.current_round, max: task.plan?.max_rounds ?? '—', time: timeSince(task.negotiation.last_tick_at, t) })}
                 </div>
               )}
               {task.plan && task.plan.guardrails_configured === false && task.status === 'awaiting_approval' && (
                 <div style={{ fontSize: 11, color: '#92620A', fontWeight: 600, marginTop: 2 }}>
-                  No price guardrails configured
+                  {t('aiPage.noPriceGuardrails')}
                 </div>
               )}
-              <div style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600, marginTop: 4 }}>Open chat →</div>
+              <div style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600, marginTop: 4 }}>{t('aiPage.openChat')}</div>
             </button>
           ))}
         </div>
@@ -698,24 +709,27 @@ function MessageBubble({ role, content }: { role: TaskThreadMessage['role']; con
 
 // What to show while a proposed action is actually executing — keyed by
 // tool_name so the preview reads like real activity, not a generic spinner.
-const WORKING_LABELS: Record<string, string> = {
-  create_marketplace_listing: 'Posting your listing to Strike Place…',
-  submit_marketplace_offer: 'Submitting your offer…',
-  counter_marketplace_offer: 'Sending your counter-offer…',
-  accept_marketplace_offer: 'Finalizing the deal…',
-  reject_marketplace_offer: 'Rejecting the offer…',
-  create_financing_request: 'Submitting your financing request…',
-  search_marketplace_listings: 'Searching the marketplace…',
-  get_active_deals: 'Reviewing active deals…',
-  get_agent_tasks: 'Checking agent tasks…',
+function workingLabels(t: TFn): Record<string, string> {
+  return {
+    create_marketplace_listing: t('aiPage.working.postingListing'),
+    submit_marketplace_offer: t('aiPage.working.submittingOffer'),
+    counter_marketplace_offer: t('aiPage.working.sendingCounterOffer'),
+    accept_marketplace_offer: t('aiPage.working.finalizingDeal'),
+    reject_marketplace_offer: t('aiPage.working.rejectingOffer'),
+    create_financing_request: t('aiPage.working.submittingFinancingRequest'),
+    search_marketplace_listings: t('aiPage.working.searchingMarketplace'),
+    get_active_deals: t('aiPage.working.reviewingActiveDeals'),
+    get_agent_tasks: t('aiPage.working.checkingAgentTasks'),
+  }
 }
 
-function describeWorking(toolName: string | undefined): string {
-  if (!toolName) return 'Working…'
-  return WORKING_LABELS[toolName] ?? `Running ${toolName.replace(/_/g, ' ')}…`
+function describeWorking(toolName: string | undefined, t: TFn): string {
+  if (!toolName) return t('aiPage.working.working')
+  return workingLabels(t)[toolName] ?? t('aiPage.working.running', { tool: toolName.replace(/_/g, ' ') })
 }
 
 function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void }) {
+  const t = useT()
   const [loading, setLoading] = useState(true)
   const [rootTask, setRootTask] = useState<AgentTask | null>(null)
   const [currentTask, setCurrentTask] = useState<AgentTask | null>(null)
@@ -849,13 +863,13 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
   }
 
   if (loading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>Loading…</div>
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>{t('common.loading')}</div>
   }
   if (!rootTask || !currentTask) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--gray)' }}>
-        <div style={{ marginBottom: 12 }}>This plan couldn&apos;t be found.</div>
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Back</button>
+        <div style={{ marginBottom: 12 }}>{t('aiPage.planNotFound')}</div>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}>← {t('dealImport.back')}</button>
       </div>
     )
   }
@@ -873,11 +887,11 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
           onClick={onBack}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'var(--gray)', marginBottom: 8 }}
         >
-          ← Back to all plans
+          ← {t('aiPage.backToAllPlans')}
         </button>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
           <StatusBadge status={effectiveStatus} />
-          <span style={{ fontSize: 11, color: 'var(--gray)' }}>{friendlyToolLabel(currentTask.proposed_action?.tool_name)}</span>
+          <span style={{ fontSize: 11, color: 'var(--gray)' }}>{friendlyToolLabel(currentTask.proposed_action?.tool_name, t)}</span>
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{rootTask.title}</div>
 
@@ -891,22 +905,22 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
                 }} />
               )}
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>
-                {NEGOTIATION_STATUS_LABELS[rootTask.negotiation.status] ?? rootTask.negotiation.status}
+                {negotiationStatusLabels(t)[rootTask.negotiation.status] ?? rootTask.negotiation.status}
               </span>
               <span style={{ fontSize: 12, color: 'var(--gray)' }}>
-                Round {rootTask.negotiation.current_round} of {rootTask.plan?.max_rounds ?? '—'}
+                {t('aiPage.roundOf', { round: rootTask.negotiation.current_round, max: rootTask.plan?.max_rounds ?? '—' })}
               </span>
               <span style={{ fontSize: 12, color: 'var(--gray-soft)' }}>
-                · last checked {timeSince(rootTask.negotiation.last_tick_at)}
+                · {t('aiPage.lastChecked')} {timeSince(rootTask.negotiation.last_tick_at, t)}
               </span>
             </div>
             {rootTask.negotiation.status === 'active' && !rootTask.negotiation.halt_requested && (
               <div style={{ fontSize: 11.5, color: 'var(--gray)', marginBottom: 8 }}>
-                Live — negotiating autonomously with the counterparty&apos;s agent. Checks automatically every few minutes; this page refreshes on its own.
+                {t('aiPage.liveNegotiatingHint')}
               </div>
             )}
             {rootTask.negotiation.halt_requested ? (
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>Stop requested — will halt on the next check.</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{t('aiPage.stopRequestedHint')}</div>
             ) : (
               <button
                 className="btn btn-ghost btn-sm"
@@ -914,7 +928,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
                 disabled={acting}
                 style={{ color: 'var(--color-red)', borderColor: 'var(--color-red)' }}
               >
-                {acting ? 'Stopping…' : 'Stop negotiation'}
+                {acting ? t('aiPage.stopping') : t('aiPage.stopNegotiation')}
               </button>
             )}
           </div>
@@ -922,7 +936,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
 
         {currentTask.plan?.guardrails_configured === false && (isAwaitingApproval || isNegotiating) && (
           <div style={{ marginTop: 10, padding: '10px 12px', background: '#FEF3C7', borderRadius: 'var(--radius-sm)', fontSize: 12, color: '#92620A', lineHeight: 1.5 }}>
-            No price guardrails are configured for your agent — it will use its own judgment on price. You&apos;ll still approve the final terms before any deal is created.
+            {t('aiPage.noGuardrailsFullHint')}
           </div>
         )}
 
@@ -932,7 +946,7 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
               onClick={() => setShowDetails((v) => !v)}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: 'var(--gray-soft)', textDecoration: 'underline' }}
             >
-              {showDetails ? 'Hide technical details' : 'Technical details'}
+              {showDetails ? t('aiPage.hideTechnicalDetails') : t('aiPage.technicalDetails')}
             </button>
             {showDetails && (
               <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--offwhite)', borderRadius: 'var(--radius-sm)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
@@ -952,17 +966,17 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
         <MessageBubble role="assistant" content={rootTask.body ?? rootTask.title} />
         {messages.map((m) => <MessageBubble key={m.id} role={m.role} content={m.content} />)}
         {acting && (
-          <WorkingBubble label={describeWorking(currentTask.proposed_action?.tool_name)} />
+          <WorkingBubble label={describeWorking(currentTask.proposed_action?.tool_name, t)} />
         )}
         {sending && !acting && (
-          <WorkingBubble label="Thinking…" />
+          <WorkingBubble label={t('aiPage.thinking')} />
         )}
         {currentTask.status === 'completed' && (() => {
-          const outcome = describeOutcome(currentTask)
+          const outcome = describeOutcome(currentTask, t)
           return outcome?.href ? (
             <div style={{ textAlign: 'center' }}>
               <a href={outcome.href} style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 700, textDecoration: 'underline' }}>
-                View it →
+                {t('aiPage.viewIt')}
               </a>
             </div>
           ) : null
@@ -975,14 +989,14 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
           {isAwaitingApproval && (
             <>
               <button className="btn btn-primary btn-sm shine" onClick={approve} disabled={acting} style={{ minWidth: 96 }}>
-                {acting ? 'Executing…' : '✓ Approve'}
+                {acting ? t('aiPage.executing') : `✓ ${t('listingDetail.accept')}`}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={reject} disabled={acting}>Reject</button>
+              <button className="btn btn-ghost btn-sm" onClick={reject} disabled={acting}>{t('listingDetail.reject')}</button>
             </>
           )}
           {isFailed && (
             <button className="btn btn-ghost btn-sm" onClick={retry} disabled={acting} style={{ color: 'var(--color-amber)', borderColor: 'var(--color-amber)' }}>
-              {acting ? 'Resetting…' : '↺ Retry'}
+              {acting ? t('aiPage.resetting') : `↺ ${t('aiPage.retry')}`}
             </button>
           )}
         </div>
@@ -994,14 +1008,14 @@ function TaskThreadView({ taskId, onBack }: { taskId: string; onBack: () => void
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder="Ask Strike AI about this plan, or ask it to revise the terms…"
+          placeholder={t('aiPage.askAboutPlanPlaceholder')}
           style={{
             flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-input)',
             border: '1px solid var(--border)', fontSize: 13.5, background: 'var(--offwhite)',
           }}
         />
         <button className="btn btn-primary btn-sm" onClick={send} disabled={sending || !input.trim()}>
-          {sending ? 'Sending…' : 'Send'}
+          {sending ? t('aiPage.sending') : t('aiPage.send')}
         </button>
       </div>
     </div>
@@ -1015,6 +1029,7 @@ function AIWorkspaceInner() {
   const userName = user?.full_name || undefined
   const searchParams = useSearchParams()
   const router = useRouter()
+  const t = useT()
 
   const [activeTab, setActiveTab] = useState<'chat' | 'agent'>(
     searchParams.get('tab') === 'agent' ? 'agent' : 'chat'
@@ -1024,7 +1039,7 @@ function AIWorkspaceInner() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loadingPhrase, setLoadingPhrase] = useState('Thinking')
+  const [loadingPhrase, setLoadingPhrase] = useState('')
   const [collapsed, setCollapsed] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ text: string; description: string } | null>(null)
   const [attachment, setAttachment] = useState<{ filename: string; text: string } | null>(null)
@@ -1131,14 +1146,14 @@ function AIWorkspaceInner() {
     if (convoId) {
       working = conversations.map(c =>
         c.id === convoId
-          ? { ...c, messages: [...c.messages, userMsg], title: deriveTitle([...c.messages, userMsg]), updatedAt: now }
+          ? { ...c, messages: [...c.messages, userMsg], title: deriveTitle([...c.messages, userMsg], t), updatedAt: now }
           : c
       )
     } else {
       convoId = newId()
       const fresh: Conversation = {
         id: convoId,
-        title: deriveTitle([userMsg]),
+        title: deriveTitle([userMsg], t),
         messages: [userMsg],
         createdAt: now,
         updatedAt: now,
@@ -1167,12 +1182,12 @@ function AIWorkspaceInner() {
 
       let reply: string
       if (res.status === 429) {
-        reply = 'Daily AI limit reached. Resets at midnight UTC.'
+        reply = t('aiPage.dailyLimitReached')
       } else {
         const data = await res.json()
         reply = data.content?.find?.((b: { type: string; text?: string }) => b.type === 'text')?.text
           ?? data.content?.[0]?.text
-          ?? 'No response'
+          ?? t('aiPage.noResponse')
       }
 
       const replyTime = new Date().toISOString()
@@ -1188,7 +1203,7 @@ function AIWorkspaceInner() {
       })
     } catch {
       const errTime = new Date().toISOString()
-      const errMsg: Message = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', timestamp: errTime }
+      const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
       setConversations(prev => {
         const updated = prev.map(c =>
           c.id === convoId ? { ...c, messages: [...c.messages, errMsg], updatedAt: errTime } : c
@@ -1199,7 +1214,7 @@ function AIWorkspaceInner() {
     } finally {
       setLoading(false)
     }
-  }, [activeId, conversations, loading, persist, portal, userName])
+  }, [activeId, conversations, loading, persist, portal, userName, t])
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1211,11 +1226,11 @@ function AIWorkspaceInner() {
       form.append('file', file)
       const res = await fetch('/api/ai/upload', { method: 'POST', body: form })
       const data = await res.json()
-      if (!res.ok) { alert(data.error ?? 'Upload failed'); return }
+      if (!res.ok) { alert(data.error ?? t('aiPage.uploadFailed')); return }
       setAttachment({ filename: data.filename as string, text: data.text as string })
       inputRef.current?.focus()
     } catch {
-      alert('Upload failed. Please try again.')
+      alert(t('aiPage.uploadFailedRetry'))
     } finally {
       setUploading(false)
     }
@@ -1226,7 +1241,7 @@ function AIWorkspaceInner() {
     if ((!trimmed && !attachment) || loading) return
 
     if (attachment) {
-      const userTyped = trimmed || 'Please analyze this document.'
+      const userTyped = trimmed || t('aiPage.pleaseAnalyzeDocument')
       const fullContent = `[Attached document: "${attachment.filename}"]\n\n${attachment.text}\n\n---\n\n${userTyped}`
       const att = attachment
       setAttachment(null)
@@ -1245,7 +1260,7 @@ function AIWorkspaceInner() {
   }
 
   const quickPrompts = QUICK_PROMPTS[portal] ?? QUICK_PROMPTS.bank!
-  const contextBadge = portal.charAt(0).toUpperCase() + portal.slice(1) + ' Portal'
+  const contextBadge = t(`aiPage.${portal}Portal`)
 
   return (
     <>
@@ -1292,15 +1307,15 @@ function AIWorkspaceInner() {
                 transition: 'background 0.15s', flexShrink: 0,
               }}
             >
-              New Chat
+              {t('aiPage.newChat')}
             </button>
             {/* Collapse chevron — icon only, top-right of the panel */}
             <button
               type="button"
               className="strike-ai-log-toggle"
               onClick={toggleCollapsed}
-              aria-label="Collapse conversation history"
-              title="Collapse"
+              aria-label={t('aiPage.collapseConversationHistory')}
+              title={t('aiPage.collapse')}
               style={{
                 width: 28, height: 28, flexShrink: 0, borderRadius: 8,
                 background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1318,16 +1333,16 @@ function AIWorkspaceInner() {
                   padding: '4px 12px 6px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em',
                   textTransform: 'uppercase', color: 'var(--blue)',
                 }}>
-                  Agent
+                  {t('aiPage.agent')}
                 </div>
                 {[...agentThreads]
                   .sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime())
-                  .map(t => (
+                  .map(th => (
                     <button
-                      key={t.id}
+                      key={th.id}
                       type="button"
                       className="strike-ai-convo card-interactive"
-                      onClick={() => openAgentThread(t.id)}
+                      onClick={() => openAgentThread(th.id)}
                       style={{
                         width: '100%', textAlign: 'left', padding: '10px 12px',
                         borderRadius: 8, cursor: 'pointer', border: 'none',
@@ -1344,10 +1359,10 @@ function AIWorkspaceInner() {
                           fontSize: 13, color: 'var(--ink)',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
-                          {t.title}
+                          {th.title}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
-                          {relativeTime(t.updated_at ?? t.created_at)}
+                          {relativeTime(th.updated_at ?? th.created_at, t)}
                         </div>
                       </span>
                     </button>
@@ -1356,7 +1371,7 @@ function AIWorkspaceInner() {
             )}
             {conversations.length === 0 ? (
               <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
-                No conversations yet
+                {t('aiPage.noConversationsYet')}
               </div>
             ) : (
               [...conversations]
@@ -1381,10 +1396,10 @@ function AIWorkspaceInner() {
                         fontSize: 13, color: 'var(--ink)', fontWeight: active ? 600 : 400,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
-                        {c.title || 'New conversation'}
+                        {c.title || t('aiPage.newConversation')}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>
-                        {relativeTime(c.updatedAt)}
+                        {relativeTime(c.updatedAt, t)}
                       </div>
                     </button>
                   )
@@ -1399,8 +1414,8 @@ function AIWorkspaceInner() {
             type="button"
             className="strike-ai-log-toggle"
             onClick={toggleCollapsed}
-            aria-label="Expand conversation history"
-            title="Expand"
+            aria-label={t('aiPage.expandConversationHistory')}
+            title={t('aiPage.expand')}
             style={{
               position: 'absolute', left: 10, top: 14,
               width: 28, height: 28, borderRadius: 8, zIndex: 10,
@@ -1451,7 +1466,7 @@ function AIWorkspaceInner() {
                     boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
                   }}
                 >
-                  {tab === 'chat' ? 'Chat' : 'Agent'}
+                  {tab === 'chat' ? t('aiPage.chatTab') : t('aiPage.agent')}
                 </button>
               ))}
             </div>
@@ -1488,7 +1503,7 @@ function AIWorkspaceInner() {
                     </svg>
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', marginTop: 8 }}>Strike AI</div>
-                  <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>Your autonomous supply chain finance agent</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>{t('aiPage.autonomousAgentSubtitle')}</div>
                 </div>
                 <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxWidth: 480, width: '100%' }}>
                   {quickPrompts.map((p, i) => (
@@ -1572,7 +1587,7 @@ function AIWorkspaceInner() {
                     padding: 16, maxWidth: '92%',
                   }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>
-                      Strike AI wants to execute an action
+                      {t('aiPage.wantsToExecuteAction')}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 14 }}>
                       {pendingAction.description}
@@ -1586,7 +1601,7 @@ function AIWorkspaceInner() {
                           border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                         }}
                       >
-                        Execute
+                        {t('aiPage.execute')}
                       </button>
                       <button
                         type="button"
@@ -1597,7 +1612,7 @@ function AIWorkspaceInner() {
                           fontSize: 13, fontWeight: 600,
                         }}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -1646,7 +1661,7 @@ function AIWorkspaceInner() {
                 <button
                   type="button"
                   onClick={() => setAttachment(null)}
-                  aria-label="Remove attachment"
+                  aria-label={t('aiPage.removeAttachment')}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
                 >
                   <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" aria-hidden="true">
@@ -1670,10 +1685,10 @@ function AIWorkspaceInner() {
               />
               <button
                 type="button"
-                aria-label={uploading ? 'Uploading…' : 'Attach file'}
+                aria-label={uploading ? t('aiPage.uploading') : t('aiPage.attachFile')}
                 onClick={() => !uploading && fileInputRef.current?.click()}
                 disabled={uploading}
-                title="Attach a file (PDF, image, text, CSV)"
+                title={t('aiPage.attachFileTitle')}
                 style={{
                   width: 32, height: 32, flexShrink: 0, borderRadius: '50%',
                   background: uploading ? 'var(--gray-soft)' : attachment ? 'var(--blue-hover)' : 'var(--blue)',
@@ -1705,7 +1720,7 @@ function AIWorkspaceInner() {
                   }
                 }}
                 rows={1}
-                placeholder={attachment ? `Ask about ${attachment.filename}…` : 'Ask Strike anything…'}
+                placeholder={attachment ? t('aiPage.askAboutAttachment', { filename: attachment.filename }) : t('aiPage.askStrikeAnything')}
                 style={{
                   flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent',
                   fontSize: 15, color: 'var(--ink)', fontFamily: 'var(--font-body)',
@@ -1714,7 +1729,7 @@ function AIWorkspaceInner() {
               />
               <button
                 type="button"
-                aria-label="Send"
+                aria-label={t('aiPage.send')}
                 onClick={() => submit(input)}
                 disabled={(!input.trim() && !attachment) || loading}
                 style={{

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import './marketplace.css'
+import { LocaleProvider } from '@/lib/i18n/locale-context'
 
 // Favicon is handled solely by the app/icon.png file convention — Next.js
 // generates the <link rel="icon"> tag for it automatically. Do not also set
@@ -24,7 +25,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
       </head>
@@ -57,7 +58,7 @@ export default function RootLayout({
             <symbol id="i-error" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.4"/><path d="M8 5v3.5M8 11v.01" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></symbol>
           </defs>
         </svg>
-        {children}
+        <LocaleProvider>{children}</LocaleProvider>
       </body>
     </html>
   )

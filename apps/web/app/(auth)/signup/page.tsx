@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from 'react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/locale-context'
+import { LanguageSwitcher } from '@/components/language-switcher'
 
 type RoleChoice = 'anchor' | 'supplier'
 
@@ -48,11 +50,11 @@ function EyeIcon({ off }: { off?: boolean }) {
   )
 }
 
-const ROLE_CHOICES: { id: RoleChoice; title: string; desc: string; icon: React.ReactNode }[] = [
+const ROLE_CHOICES: { id: RoleChoice; titleKey: string; descKey: string; icon: React.ReactNode }[] = [
   {
     id: 'anchor',
-    title: 'Buyer / Anchor',
-    desc: 'Offer early payment to your suppliers.',
+    titleKey: 'signup.roleBuyer',
+    descKey: 'signup.roleBuyerDesc',
     icon: (
       <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="6" width="14" height="10" rx="1.5" />
@@ -63,8 +65,8 @@ const ROLE_CHOICES: { id: RoleChoice; title: string; desc: string; icon: React.R
   },
   {
     id: 'supplier',
-    title: 'Supplier',
-    desc: 'Get paid early on your invoices.',
+    titleKey: 'signup.roleSupplier',
+    descKey: 'signup.roleSupplierDesc',
     icon: (
       <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
         <rect x="5" y="3" width="10" height="14" rx="1.5" />
@@ -76,6 +78,7 @@ const ROLE_CHOICES: { id: RoleChoice; title: string; desc: string; icon: React.R
 
 function SignupPageInner() {
   const router = useRouter()
+  const t = useT()
   const searchParams = useSearchParams()
   const inviteToken    = searchParams.get('invite_token') ?? ''
   const prefillEmail   = searchParams.get('email') ?? ''
@@ -212,16 +215,16 @@ function SignupPageInner() {
             lineHeight: 1.15,
             margin: '0 0 16px',
           }}>
-            Start transacting<br/>in minutes.
+            {t('signup.heroTitle')}
           </h2>
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65, margin: '0 0 36px', maxWidth: 320 }}>
-            Create your account, activate your Passport, and start financing deals on the same day.
+            {t('signup.heroSubtitle')}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {([
-              ['Free to join', 'No setup fees. Activate when you\'re ready to transact.'],
-              ['AI-powered onboarding', 'Smart document extraction speeds up your KYB process.'],
-              ['Instant deal access', 'Connect with anchors and banks in your first week.'],
+              [t('signup.feature1Title'), t('signup.feature1Desc')],
+              [t('signup.feature2Title'), t('signup.feature2Desc')],
+              [t('signup.feature3Title'), t('signup.feature3Desc')],
             ] as const).map(([title, desc]) => (
               <div key={title} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <div style={{
@@ -245,7 +248,7 @@ function SignupPageInner() {
         </div>
 
         <div style={{ position: 'relative', zIndex: 1, fontSize: 12, color: 'rgba(255,255,255,0.28)', lineHeight: 1.6 }}>
-          © 2026 Strike SCF · Trusted by leading banks and corporations
+          {t('signup.footer')}
         </div>
       </div>
 
@@ -341,6 +344,9 @@ function SignupPageInner() {
         .su-submit:disabled { opacity: 0.55; cursor: not-allowed; }
       `}</style>
 
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <LanguageSwitcher />
+        </div>
         {/* Heading */}
         <div style={{ marginBottom: 28 }}>
           <h1 style={{
@@ -351,25 +357,25 @@ function SignupPageInner() {
             color:         'var(--ink)',
             margin:        '0 0 6px',
           }}>
-            Create your account
+            {t('signup.title')}
           </h1>
           <p style={{ fontSize: 13.5, color: 'var(--gray)', margin: 0, lineHeight: 1.55 }}>
-            Join Strike SCF — activate your Passport later to start transacting.
+            {t('signup.subtitle')}
           </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Role */}
           <div>
-            <span className="su-label">I am a…</span>
+            <span className="su-label">{t('signup.roleLabel')}</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {ROLE_CHOICES.map(t => {
-                const sel = role === t.id
+              {ROLE_CHOICES.map(choice => {
+                const sel = role === choice.id
                 return (
                   <button
-                    key={t.id}
+                    key={choice.id}
                     type="button"
-                    onClick={() => setRole(t.id)}
+                    onClick={() => setRole(choice.id)}
                     className={`su-role-card${sel ? ' selected' : ''}`}
                   >
                     <div style={{
@@ -382,11 +388,11 @@ function SignupPageInner() {
                       color:      sel ? '#fff' : 'var(--gray)',
                       transition: 'background 0.15s, color 0.15s',
                     }}>
-                      {t.icon}
+                      {choice.icon}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>{t.title}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, lineHeight: 1.4 }}>{t.desc}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>{t(choice.titleKey)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, lineHeight: 1.4 }}>{t(choice.descKey)}</div>
                     </div>
                   </button>
                 )
@@ -396,7 +402,7 @@ function SignupPageInner() {
 
           {/* Full name */}
           <div>
-            <label className="su-label">Full name</label>
+            <label className="su-label">{t('signup.fullNameLabel')}</label>
             <input
               className="su-input"
               type="text"
@@ -409,7 +415,7 @@ function SignupPageInner() {
 
           {/* Work email */}
           <div>
-            <label className="su-label">Work email</label>
+            <label className="su-label">{t('signup.emailLabel')}</label>
             <input
               className="su-input"
               type="email"
@@ -428,7 +434,7 @@ function SignupPageInner() {
 
           {/* Company + country */}
           <div>
-            <label className="su-label">Company name</label>
+            <label className="su-label">{t('signup.companyLabel')}</label>
             <input
               className="su-input"
               type="text"
@@ -440,13 +446,13 @@ function SignupPageInner() {
           </div>
 
           <div>
-            <label className="su-label">Country</label>
+            <label className="su-label">{t('signup.countryLabel')}</label>
             <select
               className="su-input su-select"
               value={country}
               onChange={e => setCountry(e.target.value)}
             >
-              <option value="">Select country…</option>
+              <option value="">{t('common.select')}</option>
               {COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>{c.name}</option>
               ))}
@@ -455,7 +461,7 @@ function SignupPageInner() {
 
           {/* Password */}
           <div>
-            <label className="su-label">Password</label>
+            <label className="su-label">{t('signup.passwordLabel')}</label>
             <div style={{ position: 'relative' }}>
               <input
                 className="su-input"
@@ -511,14 +517,14 @@ function SignupPageInner() {
             disabled={!canSubmit}
             className="su-submit"
           >
-            {loading ? 'Creating account…' : 'Create account →'}
+            {loading ? t('signup.creatingAccount') : t('signup.createAccount')}
           </button>
         </div>
 
         <p style={{ marginTop: 22, fontSize: 12.5, color: 'var(--gray)', textAlign: 'center' }}>
-          Already have an account?{' '}
+          {t('signup.haveAccount')}{' '}
           <a href="/login" style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
-            Sign in
+            {t('signup.signIn')}
           </a>
         </p>
 
@@ -532,11 +538,11 @@ function SignupPageInner() {
           textAlign: 'center',
           lineHeight: 1.5,
         }}>
-          Are you a bank or lender?{' '}
+          {t('signup.bankQuestion')}{' '}
           <a href="mailto:banks@strikescf.com" style={{ color: 'var(--blue)', textDecoration: 'none' }}>
-            Contact us
+            {t('signup.contactUs')}
           </a>
-          {' '}to get set up.
+          {' '}{t('signup.toGetSetUp')}
         </div>
         </div>
       </div>

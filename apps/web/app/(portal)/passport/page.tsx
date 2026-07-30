@@ -12,6 +12,9 @@ import {
   type PassportReview,
   type PassportDoc,
 } from '@/components/passport-sections'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Expert Analysis types ─────────────────────────────────────────────────────
 
@@ -61,6 +64,20 @@ interface PassportResponse {
   bank_view_count_30d: number
   org_view_count_30d: number
   network_passport_score_median: number | null
+  catalog: CatalogListing[]
+}
+
+interface CatalogListing {
+  id: string
+  title: string
+  listing_type: string
+  category: string | null
+  target_price: number | null
+  currency: string
+  unit: string | null
+  cover_image_url: string | null
+  delivery_deadline: string | null
+  created_at: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -87,23 +104,93 @@ function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | 
   )
 }
 
+function OrgCatalog({ listings, orgName, onManage }: { listings: CatalogListing[]; orgName: string | null; onManage: () => void }) {
+  const t = useT()
+  const router = useRouter()
+
+  return (
+    <div className="card">
+      <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>
+          {t('passport.myProductsListings')}
+          <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--gray)', fontSize: 12 }}>
+            {t('passport.activeCount', { count: String(listings.length) })}
+          </span>
+        </span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onManage}>{t('passport.manageOnStrikePlace')}</button>
+      </div>
+      {listings.length === 0 ? (
+        <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
+          {t('passport.noListingsYet')}
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: 14,
+            padding: 16,
+          }}
+        >
+          {listings.map((item) => (
+            <div
+              key={item.id}
+              className="card card-interactive"
+              style={{ overflow: 'hidden', cursor: 'pointer' }}
+              onClick={() => router.push(`/marketplace/listings/${item.id}`)}
+            >
+              {item.cover_image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.cover_image_url} alt={item.title} className="listing-card-image" />
+              ) : (
+                <div className="listing-card-image" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray-soft)' }}>
+                  <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6" />
+                  </svg>
+                </div>
+              )}
+              <div style={{ padding: 12 }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>
+                  {item.category ?? (item.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService'))}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>
+                  {item.title}
+                </div>
+                {item.target_price != null && (
+                  <div style={{ fontSize: 13, color: 'var(--gray)' }}>
+                    {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(item.target_price)} {item.currency}
+                    {item.unit && <span> / {item.unit}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TypeBadge({ type }: { type: string | null }) {
+  const t = useT()
   const isBuyer = type === 'anchor'
   return (
     <span className="badge" style={{ background: isBuyer ? 'var(--color-accent-light)' : 'var(--color-green-bg)', color: isBuyer ? 'var(--blue)' : 'var(--color-green)', borderColor: isBuyer ? 'var(--blue)' : 'var(--color-green)' }}>
-      {isBuyer ? 'BUYER' : 'SUPPLIER'}
+      {isBuyer ? t('passport.buyer') : t('passport.supplier')}
     </span>
   )
 }
 
 // ── Score Breakdown ───────────────────────────────────────────────────────────
 
-const DIMS: { key: keyof ExpertAnalysis['scores']; label: string }[] = [
-  { key: 'kyb_compliance',    label: 'KYB & Compliance' },
-  { key: 'financial_health',  label: 'Financial Health' },
-  { key: 'trade_reliability', label: 'Trade Reliability' },
-  { key: 'network_reputation',label: 'Network Reputation' },
-]
+function dims(t: TFn): { key: keyof ExpertAnalysis['scores']; label: string }[] {
+  return [
+    { key: 'kyb_compliance',    label: t('passport.dim.kybCompliance') },
+    { key: 'financial_health',  label: t('passport.dim.financialHealth') },
+    { key: 'trade_reliability', label: t('passport.dim.tradeReliability') },
+    { key: 'network_reputation',label: t('passport.dim.networkReputation') },
+  ]
+}
 
 function dimColor(score: number): string {
   const p = score / 25
@@ -118,17 +205,18 @@ function tierColor(tier: string) {
   return { color: 'var(--color-red)', bg: 'var(--color-red-bg, #FEE2E2)' }
 }
 
-function confLabel(c: string) {
-  if (c === 'high')   return { label: 'High Confidence',   color: 'var(--color-green)' }
-  if (c === 'medium') return { label: 'Medium Confidence', color: 'var(--color-amber)' }
-  return                     { label: 'Low Confidence',    color: 'var(--color-red)' }
+function confLabel(c: string, t: TFn) {
+  if (c === 'high')   return { label: t('passport.confHigh'),   color: 'var(--color-green)' }
+  if (c === 'medium') return { label: t('passport.confMedium'), color: 'var(--color-amber)' }
+  return                     { label: t('passport.confLow'),    color: 'var(--color-red)' }
 }
 
 function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: ExpertAnalysis; onRerun?: () => void; rerunning?: boolean }) {
+  const t = useT()
   const [openDim, setOpenDim] = useState<string | null>(null)
   const [openSection, setOpenSection] = useState<'strengths' | 'actions' | null>('strengths')
   const tc = tierColor(analysis.risk_tier)
-  const cc = confLabel(analysis.analyst_confidence)
+  const cc = confLabel(analysis.analyst_confidence, t)
 
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
@@ -141,10 +229,10 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
       }}>
         <div style={{ width: 5, height: 5, background: 'var(--blue)', animation: 'badge-pulse 2.4s infinite', flexShrink: 0 }} />
         <span style={{ flex: 1, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--blue)' }}>
-          Strike AI · Expert Score Breakdown
+          {t('passport.expertScoreBreakdown')}
         </span>
         <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: tc.bg, color: tc.color }}>
-          {analysis.risk_tier.charAt(0).toUpperCase() + analysis.risk_tier.slice(1)} Tier
+          {t('passport.tierSuffix', { tier: analysis.risk_tier.charAt(0).toUpperCase() + analysis.risk_tier.slice(1) })}
         </span>
         <span style={{ fontSize: 11, fontWeight: 600, color: cc.color }}>{cc.label}</span>
         {onRerun && (
@@ -154,7 +242,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             disabled={rerunning}
             style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--blue)', background: 'transparent', color: 'var(--blue)', cursor: rerunning ? 'not-allowed' : 'pointer', opacity: rerunning ? 0.6 : 1, whiteSpace: 'nowrap' }}
           >
-            {rerunning ? 'Analyzing…' : 'Update Score'}
+            {rerunning ? t('passport.analyzing') : t('passport.updateScore')}
           </button>
         )}
       </div>
@@ -170,10 +258,10 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
             }}>
               <CountUp value={analysis.total_score} />
             </div>
-            <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>out of 100</div>
+            <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>{t('passport.outOf100')}</div>
             {analysis.documents_analyzed.length > 0 && (
               <div style={{ marginTop: 6, fontSize: 11, color: 'var(--gray-soft)', padding: '3px 8px', borderRadius: 999, background: 'var(--offwhite)', border: '1px solid var(--border)', display: 'inline-block' }}>
-                {analysis.documents_analyzed.length} doc{analysis.documents_analyzed.length !== 1 ? 's' : ''} read
+                {t('passport.docsRead', { count: String(analysis.documents_analyzed.length) })}
               </div>
             )}
           </div>
@@ -195,7 +283,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
 
         {/* ── 4 dimension bars ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
-          {DIMS.map(({ key, label }) => {
+          {dims(t).map(({ key, label }) => {
             const dim = analysis.scores[key]
             const color = dimColor(dim.score)
             const isOpen = openDim === key
@@ -230,7 +318,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
                     )}
                     {dim.missing_docs && dim.missing_docs.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Missing</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--color-amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('passport.missing')}</span>
                         {dim.missing_docs.map((d, i) => (
                           <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                             <div style={{ width: 3, height: 3, background: 'var(--color-amber)', borderRadius: '50%', flexShrink: 0, marginTop: 5 }} />
@@ -264,7 +352,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
               <button type="button" onClick={() => setOpenSection(openSection === 'strengths' ? null : 'strengths')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-green)', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-green)' }}>Key Strengths</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-green)' }}>{t('passport.keyStrengths')}</span>
                 <span style={{ fontSize: 11, color: 'var(--gray)', background: 'var(--color-green-bg)', padding: '2px 8px', borderRadius: 999 }}>
                   {analysis.key_strengths.length}
                 </span>
@@ -289,7 +377,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
               <button type="button" onClick={() => setOpenSection(openSection === 'actions' ? null : 'actions')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--blue)', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--blue)' }}>How to Improve</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--blue)' }}>{t('passport.howToImprove')}</span>
                 <span style={{ fontSize: 11, color: 'var(--blue)', background: 'var(--color-accent-light, #EEF0FF)', padding: '2px 8px', borderRadius: 999 }}>
                   {analysis.improvement_actions.length}
                 </span>
@@ -312,7 +400,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
         {/* Analyst notes */}
         {analysis.analyst_notes && (
           <div style={{ fontSize: 11.5, color: 'var(--gray)', fontStyle: 'italic', lineHeight: 1.5, paddingTop: 4, borderTop: '1px solid var(--border)' }}>
-            Analyst note: {analysis.analyst_notes}
+            {t('passport.analystNote')} {analysis.analyst_notes}
           </div>
         )}
       </div>
@@ -323,7 +411,8 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
 // ── No-analysis placeholder ───────────────────────────────────────────────────
 
 function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: () => void; loading: boolean }) {
-  const steps = ['Reading uploaded documents…', 'Cross-referencing financials…', 'Scoring compliance posture…', 'Finalizing expert analysis…']
+  const t = useT()
+  const steps = [t('passport.step.reading'), t('passport.step.crossReferencing'), t('passport.step.scoring'), t('passport.step.finalizing')]
   const [step, setStep] = useState(0)
   const ref = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -344,10 +433,10 @@ function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: 
         </div>
         <div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>
-            No Expert Analysis Yet
+            {t('passport.noAnalysisYet')}
           </div>
           <p style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6, margin: 0, maxWidth: 380 }}>
-            Upload your KYB documents in the section below, then run the Expert AI Analysis. Claude will read every document and score your business across 4 dimensions.
+            {t('passport.noAnalysisHint')}
           </p>
         </div>
         {loading ? (
@@ -361,7 +450,7 @@ function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: 
           </div>
         ) : (
           <button type="button" className="btn btn-primary" onClick={onRunAnalysis}>
-            Update Passport Score →
+            {t('passport.updateScoreArrow')}
           </button>
         )}
       </div>
@@ -372,18 +461,20 @@ function ScoreBreakdownPlaceholder({ onRunAnalysis, loading }: { onRunAnalysis: 
 // ── Ghost / Review banners ────────────────────────────────────────────────────
 
 function ActivationPrompt({ onActivate }: { onActivate: () => void }) {
+  const t = useT()
+  const items = [t('passport.benefit1'), t('passport.benefit2'), t('passport.benefit3')]
   return (
     <div className="card">
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 16, padding: '48px 24px' }}>
-        <PassportScoreRing score={null} size="lg" showLabel pendingLabel="Passport Inactive" />
+        <PassportScoreRing score={null} size="lg" showLabel pendingLabel={t('passport.passportInactive')} />
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)', margin: 0 }}>
-          Activate your Strike Passport
+          {t('passport.activateYourPassport')}
         </h2>
         <p style={{ fontSize: 14, color: 'var(--gray)', lineHeight: 1.6, maxWidth: 460, margin: 0 }}>
-          Your Passport is your AI-verified business identity on Strike. Complete verification to get your PassportScore, become visible to counterparties, and start transacting.
+          {t('passport.activateHint')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 420, marginTop: 4 }}>
-          {['Get a verified PassportScore', 'Become discoverable on Strike Place', 'Submit financing requests and manage deals'].map((item, i) => (
+          {items.map((item, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 5, height: 5, background: 'var(--blue)', flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>{item}</span>
@@ -391,7 +482,7 @@ function ActivationPrompt({ onActivate }: { onActivate: () => void }) {
           ))}
         </div>
         <button type="button" className="btn btn-primary" onClick={onActivate} style={{ marginTop: 8 }}>
-          Activate Passport →
+          {t('passport.activatePassportArrow')}
         </button>
       </div>
     </div>
@@ -399,13 +490,14 @@ function ActivationPrompt({ onActivate }: { onActivate: () => void }) {
 }
 
 function UnderReviewBanner() {
+  const t = useT()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: 'var(--color-amber-bg)', borderLeft: '3px solid var(--color-amber)' }}>
       <div style={{ width: 6, height: 6, background: 'var(--color-amber)', flexShrink: 0, animation: 'badge-pulse 2.4s infinite' }} />
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-amber)' }}>Under Review</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-amber)' }}>{t('passport.underReview')}</div>
         <div style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.5 }}>
-          Your Passport has been submitted and is being verified — usually within 1–2 business days.
+          {t('passport.underReviewHint')}
         </div>
       </div>
     </div>
@@ -415,6 +507,7 @@ function UnderReviewBanner() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MyPassportPage() {
+  const t = useT()
   const user = useUser()
   const router = useRouter()
   const orgId = user?.org_id ?? null
@@ -446,16 +539,16 @@ export default function MyPassportPage() {
       const res = await fetch(`/api/passport/${orgId}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError((body as { error?: string }).error ?? 'Failed to load passport')
+        setError((body as { error?: string }).error ?? t('passport.loadFailed'))
         return
       }
       setData(await res.json() as PassportResponse)
     } catch {
-      setError('Failed to load passport')
+      setError(t('passport.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [orgId])
+  }, [orgId, t])
 
   const loadDocs = useCallback(async () => {
     if (!orgId) return
@@ -491,7 +584,7 @@ export default function MyPassportPage() {
   }
 
   async function deletePassportDoc(docId: string) {
-    if (!confirm('Remove this document?')) return
+    if (!confirm(t('passport.removeDocConfirm'))) return
     setDeletingDocId(docId)
     try {
       await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
@@ -513,14 +606,14 @@ export default function MyPassportPage() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setAiReviewMsg((body as { error?: string }).error ?? 'Review failed')
+        setAiReviewMsg((body as { error?: string }).error ?? t('passport.reviewFailed'))
         return
       }
-      setAiReviewMsg('Analysis complete — refreshing…')
+      setAiReviewMsg(t('passport.analysisComplete'))
       await load()
       setAiReviewMsg(null)
     } catch {
-      setAiReviewMsg('Request failed')
+      setAiReviewMsg(t('passport.requestFailed'))
     } finally {
       setRunningAiReview(false)
     }
@@ -572,20 +665,20 @@ export default function MyPassportPage() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Strike' }, { label: 'My Passport' }]} actions={<NotifBell />} />
+      <Topbar crumbs={[{ label: t('passport.strike') }, { label: t('passport.myPassport') }]} actions={<NotifBell />} />
       <div className="page"
         data-page-name="My Passport"
         data-ai-context={aiContext ?? undefined}
       >
         <div className="page-header">
-          <h1>My Passport</h1>
-          <div className="subtitle">Your AI-verified business risk identity on Strike.</div>
+          <h1>{t('passport.myPassport')}</h1>
+          <div className="subtitle">{t('passport.pageSubtitle')}</div>
         </div>
 
         {!orgId ? (
           <div className="card">
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>
-              Your account isn&apos;t linked to an organization.
+              {t('passport.noOrgLinked')}
             </div>
           </div>
         ) : loading ? (
@@ -630,11 +723,11 @@ export default function MyPassportPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
-                        {org.legal_name ?? 'Your organization'}
+                        {org.legal_name ?? t('onboarding.review.yourOrganization')}
                       </span>
                       <TypeBadge type={org.type} />
                     </div>
-                    {dba && <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>doing business as {dba}</div>}
+                    {dba && <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>{t('passport.doingBusinessAs')} {dba}</div>}
                   </div>
                 </div>
               </div>
@@ -660,6 +753,8 @@ export default function MyPassportPage() {
                 onUploadCertification={file => uploadPassportFile(file, 'certification')}
                 onDeleteDocument={deletePassportDoc}
               />
+
+              <OrgCatalog listings={data.catalog} orgName={dba || org.legal_name} onManage={() => router.push('/marketplace?tab=my_listings')} />
             </div>
 
             {/* RIGHT — slim sticky panel */}
@@ -668,7 +763,7 @@ export default function MyPassportPage() {
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)' }}>
-                    Expert AI Analysis
+                    {t('passport.expertAiAnalysis')}
                   </div>
                   {aiReviewMsg && (
                     <div style={{ fontSize: 12, color: 'var(--color-green)', lineHeight: 1.4 }}>{aiReviewMsg}</div>
@@ -680,10 +775,10 @@ export default function MyPassportPage() {
                     disabled={runningAiReview}
                     style={{ width: '100%', opacity: runningAiReview ? 0.7 : 1 }}
                   >
-                    {runningAiReview ? 'Analyzing…' : expertAnalysis ? 'Update Passport Score' : 'Update Passport Score →'}
+                    {runningAiReview ? t('passport.analyzing') : expertAnalysis ? t('passport.updateScore') : t('passport.updateScoreArrow')}
                   </button>
                   <p style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
-                    Claude reads your uploaded documents and scores your business across 4 dimensions.
+                    {t('passport.claudeReadsHint')}
                   </p>
                 </div>
               </div>
@@ -695,14 +790,14 @@ export default function MyPassportPage() {
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
                       <CountUp value={data.bank_view_count_30d} />
                     </span>{' '}
-                    bank{data.bank_view_count_30d === 1 ? '' : 's'} viewed your Passport this month
+                    {t('passport.bankViewedSuffix', { plural: data.bank_view_count_30d === 1 ? '' : 's' })}
                   </div>
                   <div style={{ height: 1, background: 'var(--border)' }} />
                   <div style={{ fontSize: 13, color: 'var(--ink)' }}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
                       <CountUp value={data.org_view_count_30d} />
                     </span>{' '}
-                    organization{data.org_view_count_30d === 1 ? '' : 's'} viewed your Passport this month
+                    {t('passport.orgViewedSuffix', { plural: data.org_view_count_30d === 1 ? '' : 's' })}
                   </div>
                 </div>
               </div>
@@ -712,7 +807,7 @@ export default function MyPassportPage() {
                 <div className="card">
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)' }}>
-                      Network Median
+                      {t('passport.networkMedian')}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>
@@ -724,7 +819,7 @@ export default function MyPassportPage() {
                           background: org.passport_score >= data.network_passport_score_median ? 'var(--color-green-bg)' : 'var(--color-amber-bg)',
                           color: org.passport_score >= data.network_passport_score_median ? 'var(--color-green)' : 'var(--color-amber)',
                         }}>
-                          {org.passport_score >= data.network_passport_score_median ? `+${org.passport_score - Math.round(data.network_passport_score_median)} above` : `${Math.round(data.network_passport_score_median) - org.passport_score} below`}
+                          {org.passport_score >= data.network_passport_score_median ? t('passport.aboveMedian', { diff: org.passport_score - Math.round(data.network_passport_score_median) }) : t('passport.belowMedian', { diff: Math.round(data.network_passport_score_median) - org.passport_score })}
                         </span>
                       )}
                     </div>
@@ -736,8 +831,8 @@ export default function MyPassportPage() {
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${data.network_passport_score_median}%`, width: 2, background: 'var(--gray-soft)', transform: 'translateX(-50%)' }} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: 'var(--gray)' }}>
-                      <span>Your score: {org.passport_score ?? '—'}</span>
-                      <span>Median: {Math.round(data.network_passport_score_median)}</span>
+                      <span>{t('passport.yourScoreLabel')} {org.passport_score ?? '—'}</span>
+                      <span>{t('passport.medianLabel')} {Math.round(data.network_passport_score_median)}</span>
                     </div>
                   </div>
                 </div>
@@ -757,7 +852,7 @@ export default function MyPassportPage() {
             onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Document identified</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('passport.documentIdentified')}</h2>
               <button onClick={() => setDetectedType(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--gray)' }}>×</button>
             </div>
             <p style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 4 }}>
@@ -769,7 +864,7 @@ export default function MyPassportPage() {
             }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--blue)', marginBottom: 3 }}>
-                  Strike AI detected
+                  {t('passport.strikeAiDetected')}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
                   {detectedType.detected_type}
@@ -781,11 +876,11 @@ export default function MyPassportPage() {
                 color: detectedType.confidence === 'high' ? 'var(--color-green)' : 'var(--gray)',
                 textTransform: 'capitalize',
               }}>
-                {detectedType.confidence} confidence
+                {t('passport.confidenceSuffix', { confidence: detectedType.confidence })}
               </span>
             </div>
             <p style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 14, lineHeight: 1.5 }}>
-              Filed under {detectedType.kind === 'certification' ? 'Certifications' : 'Documents'} on your Passport profile.
+              {t('passport.filedUnder', { section: detectedType.kind === 'certification' ? t('passport.certifications') : t('passport.documents') })}
             </p>
             <button
               type="button"
@@ -793,7 +888,7 @@ export default function MyPassportPage() {
               style={{ width: '100%', marginTop: 16 }}
               onClick={() => setDetectedType(null)}
             >
-              Got it
+              {t('passport.gotIt')}
             </button>
           </div>
         </div>

@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { PortalShell, Topbar, NotifBell } from '@/components/portal-shell'
 import { PassportScoreRing } from '@/components/passport-score-ring'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -42,10 +45,10 @@ const DEFAULTS: Record<PrefType, PrefState> = {
   preferred_incoterms:    { value: [],   is_active: false, updated_at: null },
 }
 
-function riskTierLabel(score: number): { label: string; color: string } {
-  if (score >= 70) return { label: 'Green Tier',  color: 'var(--color-green)' }
-  if (score >= 45) return { label: 'Amber Tier',  color: 'var(--color-amber)' }
-  return               { label: 'Red Tier',    color: 'var(--color-red)' }
+function riskTierLabel(score: number, t: TFn): { label: string; color: string } {
+  if (score >= 70) return { label: t('agentSettings.greenTier'),  color: 'var(--color-green)' }
+  if (score >= 45) return { label: t('agentSettings.amberTier'),  color: 'var(--color-amber)' }
+  return               { label: t('agentSettings.redTier'),    color: 'var(--color-red)' }
 }
 
 function fmtDate(iso: string): string {
@@ -66,6 +69,7 @@ function Toggle({
   onChange: (v: boolean) => void
   label: string
 }) {
+  const t = useT()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <button
@@ -92,7 +96,7 @@ function Toggle({
       <span
         style={{ fontSize: 12, color: checked ? 'var(--ink)' : 'var(--gray)', fontWeight: checked ? 500 : 400 }}
       >
-        {checked ? 'Active' : 'Inactive'}
+        {checked ? t('teamPage.active') : t('teamPage.inactive')}
       </span>
     </div>
   )
@@ -163,6 +167,7 @@ function PrefCard({
   saved: boolean
   children: React.ReactNode
 }) {
+  const t = useT()
   return (
     <div className="card">
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -176,7 +181,7 @@ function PrefCard({
           <Toggle
             checked={state.is_active}
             onChange={(v) => onStateChange({ ...state, is_active: v })}
-            label={`Enable ${title}`}
+            label={t('agentSettings.enableLabel', { title })}
           />
         </div>
 
@@ -191,11 +196,11 @@ function PrefCard({
             onClick={onSave}
             disabled={saving}
           >
-            {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
+            {saving ? t('newListing.saving') : saved ? t('agentSettings.savedCheck') : t('agentSettings.save')}
           </button>
           {state.updated_at && (
             <span style={{ fontSize: 11.5, color: 'var(--gray)' }}>
-              Last updated: {fmtDate(state.updated_at)}
+              {t('agentSettings.lastUpdated')} {fmtDate(state.updated_at)}
             </span>
           )}
         </div>
@@ -219,6 +224,7 @@ const DEFAULT_AGENT: AgentConfig = { name: 'Strike Agent', persona: '', goals: [
 export default function AgentSettingsPage() {
   const user   = useUser()
   const router = useRouter()
+  const t = useT()
 
   const [prefs, setPrefs]     = useState<Record<PrefType, PrefState>>({ ...DEFAULTS })
   const [saving, setSaving]   = useState<PrefType | null>(null)
@@ -283,8 +289,8 @@ export default function AgentSettingsPage() {
     try {
       const res = await fetch('/api/agents/scan', { method: 'POST' })
       const json = await res.json()
-      setScanResult(json.message ?? 'Scan complete.')
-    } catch { setScanResult('Scan failed — check console.') }
+      setScanResult(json.message ?? t('agentSettings.scanComplete'))
+    } catch { setScanResult(t('agentSettings.scanFailed')) }
     finally { setScanLoading(false) }
   }
 
@@ -298,11 +304,11 @@ export default function AgentSettingsPage() {
     try {
       const res = await fetch('/api/agents/tick', { method: 'POST' })
       const json = await res.json()
-      if (!res.ok) { setTickResult(json.error ?? 'Tick failed.'); return }
-      if (!json.processed) { setTickResult('No active negotiations to act on right now.'); return }
+      if (!res.ok) { setTickResult(json.error ?? t('agentSettings.tickFailed')); return }
+      if (!json.processed) { setTickResult(t('agentSettings.noActiveNegotiations')); return }
       const summary = (json.results ?? []).map((r: { outcome: string }) => r.outcome).join(', ')
-      setTickResult(`Processed ${json.processed} negotiation(s): ${summary}`)
-    } catch { setTickResult('Tick failed — check console.') }
+      setTickResult(t('agentSettings.processedNegotiations', { count: json.processed, summary }))
+    } catch { setTickResult(t('agentSettings.tickFailedConsole')) }
     finally { setTickLoading(false) }
   }
 
@@ -362,16 +368,16 @@ export default function AgentSettingsPage() {
     <PortalShell activeSection="settings">
       <Topbar
         crumbs={[
-          { label: 'Settings', onClick: () => router.push('/settings') },
-          { label: 'AI Agent Preferences' },
+          { label: t('teamPage.settings'), onClick: () => router.push('/settings') },
+          { label: t('agentSettings.aiAgentPreferences') },
         ]}
         actions={<NotifBell />}
       />
 
       <div className="page">
         <div className="page-header">
-          <h1 className="t-page-title">AI Agent Preferences</h1>
-          <div className="subtitle">Configure the boundaries your AI agent operates within.</div>
+          <h1 className="t-page-title">{t('agentSettings.aiAgentPreferences')}</h1>
+          <div className="subtitle">{t('agentSettings.subtitle')}</div>
         </div>
 
         {/* Intro card */}
@@ -397,8 +403,7 @@ export default function AgentSettingsPage() {
             }}
           />
           <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}>
-            Your AI agent acts on your behalf within the limits you set here. It never exceeds
-            these boundaries without your explicit approval.
+            {t('agentSettings.introHint')}
           </div>
         </div>
 
@@ -411,10 +416,10 @@ export default function AgentSettingsPage() {
               className="btn btn-ghost btn-sm"
               onClick={() => router.push('/settings')}
             >
-              ← General Settings
+              ← {t('agentSettings.generalSettings')}
             </button>
             <button type="button" className="btn btn-primary btn-sm" style={{ cursor: 'default' }}>
-              AI Agent
+              {t('agentSettings.aiAgent')}
             </button>
           </div>
 
@@ -430,16 +435,15 @@ export default function AgentSettingsPage() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>Autonomous Agent</div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{t('agentSettings.autonomousAgent')}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
-                  Your named AI agent that scans your ERP and platform data daily, proposes actions,
-                  and awaits your approval before executing anything.
+                  {t('agentSettings.autonomousAgentHint')}
                 </div>
               </div>
               <Toggle
                 checked={agent.is_active}
                 onChange={toggleAgent}
-                label="Activate agent"
+                label={t('agentSettings.activateAgent')}
               />
             </div>
 
@@ -447,7 +451,7 @@ export default function AgentSettingsPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                    Agent Name
+                    {t('agentSettings.agentName')}
                   </label>
                   <input
                     type="text"
@@ -460,7 +464,7 @@ export default function AgentSettingsPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                    Focus / Persona
+                    {t('agentSettings.focusPersona')}
                   </label>
                   <textarea
                     className="input"
@@ -478,7 +482,7 @@ export default function AgentSettingsPage() {
                     onClick={saveAgentConfig}
                     disabled={agentSaving}
                   >
-                    {agentSaving ? 'Saving…' : agentSaved ? 'Saved ✓' : 'Save Agent Config'}
+                    {agentSaving ? t('newListing.saving') : agentSaved ? t('agentSettings.savedCheck') : t('agentSettings.saveAgentConfig')}
                   </button>
                   <button
                     type="button"
@@ -486,23 +490,23 @@ export default function AgentSettingsPage() {
                     onClick={runScan}
                     disabled={scanLoading}
                   >
-                    {scanLoading ? 'Scanning…' : 'Run Scan Now'}
+                    {scanLoading ? t('agentSettings.scanning') : t('agentSettings.runScanNow')}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={runTick}
                     disabled={tickLoading}
-                    title="Advance any active negotiations immediately, instead of waiting for the scheduled cron"
+                    title={t('agentSettings.runTickTitle')}
                   >
-                    {tickLoading ? 'Ticking…' : 'Run Negotiation Tick Now'}
+                    {tickLoading ? t('agentSettings.ticking') : t('agentSettings.runNegotiationTickNow')}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() => router.push('/ai?tab=agent')}
                   >
-                    View Task Queue →
+                    {t('agentSettings.viewTaskQueue')}
                   </button>
                 </div>
                 {scanResult && (
@@ -521,8 +525,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Rate Floor ── */}
           <PrefCard
-            title="Minimum Acceptable Financing Rate"
-            description="The agent will not accept any financing offer below this rate (APR %)."
+            title={t('agentSettings.minRateTitle')}
+            description={t('agentSettings.minRateDesc')}
             state={p.rate_floor}
             onStateChange={(s) => updatePref('rate_floor', s)}
             onSave={() => savePref('rate_floor')}
@@ -546,8 +550,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Rate Ceiling ── */}
           <PrefCard
-            title="Maximum Acceptable Financing Rate"
-            description="The agent will reject any financing offer above this rate (APR %)."
+            title={t('agentSettings.maxRateTitle')}
+            description={t('agentSettings.maxRateDesc')}
             state={p.rate_ceiling}
             onStateChange={(s) => updatePref('rate_ceiling', s)}
             onSave={() => savePref('rate_ceiling')}
@@ -571,8 +575,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Min Passport Score ── */}
           <PrefCard
-            title="Minimum PassportScore™"
-            description="Auto-reject offers from organizations below this PassportScore."
+            title={t('agentSettings.minScoreTitle')}
+            description={t('agentSettings.minScoreDesc')}
             state={p.min_passport_score}
             onStateChange={(s) => updatePref('min_passport_score', s)}
             onSave={() => savePref('min_passport_score')}
@@ -602,10 +606,10 @@ export default function AgentSettingsPage() {
                   style={{
                     fontSize: 12,
                     fontWeight: 500,
-                    color: riskTierLabel(p.min_passport_score.value as number).color,
+                    color: riskTierLabel(p.min_passport_score.value as number, t).color,
                   }}
                 >
-                  {riskTierLabel(p.min_passport_score.value as number).label}
+                  {riskTierLabel(p.min_passport_score.value as number, t).label}
                 </span>
               )}
             </div>
@@ -613,8 +617,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Auto-reject Below Score ── */}
           <PrefCard
-            title="Auto-reject Below Score"
-            description="Automatically reject financing offers from organizations with PassportScore below this threshold."
+            title={t('agentSettings.autoRejectTitle')}
+            description={t('agentSettings.autoRejectDesc')}
             state={p.auto_reject_below_score}
             onStateChange={(s) => updatePref('auto_reject_below_score', s)}
             onSave={() => savePref('auto_reject_below_score')}
@@ -643,10 +647,10 @@ export default function AgentSettingsPage() {
                   style={{
                     fontSize: 12,
                     fontWeight: 500,
-                    color: riskTierLabel(p.auto_reject_below_score.value as number).color,
+                    color: riskTierLabel(p.auto_reject_below_score.value as number, t).color,
                   }}
                 >
-                  {riskTierLabel(p.auto_reject_below_score.value as number).label}
+                  {riskTierLabel(p.auto_reject_below_score.value as number, t).label}
                 </span>
               )}
             </div>
@@ -654,8 +658,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Max Deal Value (Auto) ── */}
           <PrefCard
-            title="Maximum Deal Value (Auto-approve)"
-            description="Maximum deal value your agent can accept without requiring your approval."
+            title={t('agentSettings.maxDealValueTitle')}
+            description={t('agentSettings.maxDealValueDesc')}
             state={p.max_deal_value_auto}
             onStateChange={(s) => updatePref('max_deal_value_auto', s)}
             onSave={() => savePref('max_deal_value_auto')}
@@ -683,8 +687,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Preferred Tenor ── */}
           <PrefCard
-            title="Preferred Financing Tenor"
-            description="Preferred financing tenor in days. The agent will favor offers matching this tenor."
+            title={t('agentSettings.preferredTenorTitle')}
+            description={t('agentSettings.preferredTenorDesc')}
             state={p.preferred_tenor_days}
             onStateChange={(s) => updatePref('preferred_tenor_days', s)}
             onSave={() => savePref('preferred_tenor_days')}
@@ -720,8 +724,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Blacklist Countries ── */}
           <PrefCard
-            title="Blacklisted Countries"
-            description="Never accept deals or financing involving these countries."
+            title={t('agentSettings.blacklistedTitle')}
+            description={t('agentSettings.blacklistedDesc')}
             state={p.blacklist_countries}
             onStateChange={(s) => updatePref('blacklist_countries', s)}
             onSave={() => savePref('blacklist_countries')}
@@ -730,8 +734,7 @@ export default function AgentSettingsPage() {
           >
             <div>
               <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>
-                {(p.blacklist_countries.value as string[]).length} countr
-                {(p.blacklist_countries.value as string[]).length === 1 ? 'y' : 'ies'} selected
+                {t('agentSettings.countriesSelected', { count: (p.blacklist_countries.value as string[]).length })}
               </div>
               <ChipSelect
                 options={TOP_COUNTRIES}
@@ -743,8 +746,8 @@ export default function AgentSettingsPage() {
 
           {/* ── Preferred Incoterms ── */}
           <PrefCard
-            title="Preferred Incoterms"
-            description="Preferred delivery terms. The agent will prioritize offers with these terms."
+            title={t('agentSettings.preferredIncotermsTitle')}
+            description={t('agentSettings.preferredIncotermsDesc')}
             state={p.preferred_incoterms}
             onStateChange={(s) => updatePref('preferred_incoterms', s)}
             onSave={() => savePref('preferred_incoterms')}

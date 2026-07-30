@@ -21,6 +21,10 @@ import {
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
 import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@strike-scf/types'
 import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
+import { FINANCEABLE_STATUSES } from '@/lib/deals/transitions'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,8 +81,10 @@ interface DealDetail {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const AI_DOC_LABELS: Record<string, string> = {
-  ai_po: 'PURCHASE ORDER', ai_invoice: 'COMMERCIAL INVOICE', ai_contract: 'TRADE AGREEMENT',
+function aiDocLabels(t: TFn): Record<string, string> {
+  return {
+    ai_po: t('dealDetail.purchaseOrder'), ai_invoice: t('dealDetail.commercialInvoice'), ai_contract: t('dealDetail.tradeAgreement'),
+  }
 }
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
@@ -126,9 +132,33 @@ function sourceBadgeClass(source: string): string {
   }
 }
 
+function dealStatusLabel(s: string, t: TFn): string {
+  const map: Record<string, string> = {
+    negotiating:         t('deals.status.negotiating'),
+    agreed:              t('deals.status.agreed'),
+    documents_pending:   t('deals.status.documentsPending'),
+    confirmed:           t('deals.status.confirmed'),
+    in_preparation:      t('deals.status.inPreparation'),
+    shipped:             t('deals.status.shipped'),
+    goods_received:      t('deals.status.goodsReceived'),
+    delivery_confirmed:  t('deals.status.deliveryConfirmed'),
+    payment_info_sent:   t('deals.status.paymentInfoSent'),
+    payment_confirmed:   t('deals.status.paymentConfirmed'),
+    active:              t('deals.status.active'),
+    financing_requested: t('deals.status.financingRequested'),
+    financing_active:    t('deals.status.financingActive'),
+    completed:           t('deals.status.completed'),
+    in_dispute:          t('deals.status.inDispute'),
+    disputed:            t('deals.status.disputed'),
+    cancelled:           t('deals.status.cancelled'),
+  }
+  return map[s] ?? s.replace(/_/g, ' ')
+}
+
 // ─── Amendment Banner ─────────────────────────────────────────────────────────
 
 function AmendmentBanner({ deal, onRefresh }: { deal: Deal; onRefresh: () => void }) {
+  const t = useT()
   const [responding, setResponding] = useState(false)
   const history: AmendmentRecord[] = Array.isArray(deal.amendment_history) ? deal.amendment_history : []
   const pending = history.find(a => a.status === 'pending')
@@ -148,16 +178,16 @@ function AmendmentBanner({ deal, onRefresh }: { deal: Deal; onRefresh: () => voi
 
   return (
     <div style={{ padding: '14px 16px', background: 'rgba(20,40,204,0.04)', border: '1.5px solid rgba(20,40,204,0.2)', borderRadius: 12, marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 8 }}>Amendment Pending</div>
+      <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 8 }}>{t('dealDetail.amendmentPending')}</div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13 }}>
-        <div><span style={{ color: 'var(--gray)' }}>Field: </span>{pending.field.replace(/_/g, ' ')}</div>
-        <div><span style={{ color: 'var(--gray)' }}>From: </span>{String(pending.current_value ?? '—')}</div>
-        <div><span style={{ color: 'var(--blue)', fontWeight: 600 }}>To: </span>{String(pending.proposed_value ?? '—')}</div>
+        <div><span style={{ color: 'var(--gray)' }}>{t('dealDetail.fieldColon')} </span>{pending.field.replace(/_/g, ' ')}</div>
+        <div><span style={{ color: 'var(--gray)' }}>{t('dealDetail.fromColon')} </span>{String(pending.current_value ?? '—')}</div>
+        <div><span style={{ color: 'var(--blue)', fontWeight: 600 }}>{t('dealDetail.toColon')} </span>{String(pending.proposed_value ?? '—')}</div>
       </div>
-      {pending.reason && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>Reason: {pending.reason}</div>}
+      {pending.reason && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>{t('dealDetail.reasonColon')} {pending.reason}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button className="btn btn-primary btn-sm" disabled={responding} onClick={() => respond(true)}>Accept</button>
-        <button className="btn btn-ghost btn-sm" disabled={responding} onClick={() => respond(false)}>Reject</button>
+        <button className="btn btn-primary btn-sm" disabled={responding} onClick={() => respond(true)}>{t('listingDetail.accept')}</button>
+        <button className="btn btn-ghost btn-sm" disabled={responding} onClick={() => respond(false)}>{t('listingDetail.reject')}</button>
       </div>
     </div>
   )
@@ -166,6 +196,7 @@ function AmendmentBanner({ deal, onRefresh }: { deal: Deal; onRefresh: () => voi
 // ─── Propose Amendment Form ───────────────────────────────────────────────────
 
 function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price?: number }; onRefresh: () => void }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [field, setField] = useState('')
   const [proposedValue, setProposedValue] = useState('')
@@ -177,11 +208,11 @@ function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price
   if (!['confirmed', 'in_preparation', 'active'].includes(deal.status)) return null
 
   const FIELDS = [
-    { key: 'agreed_quantity', label: 'Quantity', current: String(deal.agreed_quantity ?? '—') },
-    { key: 'agreed_price', label: 'Unit Price', current: String(deal.agreed_price) },
-    { key: 'agreed_delivery_date', label: 'Delivery Date', current: String(deal.agreed_delivery_date ?? '—') },
-    { key: 'agreed_payment_terms', label: 'Payment Terms', current: String(deal.agreed_payment_terms ?? '—') },
-    { key: 'import_notes', label: 'Notes', current: String(deal.import_notes ?? '—') },
+    { key: 'agreed_quantity', label: t('marketplace.quantity'), current: String(deal.agreed_quantity ?? '—') },
+    { key: 'agreed_price', label: t('dealDetail.unitPrice'), current: String(deal.agreed_price) },
+    { key: 'agreed_delivery_date', label: t('listingDetail.deliveryDate'), current: String(deal.agreed_delivery_date ?? '—') },
+    { key: 'agreed_payment_terms', label: t('newListing.paymentTerms'), current: String(deal.agreed_payment_terms ?? '—') },
+    { key: 'import_notes', label: t('listingDetail.notes'), current: String(deal.import_notes ?? '—') },
   ]
 
   async function submit() {
@@ -192,7 +223,7 @@ function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price
         body: JSON.stringify({ field, proposed_value: proposedValue, reason }),
       })
       const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Failed'); return }
+      if (!res.ok) { setError(json.error ?? t('dealDetail.failed')); return }
       setOpen(false); setField(''); setProposedValue(''); setReason(''); onRefresh()
     } finally { setLoading(false) }
   }
@@ -200,23 +231,23 @@ function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price
   return (
     <div>
       {!open ? (
-        <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--gray)' }} onClick={() => setOpen(true)}>Propose Amendment</button>
+        <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--gray)' }} onClick={() => setOpen(true)}>{t('dealDetail.proposeAmendment')}</button>
       ) : (
         <div style={{ padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 12, marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 10 }}>Propose Amendment</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 10 }}>{t('dealDetail.proposeAmendment')}</div>
           {error && <div className="alert alert-error" style={{ fontSize: 12, marginBottom: 10 }}>{error}</div>}
           <div className="form-field" style={{ marginBottom: 10 }}>
-            <label className="field-label">Field to amend</label>
+            <label className="field-label">{t('dealDetail.fieldToAmend')}</label>
             <select className="input form-select" value={field} onChange={e => { setField(e.target.value); setProposedValue('') }}>
-              <option value="">Select field</option>
-              {FIELDS.map(f => <option key={f.key} value={f.key}>{f.label} (current: {f.current})</option>)}
+              <option value="">{t('dealDetail.selectField')}</option>
+              {FIELDS.map(f => <option key={f.key} value={f.key}>{f.label} ({t('dealDetail.currentColon')} {f.current})</option>)}
             </select>
           </div>
-          {field && <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">New value</label><input className="input" value={proposedValue} onChange={e => setProposedValue(e.target.value)} /></div>}
-          <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">Reason *</label><input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this change needed?" /></div>
+          {field && <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">{t('dealDetail.newValue')}</label><input className="input" value={proposedValue} onChange={e => setProposedValue(e.target.value)} /></div>}
+          <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">{t('dealDetail.reasonRequired')}</label><input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder={t('dealDetail.reasonPlaceholder')} /></div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary btn-sm" disabled={loading || !field || !proposedValue || !reason} onClick={submit}>{loading ? 'Submitting…' : 'Propose'}</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-primary btn-sm" disabled={loading || !field || !proposedValue || !reason} onClick={submit}>{loading ? t('listingDetail.submitting') : t('dealDetail.propose')}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -227,6 +258,7 @@ function ProposeAmendmentForm({ deal, onRefresh }: { deal: Deal & { agreed_price
 // ─── Dispute Evidence Panel ───────────────────────────────────────────────────
 
 function DisputeEvidencePanel({ deal, onRefresh }: { deal: Deal; onRefresh: () => void }) {
+  const t = useT()
   const [statement, setStatement] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -241,15 +273,15 @@ function DisputeEvidencePanel({ deal, onRefresh }: { deal: Deal; onRefresh: () =
   }
   return (
     <div className="card">
-      <div className="card-head">Submit Evidence</div>
+      <div className="card-head">{t('dealDetail.submitEvidence')}</div>
       <div className="card-body">
         {submitted ? (
-          <div style={{ fontSize: 13, color: 'var(--color-green)' }}>Evidence submitted.</div>
+          <div style={{ fontSize: 13, color: 'var(--color-green)' }}>{t('dealDetail.evidenceSubmitted')}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>Provide your account of events and any supporting information.</div>
-            <div className="form-field"><label className="field-label">Statement</label><textarea className="input" rows={4} value={statement} onChange={e => setStatement(e.target.value)} placeholder="Describe your position…" style={{ resize: 'vertical' }} /></div>
-            <button className="btn btn-primary btn-sm" disabled={loading || !statement.trim()} onClick={submit}>{loading ? 'Submitting…' : 'Submit Evidence'}</button>
+            <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>{t('dealDetail.provideAccountHint')}</div>
+            <div className="form-field"><label className="field-label">{t('dealDetail.statement')}</label><textarea className="input" rows={4} value={statement} onChange={e => setStatement(e.target.value)} placeholder={t('dealDetail.describePosition')} style={{ resize: 'vertical' }} /></div>
+            <button className="btn btn-primary btn-sm" disabled={loading || !statement.trim()} onClick={submit}>{loading ? t('listingDetail.submitting') : t('dealDetail.submitEvidence')}</button>
           </div>
         )}
       </div>
@@ -260,10 +292,11 @@ function DisputeEvidencePanel({ deal, onRefresh }: { deal: Deal; onRefresh: () =
 // ─── AI Doc Card ──────────────────────────────────────────────────────────────
 
 function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied]     = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const label = AI_DOC_LABELS[doc.kind] ?? doc.kind.toUpperCase()
+  const label = aiDocLabels(t)[doc.kind] ?? doc.kind.toUpperCase()
   const apiType: 'po' | 'invoice' | null = doc.kind === 'ai_po' ? 'po' : doc.kind === 'ai_invoice' ? 'invoice' : null
 
   async function downloadDoc() {
@@ -275,7 +308,7 @@ function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: apiType }),
         })
-        if (!res.ok) { alert('Failed to generate document'); return }
+        if (!res.ok) { alert(t('dealDetail.failedGenerateDocument')); return }
         const buf = await res.arrayBuffer()
         const blob = new Blob([buf], { type: 'application/pdf' })
         const url = URL.createObjectURL(blob)
@@ -316,9 +349,9 @@ function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
           </div>
           <div style={{ padding: '0 24px 16px', display: 'flex', gap: 8 }}>
             <button className="btn btn-blue btn-sm" disabled={downloading} onClick={downloadDoc}>
-              {downloading ? '✦ Generating…' : apiType ? '✦ Download (Strike AI)' : 'Download .txt'}
+              {downloading ? `✦ ${t('dealDetail.generating')}` : apiType ? `✦ ${t('dealDetail.downloadStrikeAi')}` : t('dealDetail.downloadTxt')}
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={copyText}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
+            <button className="btn btn-secondary btn-sm" onClick={copyText}>{copied ? t('dealDetail.copied') : t('dealDetail.copyToClipboard')}</button>
           </div>
         </>
       )}
@@ -329,6 +362,7 @@ function AiDocCard({ doc, dealId }: { doc: AiDoc; dealId: string }) {
 // ─── Contract Document Link ───────────────────────────────────────────────────
 
 function ContractDocumentLink({ dealId }: { dealId: string }) {
+  const t = useT()
   const [downloading, setDownloading] = useState(false)
 
   async function downloadPdf() {
@@ -339,7 +373,7 @@ function ContractDocumentLink({ dealId }: { dealId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'contract' }),
       })
-      if (!res.ok) { alert('Failed to download contract'); return }
+      if (!res.ok) { alert(t('dealDetail.failedDownloadContract')); return }
       const buf = await res.arrayBuffer()
       const blob = new Blob([buf], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -356,7 +390,7 @@ function ContractDocumentLink({ dealId }: { dealId: string }) {
   return (
     <button className="btn btn-blue btn-sm" disabled={downloading} onClick={downloadPdf} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
-      {downloading ? '✦ Generating PDF…' : '✦ Download Contract (PDF)'}
+      {downloading ? `✦ ${t('dealDetail.generatingPdf')}` : `✦ ${t('dealDetail.downloadContractPdf')}`}
     </button>
   )
 }
@@ -364,6 +398,7 @@ function ContractDocumentLink({ dealId }: { dealId: string }) {
 // ─── Document Row ─────────────────────────────────────────────────────────────
 
 function DocumentRow({ doc, onDelete }: { doc: DealDoc; onDelete?: (id: string) => void }) {
+  const t = useT()
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     fetch(`/api/documents/${doc.id}/url`).then(r => r.json()).then(d => { if (d.url) setUrl(d.url) }).catch(() => {})
@@ -373,8 +408,8 @@ function DocumentRow({ doc, onDelete }: { doc: DealDoc; onDelete?: (id: string) 
       <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
       <span className="doc-name">{doc.name}</span>
       <span className="doc-date">{fmtDate(doc.created_at)}</span>
-      {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
-      {onDelete && <button onClick={() => onDelete(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>}
+      {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="doc-link">{t('listingDetail.download')}</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+      {onDelete && <button onClick={() => onDelete(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>{t('dealDetail.remove')}</button>}
     </div>
   )
 }
@@ -385,6 +420,7 @@ export default function DealDetailPage() {
   const params = useParams()
   const router = useRouter()
   const _user = useUser()
+  const t = useT()
   const id = params?.id as string
 
   const [data, setData] = useState<DealDetail | null>(null)
@@ -428,9 +464,9 @@ export default function DealDetailPage() {
         else setData(dealData)
         setAvailableActions(actionsData.actions ?? [])
       })
-      .catch(() => setError('Failed to load deal'))
+      .catch(() => setError(t('dealDetail.failedToLoadDeal')))
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, t])
 
   const loadDocs = useCallback(() => {
     fetch(`/api/deals/${id}/documents`).then(r => r.json()).then(d => {
@@ -481,7 +517,7 @@ export default function DealDetailPage() {
     const wantsFinance = new URLSearchParams(window.location.search).get('action') === 'finance'
     if (!wantsFinance) return
     const d = data.deal
-    if (['agreed', 'active', 'confirmed'].includes(d.status) && !data.financing_request) {
+    if (FINANCEABLE_STATUSES.includes(d.status) && !data.financing_request) {
       financeActionTriggered.current = true
       setFinAmount(String(d.total_value ?? d.agreed_price ?? ''))
       setShowFinancingForm(true)
@@ -605,7 +641,7 @@ export default function DealDetailPage() {
       body: JSON.stringify(body),
     })
     const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? 'Action failed')
+    if (!res.ok) throw new Error(json.error ?? t('listingDetail.actionFailed'))
     load()
   }
 
@@ -625,7 +661,7 @@ export default function DealDetailPage() {
         }),
       })
       const json = await res.json()
-      if (!res.ok) { setFinError(json.error ?? 'Submission failed'); return }
+      if (!res.ok) { setFinError(json.error ?? t('financingDetail.submissionFailed')); return }
       setShowFinancingForm(false); router.push(`/marketplace/financing/${json.financing_request.id}`)
     } finally { setFinSubmitting(false) }
   }
@@ -635,7 +671,7 @@ export default function DealDetailPage() {
     try {
       const res = await fetch(`/api/deals/${id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancellation_reason: cancelReason || undefined, confirmed: cancelConfirmed }) })
       const json = await res.json()
-      if (!res.ok) { alert(json.error ?? 'Cancel failed'); return }
+      if (!res.ok) { alert(json.error ?? t('dealDetail.cancelFailed')); return }
       setShowCancel(false); load()
     } finally { setCancelLoading(false) }
   }
@@ -648,14 +684,14 @@ export default function DealDetailPage() {
       const fd = new FormData(); fd.append('file', file)
       const res = await fetch(`/api/deals/${id}/upload-document`, { method: 'POST', body: fd })
       const json = await res.json()
-      if (!res.ok) { setUploadError(json.error ?? 'Upload failed'); return }
+      if (!res.ok) { setUploadError(json.error ?? t('dealImport.uploadFailed')); return }
       if (json.warning) setUploadError(json.warning)
       loadDocs()
     } finally { setUploading(false); e.target.value = '' }
   }
 
   async function handleDeleteDoc(docId: string) {
-    if (!confirm('Remove this document?')) return
+    if (!confirm(t('dealDetail.confirmRemoveDocument'))) return
     const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
     if (res.ok) loadDocs()
   }
@@ -663,7 +699,7 @@ export default function DealDetailPage() {
   if (loading) {
     return (
       <>
-        <Topbar crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: 'Loading…' }]} />
+        <Topbar crumbs={[{ label: t('deals.myDeals'), onClick: () => router.push('/deals') }, { label: t('common.loading') }]} />
         <div className="page" style={{ maxWidth: 1280 }}>
           <div className="page-header" style={{ marginBottom: 24 }}>
             <Skeleton width={150} height={24} style={{ marginBottom: 8 }} />
@@ -698,8 +734,8 @@ export default function DealDetailPage() {
   if (error || !data) {
     return (
       <>
-        <Topbar crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: 'Error' }]} />
-        <div className="page" style={{ maxWidth: 1280 }}><div className="alert alert-error">{error ?? 'Deal not found'}</div></div>
+        <Topbar crumbs={[{ label: t('deals.myDeals'), onClick: () => router.push('/deals') }, { label: t('rooms.error') }]} />
+        <div className="page" style={{ maxWidth: 1280 }}><div className="alert alert-error">{error ?? t('dealDetail.dealNotFound')}</div></div>
       </>
     )
   }
@@ -726,7 +762,7 @@ export default function DealDetailPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        alert(j.error ?? 'Failed to generate document')
+        alert(j.error ?? t('dealDetail.failedGenerateDocument'))
         return
       }
       const buf = await res.arrayBuffer()
@@ -743,7 +779,12 @@ export default function DealDetailPage() {
   }
   const CANCELLABLE = ['negotiating', 'agreed', 'documents_pending', 'confirmed', 'in_preparation', 'active', 'goods_received', 'payment_info_sent']
   const canCancel   = CANCELLABLE.includes(deal.status) && !deal.financing_payment_active
-  const canFinance  = user_role !== 'bank' && ['delivery_confirmed', 'shipped', 'goods_received', 'confirmed', 'in_preparation'].includes(deal.status) && !financing_request && !deal.financing_payment_active
+  // Kept identical to FINANCEABLE_STATUSES in app/(portal)/deals/page.tsx and the
+  // ?action=finance deep-link effect below — these three drifted out of sync
+  // (this button's own gate was the odd one out, missing 'agreed'/'active'),
+  // which silently disabled "Request Financing" for deals the rest of the app
+  // already considered eligible. Keep all three in lockstep.
+  const canFinance  = user_role !== 'bank' && FINANCEABLE_STATUSES.includes(deal.status) && !financing_request && !deal.financing_payment_active
   const canAmend    = ['confirmed', 'in_preparation', 'active'].includes(deal.status) && !deal.financing_payment_active
   const isActive    = !['completed', 'cancelled', 'in_dispute', 'disputed'].includes(deal.status)
   const hasPaymentInfo = !!(deal as any).payment_info_sent_at || !!deal.payment_bank_name
@@ -853,16 +894,16 @@ export default function DealDetailPage() {
   return (
     <>
       <Topbar
-        crumbs={[{ label: 'My Deals', onClick: () => router.push('/deals') }, { label: `Deal #${shortId(deal.id)}` }]}
-        actions={<div className="topbar-right">{room && <Link href={`/rooms/${room.id}`} className="btn btn-ghost btn-sm">Open Deal Room →</Link>}</div>}
+        crumbs={[{ label: t('deals.myDeals'), onClick: () => router.push('/deals') }, { label: t('deals.dealHash', { id: shortId(deal.id) }) }]}
+        actions={<div className="topbar-right">{room && <Link href={`/rooms/${room.id}`} className="btn btn-ghost btn-sm">{t('dealDetail.openDealRoom')}</Link>}</div>}
       />
       {/* G5.1 — AI context injected via data attribute for ai-overlay.tsx */}
       <div className="page" style={{ maxWidth: 1280 }} data-page-name="deal-detail" data-ai-context={aiContext}>
         {/* Header */}
         <div className="page-header" style={{ marginBottom: 24 }}>
           <div className="page-id-title">
-            <span className="id-text">Deal #{shortId(deal.id)}</span>
-            <span className={statusBadgeClass(deal.status)}>{deal.status.replace(/_/g, ' ')}</span>
+            <span className="id-text">{t('deals.dealHash', { id: shortId(deal.id) })}</span>
+            <span className={statusBadgeClass(deal.status)}>{dealStatusLabel(deal.status, t)}</span>
             <span className={sourceBadgeClass(deal.deal_source)}>{deal.deal_source}</span>
             {financingContext.financingBadgeLabel && (
               <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -871,7 +912,9 @@ export default function DealDetailPage() {
             )}
           </div>
           <p className="subtitle" style={{ marginTop: 4 }}>
-            {user_role === 'buyer' ? 'You are the buyer' : user_role === 'supplier' ? 'You are the supplier' : 'Bank view'} on this deal{counterparty && ` with ${counterparty.legal_name}`}
+            {user_role === 'buyer' ? t('dealDetail.youAreTheBuyer') : user_role === 'supplier' ? t('dealDetail.youAreTheSupplier') : t('dealDetail.bankView')}
+            {' '}{t('dealDetail.onThisDeal')}
+            {counterparty && ` ${t('dealDetail.withCounterparty', { name: counterparty.legal_name ?? '' })}`}
           </p>
         </div>
 
@@ -883,7 +926,7 @@ export default function DealDetailPage() {
           <div className="split-panel-main reveal-stagger">
             {/* Roadmap — G4.1 */}
             <div className="card reveal">
-              <div className="card-head">Deal Progress</div>
+              <div className="card-head">{t('dealDetail.dealProgress')}</div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
                 <DealRoadmap
                   status={deal.status}
@@ -899,7 +942,7 @@ export default function DealDetailPage() {
             {(user_role === 'bank' ? !!(financing_request && linked_transaction) : isActive) && (
               <div className="card" style={{ border: '1.5px solid var(--blue-light)' }}>
                 <div className="card-head" style={{ color: 'var(--blue)' }}>
-                  {user_role === 'bank' ? 'Financing Management' : 'Action Required'}
+                  {user_role === 'bank' ? t('dealDetail.financingManagement') : t('dealDetail.actionRequired')}
                 </div>
                 <div className="card-body">
                   {user_role === 'bank' ? (
@@ -920,11 +963,11 @@ export default function DealDetailPage() {
                       {(deal.status as string) === 'contract_pending' && contractData?.contract?.document_id && (
                         <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--offwhite)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>Contract to Review & Sign</div>
+                            <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--gray)', marginBottom: 4 }}>{t('dealDetail.contractToReviewSign')}</div>
                             <ContractDocumentLink dealId={id} />
                           </div>
                           {contractData.contract.generated_at && (
-                            <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>AI Generated</span>
+                            <span className="badge badge-active" style={{ fontSize: 9, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0, flexShrink: 0 }}>{t('dealDetail.aiGenerated')}</span>
                           )}
                         </div>
                       )}
@@ -947,18 +990,18 @@ export default function DealDetailPage() {
             {contractData?.contract?.submitted_at && (
               <div className="card">
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  Trade Contract
+                  {t('dealDetail.tradeContract')}
                   {contractData.contract.supplier_signed_at
-                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>Signed</span>
-                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>Awaiting Signature</span>}
-                  {contractData.contract.generated_at && <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>}
+                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>{t('dealDetail.signed')}</span>
+                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>{t('dealDetail.awaitingSignature')}</span>}
+                  {contractData.contract.generated_at && <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>{t('dealDetail.aiGenerated')}</span>}
                 </div>
                 <div className="kv-list">
-                  <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate(contractData.contract.submitted_at)}</span></div>
+                  <div className="kv-row"><span className="k">{t('dealDetail.submitted')}</span><span className="v">{fmtDate(contractData.contract.submitted_at)}</span></div>
                   {contractData.contract.supplier_signed_at && (
                     <>
-                      <div className="kv-row"><span className="k">Signed</span><span className="v">{fmtDate(contractData.contract.supplier_signed_at)}</span></div>
-                      <div className="kv-row"><span className="k">Signature</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.contract.supplier_signature}</span></div>
+                      <div className="kv-row"><span className="k">{t('dealDetail.signed')}</span><span className="v">{fmtDate(contractData.contract.supplier_signed_at)}</span></div>
+                      <div className="kv-row"><span className="k">{t('dealDetail.signature')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.contract.supplier_signature}</span></div>
                     </>
                   )}
                 </div>
@@ -972,12 +1015,12 @@ export default function DealDetailPage() {
             {contractData?.invoice?.generated_at && (
               <div className="card">
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  Commercial Invoice
-                  <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>AI Generated</span>
+                  {t('dealDetail.commercialInvoice')}
+                  <span className="badge badge-active" style={{ fontSize: 10, fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>{t('dealDetail.aiGenerated')}</span>
                 </div>
                 <div className="kv-list">
-                  {contractData.invoice.number && <div className="kv-row"><span className="k">Invoice No.</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{contractData.invoice.number}</span></div>}
-                  <div className="kv-row"><span className="k">Generated</span><span className="v">{fmtDate(contractData.invoice.generated_at)}</span></div>
+                  {contractData.invoice.number && <div className="kv-row"><span className="k">{t('dealDetail.invoiceNo')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)' }}>{contractData.invoice.number}</span></div>}
+                  <div className="kv-row"><span className="k">{t('dealDetail.generated')}</span><span className="v">{fmtDate(contractData.invoice.generated_at)}</span></div>
                 </div>
               </div>
             )}
@@ -986,17 +1029,17 @@ export default function DealDetailPage() {
             {contractData?.bank_contract?.submitted_at && (
               <div className="card" style={{ border: '1px solid var(--blue-light)' }}>
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--blue)' }}>
-                  Financing Contract
+                  {t('dealDetail.financingContract')}
                   {contractData.bank_contract.signed_at
-                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>Signed</span>
-                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>Awaiting Signature</span>}
+                    ? <span className="badge badge-completed" style={{ fontSize: 10 }}>{t('dealDetail.signed')}</span>
+                    : <span className="badge badge-pending" style={{ fontSize: 10 }}>{t('dealDetail.awaitingSignature')}</span>}
                 </div>
                 <div className="kv-list">
-                  <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate(contractData.bank_contract.submitted_at)}</span></div>
+                  <div className="kv-row"><span className="k">{t('dealDetail.submitted')}</span><span className="v">{fmtDate(contractData.bank_contract.submitted_at)}</span></div>
                   {contractData.bank_contract.signed_at && (
                     <>
-                      <div className="kv-row"><span className="k">Signed</span><span className="v">{fmtDate(contractData.bank_contract.signed_at)}</span></div>
-                      <div className="kv-row"><span className="k">Signature</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.bank_contract.signature}</span></div>
+                      <div className="kv-row"><span className="k">{t('dealDetail.signed')}</span><span className="v">{fmtDate(contractData.bank_contract.signed_at)}</span></div>
+                      <div className="kv-row"><span className="k">{t('dealDetail.signature')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{contractData.bank_contract.signature}</span></div>
                     </>
                   )}
                 </div>
@@ -1007,22 +1050,22 @@ export default function DealDetailPage() {
             {displayedAccount && ['confirmed', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_info_sent', 'payment_confirmed', 'completed'].includes(deal.status) && (
               <div className="card">
                 <div className="card-head">
-                  Payment Receiving Account{payingBank ? ' (Bank)' : ''}
+                  {t('dealDetail.paymentReceivingAccount')}{payingBank ? ` (${t('financingDetail.bank')})` : ''}
                   <button
                     className="btn btn-ghost btn-sm"
                     style={{ fontSize: 11 }}
                     onClick={() => setRevealBankAccount(r => !r)}
                   >
-                    {revealBankAccount ? 'Hide' : 'Reveal'}
+                    {revealBankAccount ? t('dealDetail.hide') : t('dealDetail.reveal')}
                   </button>
                 </div>
                 <div className="kv-list">
-                  {displayedAccount.nickname && <div className="kv-row"><span className="k">Account Name</span><span className="v plain">{displayedAccount.nickname}</span></div>}
-                  <div className="kv-row"><span className="k">Bank</span><span className="v plain">{displayedAccount.bank_name}</span></div>
-                  <div className="kv-row"><span className="k">Account Holder</span><span className="v plain">{displayedAccount.account_holder_name}</span></div>
+                  {displayedAccount.nickname && <div className="kv-row"><span className="k">{t('dealDetail.accountName')}</span><span className="v plain">{displayedAccount.nickname}</span></div>}
+                  <div className="kv-row"><span className="k">{t('financingDetail.bank')}</span><span className="v plain">{displayedAccount.bank_name}</span></div>
+                  <div className="kv-row"><span className="k">{t('dealDetail.accountHolder')}</span><span className="v plain">{displayedAccount.account_holder_name}</span></div>
                   {displayedAccount.account_number && (
                     <div className="kv-row">
-                      <span className="k">Account</span>
+                      <span className="k">{t('dealDetail.account')}</span>
                       <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
                         {revealBankAccount ? displayedAccount.account_number : `****${displayedAccount.account_number.slice(-4)}`}
                       </span>
@@ -1030,7 +1073,7 @@ export default function DealDetailPage() {
                   )}
                   {displayedAccount.routing_number && (
                     <div className="kv-row">
-                      <span className="k">Routing</span>
+                      <span className="k">{t('dealDetail.routing')}</span>
                       <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
                         {displayedAccount.routing_number}
                       </span>
@@ -1038,13 +1081,13 @@ export default function DealDetailPage() {
                   )}
                   {displayedAccount.swift_iban && (
                     <div className="kv-row">
-                      <span className="k">SWIFT / IBAN</span>
+                      <span className="k">{t('dealDetail.swiftIban')}</span>
                       <span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12, filter: revealBankAccount ? 'none' : 'blur(4px)', userSelect: revealBankAccount ? 'auto' : 'none', transition: 'filter 0.2s' }}>
                         {displayedAccount.swift_iban}
                       </span>
                     </div>
                   )}
-                  <div className="kv-row"><span className="k">Type</span><span className="v plain">{displayedAccount.account_type}</span></div>
+                  <div className="kv-row"><span className="k">{t('dealDetail.type')}</span><span className="v plain">{displayedAccount.account_type}</span></div>
                 </div>
               </div>
             )}
@@ -1055,32 +1098,32 @@ export default function DealDetailPage() {
             {/* Agreed Terms */}
             <div className="card">
               <div className="card-head">
-                Agreed Terms
+                {t('dealDetail.agreedTerms')}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {canAmend && <ProposeAmendmentForm deal={deal} onRefresh={load} />}
                   <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={downloadingDoc !== null} onClick={() => downloadDocument('po')}>
-                    {downloadingDoc === 'po' ? '✦ Generating…' : 'Download PO'}
+                    {downloadingDoc === 'po' ? `✦ ${t('dealDetail.generating')}` : t('dealDetail.downloadPo')}
                   </button>
                   <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={downloadingDoc !== null} onClick={() => downloadDocument('invoice')}>
-                    {downloadingDoc === 'invoice' ? '✦ Generating…' : 'Download Invoice'}
+                    {downloadingDoc === 'invoice' ? `✦ ${t('dealDetail.generating')}` : t('dealDetail.downloadInvoice')}
                   </button>
                 </div>
               </div>
               <div className="kv-list">
-                <div className="kv-row"><span className="k">Delivery Date</span><span className="v">{fmtDate(deal.agreed_delivery_date)}</span></div>
-                <div className="kv-row"><span className="k">Incoterms</span><span className="v">{deal.agreed_incoterms ?? '—'}</span></div>
-                <div className="kv-row"><span className="k">Payment Terms</span><span className="v plain">{deal.agreed_payment_terms ?? '—'}</span></div>
-                {deal.payment_due_date && <div className="kv-row"><span className="k">Payment Due</span><span className="v">{fmtDate(deal.payment_due_date)}</span></div>}
-                {deal.import_notes && <div className="kv-row"><span className="k">Notes</span><span className="v plain" style={{ fontSize: 12 }}>{deal.import_notes}</span></div>}
+                <div className="kv-row"><span className="k">{t('listingDetail.deliveryDate')}</span><span className="v">{fmtDate(deal.agreed_delivery_date)}</span></div>
+                <div className="kv-row"><span className="k">{t('newListing.incoterms')}</span><span className="v">{deal.agreed_incoterms ?? '—'}</span></div>
+                <div className="kv-row"><span className="k">{t('newListing.paymentTerms')}</span><span className="v plain">{deal.agreed_payment_terms ?? '—'}</span></div>
+                {deal.payment_due_date && <div className="kv-row"><span className="k">{t('dealDetail.paymentDue')}</span><span className="v">{fmtDate(deal.payment_due_date)}</span></div>}
+                {deal.import_notes && <div className="kv-row"><span className="k">{t('listingDetail.notes')}</span><span className="v plain" style={{ fontSize: 12 }}>{deal.import_notes}</span></div>}
               </div>
               {negotiatedLineItems.length > 0 ? (
                 <div style={{ padding: '0 24px 20px' }}>
-                  <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>Item Breakdown</div>
+                  <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>{t('listingDetail.itemBreakdown')}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '6px 16px', fontSize: 12 }}>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Item</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Qty</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Unit</span>
-                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>Unit Price</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('listingDetail.item')}</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>{t('newListing.qty')}</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('newListing.unit')}</span>
+                    <span style={{ color: 'var(--gray)', fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>{t('listingDetail.unitPrice')}</span>
                     {negotiatedLineItems.map((item: any) => (
                       <React.Fragment key={item.id}>
                         <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{item.name ?? item.description ?? '—'}</span>
@@ -1091,16 +1134,16 @@ export default function DealDetailPage() {
                     ))}
                   </div>
                   <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: 'var(--gray)', fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Agreed</span>
+                    <span style={{ fontSize: 12, color: 'var(--gray)', fontFamily: 'var(--font-body)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dealDetail.totalAgreed')}</span>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: '#C9A84C' }}>{fmt(deal.agreed_price, currency)}</span>
                   </div>
                 </div>
               ) : (
                 <div style={{ padding: '0 24px 16px' }}>
-                  <div className="kv-row"><span className="k">Goods</span><span className="v plain">{deal.goods_description ?? '—'}</span></div>
-                  {deal.agreed_quantity != null && <div className="kv-row"><span className="k">Quantity</span><span className="v">{deal.agreed_quantity} {(deal as any).agreed_unit ?? ''}</span></div>}
-                  <div className="kv-row"><span className="k">Price</span><span className="v">{fmt(deal.agreed_price, currency)}</span></div>
-                  <div className="kv-row"><span className="k">Currency</span><span className="v">{currency}</span></div>
+                  <div className="kv-row"><span className="k">{t('financingDetail.goods')}</span><span className="v plain">{deal.goods_description ?? '—'}</span></div>
+                  {deal.agreed_quantity != null && <div className="kv-row"><span className="k">{t('marketplace.quantity')}</span><span className="v">{deal.agreed_quantity} {(deal as any).agreed_unit ?? ''}</span></div>}
+                  <div className="kv-row"><span className="k">{t('dealDetail.price')}</span><span className="v">{fmt(deal.agreed_price, currency)}</span></div>
+                  <div className="kv-row"><span className="k">{t('newListing.currency')}</span><span className="v">{currency}</span></div>
                 </div>
               )}
             </div>
@@ -1109,25 +1152,25 @@ export default function DealDetailPage() {
             {!financingContext.isActive && txn && ['financing_approved', 'financing_approved_pending_collateral', 'funded'].includes(txn.status) && (
               <div className="card">
                 <div className="card-head" style={{ color: 'var(--blue)' }}>
-                  Financing Approved
+                  {t('dealDetail.financingApproved')}
                   <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 8 }}>
                     {txn.type.replace(/_/g, ' ')}
                   </span>
                 </div>
                 <div className="kv-list">
-                  <div className="kv-row"><span className="k">Structure</span><span className="v plain">{txn.type.replace(/_/g, ' ')}</span></div>
+                  <div className="kv-row"><span className="k">{t('financing.structure')}</span><span className="v plain">{txn.type.replace(/_/g, ' ')}</span></div>
                   {txn.financing_rate_apr != null && (
-                    <div className="kv-row"><span className="k">Rate APR</span><span className="v" style={{ fontWeight: 700, color: 'var(--color-green)' }}>{txn.financing_rate_apr}%</span></div>
+                    <div className="kv-row"><span className="k">{t('financingDetail.rateApr')}</span><span className="v" style={{ fontWeight: 700, color: 'var(--color-green)' }}>{txn.financing_rate_apr}%</span></div>
                   )}
                   {txn.tenor_days != null && (
-                    <div className="kv-row"><span className="k">Tenor</span><span className="v">{txn.tenor_days}d</span></div>
+                    <div className="kv-row"><span className="k">{t('financingDetail.tenor')}</span><span className="v">{txn.tenor_days}d</span></div>
                   )}
                   {txn.financing_amount_approved != null && (
-                    <div className="kv-row"><span className="k">Financed Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(txn.financing_amount_approved, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.financedAmount')}</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(txn.financing_amount_approved, currency)}</span></div>
                   )}
                   <div className="kv-row">
-                    <span className="k">Status</span>
-                    <span className="badge badge-active" style={{ fontSize: 10 }}>Contract &amp; Disbursement Pending</span>
+                    <span className="k">{t('financing.status')}</span>
+                    <span className="badge badge-active" style={{ fontSize: 10 }}>{t('dealDetail.contractDisbursementPending')}</span>
                   </div>
                 </div>
               </div>
@@ -1137,7 +1180,7 @@ export default function DealDetailPage() {
             {financingContext.isActive && (
               <div className="card">
                 <div className="card-head">
-                  Active Financing
+                  {t('dealDetail.activeFinancing')}
                   {financingContext.financingBadgeLabel && (
                     <span style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--blue-light)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {financingContext.financingBadgeLabel}
@@ -1145,25 +1188,25 @@ export default function DealDetailPage() {
                   )}
                 </div>
                 <div className="kv-list">
-                  <div className="kv-row"><span className="k">Structure</span><span className="v plain">{financingContext.structure?.replace(/_/g, ' ') ?? '—'}</span></div>
-                  <div className="kv-row"><span className="k">Payment to</span><span className="v plain">{financingContext.paymentRecipientName}</span></div>
-                  <div className="kv-row"><span className="k">Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(financingContext.paymentAmount, financingContext.paymentCurrency)}</span></div>
-                  {financingContext.paymentDueDate && <div className="kv-row"><span className="k">Due Date</span><span className="v">{fmtDate(financingContext.paymentDueDate)}</span></div>}
-                  {financingContext.ddDiscountRate != null && <div className="kv-row"><span className="k">Discount Rate</span><span className="v">{financingContext.ddDiscountRate}% annualized</span></div>}
-                  {financingContext.ddDiscountAmount != null && <div className="kv-row"><span className="k">Discount Amount</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--color-red)' }}>-{fmt(financingContext.ddDiscountAmount, financingContext.paymentCurrency)}</span></div>}
+                  <div className="kv-row"><span className="k">{t('financing.structure')}</span><span className="v plain">{financingContext.structure?.replace(/_/g, ' ') ?? '—'}</span></div>
+                  <div className="kv-row"><span className="k">{t('dealDetail.paymentTo')}</span><span className="v plain">{financingContext.paymentRecipientName}</span></div>
+                  <div className="kv-row"><span className="k">{t('financing.amount')}</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{fmt(financingContext.paymentAmount, financingContext.paymentCurrency)}</span></div>
+                  {financingContext.paymentDueDate && <div className="kv-row"><span className="k">{t('dealDetail.dueDate')}</span><span className="v">{fmtDate(financingContext.paymentDueDate)}</span></div>}
+                  {financingContext.ddDiscountRate != null && <div className="kv-row"><span className="k">{t('dealDetail.discountRate')}</span><span className="v">{t('dealDetail.annualizedPct', { pct: financingContext.ddDiscountRate })}</span></div>}
+                  {financingContext.ddDiscountAmount != null && <div className="kv-row"><span className="k">{t('dealDetail.discountAmount')}</span><span className="v" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--color-red)' }}>-{fmt(financingContext.ddDiscountAmount, financingContext.paymentCurrency)}</span></div>}
                   {financingContext.noaRequired && (
                     <div className="kv-row">
-                      <span className="k">NOA Status</span>
+                      <span className="k">{t('dealDetail.noaStatus')}</span>
                       <span className={`badge ${financingContext.noaAcknowledged ? 'badge-completed' : 'badge-pending'}`} style={{ fontSize: 10 }}>
-                        {financingContext.noaAcknowledged ? 'Acknowledged' : 'Pending'}
+                        {financingContext.noaAcknowledged ? t('dealDetail.acknowledged') : t('dealDetail.pending')}
                       </span>
                     </div>
                   )}
                   {financingContext.structure === 'po_financing' && (
                     <div className="kv-row">
-                      <span className="k">PO Status</span>
+                      <span className="k">{t('dealDetail.poStatus')}</span>
                       <span className={`badge ${financingContext.poFinancingConverted ? 'badge-completed' : 'badge-offer'}`} style={{ fontSize: 10 }}>
-                        {financingContext.poFinancingConverted ? 'Converted' : 'Pre-Shipment'}
+                        {financingContext.poFinancingConverted ? t('dealDetail.converted') : t('dealDetail.preShipment')}
                       </span>
                     </div>
                   )}
@@ -1174,12 +1217,12 @@ export default function DealDetailPage() {
             {/* Shipment info */}
             {deal.shipment_tracking_ref && (
               <div className="card">
-                <div className="card-head">Shipment</div>
+                <div className="card-head">{t('dealDetail.shipment')}</div>
                 <div className="kv-list">
-                  <div className="kv-row"><span className="k">Tracking</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.shipment_tracking_ref}</span></div>
-                  {deal.shipment_carrier && <div className="kv-row"><span className="k">Carrier</span><span className="v plain">{deal.shipment_carrier}</span></div>}
-                  {deal.shipment_estimated_delivery && <div className="kv-row"><span className="k">Est. Delivery</span><span className="v">{fmtDate(deal.shipment_estimated_delivery)}</span></div>}
-                  {deal.shipped_at && <div className="kv-row"><span className="k">Shipped</span><span className="v">{fmtDate(deal.shipped_at)}</span></div>}
+                  <div className="kv-row"><span className="k">{t('dealDetail.tracking')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.shipment_tracking_ref}</span></div>
+                  {deal.shipment_carrier && <div className="kv-row"><span className="k">{t('dealDetail.carrier')}</span><span className="v plain">{deal.shipment_carrier}</span></div>}
+                  {deal.shipment_estimated_delivery && <div className="kv-row"><span className="k">{t('dealDetail.estDelivery')}</span><span className="v">{fmtDate(deal.shipment_estimated_delivery)}</span></div>}
+                  {deal.shipped_at && <div className="kv-row"><span className="k">{t('deals.status.shipped')}</span><span className="v">{fmtDate(deal.shipped_at)}</span></div>}
                 </div>
               </div>
             )}
@@ -1187,10 +1230,10 @@ export default function DealDetailPage() {
             {/* Goods receipt info */}
             {((deal as any).goods_received_at || (deal as any).goods_confirmed_at) && (
               <div className="card">
-                <div className="card-head">Goods Receipt</div>
+                <div className="card-head">{t('dealDetail.goodsReceipt')}</div>
                 <div className="kv-list">
-                  {(deal as any).goods_received_at && <div className="kv-row"><span className="k">Received</span><span className="v">{fmtDate((deal as any).goods_received_at)}</span></div>}
-                  {(deal as any).goods_confirmed_at && <div className="kv-row"><span className="k">Accepted</span><span className="v">{fmtDate((deal as any).goods_confirmed_at)}</span></div>}
+                  {(deal as any).goods_received_at && <div className="kv-row"><span className="k">{t('dealDetail.received')}</span><span className="v">{fmtDate((deal as any).goods_received_at)}</span></div>}
+                  {(deal as any).goods_confirmed_at && <div className="kv-row"><span className="k">{t('dealDetail.accepted')}</span><span className="v">{fmtDate((deal as any).goods_confirmed_at)}</span></div>}
                 </div>
               </div>
             )}
@@ -1198,14 +1241,14 @@ export default function DealDetailPage() {
             {/* Payment details (shown after payment info submitted, to buyer and bank) */}
             {hasPaymentInfo && !financingContext.isActive && (
               <div className="card">
-                <div className="card-head">Payment Details</div>
+                <div className="card-head">{t('dealDetail.paymentDetails')}</div>
                 <div className="kv-list">
-                  {deal.payment_bank_name && <div className="kv-row"><span className="k">Bank</span><span className="v plain">{deal.payment_bank_name}</span></div>}
-                  {deal.payment_account_name && <div className="kv-row"><span className="k">Account Name</span><span className="v plain">{deal.payment_account_name}</span></div>}
-                  {deal.payment_account_number && <div className="kv-row"><span className="k">Account</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>****{deal.payment_account_number.slice(-4)}</span></div>}
-                  {(deal.payment_swift_iban || deal.payment_routing_number) && <div className="kv-row"><span className="k">SWIFT / IBAN</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_swift_iban ?? deal.payment_routing_number}</span></div>}
-                  {deal.payment_reference && <div className="kv-row"><span className="k">Reference</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_reference}</span></div>}
-                  {(deal as any).payment_info_sent_at && <div className="kv-row"><span className="k">Submitted</span><span className="v">{fmtDate((deal as any).payment_info_sent_at)}</span></div>}
+                  {deal.payment_bank_name && <div className="kv-row"><span className="k">{t('financingDetail.bank')}</span><span className="v plain">{deal.payment_bank_name}</span></div>}
+                  {deal.payment_account_name && <div className="kv-row"><span className="k">{t('dealDetail.accountName')}</span><span className="v plain">{deal.payment_account_name}</span></div>}
+                  {deal.payment_account_number && <div className="kv-row"><span className="k">{t('dealDetail.account')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>****{deal.payment_account_number.slice(-4)}</span></div>}
+                  {(deal.payment_swift_iban || deal.payment_routing_number) && <div className="kv-row"><span className="k">{t('dealDetail.swiftIban')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_swift_iban ?? deal.payment_routing_number}</span></div>}
+                  {deal.payment_reference && <div className="kv-row"><span className="k">{t('dealDetail.reference')}</span><span className="v plain" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{deal.payment_reference}</span></div>}
+                  {(deal as any).payment_info_sent_at && <div className="kv-row"><span className="k">{t('dealDetail.submitted')}</span><span className="v">{fmtDate((deal as any).payment_info_sent_at)}</span></div>}
                 </div>
               </div>
             )}
@@ -1213,11 +1256,11 @@ export default function DealDetailPage() {
             {/* Dispute info */}
             {['in_dispute', 'disputed'].includes(deal.status) && (
               <div className="card">
-                <div className="card-head" style={{ color: 'var(--color-red)' }}>Dispute Details</div>
+                <div className="card-head" style={{ color: 'var(--color-red)' }}>{t('dealDetail.disputeDetails')}</div>
                 <div className="kv-list">
-                  {deal.dispute_category && <div className="kv-row"><span className="k">Category</span><span className="v plain">{deal.dispute_category.replace(/_/g, ' ')}</span></div>}
-                  {deal.dispute_reason && <div className="kv-row"><span className="k">Reason</span><span className="v plain" style={{ fontSize: 12 }}>{deal.dispute_reason}</span></div>}
-                  {deal.disputed_at && <div className="kv-row"><span className="k">Raised</span><span className="v">{fmtDate(deal.disputed_at)}</span></div>}
+                  {deal.dispute_category && <div className="kv-row"><span className="k">{t('dealDetail.category')}</span><span className="v plain">{deal.dispute_category.replace(/_/g, ' ')}</span></div>}
+                  {deal.dispute_reason && <div className="kv-row"><span className="k">{t('dealDetail.reason')}</span><span className="v plain" style={{ fontSize: 12 }}>{deal.dispute_reason}</span></div>}
+                  {deal.disputed_at && <div className="kv-row"><span className="k">{t('dealDetail.raised')}</span><span className="v">{fmtDate(deal.disputed_at)}</span></div>}
                 </div>
               </div>
             )}
@@ -1225,18 +1268,18 @@ export default function DealDetailPage() {
             {/* Documents — combined AI + uploaded in one card */}
             <div className="card">
               <div className="card-head">
-                Documents
+                {t('listingDetail.documents')}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {hasAiDocs && <span style={{ color: 'var(--color-green)', fontFamily: 'var(--font-body)', textTransform: 'none', letterSpacing: 0 }}>{aiDocs.length} AI</span>}
                   <label htmlFor="deal-doc-upload" className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', fontSize: 11 }}>
-                    {uploading ? 'Uploading…' : '+ Upload'}
+                    {uploading ? t('dealImport.uploading') : t('dealDetail.plusUpload')}
                   </label>
                   <input id="deal-doc-upload" type="file" style={{ display: 'none' }} onChange={handleUploadDoc} disabled={uploading} />
                 </div>
               </div>
               {uploadError && <div style={{ padding: '8px 24px', fontSize: 12, color: 'var(--color-orange)', background: 'rgba(251,146,60,0.08)', borderBottom: '1px solid var(--border)' }}>{uploadError}</div>}
               {!hasAiDocs && !hasUploaded ? (
-                <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>No documents attached yet.</div>
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>{t('dealDetail.noDocumentsYet')}</div>
               ) : (
                 <>
                   {hasAiDocs && aiDocs.map(doc => <AiDocCard key={doc.kind} doc={doc} dealId={id} />)}
@@ -1245,8 +1288,8 @@ export default function DealDetailPage() {
                       <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
                       <span className="doc-name">{doc.name}</span>
                       <span className="doc-date">{fmtDate(doc.created_at)}</span>
-                      <span className="badge badge-draft" style={{ fontSize: 9, marginRight: 4 }}>Listing</span>
-                      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+                      <span className="badge badge-draft" style={{ fontSize: 9, marginRight: 4 }}>{t('financing.listing')}</span>
+                      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">{t('listingDetail.download')}</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
                     </div>
                   ))}
                   {uploadedDocs.map(doc => (
@@ -1254,8 +1297,8 @@ export default function DealDetailPage() {
                       <svg className="doc-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 1h6l4 4v10H4V1z"/><path d="M10 1v4h4"/></svg>
                       <span className="doc-name">{doc.name}</span>
                       <span className="doc-date">{fmtDate(doc.created_at)}</span>
-                      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">Download</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
-                      <button onClick={() => handleDeleteDoc(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Remove</button>
+                      {doc.url ? <a href={doc.url} target="_blank" rel="noopener noreferrer" className="doc-link">{t('listingDetail.download')}</a> : <span className="doc-link" style={{ color: 'var(--gray-soft)' }}>—</span>}
+                      <button onClick={() => handleDeleteDoc(doc.id)} style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>{t('dealDetail.remove')}</button>
                     </div>
                   ))}
                   {uploadedFromDocs.map(doc => <DocumentRow key={doc.id} doc={doc} onDelete={handleDeleteDoc} />)}
@@ -1266,17 +1309,17 @@ export default function DealDetailPage() {
             {/* Financing request panel (org parties) */}
             {user_role !== 'bank' && (
             <div className="card">
-              <div className="card-head">Financing</div>
+              <div className="card-head">{t('financing.status')}</div>
               {financing_request ? (
                 <div className="card-body">
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <span style={{ fontSize: 13, color: 'var(--gray)' }}>Financing Request</span>
+                      <span style={{ fontSize: 13, color: 'var(--gray)' }}>{t('dealDetail.financingRequest')}</span>
                       <span className={`badge ${financing_request.status === 'funded' ? 'badge-funded' : 'badge-active'}`}>{financing_request.status.replace(/_/g, ' ')}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 24 }}>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Amount</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{fmt(financing_request.amount_requested, financing_request.currency)}</div></div>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Offers</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{financing_request.offer_count}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>{t('financing.amount')}</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{fmt(financing_request.amount_requested, financing_request.currency)}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>{t('marketplace.offersPlural')}</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{financing_request.offer_count}</div></div>
                     </div>
                   </div>
                   {(() => {
@@ -1285,50 +1328,57 @@ export default function DealDetailPage() {
                     const net = calcNetDisbursement(financedAmount, requesterFee)
                     return requesterFee != null ? (
                       <div style={{ marginTop: 10, fontSize: 11, color: 'var(--gray)' }}>
-                        Strike Service Fee (0.15%): {fmt(requesterFee, financing_request.currency)} · You'll net {fmt(net, financing_request.currency)}
+                        {t('dealDetail.serviceFeeNetHint', { fee: fmt(requesterFee, financing_request.currency), net: fmt(net, financing_request.currency) })}
                       </div>
                     ) : null
                   })()}
-                  <div style={{ marginTop: 16 }}><Link href={`/marketplace/financing/${financing_request.id}`} className="btn btn-ghost btn-sm">View Financing Request →</Link></div>
+                  <div style={{ marginTop: 16 }}><Link href={`/marketplace/financing/${financing_request.id}`} className="btn btn-ghost btn-sm">{t('dealDetail.viewFinancingRequest')}</Link></div>
                 </div>
               ) : showFinancingForm ? (
                 <div className="card-body">
                   {finError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{finError}</div>}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div className="form-field">
-                      <label className="field-label">Financing Type (optional)</label>
+                      <label className="field-label">{t('dealDetail.financingTypeOptional')}</label>
                       <select className="input form-select" value={finType} onChange={e => setFinType(e.target.value)}>
-                        <option value="">No preference (open to all)</option>
-                        <option value="reverse_factoring">Reverse Factoring</option>
-                        <option value="invoice_factoring">Invoice Factoring</option>
-                        <option value="po_financing">PO Financing</option>
+                        <option value="">{t('dealDetail.noPreference')}</option>
+                        <option value="reverse_factoring">{t('financing.type.reverseFactoring')}</option>
+                        <option value="invoice_factoring">{t('financing.type.invoiceFactoring')}</option>
+                        <option value="po_financing">{t('financing.type.poFinancing')}</option>
                       </select>
                     </div>
-                    <div className="form-field" style={{ maxWidth: 260 }}><label className="field-label">Amount Requested ({currency})</label><input className="input" type="number" min="0" required value={finAmount} onChange={e => setFinAmount(e.target.value)} /></div>
-                    <div className="form-field" style={{ maxWidth: 200 }}><label className="field-label">Max Rate APR % (optional)</label><input className="input" type="number" step="0.01" min="0" value={finRateMax} onChange={e => setFinRateMax(e.target.value)} placeholder="e.g. 6.0" /></div>
+                    <div className="form-field" style={{ maxWidth: 260 }}><label className="field-label">{t('dealDetail.amountRequested')} ({currency})</label><input className="input" type="number" min="0" required value={finAmount} onChange={e => setFinAmount(e.target.value)} /></div>
+                    <div className="form-field" style={{ maxWidth: 200 }}><label className="field-label">{t('dealDetail.maxRateAprOptional')}</label><input className="input" type="number" step="0.01" min="0" value={finRateMax} onChange={e => setFinRateMax(e.target.value)} placeholder="e.g. 6.0" /></div>
                     {finType === 'reverse_factoring' && !['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status) && (
-                      <div className="alert alert-warn" style={{ fontSize: 12 }}>Reverse Factoring requires delivery confirmation first.</div>
+                      <div className="alert alert-warn" style={{ fontSize: 12 }}>{t('dealDetail.reverseFactoringHint')}</div>
                     )}
                     {finType === 'po_financing' && !['confirmed', 'in_preparation'].includes(deal.status) && (
-                      <div className="alert alert-warn" style={{ fontSize: 12 }}>PO Financing must be requested before shipment.</div>
+                      <div className="alert alert-warn" style={{ fontSize: 12 }}>{t('dealDetail.poFinancingHint')}</div>
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-blue btn-sm" disabled={finSubmitting || !finAmount} onClick={submitFinancingRequest}>{finSubmitting ? 'Submitting…' : 'Submit Financing Request'}</button>
-                      <button className="btn btn-ghost btn-sm" disabled={finSubmitting} onClick={() => { setShowFinancingForm(false); setFinError(null) }}>Cancel</button>
+                      <button className="btn btn-blue btn-sm" disabled={finSubmitting || !finAmount} onClick={submitFinancingRequest}>{finSubmitting ? t('listingDetail.submitting') : t('dealDetail.submitFinancingRequest')}</button>
+                      <button className="btn btn-ghost btn-sm" disabled={finSubmitting} onClick={() => { setShowFinancingForm(false); setFinError(null) }}>{t('common.cancel')}</button>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="card-body">
-                  <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6, marginBottom: 12 }}>Ready to unlock early payment? Submit this deal to Strike Place and receive competitive financing offers from banks.</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6, marginBottom: 12 }}>{t('dealDetail.readyToUnlockHint')}</div>
                   <button
                     className="btn btn-blue btn-sm"
                     style={{ alignSelf: 'flex-start' }}
                     onClick={() => { setFinAmount(String(dealValue ?? '')); setShowFinancingForm(true) }}
                     disabled={!canFinance}
                   >
-                    Request Financing
+                    {t('dealDetail.requestFinancing')}
                   </button>
+                  {!canFinance && (
+                    <div style={{ fontSize: 12, color: 'var(--gray-soft)', marginTop: 8 }}>
+                      {deal.financing_payment_active
+                        ? t('dealDetail.financingAlreadyActive')
+                        : t('dealDetail.notAvailableWhileStatus', { status: deal.status.replace(/_/g, ' ') })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1340,58 +1390,58 @@ export default function DealDetailPage() {
             {/* Counterparty */}
             {counterparty && (
               <div className="card">
-                <div className="card-head">Counterparty</div>
+                <div className="card-head">{t('dealDetail.counterparty')}</div>
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, paddingBottom: 20 }}>
                   <PassportScoreRing score={counterparty.passport_score} size="md" showLabel />
                   <div style={{ width: '100%' }}>
                     <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 4, textAlign: 'center' }}>{counterparty.legal_name}</div>
                     <div style={{ textAlign: 'center', marginBottom: 12 }}><span className="badge badge-draft" style={{ fontSize: 9 }}>{counterparty.type}</span></div>
                     <div className="kv-list">
-                      {counterparty.avg_payment_days != null && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>Avg Payment Days</span><span className="v">{counterparty.avg_payment_days}d</span></div>}
-                      {counterparty.trade_count_total > 0 && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>Total Trades</span><span className="v">{counterparty.trade_count_total}</span></div>}
-                      {counterparty.dispute_rate_network != null && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>Dispute Rate</span><span className="v">{(counterparty.dispute_rate_network * 100).toFixed(1)}%</span></div>}
-                      {counterparty.country && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>Country</span><span className="v plain">{counterparty.country}</span></div>}
+                      {counterparty.avg_payment_days != null && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('dealDetail.avgPaymentDays')}</span><span className="v">{counterparty.avg_payment_days}d</span></div>}
+                      {counterparty.trade_count_total > 0 && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('dealDetail.totalTrades')}</span><span className="v">{counterparty.trade_count_total}</span></div>}
+                      {counterparty.dispute_rate_network != null && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('listingDetail.disputeRate')}</span><span className="v">{(counterparty.dispute_rate_network * 100).toFixed(1)}%</span></div>}
+                      {counterparty.country && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('listingDetail.country')}</span><span className="v plain">{counterparty.country}</span></div>}
                     </div>
                   </div>
-                  <Link href={`/passport/${counterparty.id}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center' }}>View Passport</Link>
+                  <Link href={`/passport/${counterparty.id}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center' }}>{t('dealDetail.viewPassportPlain')}</Link>
                 </div>
               </div>
             )}
 
             {/* Deal value */}
             <div className="card">
-              <div className="card-head">Deal Value</div>
+              <div className="card-head">{t('dealDetail.dealValue')}</div>
               <div className="card-body" style={{ textAlign: 'center', padding: '20px 24px 8px' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.025em', color: '#C9A84C', lineHeight: 1 }}>
                   <CountUp value={dealValue ?? NaN} format={n => fmt(n, currency)} />
                 </div>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · Goods Value</div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 6 }}>{currency} · {t('dealDetail.goodsValue')}</div>
                 {financingContext.isActive && financingContext.structure !== 'dynamic_discounting' && (
                   <div style={{ marginTop: 8, fontSize: 11, color: 'var(--blue)' }}>
-                    Repayment: {fmt(financingContext.paymentAmount, currency)} to {financingContext.paymentRecipientName}
+                    {t('dealDetail.repaymentTo', { amount: fmt(financingContext.paymentAmount, currency), recipient: financingContext.paymentRecipientName ?? '' })}
                   </div>
                 )}
               </div>
               <div className="kv-list">
                 {shippingCost != null && (
-                  <div className="kv-row"><span className="k">Shipping Cost</span><span className="v">{fmt(shippingCost, currency)}</span></div>
+                  <div className="kv-row"><span className="k">{t('newListing.shippingCost')}</span><span className="v">{fmt(shippingCost, currency)}</span></div>
                 )}
                 {user_role === 'bank' ? (
                   <>
-                    <div className="kv-row"><span className="k">Strike Service Fee — Buyer (0.3%)</span><span className="v">{fmt(buyerFee, currency)}</span></div>
-                    <div className="kv-row"><span className="k">Buyer Total Payable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
-                    <div className="kv-row"><span className="k">Strike Service Fee — Supplier (0.3%)</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
-                    <div className="kv-row"><span className="k">Supplier Net Receivable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.feeBuyer')}</span><span className="v">{fmt(buyerFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.buyerTotalPayable')}</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.feeSupplier')}</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.supplierNetReceivable')}</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
                   </>
                 ) : user_role === 'buyer' ? (
                   <>
-                    <div className="kv-row"><span className="k">Strike Service Fee (0.3%)</span><span className="v">{fmt(buyerFee, currency)}</span></div>
-                    <div className="kv-row"><span className="k">Total Payable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.serviceFeePct')}</span><span className="v">{fmt(buyerFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.totalPayable')}</span><span className="v" style={{ fontWeight: 700 }}>{fmt(buyerTotalDue, currency)}</span></div>
                   </>
                 ) : (
                   <>
-                    <div className="kv-row"><span className="k">Strike Service Fee (0.3%)</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
-                    <div className="kv-row"><span className="k">Net Receivable</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.serviceFeePct')}</span><span className="v">-{fmt(supplierFee, currency)}</span></div>
+                    <div className="kv-row"><span className="k">{t('dealDetail.netReceivable')}</span><span className="v" style={{ fontWeight: 700 }}>{fmt(supplierNetReceivable, currency)}</span></div>
                   </>
                 )}
               </div>
@@ -1399,28 +1449,28 @@ export default function DealDetailPage() {
 
             {/* Review CTA */}
             {deal.status === 'completed' && !alreadyReviewed && counterparty && (
-              <Link href={`/passport/review/${counterparty.id}`} className="btn btn-ghost btn-full" style={{ display: 'inline-flex', justifyContent: 'center' }}>Leave a Review</Link>
+              <Link href={`/passport/review/${counterparty.id}`} className="btn btn-ghost btn-full" style={{ display: 'inline-flex', justifyContent: 'center' }}>{t('dealDetail.leaveAReview')}</Link>
             )}
 
             {/* Room link */}
-            {room && <Link href={`/rooms/${room.id}`} className="btn btn-secondary btn-full" style={{ display: 'inline-flex', justifyContent: 'center' }}>Open Deal Room →</Link>}
+            {room && <Link href={`/rooms/${room.id}`} className="btn btn-secondary btn-full" style={{ display: 'inline-flex', justifyContent: 'center' }}>{t('dealDetail.openDealRoom')}</Link>}
 
             {/* Cancel */}
             {canCancel && (
               <div>
                 {!showCancel ? (
-                  <button className="btn btn-danger btn-sm btn-full" style={{ justifyContent: 'center' }} onClick={() => setShowCancel(true)}>Cancel Deal</button>
+                  <button className="btn btn-danger btn-sm btn-full" style={{ justifyContent: 'center' }} onClick={() => setShowCancel(true)}>{t('dealDetail.cancelDeal')}</button>
                 ) : (
                   <div style={{ border: '1px solid var(--color-red)', background: 'rgba(220,38,38,0.04)', padding: '14px 16px', borderRadius: 12 }}>
-                    <p style={{ fontSize: 12, color: 'var(--ink)', margin: '0 0 10px', lineHeight: 1.5, fontWeight: 600 }}>Cancel this deal?</p>
-                    <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">Reason{deal.status === 'in_preparation' ? ' *' : ' (optional)'}</label><input className="input" value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="Reason for cancellation" /></div>
+                    <p style={{ fontSize: 12, color: 'var(--ink)', margin: '0 0 10px', lineHeight: 1.5, fontWeight: 600 }}>{t('dealDetail.cancelThisDeal')}</p>
+                    <div className="form-field" style={{ marginBottom: 10 }}><label className="field-label">{t('dealDetail.reason')}{deal.status === 'in_preparation' ? ' *' : ` (${t('reviewForm.optional')})`}</label><input className="input" value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder={t('dealDetail.reasonForCancellation')} /></div>
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--ink)', marginBottom: 12, cursor: 'pointer' }}>
                       <input type="checkbox" checked={cancelConfirmed} onChange={e => setCancelConfirmed(e.target.checked)} style={{ marginTop: 2 }} />
-                      I understand this action cannot be undone.
+                      {t('dealDetail.cannotBeUndone')}
                     </label>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={cancelLoading || !cancelConfirmed} onClick={cancelDeal}>{cancelLoading ? 'Cancelling…' : 'Confirm Cancel'}</button>
-                      <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => { setShowCancel(false); setCancelReason(''); setCancelConfirmed(false) }}>Keep Deal</button>
+                      <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={cancelLoading || !cancelConfirmed} onClick={cancelDeal}>{cancelLoading ? t('dealDetail.cancelling') : t('dealDetail.confirmCancel')}</button>
+                      <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => { setShowCancel(false); setCancelReason(''); setCancelConfirmed(false) }}>{t('dealDetail.keepDeal')}</button>
                     </div>
                   </div>
                 )}
@@ -1431,7 +1481,7 @@ export default function DealDetailPage() {
             {deal.deal_source === 'imported' && (
               <div className={`alert ${deal.counterparty_confirmed ? 'alert-info' : 'alert-warn'}`} style={{ fontSize: 12 }}>
                 <span className="alert-icon">{deal.counterparty_confirmed ? '✓' : '⏳'}</span>
-                <span className="alert-body">{deal.counterparty_confirmed ? 'Counterparty has confirmed this deal.' : 'Awaiting counterparty confirmation.'}</span>
+                <span className="alert-body">{deal.counterparty_confirmed ? t('dealDetail.counterpartyConfirmed') : t('dealDetail.awaitingConfirmation')}</span>
               </div>
             )}
           </div>
