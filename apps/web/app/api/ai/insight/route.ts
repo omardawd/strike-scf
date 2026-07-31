@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { languageInstruction } from '@/lib/ai/system-prompt'
+import { languageInstruction, NO_EMOJI_RULE } from '@/lib/ai/system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,7 +128,7 @@ Respond with ONLY valid JSON, no markdown, no preamble:
 { "label": "short prompt action", "prompt": "message to send to Strike AI" }
 ]
 }
-Max 2 actions. Actions are optional. insight is required. Be specific — reference actual numbers from the data. Never be generic.${languageInstruction(typeof body.locale === 'string' ? body.locale : undefined)}`
+Max 2 actions. Actions are optional. insight is required. Be specific — reference actual numbers from the data. Never be generic.${languageInstruction(typeof body.locale === 'string' ? body.locale : undefined)}${NO_EMOJI_RULE}`
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

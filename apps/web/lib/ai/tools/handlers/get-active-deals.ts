@@ -12,6 +12,7 @@ export async function getActiveDeals(input: GetActiveDealsInput) {
       'id, deal_source, status, created_at, updated_at, ' +
       'buyer_org_id, supplier_org_id, ' +
       'payment_due_date, payment_currency, payment_amount, ' +
+      'total_value, agreed_price, agreed_currency, ' +
       'financing_payment_active, ' +
       // marketplace_listings has two FK paths to/from deals (deals.listing_id
       // and marketplace_listings.matched_deal_id) — PostgREST can't pick one
@@ -38,8 +39,18 @@ export async function getActiveDeals(input: GetActiveDealsInput) {
     return true
   })
 
+  // total_value is set once a deal is fully finalized (contract/invoice stage);
+  // agreed_price is the earlier negotiation-finalized figure and is populated
+  // sooner — fall back to it so in-flight deals still report a real value
+  // instead of null.
+  function dealValue(d: { total_value: number | string | null; agreed_price: number | string | null }): number | null {
+    const raw = d.total_value ?? d.agreed_price
+    return raw != null ? Number(raw) : null
+  }
+
   const summary = {
     total_active: allDeals.length,
+    total_value: allDeals.reduce((sum: number, d: { total_value: number | string | null; agreed_price: number | string | null }) => sum + (dealValue(d) ?? 0), 0),
     by_status: allDeals.reduce((acc: Record<string, number>, d: { status: string }) => {
       acc[d.status] = (acc[d.status] ?? 0) + 1
       return acc
@@ -52,6 +63,7 @@ export async function getActiveDeals(input: GetActiveDealsInput) {
       id: string; deal_source: string; status: string; created_at: string; updated_at: string;
       buyer_org_id: string; supplier_org_id: string;
       payment_due_date: string | null; financing_payment_active: boolean | null;
+      total_value: number | string | null; agreed_price: number | string | null; agreed_currency: string | null;
       marketplace_listings: { title: string; listing_type: string; category: string | null } | null;
       buyer: { id: string; legal_name: string | null; doing_business_as: string | null; passport_score: number | null; risk_tier: string | null } | null;
       supplier: { id: string; legal_name: string | null; doing_business_as: string | null; passport_score: number | null; risk_tier: string | null } | null;
@@ -68,6 +80,8 @@ export async function getActiveDeals(input: GetActiveDealsInput) {
         : (d.buyer?.doing_business_as ?? d.buyer?.legal_name ?? 'Unknown'),
       counterparty_passport_score: d.buyer_org_id === input.org_id ? d.supplier?.passport_score : d.buyer?.passport_score,
       counterparty_risk_tier: d.buyer_org_id === input.org_id ? d.supplier?.risk_tier : d.buyer?.risk_tier,
+      value: dealValue(d),
+      currency: d.agreed_currency ?? 'USD',
       payment_due_date: d.payment_due_date,
       financing_active: d.financing_payment_active ?? false,
       updated_at: d.updated_at,

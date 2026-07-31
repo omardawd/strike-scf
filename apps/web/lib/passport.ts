@@ -1,6 +1,6 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { callClaude, AI_MODEL, extractJson } from '@/lib/ai'
-import { languageInstruction } from '@/lib/ai/system-prompt'
+import { languageInstruction, NO_EMOJI_RULE } from '@/lib/ai/system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -362,7 +362,7 @@ Please analyze all documents thoroughly and produce the expert PassportScore JSO
         // EXPERT_SYSTEM has zero interpolation — identical across every org's
         // scoring call — so it's cacheable byte-for-byte via the content-block
         // form (no tools array on this call to hang cache_control off instead).
-        system: [{ type: 'text', text: EXPERT_SYSTEM + languageInstruction(locale), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: EXPERT_SYSTEM + languageInstruction(locale) + NO_EMOJI_RULE, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userContent }],
       }),
     })
@@ -558,7 +558,7 @@ export async function runPassportRecalculate(orgId: string, locale?: string): Pr
   let tokensUsed = 0
   try {
     const res = await callClaude({
-      system: NARRATIVE_SYSTEM + languageInstruction(locale),
+      system: NARRATIVE_SYSTEM + languageInstruction(locale) + NO_EMOJI_RULE,
       messages: [{
         role: 'user',
         content: JSON.stringify({

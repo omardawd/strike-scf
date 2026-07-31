@@ -8,6 +8,7 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { executeTool } from './tools/execute'
 import { TASK_CHAT_TOOLS } from './tools/definitions'
+import { NO_EMOJI_RULE } from './system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,7 +94,7 @@ ${pending
       : 'Just answer their question or discuss — there is no pending action to revise.'}
 ${dealId ? `\nThis negotiation finished as a real deal (deal_id: ${dealId}). If the human asks you to submit a financing request for it, call create_financing_request with org_id: "${rootTask.org_id}", deal_id: "${dealId}", and an amount you infer from the deal (ask them to confirm the amount and any rate/tenor preference first if it isn't obvious from the conversation).` : ''}
 
-You may use lookup_entities, get_active_deals, search_marketplace_listings, get_pricing_insights, or evaluate_listing_offers if you need more information before answering. Keep responses concise and written for a business reader (treasurer, CFO, ops controller) — no jargon, no raw IDs, no tool names.`
+You may use lookup_entities, get_active_deals, search_marketplace_listings, get_pricing_insights, or evaluate_listing_offers if you need more information before answering. Keep responses concise and written for a business reader (treasurer, CFO, ops controller) — no jargon, no raw IDs, no tool names.${NO_EMOJI_RULE}`
 }
 
 export async function postUserMessage(

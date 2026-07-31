@@ -78,16 +78,14 @@ function StackIcon() {
   )
 }
 
-function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']> }) {
+function PosterOrg({ org, bordered = true }: { org: NonNullable<ListingWithPassport['poster_org']>; bordered?: boolean }) {
   const t = useT()
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       gap: 10,
-      marginTop: 10,
-      paddingTop: 10,
-      borderTop: '1px solid var(--border)',
+      ...(bordered ? { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' } : {}),
     }}>
       <PassportScoreRing score={org.passport_score} size="sm" />
       <div style={{ minWidth: 0 }}>
@@ -223,27 +221,32 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
         {listing.ai_summary && (
           <div className="listing-ai-summary">{cleanSummary(listing.ai_summary)}</div>
         )}
-
-        {!isOwn && poster_org && <PosterOrg org={poster_org} />}
       </div>
 
       <div className="listing-card-footer">
-        {!isOwn && (
-          <span className="listing-offer-badge">
-            <span className="listing-offer-badge-count">{listing.offer_count ?? 0}</span>
-            &nbsp;{(listing.offer_count ?? 0) !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
-          </span>
+        {!isOwn && poster_org && (
+          <div className="listing-card-footer-row">
+            <PosterOrg org={poster_org} bordered={false} />
+          </div>
         )}
-        <div style={{ marginLeft: 'auto' }}>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              router.push(`/marketplace/listings/${listing.id}`)
-            }}
-          >
-            {isOwn ? t('marketplace.view') : t('marketplace.viewAndOffer')}
-          </button>
+        <div className="listing-card-footer-row">
+          {!isOwn && (
+            <span className="listing-offer-badge">
+              <span className="listing-offer-badge-count">{listing.offer_count ?? 0}</span>
+              &nbsp;{(listing.offer_count ?? 0) !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
+            </span>
+          )}
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                router.push(`/marketplace/listings/${listing.id}`)
+              }}
+            >
+              {isOwn ? t('marketplace.view') : t('marketplace.viewAndOffer')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

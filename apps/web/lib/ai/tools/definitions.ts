@@ -64,7 +64,7 @@ const CREATE_MARKETPLACE_LISTING = {
 
 const GET_ACTIVE_DEALS = {
   name: 'get_active_deals',
-  description: 'List all active (non-completed, non-cancelled) deals for an org. Use when the user asks about current deals, deal status, or payment due dates.',
+  description: 'List all active (non-completed, non-cancelled) deals for an org, including each deal\'s finalized value (value/currency fields — falls back from total_value to the earlier-set agreed_price so in-flight deals still report a real number) and a summary.total_value across the whole set. Use when the user asks about current deals, deal status, payment due dates, or deal VALUES (e.g. a bar chart of deals by value) — the data needed for a value-based breakdown is already here, no need to fetch term sheets separately.',
   input_schema: {
     type: 'object',
     properties: {

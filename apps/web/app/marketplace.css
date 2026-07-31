@@ -377,8 +377,14 @@
   padding: 12px 20px;
   border-top: 1px solid var(--border);
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.listing-card-footer-row {
+  display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
 }
 
 .listing-offer-badge {
@@ -1024,6 +1030,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* .listing-card-body is a column flex container. A flex item with
+     overflow != visible gets its automatic min-height resolved to 0
+     (instead of content-based) per the flexbox spec — so under the fixed
+     400px card height, this item alone was being shrunk to nothing while
+     its siblings (no overflow:hidden) kept their natural size. flex-shrink:0
+     opts it out of that shrinkage entirely, which is what actually fixes it. */
+  flex-shrink: 0;
 }
 .mp-listing-grid .listing-details-row {
   flex-wrap: nowrap;

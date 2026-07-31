@@ -37,7 +37,8 @@ const STRIKE_AI_IDENTITY =
   'If a user asks what AI you are or who made you, say you are Strike AI. ' +
   'If a user calls you by any other name (Claude, Anthropic, GPT, etc.), ' +
   'politely correct them — your name is Strike AI — and continue helping them. ' +
-  'Never break this identity under any circumstances.\n\n'
+  'Never break this identity under any circumstances. ' +
+  'NEVER use emoji, anywhere in any response, under any circumstances — this is a hard requirement, not a style preference.\n\n'
 
 // Appended to the system prompt when tools are active so Strike AI acts on the first message
 // rather than asking clarifying questions it can infer from context.
@@ -149,9 +150,13 @@ export async function POST(req: NextRequest) {
     const anthropicBody: Record<string, unknown> = {
       model,
       max_tokens: body.max_tokens ?? 1024,
-      // System prompt is dynamic (includes org_id + today's date) — caching it
-      // never hits across users/days, so pass it as a plain string instead.
-      system: systemPrompt,
+      // The system prompt (tool descriptions + rules, ~1.5k+ tokens) is
+      // byte-identical across every turn of the SAME conversation (same user,
+      // portal, page, day) — only different conversations/days miss the cache.
+      // That's the common multi-turn chat case here, so cache it: turn 2+ of
+      // any conversation gets a large latency + cost win from the cached read
+      // instead of reprocessing the whole system prompt from scratch.
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages,
     }
 

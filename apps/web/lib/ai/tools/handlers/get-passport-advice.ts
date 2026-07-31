@@ -1,4 +1,5 @@
 import { adminClient } from '../admin'
+import { NO_EMOJI_RULE } from '../../system-prompt'
 
 export interface GetPassportAdviceInput {
   org_id: string
@@ -134,7 +135,7 @@ Respond ONLY with valid JSON:
   ],
   "top_priority": "<single most important next action>",
   "estimated_score_uplift": "<e.g. '+8-12 points'>"
-}`
+}${NO_EMOJI_RULE}`
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {

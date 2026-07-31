@@ -3,6 +3,7 @@ import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { AIOverlay } from '@/components/ai-overlay'
+import { ActivityWidget } from '@/components/activity-widget'
 import type { PortalType } from '@/lib/portal-context'
 
 // Ordered specific-before-general so derivePageName resolves the deepest match first.
@@ -52,6 +53,7 @@ export function PortalShell({
         {children}
       </main>
       <AIOverlay />
+      <ActivityWidget />
     </div>
   )
 }

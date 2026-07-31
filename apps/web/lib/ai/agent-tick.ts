@@ -12,6 +12,7 @@ import { postSystemMessage } from './agent-task-chat'
 import { getAgentPreferences } from './agent-preferences'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { counterOffer as counterOfferDirect, TurnOrderError, InvalidStateError, GuardrailError } from '@/lib/marketplace/offer-actions'
+import { NO_EMOJI_RULE } from './system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -345,7 +346,7 @@ async function getComparisonDecision(
   listing: Row,
   offers: Array<{ offer_id: string; org_name: string; price: unknown; incoterms: unknown; payment_terms: unknown }>
 ): Promise<ComparisonDecision | null> {
-  const system = `You are Strike AI, comparing ${offers.length} competing offers on the same marketplace listing for a human decision-maker. Write a 2-4 sentence comparison naming each company and its terms, then recommend one. Respond with ONLY valid JSON: {"recommended_offer_id": "<one of the offer_ids below>", "body": "<your 2-4 sentence comparison, ending with the exact sentence 'Approving will accept {company}'s offer at {price}.'>"}`
+  const system = `You are Strike AI, comparing ${offers.length} competing offers on the same marketplace listing for a human decision-maker. Write a 2-4 sentence comparison naming each company and its terms, then recommend one. Respond with ONLY valid JSON: {"recommended_offer_id": "<one of the offer_ids below>", "body": "<your 2-4 sentence comparison, ending with the exact sentence 'Approving will accept {company}'s offer at {price}.'>"}${NO_EMOJI_RULE}`
   const user = `Listing: "${listing.title}" (${listing.listing_type}), currency ${listing.currency}, target price ${listing.target_price ?? 'not specified'}.\n\nCompeting offers:\n${offers.map((o) => `- offer_id: ${o.offer_id}, company: ${o.org_name}, price: ${o.price}, incoterms: ${o.incoterms ?? 'n/a'}, payment terms: ${o.payment_terms ?? 'n/a'}`).join('\n')}`
 
   try {
@@ -901,7 +902,7 @@ You must call exactly one tool to make your decision:
 - answer_question — if the counterparty's most recent Room message is PURELY an informational question (certifications, quality/compliance, specs, delivery logistics, company background) with no new price or terms proposed, answer it here using only the listing/company context above — never invent a certification, standard, or fact you weren't given. If they asked a question AND proposed new terms in the same message, don't call this — fold the answer into your counter/reject "notes"/"reason" instead and keep negotiating.
 - get_pricing_insights / evaluate_listing_offers — only if you need more market data before deciding; you'll be asked to decide again right after.
 
-Make one decision now. If you call counter_marketplace_offer, reject_marketplace_offer, recommend_finalization, or answer_question, briefly state your reasoning in a short text block before the tool call as well.`
+Make one decision now. If you call counter_marketplace_offer, reject_marketplace_offer, recommend_finalization, or answer_question, briefly state your reasoning in a short text block before the tool call as well.${NO_EMOJI_RULE}`
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [{ role: 'user', content: 'Decide how to respond to the counterparty\'s latest offer.' }]

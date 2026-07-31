@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { MarketplaceListing, MarketplaceOffer } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { useT } from '@/lib/i18n/locale-context'
+import { emitToast } from '@/lib/toast-bus'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -1150,6 +1151,10 @@ export default function ListingDetailPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? t('listingDetail.failedSubmitOffer'))
+      emitToast({
+        title: t('activityWidget.offerSubmitted'),
+        detail: t('activityWidget.offerSubmittedDetail', { title: data?.listing?.title ?? '' }),
+      })
       await fetchData()
     } catch (e) {
       setOfferError(e instanceof Error ? e.message : t('listingDetail.errorSubmittingOffer'))
@@ -1185,12 +1190,24 @@ export default function ListingDetailPage() {
 
       // If accepted, navigate to deal or room
       if (action === 'accept' && json.deal) {
+        emitToast({
+          title: t('activityWidget.offerAccepted'),
+          detail: t('activityWidget.offerAcceptedDetail', { title: data?.listing?.title ?? '' }),
+          href: `/deals/${json.deal.id}`,
+        })
         if (json.deal.room_id) {
           router.push(`/rooms/${json.deal.room_id}`)
           return
         }
         router.push(`/deals/${json.deal.id}`)
         return
+      }
+
+      if (action === 'counter') {
+        emitToast({
+          title: t('activityWidget.offerCountered'),
+          detail: t('activityWidget.offerCounteredDetail', { title: data?.listing?.title ?? '' }),
+        })
       }
 
       await fetchData()

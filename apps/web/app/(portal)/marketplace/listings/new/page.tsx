@@ -5,6 +5,7 @@ import { Topbar } from '@/components/portal-shell'
 import type { ListingType } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { useT } from '@/lib/i18n/locale-context'
+import { emitToast } from '@/lib/toast-bus'
 
 interface LineItem {
   id: string
@@ -293,6 +294,13 @@ function NewListingPageInner() {
         }).catch(() => {})
       }
 
+      if (!asDraft) {
+        emitToast({
+          title: t('activityWidget.listingUploaded'),
+          detail: t('activityWidget.listingUploadedDetail', { title: form.title.trim() }),
+          href: `/marketplace/listings/${listingId}`,
+        })
+      }
       router.push(asDraft ? '/marketplace' : `/marketplace/listings/${listingId}`)
     } catch {
       setError(t('common.networkError'))

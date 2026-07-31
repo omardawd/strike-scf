@@ -10,6 +10,7 @@ import { CountUp, Reveal, Skeleton, SkeletonText } from '@/components/motion'
 import type { FinancingRequest, FinancingRequestOffer, FinancingType } from '@strike-scf/types'
 import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 import { useT } from '@/lib/i18n/locale-context'
+import { emitToast } from '@/lib/toast-bus'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -613,6 +614,10 @@ export default function FinancingDetailPage() {
       })
       const json = await res.json()
       if (!res.ok) { alert(json.error ?? t('financingDetail.failedAcceptOffer')); return }
+      emitToast({
+        title: t('activityWidget.financingAccepted'),
+        detail: t('activityWidget.financingAcceptedDetail'),
+      })
       load()
     } finally {
       setAccepting(null)

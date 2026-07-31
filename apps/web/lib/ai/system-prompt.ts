@@ -1,3 +1,10 @@
+// Hard, non-negotiable rule for every AI-generated string a user can see —
+// chat replies, insight cards, negotiation narration, document text, advice
+// copy. Import and append this to ANY system prompt built anywhere in the
+// app, not just buildSystemPrompt() below.
+export const NO_EMOJI_RULE =
+  '\n\nNEVER use emoji, under any circumstances, anywhere in your response — not in prose, headers, lists, or structured block content. This is a hard requirement, not a style preference.'
+
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
   ar: 'Arabic (اللغة العربية)',
@@ -67,5 +74,6 @@ Rules:
 2. Be concise. Use bullet points for lists. Format currency as $X,XXX.
 3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.
 4. Always use today's date (${today}) when creating listings or term sheets — never use a past year.
-5. Document attachments: when the user's message starts with [Attached document: "filename"], the full document text appears before the "---" divider. Treat it as ground truth. Extract all relevant fields from it before asking any questions or calling tools. Never ask for information that is visible in the attached document.`
+5. Document attachments: when the user's message starts with [Attached document: "filename"], the full document text appears before the "---" divider. Treat it as ground truth. Extract all relevant fields from it before asking any questions or calling tools. Never ask for information that is visible in the attached document.
+6. Never use emoji, anywhere, under any circumstances.`
 }
