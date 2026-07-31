@@ -95,9 +95,10 @@ function NewListingPageInner() {
   const [extractError, setExtractError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
-  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const coverImageInputRef = useRef<HTMLInputElement>(null)
+  const MAX_IMAGES = 3
 
   useEffect(() => {
     const qNetworkId  = searchParams.get('network_id')
@@ -281,10 +282,11 @@ function NewListingPageInner() {
         }).catch(() => {})
       }
 
-      // Upload cover image to the listing
-      if (coverImageFile) {
+      // Upload listing images (sequential — the API appends to an ordered array,
+      // so parallel requests would race on the read-then-write).
+      for (const file of imageFiles) {
         const fd = new FormData()
-        fd.append('file', coverImageFile)
+        fd.append('file', file)
         await fetch(`/api/marketplace/listings/${listingId}/image`, {
           method: 'POST',
           body: fd,
@@ -377,38 +379,50 @@ function NewListingPageInner() {
                       style={{ display: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0]
-                        if (file) {
-                          setCoverImageFile(file)
-                          setCoverImagePreview(URL.createObjectURL(file))
+                        if (file && imageFiles.length < MAX_IMAGES) {
+                          setImageFiles(prev => [...prev, file])
+                          setImagePreviews(prev => [...prev, URL.createObjectURL(file)])
                         }
                         e.target.value = ''
                       }}
                     />
-                    {coverImagePreview ? (
-                      <div style={{ position: 'relative', width: 220, height: 140, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={coverImagePreview} alt="Listing cover preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {imagePreviews.map((src, i) => (
+                        <div key={i} style={{ position: 'relative', width: 140, height: 100, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt={`Listing photo ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          {i === 0 && (
+                            <span style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 6px', borderRadius: 'var(--radius-badge)' }}>
+                            {t('newListing.primaryPhoto')}
+                          </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImageFiles(prev => prev.filter((_, idx) => idx !== i))
+                              setImagePreviews(prev => prev.filter((_, idx) => idx !== i))
+                            }}
+                            style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', lineHeight: 1, fontSize: 13 }}
+                            title={t('newListing.removeImage')}
+                          >×</button>
+                        </div>
+                      ))}
+                      {imageFiles.length < MAX_IMAGES && (
                         <button
                           type="button"
-                          onClick={() => { setCoverImageFile(null); setCoverImagePreview(null) }}
-                          style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', lineHeight: 1, fontSize: 13 }}
-                          title={t('newListing.removeImage')}
-                        >×</button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => coverImageInputRef.current?.click()}
-                        style={{ width: 220, height: 140, borderRadius: 10, border: '1.5px dashed var(--border-strong)', background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12 }}
-                      >
-                        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="2" y="3" width="12" height="10" rx="1.5" />
-                          <circle cx="5.5" cy="6.5" r="1" />
-                          <path d="M2 11l3.5-3.5 2 2L11 6l3 3" />
-                        </svg>
-                        {t('newListing.addAPhoto')}
-                      </button>
-                    )}
+                          onClick={() => coverImageInputRef.current?.click()}
+                          style={{ width: 140, height: 100, borderRadius: 10, border: '1.5px dashed var(--border-strong)', background: 'var(--offwhite)', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12 }}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                            <circle cx="5.5" cy="6.5" r="1" />
+                            <path d="M2 11l3.5-3.5 2 2L11 6l3 3" />
+                          </svg>
+                          {t('newListing.addAPhoto')}
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>{t('newListing.upToNPhotos', { n: MAX_IMAGES })}</div>
                   </div>
 
                   <div className="form-field">

@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { SkeletonText } from '@/components/motion'
+import { useLocale } from '@/lib/i18n/locale-context'
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ interface AIInsightProps {
 }
 
 export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps) {
+  const { locale } = useLocale()
   const [insight, setInsight] = useState('')
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(!collapsed)
@@ -111,7 +113,7 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
   useEffect(() => {
     if (!expanded || fetched || insight) return
 
-    let cacheKey = `strike-ai-insight-inline-${title ?? 'default'}`
+    let cacheKey = `strike-ai-insight-inline-${title ?? 'default'}-${locale}`
     try {
       cacheKey += `-${btoa(unescape(encodeURIComponent(JSON.stringify({ prompt, context })))).slice(0, 32)}`
     } catch {}
@@ -129,7 +131,7 @@ export function AIInsight({ prompt, context, title, collapsed }: AIInsightProps)
     } catch {}
 
     fetchInsight(cacheKey)
-  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, locale]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchInsight(cacheKey?: string) {
     setLoading(true)
@@ -154,6 +156,7 @@ RULES:
             content: `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`,
           }],
           max_tokens: 320,
+          locale,
         }),
       })
       if (res.status === 429) {

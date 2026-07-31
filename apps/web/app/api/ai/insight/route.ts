@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { languageInstruction } from '@/lib/ai/system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,12 +26,19 @@ interface InsightResult {
   actions: InsightAction[]
 }
 
-const FALLBACK: InsightResult = {
-  insight: 'Strike AI is analyzing your data.',
-  actions: [],
+const FALLBACK_INSIGHT: Record<string, string> = {
+  en: 'Strike AI is analyzing your data.',
+  ar: 'يقوم Strike AI بتحليل بياناتك.',
+  es: 'Strike AI está analizando tus datos.',
 }
 
-function parseInsight(raw: string): InsightResult {
+function fallbackFor(locale?: string): InsightResult {
+  const lang = locale && FALLBACK_INSIGHT[locale] ? locale : 'en'
+  return { insight: FALLBACK_INSIGHT[lang]!, actions: [] }
+}
+
+function parseInsight(raw: string, locale?: string): InsightResult {
+  const FALLBACK = fallbackFor(locale)
   try {
     const cleaned = raw
       .replace(/```json/gi, '')
@@ -120,7 +128,7 @@ Respond with ONLY valid JSON, no markdown, no preamble:
 { "label": "short prompt action", "prompt": "message to send to Strike AI" }
 ]
 }
-Max 2 actions. Actions are optional. insight is required. Be specific — reference actual numbers from the data. Never be generic.`
+Max 2 actions. Actions are optional. insight is required. Be specific — reference actual numbers from the data. Never be generic.${languageInstruction(typeof body.locale === 'string' ? body.locale : undefined)}`
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -131,7 +139,11 @@ Max 2 actions. Actions are optional. insight is required. Be specific — refere
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 256,
+      // Non-Latin scripts (ar) and longer Romance phrasing (es) tokenize far
+      // heavier than English — at 256 the JSON was getting truncated mid-object
+      // and silently falling through to FALLBACK. This is a ceiling, not a
+      // target, so English responses cost the same as before.
+      max_tokens: 700,
       system,
       messages: [{ role: 'user', content: 'Generate the insight JSON for this page.' }],
     }),
@@ -140,12 +152,15 @@ Max 2 actions. Actions are optional. insight is required. Be specific — refere
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     console.error('[AI] Insight Anthropic error:', err)
-    return NextResponse.json(FALLBACK)
+    return NextResponse.json(fallbackFor(typeof body.locale === 'string' ? body.locale : undefined))
   }
 
   const result = await response.json()
   const raw: string = result.content?.[0]?.text ?? ''
-  const parsed = parseInsight(raw)
+  if (result.stop_reason === 'max_tokens') {
+    console.warn('[AI] Insight hit max_tokens — output truncated, falling back. locale:', body.locale)
+  }
+  const parsed = parseInsight(raw, typeof body.locale === 'string' ? body.locale : undefined)
   const usage = result.usage ?? {}
 
   // Log usage

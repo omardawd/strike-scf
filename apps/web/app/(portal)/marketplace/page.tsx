@@ -52,6 +52,32 @@ function formatDeadline(iso: string | null | undefined): string | null {
   }
 }
 
+// AI-generated summaries sometimes lead with a markdown heading (e.g. "# Trade
+// Listing Summary") that duplicates the card's own title — strip it so the card
+// shows clean prose instead of raw markdown syntax.
+function cleanSummary(s: string): string {
+  return s.replace(/^#{1,6}\s+[^\n]*\n*/, '').trim()
+}
+
+function ListingImageIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="6.8" cy="7.3" r="1.3" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.5 13.5l4-4 3 3 3.5-3.5 4.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function StackIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="4" y="4" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M7 2.5h9a1.5 1.5 0 011.5 1.5v9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function PosterOrg({ org }: { org: NonNullable<ListingWithPassport['poster_org']> }) {
   const t = useT()
   return (
@@ -94,6 +120,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
   const router = useRouter()
   const t = useT()
   const { listing, poster_org } = item
+  const [imgIndex, setImgIndex] = useState(0)
 
   const rawPrice = (item as any).line_items_total ?? listing.target_price
   const price = rawPrice != null
@@ -101,16 +128,44 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
     : null
   const isTotal = (item as any).line_items_total != null
   const deadline = formatDeadline(listing.delivery_deadline)
+  const images = listing.image_urls?.length ? listing.image_urls : (listing.cover_image_url ? [listing.cover_image_url] : [])
+  const activeIdx = Math.min(imgIndex, images.length - 1)
+
+  function prevImage(e: React.MouseEvent) {
+    e.stopPropagation()
+    setImgIndex(i => (Math.min(i, images.length - 1) - 1 + images.length) % images.length)
+  }
+  function nextImage(e: React.MouseEvent) {
+    e.stopPropagation()
+    setImgIndex(i => (Math.min(i, images.length - 1) + 1) % images.length)
+  }
 
   return (
     <div
       className="listing-card card-interactive"
       onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
     >
-      {listing.cover_image_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={listing.cover_image_url} alt={listing.title} className="listing-card-image" />
-      )}
+      <div className="listing-card-image-wrap">
+        {images.length > 0 ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={images[activeIdx]} alt={listing.title} className="listing-card-image" />
+            {images.length > 1 && (
+              <>
+                <button type="button" className="listing-image-arrow listing-image-arrow-prev" onClick={prevImage} aria-label={t('newListing.previousPhoto')}>‹</button>
+                <button type="button" className="listing-image-arrow listing-image-arrow-next" onClick={nextImage} aria-label={t('newListing.nextPhoto')}>›</button>
+                <span className="listing-image-count-badge">
+                  <StackIcon />{activeIdx + 1}/{images.length}
+                </span>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="listing-card-image-placeholder">
+            <ListingImageIcon />
+          </div>
+        )}
+      </div>
       <div className="listing-card-head">
         <span className={`listing-type-badge ${listing.listing_type === 'po_request' ? 'listing-type-po' : 'listing-type-product'}`}>
           {listing.listing_type === 'po_request' ? t('passport.poRequest') : t('passport.productService')}
@@ -166,7 +221,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
         </div>
 
         {listing.ai_summary && (
-          <div className="listing-ai-summary">{listing.ai_summary}</div>
+          <div className="listing-ai-summary">{cleanSummary(listing.ai_summary)}</div>
         )}
 
         {!isOwn && poster_org && <PosterOrg org={poster_org} />}

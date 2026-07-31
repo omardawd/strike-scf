@@ -1,4 +1,6 @@
-// Cover image upload for a marketplace listing — public bucket, mirrors app/api/settings/logo/route.ts.
+// Image upload for a marketplace listing — public bucket, mirrors app/api/settings/logo/route.ts.
+// Up to 3 images per listing (image_urls, ordered); image_urls[0] stays mirrored into
+// cover_image_url so existing readers (passport product catalog, financing pages) keep working.
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
@@ -10,6 +12,7 @@ const adminClient = createAdmin(
 
 const BUCKET = 'listing-images'
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const MAX_IMAGES = 3
 
 export async function POST(
   request: Request,
@@ -30,12 +33,17 @@ export async function POST(
 
   const { data: listing } = await adminClient
     .from('marketplace_listings')
-    .select('id, org_id')
+    .select('id, org_id, image_urls')
     .eq('id', id)
     .single()
   if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
   if (listing.org_id !== userData.org_id) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
+  const existing: string[] = listing.image_urls ?? []
+  if (existing.length >= MAX_IMAGES) {
+    return NextResponse.json({ error: `A listing can have at most ${MAX_IMAGES} images` }, { status: 400 })
   }
 
   let formData: FormData
@@ -56,7 +64,7 @@ export async function POST(
   }
 
   const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${id}/cover.${ext}`
+  const path = `${id}/${Date.now()}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error: bucketErr } = await adminClient.storage.createBucket(
@@ -76,27 +84,28 @@ export async function POST(
   }
 
   const { data: { publicUrl } } = adminClient.storage.from(BUCKET).getPublicUrl(path)
-  // Deterministic path + upsert:true means the public URL is byte-identical across
-  // re-uploads — version-bust it so a re-upload isn't served stale from cache.
   const versionedUrl = `${publicUrl}?v=${Date.now()}`
+  const imageUrls = [...existing, versionedUrl]
 
   const { error: dbError } = await adminClient
     .from('marketplace_listings')
-    .update({ cover_image_url: versionedUrl })
+    .update({ image_urls: imageUrls, cover_image_url: imageUrls[0] })
     .eq('id', id)
   if (dbError) {
     console.error('Listing image DB update error:', dbError)
     return NextResponse.json({ error: 'Image uploaded but failed to save: ' + dbError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ cover_image_url: versionedUrl })
+  return NextResponse.json({ image_urls: imageUrls, cover_image_url: imageUrls[0] })
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const url = new URL(request.url)
+  const target = url.searchParams.get('url')
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -111,7 +120,7 @@ export async function DELETE(
 
   const { data: listing } = await adminClient
     .from('marketplace_listings')
-    .select('id, org_id')
+    .select('id, org_id, image_urls')
     .eq('id', id)
     .single()
   if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
@@ -119,11 +128,14 @@ export async function DELETE(
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 
+  const existing: string[] = listing.image_urls ?? []
+  const imageUrls = target ? existing.filter(u => u !== target) : []
+
   const { error } = await adminClient
     .from('marketplace_listings')
-    .update({ cover_image_url: null })
+    .update({ image_urls: imageUrls, cover_image_url: imageUrls[0] ?? null })
     .eq('id', id)
   if (error) return NextResponse.json({ error: 'Failed to remove image' }, { status: 500 })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ image_urls: imageUrls, cover_image_url: imageUrls[0] ?? null })
 }

@@ -313,6 +313,7 @@ export interface MarketplaceListing {
   unit: string | null
   target_price: number | null
   cover_image_url: string | null
+  image_urls: string[]
   currency: string
   incoterms: string | null
   shipping_cost: number | null

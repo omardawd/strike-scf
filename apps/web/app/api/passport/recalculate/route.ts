@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const internalSecret = process.env.INTERNAL_SECRET
   const isInternal = Boolean(internalSecret && internalHeader === internalSecret)
 
-  let body: { org_id?: string }
+  let body: { org_id?: string; locale?: string }
   try {
     body = await request.json()
   } catch {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await runPassportRecalculate(orgId)
+    const result = await runPassportRecalculate(orgId, body.locale)
     return NextResponse.json(result)
   } catch (e) {
     console.error('[passport/recalculate] failed:', e)

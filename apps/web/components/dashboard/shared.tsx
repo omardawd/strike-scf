@@ -9,6 +9,9 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PassportScoreRing } from '@/components/passport-score-ring'
 import { CountUp, Skeleton, SkeletonCard } from '@/components/motion'
+import { useT } from '@/lib/i18n/locale-context'
+
+type TFn = (key: string, vars?: Record<string, string | number>) => string
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface NotifItem {
@@ -79,6 +82,32 @@ export function fmtRelTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+const DEAL_STATUS_KEYS: Record<string, string> = {
+  negotiating:         'deals.status.negotiating',
+  agreed:              'deals.status.agreed',
+  contract_pending:    'deals.status.contractPending',
+  documents_pending:   'deals.status.documentsPending',
+  confirmed:           'deals.status.confirmed',
+  in_preparation:      'deals.status.inPreparation',
+  shipped:             'deals.status.shipped',
+  delivery_confirmed:  'deals.status.deliveryConfirmed',
+  in_dispute:          'deals.status.inDispute',
+  payment_due:         'deals.status.paymentDue',
+  payment_overdue:     'deals.status.paymentOverdue',
+  payment_confirmed:   'deals.status.paymentConfirmed',
+  completed:           'deals.status.completed',
+  cancelled:           'deals.status.cancelled',
+  active:              'deals.status.active',
+  financing_requested: 'deals.status.financingRequested',
+  financing_active:    'deals.status.financingActive',
+  disputed:            'deals.status.disputed',
+}
+
+export function dealStatusLabel(status: string, t: TFn): string {
+  const key = DEAL_STATUS_KEYS[status]
+  return key ? t(key) : status.replace(/_/g, ' ')
+}
+
 export function dealStatusClass(status: string): string {
   switch (status) {
     case 'completed':          return 'badge-completed'
@@ -100,11 +129,11 @@ export function scoreColor(score: number | null | undefined): string {
   return 'var(--color-red)'
 }
 
-export function scoreTierLabel(score: number | null | undefined): string {
-  if (!score) return 'Unrated'
-  if (score >= 70) return 'Preferred'
-  if (score >= 45) return 'Standard'
-  return 'At Risk'
+export function scoreTierLabel(score: number | null | undefined, t: TFn): string {
+  if (!score) return t('dashboardShared.tierUnrated')
+  if (score >= 70) return t('dashboardShared.tierPreferred')
+  if (score >= 45) return t('programDetail.standard')
+  return t('dashboardShared.tierAtRisk')
 }
 
 export function scoreTierClass(score: number | null | undefined): string {
@@ -164,6 +193,7 @@ export function Topbar({ crumbs, actions }: {
 // ─── NotifBell ────────────────────────────────────────────────────────────────
 export function NotifBell() {
   const router = useRouter()
+  const t = useT()
   const [notifications, setNotifications] = useState<NotifItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [open, setOpen] = useState(false)
@@ -212,7 +242,7 @@ export function NotifBell() {
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <button
-        className="icon-btn" type="button" aria-label="Notifications"
+        className="icon-btn" type="button" aria-label={t('dashboardShared.notifications')}
         onClick={() => setOpen(o => !o)}
         style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--gray)' }}
       >
@@ -234,16 +264,16 @@ export function NotifBell() {
           boxShadow: '0 4px 16px rgba(0,0,0,0.08)', zIndex: 100,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>Notifications</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{t('dashboardShared.notifications')}</span>
             {unreadCount > 0 && (
               <button type="button" style={{ fontSize: 12, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} onClick={markAllRead}>
-                Mark all read
+                {t('dashboardShared.markAllRead')}
               </button>
             )}
           </div>
           {notifications.length === 0 ? (
             <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>
-              No notifications yet
+              {t('dashboardShared.noNotificationsYet')}
             </div>
           ) : (
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
@@ -409,6 +439,7 @@ export function PassportBanner({
   onViewPassport?: () => void
 }) {
   const router = useRouter()
+  const t = useT()
 
   if (loading) return <div style={{ marginBottom: 24 }}><SkeletonCard height={96} /></div>
 
@@ -423,18 +454,18 @@ export function PassportBanner({
         display: 'flex', alignItems: 'center', gap: 20,
         padding: '16px 20px', flexWrap: 'wrap',
       }}>
-        <PassportScoreRing score={null} size={size} showLabel pendingLabel="Passport Inactive" />
+        <PassportScoreRing score={null} size={size} showLabel pendingLabel={t('marketplace.passportInactive')} />
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-            Passport Inactive
+            {t('marketplace.passportInactive')}
           </div>
           <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.55 }}>
-            Complete verification to get your PassportScore and unlock the platform.
+            {t('dashboardShared.completeVerificationHint')}
           </div>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => onActivate ? onActivate() : router.push('/onboarding')}
           style={{ flexShrink: 0 }}>
-          Activate Passport →
+          {t('marketplace.activatePassport')}
         </button>
       </div>
     )
@@ -454,13 +485,13 @@ export function PassportBanner({
       <PassportScoreRing score={score} size={size} showLabel />
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-          <span className={`badge ${scoreTierClass(score)}`}>{scoreTierLabel(score)}</span>
+          <span className={`badge ${scoreTierClass(score)}`}>{scoreTierLabel(score, t)}</span>
         </div>
         <div className="reveal-stagger" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           {[
-            { label: 'Total Trades', value: org.trade_count_total, format: undefined as ((n: number) => string) | undefined },
-            { label: 'Total Volume', value: org.trade_volume_total, format: fmtCurrency },
-            ...(org.avg_payment_days != null ? [{ label: 'On-Time Rate', value: org.avg_payment_days, format: (n: number) => `${n}d avg` }] : []),
+            { label: t('dealDetail.totalTrades'), value: org.trade_count_total, format: undefined as ((n: number) => string) | undefined },
+            { label: t('financing.totalVolume'), value: org.trade_volume_total, format: fmtCurrency },
+            ...(org.avg_payment_days != null ? [{ label: t('dashboardShared.onTimeRate'), value: org.avg_payment_days, format: (n: number) => t('dashboardShared.daysAvg', { n }) }] : []),
           ].map(stat => (
             <div key={stat.label}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 2 }}>{stat.label}</div>
@@ -473,7 +504,7 @@ export function PassportBanner({
       </div>
       {extras}
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => onViewPassport ? onViewPassport() : router.push('/passport')}>
-        View Passport →
+        {t('listingDetail.viewPassport')}
       </button>
     </div>
   )
@@ -484,6 +515,7 @@ export function PassportBanner({
 // doing — the agent's work otherwise lives entirely inside the Agent tab.
 export function AgentActivityTicker() {
   const router = useRouter()
+  const t = useT()
   const [items, setItems] = useState<AgentActivityItem[]>([])
   const [index, setIndex] = useState(0)
   const [loaded, setLoaded] = useState(false)
@@ -523,7 +555,7 @@ export function AgentActivityTicker() {
         fontFamily: 'var(--font-body)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em',
         textTransform: 'uppercase', color: 'var(--blue)', flexShrink: 0,
       }}>
-        Your agent
+        {t('dashboardShared.yourAgent')}
       </span>
       <span key={current.id} className="fade-in" style={{
         fontSize: 13, color: 'var(--ink)', flex: 1, minWidth: 0,
@@ -556,6 +588,7 @@ export function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta, onRo
   onRowClick?: (deal: DealItem) => void
 }) {
   const router = useRouter()
+  const t = useT()
   const activeDeals = deals.filter(d => !['completed', 'cancelled'].includes(d.status)).slice(0, 5)
 
   if (loading) {
@@ -580,10 +613,10 @@ export function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta, onRo
     <table className="table" style={{ tableLayout: 'fixed' }}>
       <thead>
         <tr>
-          <th style={{ width: '26%' }}>Counterparty</th>
-          <th style={{ width: '30%' }}>Goods</th>
-          <th className="amount" style={{ width: '15%' }}>Value</th>
-          <th style={{ width: '18%' }}>Status</th>
+          <th style={{ width: '26%' }}>{t('deals.col.counterparty')}</th>
+          <th style={{ width: '30%' }}>{t('financingDetail.goods')}</th>
+          <th className="amount" style={{ width: '15%' }}>{t('dealImport.value')}</th>
+          <th style={{ width: '18%' }}>{t('financing.status')}</th>
           <th style={{ width: '11%' }}></th>
         </tr>
       </thead>
@@ -592,11 +625,11 @@ export function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta, onRo
           <tr key={deal.id} className="card-interactive" onClick={() => onRowClick ? onRowClick(deal) : router.push(`/deals/${deal.id}`)}>
             <td>
               <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {deal.counterparty?.legal_name ?? 'Unknown'}
+                {deal.counterparty?.legal_name ?? t('rooms.unknown')}
               </div>
               {deal.counterparty?.passport_score != null && (
                 <div style={{ fontSize: 11, color: scoreColor(deal.counterparty.passport_score), marginTop: 1 }}>
-                  Score {deal.counterparty.passport_score}
+                  {t('dashboardShared.scoreValue', { score: deal.counterparty.passport_score })}
                 </div>
               )}
             </td>
@@ -606,9 +639,9 @@ export function DealTable({ deals, loading, emptyTitle, emptySub, emptyCta, onRo
               </div>
             </td>
             <td className="amount">{deal.total_value ? fmtCurrency(deal.total_value) : '—'}</td>
-            <td><span className={`badge ${dealStatusClass(deal.status)}`}>{deal.status.replace(/_/g, ' ')}</span></td>
+            <td><span className={`badge ${dealStatusClass(deal.status)}`}>{dealStatusLabel(deal.status, t)}</span></td>
             <td className="row-actions">
-              <a href={`/deals/${deal.id}`} className="btn btn-sm btn-ghost" onClick={(e) => e.stopPropagation()}>View</a>
+              <a href={`/deals/${deal.id}`} className="btn btn-sm btn-ghost" onClick={(e) => e.stopPropagation()}>{t('marketplace.view')}</a>
             </td>
           </tr>
         ))}

@@ -114,6 +114,20 @@ function financingStatusClass(status: string): string {
   }
 }
 
+const LISTING_STATUS_KEYS: Record<string, string> = {
+  active:    'listingDetail.status.active',
+  cancelled: 'listingDetail.status.cancelled',
+  closed:    'listingDetail.status.closed',
+  draft:     'listingDetail.status.draft',
+  expired:   'listingDetail.status.expired',
+  matched:   'listingDetail.status.matched',
+}
+
+function listingStatusLabel(status: string, t: (key: string) => string): string {
+  const key = LISTING_STATUS_KEYS[status]
+  return key ? t(key) : status
+}
+
 function structureBadgeClass(s: string): string {
   switch (s) {
     case 'open':   return 'badge-active'
@@ -133,12 +147,13 @@ function PassportOverviewWidget({
   dist?: { total: number; avg_score: number | null; strong: number; fair: number; weak: number; pending: number }
   loading: boolean
 }) {
+  const t = useT()
   const segments = dist
     ? [
-        { key: 'strong',  label: 'Strong 70+',  value: dist.strong,  color: 'var(--color-green)' },
-        { key: 'fair',    label: 'Fair 45–69',  value: dist.fair,    color: 'var(--color-amber)' },
-        { key: 'weak',    label: 'Weak <45',    value: dist.weak,    color: 'var(--color-red)' },
-        { key: 'pending', label: 'Pending',     value: dist.pending, color: 'var(--gray-soft)' },
+        { key: 'strong',  label: t('dashboardPage.strong70'),  value: dist.strong,  color: 'var(--color-green)' },
+        { key: 'fair',    label: t('dashboardPage.fair4569'),   value: dist.fair,    color: 'var(--color-amber)' },
+        { key: 'weak',    label: t('dashboardPage.weakUnder45'), value: dist.weak,   color: 'var(--color-red)' },
+        { key: 'pending', label: t('transactionsPage.pending'), value: dist.pending, color: 'var(--gray-soft)' },
       ]
     : []
   const total = dist?.total ?? 0
@@ -146,15 +161,15 @@ function PassportOverviewWidget({
   return (
     <div className="card">
       <div className="card-head">
-        <span>PassportScore Overview</span>
-        <a href="/reporting" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>Portfolio →</a>
+        <span>{t('dashboardPage.passportScoreOverview')}</span>
+        <a href="/reporting" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('dashboardPage.portfolioArrow')}</a>
       </div>
       <div className="card-body" style={{ padding: 16 }}>
         {loading ? (
           <Skeleton height={48} />
         ) : !dist || total === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--gray)', textAlign: 'center', padding: '12px 0' }}>
-            No counterparties in your portfolio yet.
+            {t('dashboardPage.noCounterpartiesYet')}
           </div>
         ) : (
           <>
@@ -162,12 +177,12 @@ function PassportOverviewWidget({
               <PassportScoreRing score={dist.avg_score} size="sm" />
               <div>
                 <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                  Avg PassportScore
+                  {t('dashboardPage.avgPassportScore')}
                 </div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
                   <CountUp value={dist.avg_score ?? NaN} />
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>{total} counterpart{total === 1 ? 'y' : 'ies'}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>{t(total === 1 ? 'dashboardPage.counterpartySingular' : 'dashboardPage.counterpartyPlural', { n: total })}</div>
               </div>
             </div>
 
@@ -227,15 +242,15 @@ function BankDashboard() {
   const attentionCount = openFinancing + txnsPending
 
   const actionCards: ActionCard[] = [
-    { color: 'var(--blue)', label: `${openFinancing} open Strike Place request${openFinancing !== 1 ? 's' : ''}`, count: openFinancing, href: '/marketplace/financing' },
-    { color: 'var(--color-amber)', label: `${txnsPending} transaction${txnsPending !== 1 ? 's' : ''} awaiting review`, count: txnsPending, href: '/transactions' },
+    { color: 'var(--blue)', label: t('dashboardPage.nOpenStrikePlaceRequests', { n: openFinancing }), count: openFinancing, href: '/marketplace/financing' },
+    { color: 'var(--color-amber)', label: t('dashboardPage.nTransactionsAwaitingReview', { n: txnsPending }), count: txnsPending, href: '/transactions' },
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Programs',    value: dashData?.active_program_count ?? 0, sub: dashData ? `${dashData.program_count} total` : undefined, icon: 'programs', tint: 'var(--blue)' },
-    { label: 'Outstanding Balance', value: dashData?.outstanding_balance ?? 0, format: fmtCurrency, valueColor: 'var(--blue)', icon: 'balance', tint: 'var(--blue)' },
-    { label: 'Avg Financing Rate', value: dashData?.avg_rate ?? null, format: (n) => `${n}%`, icon: 'rate', tint: 'var(--color-purple)' },
-    { label: 'Enrolled Orgs',     value: dashData?.enrolled_org_count ?? 0, icon: 'org', tint: 'var(--color-green)' },
+    { label: t('dashboardPage.activePrograms'),    value: dashData?.active_program_count ?? 0, sub: dashData ? t('dashboardPage.nTotal', { n: dashData.program_count }) : undefined, icon: 'programs', tint: 'var(--blue)' },
+    { label: t('reportingPage.outstandingBalance'), value: dashData?.outstanding_balance ?? 0, format: fmtCurrency, valueColor: 'var(--blue)', icon: 'balance', tint: 'var(--blue)' },
+    { label: t('dashboardPage.avgFinancingRate'), value: dashData?.avg_rate ?? null, format: (n) => `${n}%`, icon: 'rate', tint: 'var(--color-purple)' },
+    { label: t('dashboardPage.enrolledOrgs'),     value: dashData?.enrolled_org_count ?? 0, icon: 'org', tint: 'var(--color-green)' },
   ]
 
   const bankAiContext = JSON.stringify({
@@ -255,7 +270,7 @@ function BankDashboard() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Dashboard' }]} />
+      <Topbar crumbs={[{ label: t('nav.dashboard') }]} />
       <div className="page"
         data-page-name="Dashboard"
         data-ai-context={bankAiContext}
@@ -263,13 +278,13 @@ function BankDashboard() {
 
         {/* 1. Page header */}
         <DashboardHeader
-          eyebrow={`${dashData?.bank_name ?? 'Bank'} · Command Center`}
+          eyebrow={t('dashboardPage.bankCommandCenter', { bank: dashData?.bank_name ?? t('dashboardPage.bankFallback') })}
           title={t(greetingKey(), { name: firstName })}
           subtitle={
             loading ? <Skeleton height={14} width={180} />
               : attentionCount > 0
-              ? `${attentionCount} item${attentionCount !== 1 ? 's' : ''} need your attention · ${todayFull()}`
-              : `Everything is up to date · ${todayFull()}`
+              ? t('dashboardPage.nItemsNeedAttention', { n: attentionCount, date: todayFull() })
+              : t('dashboardPage.everythingUpToDate', { date: todayFull() })
           }
         />
 
@@ -305,8 +320,8 @@ function BankDashboard() {
           {/* LEFT — Strike Place */}
           <div className="card">
             <div className="card-head">
-              <span>Strike Place</span>
-              <a href="/marketplace/financing" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+              <span>{t('nav.strikePlace')}</span>
+              <a href="/marketplace/financing" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('reportingPage.viewAll')}</a>
             </div>
             {loading ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -314,9 +329,9 @@ function BankDashboard() {
               </div>
             ) : financing.length === 0 ? (
               <div className="float-slow" style={{ padding: '36px 24px', textAlign: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>No open financing requests right now</div>
-                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>Check back soon or browse Strike Place.</div>
-                <a href="/marketplace/financing" className="btn btn-sm btn-ghost">Browse Strike Place →</a>
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>{t('dashboardPage.noOpenFinancingRequests')}</div>
+                <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 16 }}>{t('dashboardPage.checkBackSoonHint')}</div>
+                <a href="/marketplace/financing" className="btn btn-sm btn-ghost">{t('dashboardPage.browseStrikePlaceArrow')}</a>
               </div>
             ) : (
               <div className="reveal-stagger">
@@ -344,11 +359,11 @@ function BankDashboard() {
                     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                         <PassportScoreRing score={item.buyer_passport?.passport_score ?? null} size="sm" />
-                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Buyer</span>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>{t('dashboardPage.buyer')}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                         <PassportScoreRing score={item.supplier_passport?.passport_score ?? null} size="sm" />
-                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>Supplier</span>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 10, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray)' }}>{t('dashboardPage.supplier')}</span>
                       </div>
                       {item.request.ai_risk_assessment && (
                         <div style={{
@@ -361,7 +376,7 @@ function BankDashboard() {
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <a href={`/marketplace/financing/${item.request.id}`} className="btn btn-sm btn-blue" onClick={(e) => e.stopPropagation()}>Submit Offer</a>
+                      <a href={`/marketplace/financing/${item.request.id}`} className="btn btn-sm btn-blue" onClick={(e) => e.stopPropagation()}>{t('dashboardPage.submitOffer')}</a>
                     </div>
                   </div>
                 ))}
@@ -377,7 +392,7 @@ function BankDashboard() {
 
             <div className="card">
               <div className="card-head">
-                <span>Recent Activity</span>
+                <span>{t('dashboardPage.recentActivity')}</span>
               </div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -385,7 +400,7 @@ function BankDashboard() {
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="float-slow" style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
-                  No recent activity
+                  {t('dashboardPage.noRecentActivity')}
                 </div>
               ) : (
                 <div className="dash-activity reveal-stagger">
@@ -402,12 +417,12 @@ function BankDashboard() {
                 </div>
               )}
               <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--blue)' }}>
-                View all notifications →
+                {t('dashboardPage.viewAllNotificationsArrow')}
               </div>
             </div>
 
             <AIInsight
-              title="Portfolio Insight"
+              title={t('dashboardPage.portfolioInsight')}
               collapsed={true}
               prompt="Based on this bank's portfolio, what is the single most important action the bank should take today? Be specific and direct."
               context={{
@@ -486,16 +501,16 @@ function AnchorDashboard() {
     : '/marketplace'
 
   const actionCards: ActionCard[] = [
-    { color: 'var(--color-amber)', label: `${dealsNeedingAction} deal${dealsNeedingAction !== 1 ? 's' : ''} awaiting your action`, count: dealsNeedingAction, href: '/deals' },
-    { color: 'var(--blue)', label: `${listingsWithOffers} listing${listingsWithOffers !== 1 ? 's' : ''} with offers`, count: listingsWithOffers, href: listingsWithOffersHref },
-    { color: 'var(--color-green)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} received`, count: financingWithOffers, href: '/marketplace/financing' },
+    { color: 'var(--color-amber)', label: t('dashboardPage.nDealsAwaitingAction', { n: dealsNeedingAction }), count: dealsNeedingAction, href: '/deals' },
+    { color: 'var(--blue)', label: t('dashboardPage.nListingsWithOffers', { n: listingsWithOffers }), count: listingsWithOffers, href: listingsWithOffersHref },
+    { color: 'var(--color-green)', label: t('dashboardPage.nFinancingOffersReceived', { n: financingWithOffers }), count: financingWithOffers, href: '/marketplace/financing' },
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',         value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
-    { label: 'Trade Volume',         value: tradeVolume, format: fmtCurrency, sub: completedDealCount > 0 ? `${completedDealCount} completed` : 'Active + completed', valueColor: tradeVolume > 0 ? 'var(--color-green)' : undefined, icon: 'volume', tint: 'var(--color-green)' },
-    { label: 'Financing Active',     value: financingActiveAmt, format: fmtCurrency, valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined, icon: 'financing', tint: 'var(--color-purple)' },
-    { label: 'Strike Place Listings', value: listings.length, icon: 'listings', tint: 'var(--color-amber)' },
+    { label: t('marketplace.activeDeals'),    value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
+    { label: t('dashboardPage.tradeVolume'),  value: tradeVolume, format: fmtCurrency, sub: completedDealCount > 0 ? t('dashboardPage.nCompleted', { n: completedDealCount }) : t('dashboardPage.activePlusCompleted'), valueColor: tradeVolume > 0 ? 'var(--color-green)' : undefined, icon: 'volume', tint: 'var(--color-green)' },
+    { label: t('deals.status.financingActive'), value: financingActiveAmt, format: fmtCurrency, valueColor: financingActiveAmt > 0 ? 'var(--blue)' : undefined, icon: 'financing', tint: 'var(--color-purple)' },
+    { label: t('dashboardPage.strikePlaceListings'), value: listings.length, icon: 'listings', tint: 'var(--color-amber)' },
   ]
 
   const anchorAiContext = JSON.stringify({
@@ -520,7 +535,7 @@ function AnchorDashboard() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Dashboard' }]} />
+      <Topbar crumbs={[{ label: t('nav.dashboard') }]} />
       <div className="page"
         data-page-name="Dashboard"
         data-ai-context={anchorAiContext}
@@ -567,18 +582,18 @@ function AnchorDashboard() {
           {/* LEFT — My Deals */}
           <div className="card">
             <div className="card-head">
-              <span>Active Deals</span>
-              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+              <span>{t('marketplace.activeDeals')}</span>
+              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('reportingPage.viewAll')}</a>
             </div>
             <DealTable
               deals={deals}
               loading={loading}
-              emptyTitle="No active deals yet."
+              emptyTitle={t('dashboardPage.noActiveDealsYet')}
               emptySub=""
               emptyCta={
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  <a href="/marketplace" className="btn btn-sm btn-blue">Browse Strike Place</a>
-                  <a href="/deals/import" className="btn btn-sm btn-ghost">Finance Existing Trade</a>
+                  <a href="/marketplace" className="btn btn-sm btn-blue">{t('dashboardPage.browseStrikePlace')}</a>
+                  <a href="/deals/import" className="btn btn-sm btn-ghost">{t('dashboardPage.financeExistingTrade')}</a>
                 </div>
               }
             />
@@ -589,15 +604,15 @@ function AnchorDashboard() {
 
             <div className="card">
               <div className="card-head">
-                <span>My Listings</span>
-                <a href="/marketplace/listings/new" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>+ New</a>
+                <span>{t('dashboardPage.myListings')}</span>
+                <a href="/marketplace/listings/new" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('dashboardPage.newPlus')}</a>
               </div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[1, 2].map(i => <Skeleton key={i} height={14} />)}
                 </div>
               ) : listings.length === 0 ? (
-                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No listings yet</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>{t('marketplace.noListingsYet')}</div>
               ) : (
                 <div className="reveal-stagger">
                   {listings.map(item => (
@@ -613,24 +628,24 @@ function AnchorDashboard() {
                         {item.listing.title}
                       </div>
                       {item.listing.offer_count > 0 && (
-                        <span className="badge badge-offer">{item.listing.offer_count} offer{item.listing.offer_count !== 1 ? 's' : ''}</span>
+                        <span className="badge badge-offer">{t('dashboardPage.nOffers', { n: item.listing.offer_count })}</span>
                       )}
-                      <span className={`badge ${dealStatusClass(item.listing.status)}`}>{item.listing.status}</span>
+                      <span className={`badge ${dealStatusClass(item.listing.status)}`}>{listingStatusLabel(item.listing.status, t)}</span>
                     </div>
                   ))}
                 </div>
               )}
               <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                <a href="/marketplace/listings/new" className="btn btn-sm btn-primary" style={{ display: 'block', textAlign: 'center' }}>Post a Listing</a>
+                <a href="/marketplace/listings/new" className="btn btn-sm btn-primary" style={{ display: 'block', textAlign: 'center' }}>{t('marketplace.postAListing')}</a>
               </div>
             </div>
 
             <div className="card">
-              <div className="card-head"><span>Financing Requests</span></div>
+              <div className="card-head"><span>{t('dashboardPage.financingRequests')}</span></div>
               {loading ? (
                 <div style={{ padding: 16 }}><Skeleton height={14} /></div>
               ) : financing.length === 0 ? (
-                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests yet</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>{t('dashboardPage.noFinancingRequestsYet')}</div>
               ) : (
                 <div className="reveal-stagger">
                   {financing.map(f => (
@@ -650,14 +665,14 @@ function AnchorDashboard() {
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                         <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>
-                        {f.offer_count > 0 && <span style={{ fontSize: 11, color: 'var(--gray)' }}>{f.offer_count} offer{f.offer_count !== 1 ? 's' : ''}</span>}
+                        {f.offer_count > 0 && <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('dashboardPage.nOffers', { n: f.offer_count })}</span>}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
               <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                <a href="/deals" className="btn btn-sm btn-ghost" style={{ display: 'block', textAlign: 'center' }}>Request Financing</a>
+                <a href="/deals" className="btn btn-sm btn-ghost" style={{ display: 'block', textAlign: 'center' }}>{t('dealDetail.requestFinancing')}</a>
               </div>
             </div>
           </div>
@@ -665,7 +680,7 @@ function AnchorDashboard() {
 
         {/* 6. AI Insight */}
         <AIInsight
-          title="Trade Intelligence"
+          title={t('dashboardPage.tradeIntelligence')}
           collapsed={true}
           prompt={`This buyer has ${activeDeals.length} active deals and $${tradeVolume.toFixed(0)} in total trade volume across active and completed deals. They have ${listings.length} Strike Place listings and ${financing.length} financing requests. What should they focus on today to accelerate their trade activity?`}
           context={{
@@ -731,20 +746,20 @@ function SupplierDashboard() {
   const financingWithOffers = financing.filter(f => f.status === 'offers_received').length
 
   const actionCards: ActionCard[] = [
-    { color: 'var(--color-amber)', label: `${dealsNeedingAction} deal${dealsNeedingAction !== 1 ? 's' : ''} awaiting your action`, count: dealsNeedingAction, href: '/deals' },
-    { color: 'var(--blue)', label: `${financingWithOffers} financing offer${financingWithOffers !== 1 ? 's' : ''} to review`, count: financingWithOffers, href: '/marketplace/financing' },
+    { color: 'var(--color-amber)', label: t('dashboardPage.nDealsAwaitingAction', { n: dealsNeedingAction }), count: dealsNeedingAction, href: '/deals' },
+    { color: 'var(--blue)', label: t('dashboardPage.nFinancingOffersToReview', { n: financingWithOffers }), count: financingWithOffers, href: '/marketplace/financing' },
   ]
 
   const kpis: KpiItem[] = [
-    { label: 'Active Deals',    value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
-    { label: 'Total Financed',  value: totalFinanced, format: fmtCurrency, valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined, icon: 'financing', tint: 'var(--color-green)' },
-    { label: 'Completed Deals', value: completedDeals, sub: 'Track record', icon: 'volume', tint: 'var(--color-purple)' },
-    { label: 'Bank Views',      value: passport?.bank_view_count_30d ?? 0, sub: 'Last 30 days', icon: 'org', tint: 'var(--color-amber)' },
+    { label: t('marketplace.activeDeals'),    value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
+    { label: t('anchorDetail.totalFinanced'),  value: totalFinanced, format: fmtCurrency, valueColor: totalFinanced > 0 ? 'var(--color-green)' : undefined, icon: 'financing', tint: 'var(--color-green)' },
+    { label: t('dashboardPage.completedDeals'), value: completedDeals, sub: t('dashboardPage.trackRecord'), icon: 'volume', tint: 'var(--color-purple)' },
+    { label: t('dashboardPage.bankViews'),      value: passport?.bank_view_count_30d ?? 0, sub: t('dashboardPage.last30Days'), icon: 'org', tint: 'var(--color-amber)' },
   ]
 
   const passportExtras = passport ? (
     <div style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
-      <div>Viewed by <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>{passport.bank_view_count_30d}</strong> banks this month</div>
+      <div>{t('dashboardPage.viewedByNBanksThisMonth', { n: passport.bank_view_count_30d })}</div>
       {passport.organization.passport_narrative && (
         <div style={{
           marginTop: 4, maxWidth: 220, fontStyle: 'italic',
@@ -778,7 +793,7 @@ function SupplierDashboard() {
 
   return (
     <>
-      <Topbar crumbs={[{ label: 'Dashboard' }]} />
+      <Topbar crumbs={[{ label: t('nav.dashboard') }]} />
       <div className="page"
         data-page-name="Dashboard"
         data-ai-context={supplierAiContext}
@@ -818,9 +833,9 @@ function SupplierDashboard() {
         {!loading && pendingNetworks.length > 0 && (
           <div className="card" style={{ marginBottom: 8, borderLeft: '3px solid var(--color-amber)', paddingLeft: 16 }}>
             <div className="card-head" style={{ marginBottom: 10 }}>
-              <span style={{ fontWeight: 700 }}>Network Invitations</span>
+              <span style={{ fontWeight: 700 }}>{t('dashboardPage.networkInvitations')}</span>
               <a href="/networks" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>
-                View all ({pendingNetworks.length}) →
+                {t('dashboardPage.viewAllNArrow', { n: pendingNetworks.length })}
               </a>
             </div>
             <div className="reveal-stagger">
@@ -830,7 +845,7 @@ function SupplierDashboard() {
                   padding: '10px 0', borderBottom: '1px solid var(--border)', gap: 12,
                 }}>
                   <div style={{ fontSize: 13 }}>
-                    <strong>{item.anchor?.legal_name ?? 'A buyer'}</strong> invited you to{' '}
+                    <strong>{item.anchor?.legal_name ?? t('networks.aBuyer')}</strong> {t('dashboardPage.invitedYouTo')}{' '}
                     <em>"{item.network?.name}"</em>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -841,7 +856,7 @@ function SupplierDashboard() {
                         background: 'var(--blue)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600,
                       }}
                     >
-                      View
+                      {t('marketplace.view')}
                     </button>
                   </div>
                 </div>
@@ -862,15 +877,15 @@ function SupplierDashboard() {
           {/* LEFT — My Deals */}
           <div className="card">
             <div className="card-head">
-              <span>Active Deals</span>
-              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>View all →</a>
+              <span>{t('marketplace.activeDeals')}</span>
+              <a href="/deals" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('reportingPage.viewAll')}</a>
             </div>
             <DealTable
               deals={deals}
               loading={loading}
-              emptyTitle="No active deals yet."
-              emptySub="List your products on Strike Place to start receiving offers."
-              emptyCta={<a href="/marketplace/listings/new" className="btn btn-sm btn-blue">List on Strike Place</a>}
+              emptyTitle={t('dashboardPage.noActiveDealsYet')}
+              emptySub={t('dashboardPage.listProductsHint')}
+              emptyCta={<a href="/marketplace/listings/new" className="btn btn-sm btn-blue">{t('dashboardPage.listOnStrikePlace')}</a>}
             />
           </div>
 
@@ -878,11 +893,11 @@ function SupplierDashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             <div className="card">
-              <div className="card-head"><span>Active Financing</span></div>
+              <div className="card-head"><span>{t('dashboardPage.activeFinancing')}</span></div>
               {loading ? (
                 <div style={{ padding: 16 }}><Skeleton height={14} /></div>
               ) : financing.length === 0 ? (
-                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>No financing requests</div>
+                <div className="float-slow" style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>{t('dashboardPage.noFinancingRequests')}</div>
               ) : (
                 <div className="reveal-stagger">
                   {financing.map(f => (
@@ -903,7 +918,7 @@ function SupplierDashboard() {
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                         <span className={`badge ${financingStatusClass(f.status)}`}>{f.status.replace(/_/g, ' ')}</span>
                         {f.offer_count > 0 && (
-                          <span style={{ fontSize: 11, color: 'var(--blue)' }}>{f.offer_count} offer{f.offer_count !== 1 ? 's' : ''}</span>
+                          <span style={{ fontSize: 11, color: 'var(--blue)' }}>{t('dashboardPage.nOffers', { n: f.offer_count })}</span>
                         )}
                       </div>
                     </div>
@@ -913,41 +928,41 @@ function SupplierDashboard() {
             </div>
 
             <div className="card">
-              <div className="card-head"><span>Passport Activity</span></div>
+              <div className="card-head"><span>{t('dashboardPage.passportActivity')}</span></div>
               {loading ? (
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[1, 2, 3].map(i => <Skeleton key={i} height={12} />)}
                 </div>
               ) : !passport ? (
                 <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: 12 }}>
-                  No passport data yet
+                  {t('dashboardPage.noPassportDataYet')}
                 </div>
               ) : (
                 <div className="kv-rows reveal-stagger">
                   <div className="kv-row">
-                    <span className="k">Org views · 30d</span>
+                    <span className="k">{t('dashboardPage.orgViews30d')}</span>
                     <span className="v"><CountUp value={passport.org_view_count_30d} /></span>
                   </div>
                   <div className="kv-row">
-                    <span className="k">Bank views · 30d</span>
+                    <span className="k">{t('dashboardPage.bankViews30d')}</span>
                     <span className="v"><CountUp value={passport.bank_view_count_30d} /></span>
                   </div>
                   {passport.avg_rating != null && (
                     <div className="kv-row">
-                      <span className="k">Avg review</span>
-                      <span className="v">{passport.avg_rating.toFixed(1)}/5 · {passport.review_count} review{passport.review_count !== 1 ? 's' : ''}</span>
+                      <span className="k">{t('dashboardPage.avgReview')}</span>
+                      <span className="v">{t('dashboardPage.ratingOutOf5', { rating: passport.avg_rating.toFixed(1), n: passport.review_count })}</span>
                     </div>
                   )}
                   {notifications.length === 0 && (
                     <div className="kv-row">
-                      <span className="k">Last activity</span>
-                      <span className="v plain" style={{ color: 'var(--gray)' }}>No recent activity</span>
+                      <span className="k">{t('dashboardPage.lastActivity')}</span>
+                      <span className="v plain" style={{ color: 'var(--gray)' }}>{t('dashboardPage.noRecentActivity')}</span>
                     </div>
                   )}
                 </div>
               )}
               <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                <a href="/settings/agent" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>Improve your score →</a>
+                <a href="/settings/agent" style={{ fontSize: 12, color: 'var(--blue)', textDecoration: 'none' }}>{t('dashboardPage.improveYourScoreArrow')}</a>
               </div>
             </div>
           </div>

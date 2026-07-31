@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { SkeletonText } from '@/components/motion'
+import { useLocale } from '@/lib/i18n/locale-context'
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
@@ -133,6 +134,7 @@ function isInsightData(v: unknown): v is InsightData {
 
 export function AIInsightCard({ context, portal, page, variant = 'banner' }: AIInsightCardProps) {
   const router = useRouter()
+  const { locale } = useLocale()
   const [insight, setInsight] = useState<InsightData | null>(null)
   const [loading, setLoading] = useState(true)
   const [visible, setVisible] = useState(variant !== 'floating')
@@ -151,9 +153,9 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
     }
 
     let active = true
-    let cacheKey = `strike-ai-insight-${page}`
+    let cacheKey = `strike-ai-insight-${page}-${locale}`
     try {
-      cacheKey = `strike-ai-insight-${page}-${btoa(unescape(encodeURIComponent(JSON.stringify(context)))).slice(0, 32)}`
+      cacheKey = `strike-ai-insight-${page}-${locale}-${btoa(unescape(encodeURIComponent(JSON.stringify(context)))).slice(0, 32)}`
     } catch {}
 
     try {
@@ -171,7 +173,7 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
     fetch('/api/ai/insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ page, portal, data: context }),
+      body: JSON.stringify({ page, portal, data: context, locale }),
     })
       .then(r => r.json())
       .then((data: unknown) => {
@@ -187,7 +189,7 @@ export function AIInsightCard({ context, portal, page, variant = 'banner' }: AII
       .finally(() => { if (active) setLoading(false) })
 
     return () => { active = false }
-  }, [page, portal]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page, portal, locale]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (variant !== 'floating' || dismissed) return

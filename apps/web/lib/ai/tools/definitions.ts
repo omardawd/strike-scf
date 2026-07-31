@@ -477,6 +477,22 @@ const GET_CAPITAL_POSITION = {
   },
 }
 
+const GENERATE_DOCUMENT = {
+  name: 'generate_document',
+  description: 'Create a real, downloadable file and hand it to the user in chat — use whenever they ask for an export, spreadsheet, report, or printout instead of just describing the data in prose. "trades_export" builds an .xlsx of the org\'s (or bank\'s) trades/transactions over a recent window — pass org_id for an org user\'s own deals, or bank_id for a bank\'s financed transactions, plus date_range_days (e.g. "last 4 weeks" → 28). "passport_score_report" builds a one-page PDF summary of an org\'s PassportScore, credit breakdown, and trade history — pass org_id. After the tool returns, emit exactly one [[STRIKE_BLOCK:{"type":"document","title":"...","filename":"...","download_url":"...","description":"optional one-line summary"}]] directive using the returned filename and download_url so the user gets a clickable download card — do not just paste the raw URL as a link.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      document_type: { type: 'string', enum: ['trades_export', 'passport_score_report'], description: 'Which document to generate' },
+      org_id: { type: 'string', description: 'Organization ID — required for passport_score_report; required for trades_export unless bank_id is given' },
+      bank_id: { type: 'string', description: 'Bank ID — use for a bank user\'s trades_export instead of org_id' },
+      date_range_days: { type: 'number', description: 'How many days back to include, for trades_export (e.g. 28 for "last 4 weeks", 90 for "last quarter"). Defaults to 28.' },
+      title: { type: 'string', description: 'Optional display title for the generated document' },
+    },
+    required: ['document_type'],
+  },
+}
+
 const GET_AGENT_TASKS = {
   name: 'get_agent_tasks',
   description: 'List the AI agent\'s pending proposals and recent task history for an org. Use when the user asks what their agent is doing, what proposals are waiting, or to review agent activity.',
@@ -552,6 +568,7 @@ const SUPPLIER_TOOLS = [
   GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
   PROACTIVE_PORTFOLIO_ALERTS,
+  GENERATE_DOCUMENT,
 ]
 
 const ANCHOR_TOOLS = [
@@ -576,6 +593,7 @@ const ANCHOR_TOOLS = [
   GET_ERP_DATA,
   GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
+  GENERATE_DOCUMENT,
 ]
 
 const BANK_TOOLS = [
@@ -594,6 +612,7 @@ const BANK_TOOLS = [
   SUMMARIZE_DEAL_NEGOTIATION,
   GET_PASSPORT_ADVICE,
   GENERATE_DEAL_TERM_SHEET,
+  GENERATE_DOCUMENT,
 ]
 
 // Full set used as fallback and for type inference in execute.ts.
@@ -621,6 +640,7 @@ export const STRIKE_TOOLS = [
   GET_ERP_DATA,
   GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
+  GENERATE_DOCUMENT,
 ] as const
 
 // Bounded tool set for the autonomous negotiation tick loop (see

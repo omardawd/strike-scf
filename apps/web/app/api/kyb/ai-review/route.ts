@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     .from('users').select('id, role, org_id, bank_id').eq('id', user.id).single()
   if (!me) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { org_id?: string }
+  let body: { org_id?: string; locale?: string }
   try { body = await request.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await runKybAiReview(orgId, { triggeredByUserId: me.id })
+    const result = await runKybAiReview(orgId, { triggeredByUserId: me.id, locale: body.locale })
     return NextResponse.json(result)
   } catch (e) {
     console.error('[kyb/ai-review] failed:', e)

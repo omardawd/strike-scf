@@ -1,5 +1,6 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { callClaude, AI_MODEL, extractJson } from '@/lib/ai'
+import { languageInstruction } from '@/lib/ai/system-prompt'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -213,7 +214,8 @@ export async function runExpertPassportScoring(
     reviewCount: number
     onTimePaymentRate: number | null
     disputeRate: number | null
-  }
+  },
+  locale?: string
 ): Promise<ExpertAnalysis | null> {
 
   // 1. Fetch org row
@@ -360,7 +362,7 @@ Please analyze all documents thoroughly and produce the expert PassportScore JSO
         // EXPERT_SYSTEM has zero interpolation — identical across every org's
         // scoring call — so it's cacheable byte-for-byte via the content-block
         // form (no tools array on this call to hang cache_control off instead).
-        system: [{ type: 'text', text: EXPERT_SYSTEM, cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: EXPERT_SYSTEM + languageInstruction(locale), cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userContent }],
       }),
     })
@@ -431,7 +433,7 @@ const NARRATIVE_SYSTEM =
   'Write exactly 2-3 factual sentences summarizing this organization\'s trade credentials and risk standing. ' +
   'No marketing language. CFO audience. Respond with only the narrative text — no JSON, no formatting, no preamble.'
 
-export async function runPassportRecalculate(orgId: string): Promise<RecalcResult> {
+export async function runPassportRecalculate(orgId: string, locale?: string): Promise<RecalcResult> {
   const now = new Date().toISOString()
 
   const [
@@ -469,7 +471,7 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
     onTimePaymentRate: perf?.on_time_payment_rate ?? null,
     disputeRate: perf?.dispute_rate ?? null,
   }
-  const expertAnalysis = await runExpertPassportScoring(orgId, platformData)
+  const expertAnalysis = await runExpertPassportScoring(orgId, platformData, locale)
 
   let totalScore: number
   let riskTier: 'green' | 'amber' | 'red'
@@ -556,7 +558,7 @@ export async function runPassportRecalculate(orgId: string): Promise<RecalcResul
   let tokensUsed = 0
   try {
     const res = await callClaude({
-      system: NARRATIVE_SYSTEM,
+      system: NARRATIVE_SYSTEM + languageInstruction(locale),
       messages: [{
         role: 'user',
         content: JSON.stringify({

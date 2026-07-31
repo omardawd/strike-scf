@@ -41,7 +41,7 @@ export interface KybReviewResult {
 
 export async function runKybAiReview(
   orgId: string,
-  opts: { triggeredByUserId?: string } = {}
+  opts: { triggeredByUserId?: string; locale?: string } = {}
 ): Promise<KybReviewResult> {
   const now = new Date().toISOString()
 
@@ -76,7 +76,7 @@ export async function runKybAiReview(
       reviewCount,
       onTimePaymentRate: perf?.on_time_payment_rate ?? null,
       disputeRate: perf?.dispute_rate ?? null,
-    })
+    }, opts.locale)
   } catch (e) {
     console.error('[kyb/ai-review] expert scoring failed, using formula fallback:', e)
   }

@@ -12,7 +12,7 @@ import {
   type PassportReview,
   type PassportDoc,
 } from '@/components/passport-sections'
-import { useT } from '@/lib/i18n/locale-context'
+import { useT, useLocale } from '@/lib/i18n/locale-context'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -508,6 +508,7 @@ function UnderReviewBanner() {
 
 export default function MyPassportPage() {
   const t = useT()
+  const { locale } = useLocale()
   const user = useUser()
   const router = useRouter()
   const orgId = user?.org_id ?? null
@@ -602,7 +603,7 @@ export default function MyPassportPage() {
       const res = await fetch('/api/kyb/ai-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId }),
+        body: JSON.stringify({ org_id: orgId, locale }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))

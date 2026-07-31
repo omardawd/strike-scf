@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { useUser } from '@/lib/user-context'
 import { usePortal } from '@/lib/portal-context'
+import { useLocale } from '@/lib/i18n/locale-context'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -97,10 +98,13 @@ const WINDOW_HEIGHT = 480
 export function AIOverlay() {
   const pathname = usePathname()
   // Strike Rooms has its own message composer docked at the same screen position —
-  // the overlay's floating input would sit on top of it and block clicks.
-  const hideOverlay = pathname.startsWith('/ai') || pathname.startsWith('/rooms')
+  // the overlay's floating input would sit on top of it and block clicks. Dashboard 2
+  // has its own full-page Strike AI chat built in, so the floating overlay is redundant
+  // (and would visually collide with its own input pill) there too.
+  const hideOverlay = pathname.startsWith('/ai') || pathname.startsWith('/rooms') || pathname.startsWith('/dashboard2')
   const user = useUser()
   const portal = usePortal()
+  const { locale } = useLocale()
   const userName = user?.full_name?.split(' ')[0] ?? 'there'
 
   const [isOpen, setIsOpen] = useState(false)
@@ -207,6 +211,7 @@ export function AIOverlay() {
           system: systemPrompt,
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 1024,
+          locale,
         }),
       })
       if (res.status === 429) {
@@ -225,7 +230,7 @@ export function AIOverlay() {
     } finally {
       setLoading(false)
     }
-  }, [loading, messages, portal, userName])
+  }, [loading, messages, portal, userName, locale])
 
   if (hideOverlay) return null
 

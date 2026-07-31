@@ -1,47 +1,24 @@
 'use client'
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { usePortal } from '@/lib/portal-context'
 import { useUser } from '@/lib/user-context'
 import { SkeletonCard } from '@/components/motion'
-import { STRIKE_BLOCK_RE, StrikeBlockFromJson } from '@/components/ai-blocks'
+import { renderAssistantContent, renderMarkdownWithBlocks } from '@/components/ai-chat-message'
+import { buildSystemPrompt } from '@/lib/ai/system-prompt'
+import {
+  type Message, type Conversation,
+  newId, loadConversations, saveConversations, deriveTitle,
+} from '@/lib/ai/conversation-store'
 import { createClient } from '@/lib/supabase/client'
-import { useT } from '@/lib/i18n/locale-context'
+import { useT, useLocale } from '@/lib/i18n/locale-context'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
-// ============== Types ==============
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: string
-  isDocument?: boolean
-  attachmentName?: string // filename pill for display; full file text is embedded in content
-}
-
-interface Conversation {
-  id: string
-  title: string
-  messages: Message[]
-  createdAt: string
-  updatedAt: string
-}
-
-const CONVERSATIONS_KEY = 'strike-ai-conversations'
 // TF.1 — exact key required by the spec; persists the conversation-log collapse state.
 const COLLAPSED_KEY = 'strike_ai_log_collapsed'
-const MAX_CONVERSATIONS = 50
 
 // ============== Helpers ==============
-function newId(): string {
-  try {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
-  } catch {}
-  return `c_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-}
-
 function relativeTime(iso: string, t: TFn): string {
   const diff = Date.now() - new Date(iso).getTime()
   if (Number.isNaN(diff)) return ''
@@ -52,101 +29,6 @@ function relativeTime(iso: string, t: TFn): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function isMessage(v: unknown): v is Message {
-  if (!v || typeof v !== 'object') return false
-  const o = v as Record<string, unknown>
-  return (o.role === 'user' || o.role === 'assistant') &&
-    typeof o.content === 'string' &&
-    typeof o.timestamp === 'string'
-}
-
-function isConversation(v: unknown): v is Conversation {
-  if (!v || typeof v !== 'object') return false
-  const o = v as Record<string, unknown>
-  return typeof o.id === 'string' &&
-    typeof o.title === 'string' &&
-    typeof o.createdAt === 'string' &&
-    typeof o.updatedAt === 'string' &&
-    Array.isArray(o.messages) &&
-    o.messages.every(isMessage)
-}
-
-function loadConversations(): Conversation[] {
-  try {
-    const raw = localStorage.getItem(CONVERSATIONS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(isConversation)
-  } catch {
-    return []
-  }
-}
-
-function saveConversations(convos: Conversation[]) {
-  try {
-    const pruned = [...convos]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, MAX_CONVERSATIONS)
-    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(pruned))
-  } catch {}
-}
-
-function deriveTitle(messages: Message[], t: TFn): string {
-  const firstUser = messages.find(m => m.role === 'user')
-  if (!firstUser) return t('aiPage.newConversation')
-  return firstUser.content.slice(0, 40) || t('aiPage.newConversation')
-}
-
-function buildSystemPrompt(portal: string, page: string, userName?: string, orgId?: string, bankId?: string): string {
-  const identity = [
-    orgId   ? `org_id: ${orgId}`   : null,
-    bankId  ? `bank_id: ${bankId}` : null,
-  ].filter(Boolean).join('\n')
-
-  const today = new Date().toISOString().split('T')[0]
-
-  return `You are Strike AI, the intelligent operating system embedded in Strike SCF — an AI-native supply chain finance platform.
-
-You are an autonomous agent that takes actions on the platform on behalf of the user. When you have enough information to complete an action, execute it immediately using the appropriate tool — do not ask for confirmation unless a genuinely required field is missing.
-
-Today's date: ${today}
-Current user: ${userName ?? 'Unknown'}
-Portal: ${portal}
-Current page: ${page}
-${identity ? `\nUser identity (use these IDs when calling tools):\n${identity}` : ''}
-
-Your tools:
-- search_marketplace_listings — find existing listings on Strike Place. After returning results, emit [LISTING_CARD:{id}] on its own line for EACH listing so the user gets a clickable card.
-- submit_marketplace_offer — submit an offer ON an existing listing. Use this when the user wants to bid or respond to a listing someone else posted. NEVER use create_marketplace_listing for this. If the tool result includes autonomous_follow_through.started = true, tell the user in plain language that you'll keep negotiating this on their behalf and check the Agent tab for progress — don't just report the offer was submitted. If started = false because reason is "agent_inactive", mention they can activate their agent in Settings → Agent for hands-off follow-up negotiation next time.
-- counter_marketplace_offer — respond to an offer/counter-offer with new terms. Same autonomous_follow_through behavior as submit_marketplace_offer above.
-- create_marketplace_listing — post a NEW listing. DOCUMENT ATTACHED ([Attached document:] in message): extract ALL fields from the document (title, line items, quantities, units, prices, incoterms, payment terms, delivery date/location, currency) and call immediately — do not ask for info already in the document. Infer listing_type from portal (anchor → po_request, supplier → product_service). Use org_id from context. NO DOCUMENT: ask incoterms + payment terms first. After creating, emit [LISTING_CARD:{listing_id}] on its own line.
-- get_active_deals — list all active (non-completed, non-cancelled) deals for an org
-- evaluate_supplier_passport — deep evaluation of a supplier's trust score, financials, history
-- find_and_recommend_deals — match and score deals between buyer/supplier
-- get_pricing_insights — internal platform benchmarks + live external market pricing
-- summarize_deal_negotiation — timeline, open issues, and suggested next steps for a deal
-- score_and_rank_financing_offers — rank bank offers by cost, speed, or flexibility
-- detect_deal_risk_signals — fraud, compliance, payment, and delivery risk signals on a deal
-- recommend_suppliers_for_buyer — find the best-matched suppliers for a buyer's needs
-- generate_deal_term_sheet — structured term sheet with parties, goods, payment, and financing
-- proactive_portfolio_alerts — overdue, at-risk, and concentration alerts (bank users only)
-- get_erp_data — live cash position, AR/AP aging, inventory levels, open orders from the org's connected ERP
-- get_capital_position — cash + receivables/payables + deal-book concentration risk in one call; use for "should we take this deal" / "can we afford this" / capital-allocation questions. Pass hypothetical_deal_value (+ hypothetical_counterparty_org_id if known) to model adding one more deal to the current book.
-
-Structured response blocks: for numeric or comparative answers — capital position, risk concentration, before/after scenarios, financial call-outs — render a block instead of prose-only. Emit ONE directive per block, alone on its own line, with compact single-line JSON (no line breaks inside it):
-  [[STRIKE_BLOCK:{"type":"stat_row","title":"optional","stats":[{"label":"Net Cash","value":"$850,000","tone":"default"}]}]]
-  [[STRIKE_BLOCK:{"type":"comparison","title":"optional","left":{"label":"Current","items":[{"label":"Concentration","value":"53.9%"}]},"right":{"label":"If we take this deal","items":[{"label":"Concentration","value":"65.7%"}]}}]]
-  [[STRIKE_BLOCK:{"type":"alert","tone":"warn","title":"Concentration risk rising","body":"optional detail"}]]
-tone is one of default|good|warn|bad. Still write normal prose around the block to explain your reasoning — the block presents the numbers, your words present the judgment. Don't overuse it; reserve it for genuinely numeric/comparative moments, not every reply.
-
-Rules:
-1. Only reference data explicitly returned by tools or provided in context. Never invent figures.
-2. Be concise. Use bullet points for lists. Format currency as $X,XXX.
-3. You speak to CFOs, Treasurers, and Trade Finance professionals. Institutional tone.
-4. Always use today's date (${today}) when creating listings or term sheets — never use a past year.
-5. Document attachments: when the user's message starts with [Attached document: "filename"], the full document text appears before the "---" divider. Treat it as ground truth. Extract all relevant fields from it before asking any questions or calling tools. Never ask for information that is visible in the attached document.`
-}
 
 const QUICK_PROMPTS: Record<string, string[]> = {
   supplier: [
@@ -188,123 +70,6 @@ function needsConfirmation(text: string): boolean {
   return ACTION_KEYWORDS.some(k => t.includes(k))
 }
 
-const LISTING_CARD_RE = /\[LISTING_CARD:([0-9a-f-]{36})\]/gi
-
-function ListingCard({ id }: { id: string }) {
-  return (
-    <a
-      href={`/marketplace/listings/${id}`}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        margin: '8px 0', padding: '12px 16px',
-        background: 'var(--white)', border: '1px solid var(--border)',
-        borderRadius: 12, textDecoration: 'none', color: 'var(--ink)',
-        fontSize: 13, fontWeight: 600, boxShadow: 'var(--shadow-card)',
-      }}
-    >
-      <div style={{
-        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-        background: 'var(--blue-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--blue)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="14" height="14" rx="3" />
-          <path d="M7 10h6M7 13h4" />
-        </svg>
-      </div>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>View listing on Strike Place</div>
-        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 1 }}>Click to open your new listing →</div>
-      </div>
-    </a>
-  )
-}
-
-const MD_COMPONENTS = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h1: ({ children }: any) => <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: 'var(--ink)', margin: '14px 0 6px' }}>{children}</div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h2: ({ children }: any) => <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, color: 'var(--ink)', margin: '12px 0 5px' }}>{children}</div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h3: ({ children }: any) => <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--ink)', margin: '10px 0 4px' }}>{children}</div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  p: ({ children }: any) => <div style={{ margin: '4px 0', lineHeight: 1.65 }}>{children}</div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  strong: ({ children }: any) => <strong style={{ fontWeight: 700, color: 'var(--ink)' }}>{children}</strong>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  em: ({ children }: any) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
-  hr: () => <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0' }} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ul: ({ children }: any) => <ul style={{ paddingLeft: 18, margin: '4px 0', display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ul>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ol: ({ children }: any) => <ol style={{ paddingLeft: 18, margin: '4px 0', display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ol>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  li: ({ children }: any) => <li style={{ lineHeight: 1.6, color: 'var(--ink)' }}>{children}</li>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: ({ children }: any) => (
-    <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>{children}</table>
-    </div>
-  ),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  thead: ({ children }: any) => <thead style={{ background: 'var(--offwhite)' }}>{children}</thead>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: ({ children }: any) => <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children}</th>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  td: ({ children }: any) => <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>{children}</td>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code: ({ children }: any) => <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--offwhite)', padding: '1px 5px', borderRadius: 4 }}>{children}</code>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  blockquote: ({ children }: any) => <div style={{ borderLeft: '3px solid var(--border-strong)', paddingLeft: 10, margin: '6px 0', color: 'var(--gray)' }}>{children}</div>,
-}
-
-// Splits markdown text on [[STRIKE_BLOCK:{...}]] directives, rendering each
-// as a real component and everything else through ReactMarkdown.
-function renderMarkdownWithBlocks(text: string, keyPrefix: string): React.ReactNode[] {
-  const out: React.ReactNode[] = []
-  let last = 0
-  let m: RegExpExecArray | null
-  STRIKE_BLOCK_RE.lastIndex = 0
-  while ((m = STRIKE_BLOCK_RE.exec(text)) !== null) {
-    const before = text.slice(last, m.index).trim()
-    if (before) {
-      out.push(
-        <ReactMarkdown key={`${keyPrefix}-md-${last}`} remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-          {before}
-        </ReactMarkdown>
-      )
-    }
-    out.push(<StrikeBlockFromJson key={`${keyPrefix}-blk-${m.index}`} keyProp={`${keyPrefix}-blk-${m.index}`} raw={m[1]!} />)
-    last = m.index + m[0].length
-  }
-  const remainder = text.slice(last).trim()
-  if (remainder) {
-    out.push(
-      <ReactMarkdown key={`${keyPrefix}-md-${last}`} remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-        {remainder}
-      </ReactMarkdown>
-    )
-  }
-  return out
-}
-
-function renderAssistantContent(content: string): React.ReactNode {
-  // First split on [LISTING_CARD:uuid] tokens, then run each remaining text
-  // segment through the [[STRIKE_BLOCK:...]] splitter above.
-  const parts: React.ReactNode[] = []
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-  LISTING_CARD_RE.lastIndex = 0
-  while ((match = LISTING_CARD_RE.exec(content)) !== null) {
-    const before = content.slice(lastIndex, match.index).trim()
-    if (before) parts.push(...renderMarkdownWithBlocks(before, `seg-${lastIndex}`))
-    const listingId = match[1]!
-    parts.push(<ListingCard key={listingId} id={listingId} />)
-    lastIndex = match.index + match[0].length
-  }
-  const remainder = content.slice(lastIndex).trim()
-  if (remainder) parts.push(...renderMarkdownWithBlocks(remainder, `seg-${lastIndex}`))
-  return <>{parts}</>
-}
 
 // TF.1 — subtle single-chevron glyph (‹ / ›) for the conversation-log collapse toggle.
 function Chevron({ dir }: { dir: 'left' | 'right' }) {
@@ -1030,6 +795,7 @@ function AIWorkspaceInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const t = useT()
+  const { locale } = useLocale()
 
   const [activeTab, setActiveTab] = useState<'chat' | 'agent'>(
     searchParams.get('tab') === 'agent' ? 'agent' : 'chat'
@@ -1177,6 +943,7 @@ function AIWorkspaceInner() {
           system: buildSystemPrompt(portal, 'ai', userName, user?.org_id ?? undefined, user?.bank_id ?? undefined),
           messages: convoMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
+          locale,
         }),
       })
 
@@ -1214,7 +981,7 @@ function AIWorkspaceInner() {
     } finally {
       setLoading(false)
     }
-  }, [activeId, conversations, loading, persist, portal, userName, t])
+  }, [activeId, conversations, loading, persist, portal, userName, t, locale])
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]

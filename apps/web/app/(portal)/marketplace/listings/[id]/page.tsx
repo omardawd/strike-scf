@@ -1020,7 +1020,9 @@ export default function ListingDetailPage() {
   const [counteringOfferId, setCounteringOfferId] = useState<string | null>(null)
 
   const [imageUploading, setImageUploading] = useState(false)
+  const [activeImageIdx, setActiveImageIdx] = useState(0)
   const coverImageInputRef = useRef<HTMLInputElement>(null)
+  const MAX_IMAGES = 3
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -1046,6 +1048,16 @@ export default function ListingDetailPage() {
       fd.append('file', file)
       const res = await fetch(`/api/marketplace/listings/${id}/image`, { method: 'POST', body: fd })
       if (res.ok) await fetchData()
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
+  async function handleImageRemove(url: string) {
+    setImageUploading(true)
+    try {
+      const res = await fetch(`/api/marketplace/listings/${id}/image?url=${encodeURIComponent(url)}`, { method: 'DELETE' })
+      if (res.ok) { setActiveImageIdx(0); await fetchData() }
     } finally {
       setImageUploading(false)
     }
@@ -1394,17 +1406,42 @@ export default function ListingDetailPage() {
               {listing.title}
             </h1>
 
-            {listing.cover_image_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={listing.cover_image_url}
-                alt={listing.title}
-                style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 'var(--radius-card)', marginTop: 16, display: 'block' }}
-              />
-            )}
+            {(() => {
+              const images = listing.image_urls?.length ? listing.image_urls : (listing.cover_image_url ? [listing.cover_image_url] : [])
+              const activeSrc = images[Math.min(activeImageIdx, images.length - 1)]
+              if (images.length === 0) return null
+              return (
+                <div style={{ marginTop: 16 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeSrc}
+                    alt={listing.title}
+                    style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 'var(--radius-card)', display: 'block' }}
+                  />
+                  {images.length > 1 && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      {images.map((src: string, i: number) => (
+                        <button
+                          key={src}
+                          type="button"
+                          onClick={() => setActiveImageIdx(i)}
+                          style={{
+                            width: 56, height: 56, padding: 0, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                            border: i === activeImageIdx ? '2px solid var(--blue)' : '1px solid var(--border)',
+                          }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {isListingOwner && (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <input
                   ref={coverImageInputRef}
                   type="file"
@@ -1416,14 +1453,30 @@ export default function ListingDetailPage() {
                     e.target.value = ''
                   }}
                 />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={imageUploading}
-                  onClick={() => coverImageInputRef.current?.click()}
-                >
-                  {imageUploading ? t('listingDetail.uploading') : listing.cover_image_url ? t('listingDetail.replaceCoverImage') : t('listingDetail.addCoverImage')}
-                </button>
+                {(listing.image_urls?.length ?? 0) < MAX_IMAGES && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={imageUploading}
+                    onClick={() => coverImageInputRef.current?.click()}
+                  >
+                    {imageUploading ? t('listingDetail.uploading') : t('newListing.addAPhoto')}
+                  </button>
+                )}
+                {(listing.image_urls?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={imageUploading}
+                    onClick={() => {
+                      const urls = listing.image_urls ?? []
+                      const url = urls[Math.min(activeImageIdx, urls.length - 1)]
+                      if (url) handleImageRemove(url)
+                    }}
+                  >
+                    {t('newListing.removeImage')}
+                  </button>
+                )}
               </div>
             )}
 

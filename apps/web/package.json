@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
+    "exceljs": "^4.4.0",
     "next": "^16.2.0",
     "pdfkit": "^0.19.1",
     "react": "^19.2.6",

@@ -4,6 +4,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToolsForPortal, OVERLAY_TOOLS } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
+import { languageInstruction } from '@/lib/ai/system-prompt'
+
+// generate_document (executeTool below) uses pdfkit, which is excluded from
+// webpack bundling (serverExternalPackages in next.config.ts) — needs Node runtime.
+export const runtime = 'nodejs'
 
 const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer']
 
@@ -119,11 +124,12 @@ export async function POST(req: NextRequest) {
   const useTools = (model === 'claude-sonnet-4-6' || !!body.overlay) && !ghostOverride
 
   // Build system prompt — Strike AI identity is always prepended first.
-  const systemPrompt = ghostOverride
+  const systemPrompt = (ghostOverride
     ? STRIKE_AI_IDENTITY + GHOST_SYSTEM_PROMPT
     : useTools
       ? STRIKE_AI_IDENTITY + (body.system ?? '') + TOOL_AGENT_ADDENDUM
       : STRIKE_AI_IDENTITY + (body.system ?? '')
+  ) + languageInstruction(typeof body.locale === 'string' ? body.locale : undefined)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type AnyMessage = { role: string; content: any }

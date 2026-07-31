@@ -27,6 +27,7 @@ import { getAgentTasks, type GetAgentTasksInput } from './handlers/get-agent-tas
 import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './handlers/counter-marketplace-offer'
 import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './handlers/accept-marketplace-offer'
 import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
+import { generateDocument, type GenerateDocumentInput } from './handlers/generate-document'
 
 export type ToolName =
   | 'get_agent_tasks'
@@ -54,6 +55,7 @@ export type ToolName =
   | 'get_financing_programs'
   | 'get_erp_data'
   | 'get_capital_position'
+  | 'generate_document'
 
 export async function executeTool(
   toolName: ToolName,
@@ -110,6 +112,8 @@ export async function executeTool(
       return getErpData(toolInput as unknown as GetErpDataInput)
     case 'get_capital_position':
       return getCapitalPosition(toolInput as unknown as GetCapitalPositionInput)
+    case 'generate_document':
+      return generateDocument(toolInput as unknown as GenerateDocumentInput)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
