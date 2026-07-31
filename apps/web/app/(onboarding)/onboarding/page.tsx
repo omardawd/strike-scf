@@ -1068,7 +1068,7 @@ export default function OnboardingWizard() {
       if (!res.ok) throw new Error(data.error || t('onboarding.error.submissionFailed'))
       // Submission moves kyb_status to under_review/approved (or 'submitted'); the
       // KYB access gate in (portal)/layout.tsx shows the status page until approved.
-      router.push('/dashboard?activated=1')
+      router.push('/home?activated=1')
     } catch (e) {
       setError(e instanceof Error ? e.message : t('onboarding.error.submissionFailed'))
       setSaving(false)

@@ -62,6 +62,7 @@ export async function middleware(request: NextRequest) {
     !user &&
     !pathname.startsWith('/api/') &&
     (pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/home') ||
       pathname.startsWith('/onboarding') ||
       pathname.startsWith('/kyb') ||
       pathname.startsWith('/programs') ||

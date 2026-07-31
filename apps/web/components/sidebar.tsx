@@ -46,7 +46,7 @@ const ANCHOR_NAV: NavSection[] = [
       // Dashboard (v1) hidden from nav per product decision — page + route kept
       // alive for now, just not linked. Do not delete this line.
       // { label: 'Dashboard',    labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Home',            labelKey: 'nav.home',          href: '/dashboard2',            icon: 'dashboard' },
+      { label: 'Home',            labelKey: 'nav.home',          href: '/home',            icon: 'dashboard' },
       { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace',           icon: 'marketplace' },
       { label: 'My Deals',        labelKey: 'nav.myDeals',       href: '/deals',                 icon: 'deals' },
       { label: 'Financing',       labelKey: 'nav.financing',     href: '/marketplace/financing', icon: 'financing' },
@@ -64,7 +64,7 @@ const SUPPLIER_NAV: NavSection[] = [
       // Dashboard (v1) hidden from nav per product decision — page + route kept
       // alive for now, just not linked. Do not delete this line.
       // { label: 'Dashboard',    labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Home',            labelKey: 'nav.home',          href: '/dashboard2',            icon: 'dashboard' },
+      { label: 'Home',            labelKey: 'nav.home',          href: '/home',            icon: 'dashboard' },
       { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace',           icon: 'marketplace' },
       { label: 'My Deals',        labelKey: 'nav.myDeals',       href: '/deals',                 icon: 'deals' },
       { label: 'Financing',       labelKey: 'nav.financing',     href: '/marketplace/financing', icon: 'financing' },
@@ -84,7 +84,7 @@ const BANK_NAV: NavSection[] = [
       // Dashboard (v1) hidden from nav per product decision — page + route kept
       // alive for now, just not linked. Do not delete this line.
       // { label: 'Dashboard',    labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Home',            labelKey: 'nav.home',          href: '/dashboard2',            icon: 'dashboard' },
+      { label: 'Home',            labelKey: 'nav.home',          href: '/home',            icon: 'dashboard' },
       { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace/financing', icon: 'marketplace' },
       { label: 'Programs',        labelKey: 'nav.programs',      href: '/programs',              icon: 'programs' },
       { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',              icon: 'passport' },
@@ -100,7 +100,7 @@ const ADMIN_NAV: NavSection[] = [
       // Dashboard (v1) hidden from nav per product decision — page + route kept
       // alive for now, just not linked. Do not delete this line.
       // { label: 'Dashboard',    labelKey: 'nav.dashboard',     href: '/dashboard', icon: 'dashboard' },
-      { label: 'Home',            labelKey: 'nav.home',          href: '/dashboard2', icon: 'dashboard' },
+      { label: 'Home',            labelKey: 'nav.home',          href: '/home', icon: 'dashboard' },
       { label: 'KYB Queue',       labelKey: 'nav.kybQueue',      href: '/admin',     icon: 'analytics' },
       { label: 'Platform Stats',  labelKey: 'nav.platformStats', href: '/admin',     icon: 'programs' },
       { label: 'Room Reports',    labelKey: 'nav.roomReports',   href: '/admin',     icon: 'rooms' },

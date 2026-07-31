@@ -30,7 +30,7 @@ export default function ResetPasswordPage() {
     const { error: err } = await supabase.auth.updateUser({ password })
     setLoading(false)
     if (err) { setError(err.message); return }
-    router.push('/dashboard')
+    router.push('/home')
   }
 
   const rules = [

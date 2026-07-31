@@ -156,7 +156,7 @@ function SignupPageInner() {
         return
       }
 
-      // Invite token — auto-accept and go to dashboard
+      // Invite token — auto-accept and go to the home dashboard
       if (inviteToken) {
         try {
           const inviteRes = await fetch(`/api/invite/${inviteToken}/accept`, { method: 'POST' })
@@ -165,7 +165,7 @@ function SignupPageInner() {
             const msg = inviteData.anchor_name && inviteData.network_name
               ? `?welcome_network=${encodeURIComponent(inviteData.network_name)}&welcome_anchor=${encodeURIComponent(inviteData.anchor_name)}`
               : ''
-            router.push(`/dashboard${msg}`)
+            router.push(`/home${msg}`)
             return
           }
         } catch { /* non-fatal */ }

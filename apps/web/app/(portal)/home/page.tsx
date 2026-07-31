@@ -210,7 +210,7 @@ export default function Dashboard2Page() {
     fetch('/api/ai/insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ page: 'dashboard2', portal, data: aiContext, locale }),
+      body: JSON.stringify({ page: 'home', portal, data: aiContext, locale }),
     })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
@@ -267,7 +267,7 @@ export default function Dashboard2Page() {
           feature: 'chat',
           model: 'sonnet',
           portal,
-          system: buildSystemPrompt(portal, 'dashboard2', user?.full_name, user?.org_id ?? undefined, user?.bank_id ?? undefined),
+          system: buildSystemPrompt(portal, 'home', user?.full_name, user?.org_id ?? undefined, user?.bank_id ?? undefined),
           messages: convo.messages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
           locale,
@@ -319,7 +319,7 @@ export default function Dashboard2Page() {
           feature: 'chat',
           model: 'sonnet',
           portal,
-          system: buildSystemPrompt(portal, 'dashboard2', user?.full_name, user?.org_id ?? undefined, user?.bank_id ?? undefined),
+          system: buildSystemPrompt(portal, 'home', user?.full_name, user?.org_id ?? undefined, user?.bank_id ?? undefined),
           messages: withUser.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
           locale,
@@ -655,8 +655,8 @@ export default function Dashboard2Page() {
 
       <div
         className="page"
-        data-page-name="Dashboard 2"
-        data-ai-context={JSON.stringify({ portal, page: 'dashboard2', ...aiContext })}
+        data-page-name="Home"
+        data-ai-context={JSON.stringify({ portal, page: 'home', ...aiContext })}
         style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 56px)' }}
       >
         {!started ? (

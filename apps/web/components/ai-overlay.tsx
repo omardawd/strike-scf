@@ -101,7 +101,7 @@ export function AIOverlay() {
   // the overlay's floating input would sit on top of it and block clicks. Dashboard 2
   // has its own full-page Strike AI chat built in, so the floating overlay is redundant
   // (and would visually collide with its own input pill) there too.
-  const hideOverlay = pathname.startsWith('/ai') || pathname.startsWith('/rooms') || pathname.startsWith('/dashboard2')
+  const hideOverlay = pathname.startsWith('/ai') || pathname.startsWith('/rooms') || pathname.startsWith('/home')
   const user = useUser()
   const portal = usePortal()
   const { locale } = useLocale()

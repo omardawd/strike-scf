@@ -7,6 +7,7 @@ import type { PortalType } from '@/lib/portal-context'
 
 // Ordered specific-before-general so derivePageName resolves the deepest match first.
 const PATH_PAGE_NAMES: Record<string, string> = {
+  '/home':                      'Home',
   '/dashboard':                 'Dashboard',
   '/marketplace/listings/new':  'New Listing',
   '/marketplace/financing':     'Financing',

@@ -69,7 +69,7 @@ export default function LoginPage() {
       // Non-fatal — fall through to dashboard
     }
 
-    router.push('/dashboard')
+    router.push('/home')
   }
 
   return (
