@@ -9,7 +9,10 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ALLOWED_PATCH_FIELDS = ['title', 'description', 'target_price', 'shipping_cost', 'expires_at', 'status'] as const
+// target_price is deliberately NOT patchable here — it is always derived
+// server-side from listing_line_items (see lib/marketplace/listing-pricing.ts),
+// never a value any caller can set directly.
+const ALLOWED_PATCH_FIELDS = ['title', 'description', 'shipping_cost', 'expires_at', 'status'] as const
 const ALLOWED_STATUS_VALUES = ['closed', 'cancelled']
 
 export async function GET(

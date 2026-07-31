@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { recomputeListingTotal } from '@/lib/marketplace/listing-pricing'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,6 +60,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
+  // quantity/unit_price can never be patched down to unpriced — every line
+  // item must stay fully priced, so a caller touching either field must
+  // supply a positive number, not null/0/blank.
+  if ('quantity' in patch && !(Number(patch.quantity) > 0)) {
+    return NextResponse.json({ error: 'quantity must be greater than 0' }, { status: 400 })
+  }
+  if ('unit_price' in patch && !(Number(patch.unit_price) > 0)) {
+    return NextResponse.json({ error: 'unit_price must be greater than 0' }, { status: 400 })
+  }
 
   const { data: item, error } = await adminClient
     .from('listing_line_items')
@@ -68,6 +78,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recomputeListingTotal(adminClient, listingId)
   return NextResponse.json({ item })
 }
 
@@ -93,5 +104,6 @@ export async function DELETE(req: Request, ctx: Ctx) {
     .eq('id', itemId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recomputeListingTotal(adminClient, listingId)
   return new NextResponse(null, { status: 204 })
 }

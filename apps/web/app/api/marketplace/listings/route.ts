@@ -7,6 +7,7 @@ import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/vi
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { sanitizeSearchTerm } from '@/lib/search'
 import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
+import { recomputeListingTotal, validateLineItems, type LineItemInput } from '@/lib/marketplace/listing-pricing'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -229,6 +230,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `shipping_cost is required for incoterm ${body.incoterms}` }, { status: 400 })
   }
 
+  // A listing's total is ALWAYS derived from its priced line items — never a
+  // number the caller (human, UI, or an AI tool) types in directly. target_price
+  // is intentionally not read from the body at all; publishing (non-draft)
+  // requires at least one line item with a real quantity and unit_price, same
+  // as the shipping_cost gate above. Drafts may still be saved incomplete.
+  const lineItemsInput = ((body as { line_items?: LineItemInput[] }).line_items ?? []) as LineItemInput[]
+  if (!isDraft) {
+    const lineItemsError = validateLineItems(lineItemsInput)
+    if (lineItemsError) {
+      return NextResponse.json({ error: lineItemsError }, { status: 400 })
+    }
+  }
+
   const { data: listing, error: insertError } = await adminClient
     .from('marketplace_listings')
     .insert({
@@ -241,7 +255,6 @@ export async function POST(request: Request) {
       tags: body.tags ?? null,
       quantity: body.quantity ?? null,
       unit: body.unit ?? null,
-      target_price: body.target_price ?? null,
       currency: body.currency ?? 'USD',
       incoterms: body.incoterms ?? null,
       shipping_cost: body.shipping_cost ?? null,
@@ -261,6 +274,28 @@ export async function POST(request: Request) {
   if (insertError || !listing) {
     console.error('Listing insert error:', insertError)
     return NextResponse.json({ error: 'Failed to create listing' }, { status: 500 })
+  }
+
+  if (lineItemsInput.length > 0) {
+    const { error: lineItemsInsertError } = await adminClient
+      .from('listing_line_items')
+      .insert(lineItemsInput.map((item, idx) => ({
+        listing_id: listing.id,
+        name: item.name.trim(),
+        description: item.description?.trim() || null,
+        quantity: item.quantity ?? null,
+        unit: item.unit?.trim() || null,
+        unit_price: item.unit_price ?? null,
+        currency: item.currency ?? body.currency ?? 'USD',
+        specs: item.specs ?? [],
+        sort_order: item.sort_order ?? idx,
+      })))
+    if (lineItemsInsertError) {
+      await adminClient.from('marketplace_listings').delete().eq('id', listing.id)
+      console.error('Listing line items insert error:', lineItemsInsertError)
+      return NextResponse.json({ error: 'Failed to save line items' }, { status: 500 })
+    }
+    listing.target_price = await recomputeListingTotal(adminClient, listing.id)
   }
 
   if (!isDraft) {

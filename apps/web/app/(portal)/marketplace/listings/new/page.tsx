@@ -194,12 +194,17 @@ function NewListingPageInner() {
 
   const shippingCostRequired = listingType === 'product_service' && isShippingCostRequired(form.incoterms)
 
+  // A listing's total is always derived from its line items — never a value
+  // typed in directly. Only items with real name + quantity + unit_price count.
+  const validLineItems = lineItems.filter(i =>
+    i.name.trim() && parseFloat(i.quantity) > 0 && parseFloat(i.unit_price) > 0
+  )
+
   const buildPayload = (status?: 'draft') => ({
     listing_type: listingType,
     title: form.title.trim(),
     description: form.description.trim() || undefined,
     category: form.category || undefined,
-    target_price: computedTargetPrice,
     currency: form.currency || 'USD',
     incoterms: form.incoterms || undefined,
     shipping_cost: shippingCostRequired && form.shipping_cost ? parseFloat(form.shipping_cost) : undefined,
@@ -209,6 +214,14 @@ function NewListingPageInner() {
     payment_terms: form.payment_terms || undefined,
     visibility,
     network_id: visibility === 'network_only' ? (networkId || undefined) : undefined,
+    line_items: validLineItems.map((item, idx) => ({
+      name: item.name.trim(),
+      description: item.description.trim() || undefined,
+      quantity: parseFloat(item.quantity),
+      unit: item.unit || undefined,
+      unit_price: parseFloat(item.unit_price),
+      sort_order: idx,
+    })),
     ...(status ? { status } : {}),
   })
 
@@ -225,6 +238,10 @@ function NewListingPageInner() {
       setError(t('newListing.shippingCostRequiredError', { incoterms: form.incoterms }))
       return
     }
+    if (!asDraft && validLineItems.length === 0) {
+      setError(t('newListing.lineItemsRequired'))
+      return
+    }
     setError(null)
     setLoading(true)
     try {
@@ -239,39 +256,6 @@ function NewListingPageInner() {
         return
       }
       const listingId = data.listing.id
-
-      const validItems = lineItems.filter(i => i.name.trim())
-      if (validItems.length > 0) {
-        await Promise.allSettled(validItems.map((item, idx) =>
-          fetch(`/api/marketplace/listings/${listingId}/line-items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: item.name.trim(),
-              description: item.description.trim() || null,
-              quantity: item.quantity ? parseFloat(item.quantity) : null,
-              unit: item.unit || null,
-              unit_price: item.unit_price ? parseFloat(item.unit_price) : null,
-              currency: form.currency || 'USD',
-              sort_order: idx,
-            }),
-          })
-        ))
-
-        // Compute total from all saved line items and patch the listing
-        const total = validItems.reduce((sum, item) => {
-          const qty = parseFloat(item.quantity)
-          const price = parseFloat(item.unit_price)
-          return sum + (isNaN(qty) || isNaN(price) ? 0 : qty * price)
-        }, 0)
-        if (total > 0) {
-          await fetch(`/api/marketplace/listings/${listingId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_price: total }),
-          })
-        }
-      }
 
       // Upload attached document to the listing
       if (uploadedFile) {

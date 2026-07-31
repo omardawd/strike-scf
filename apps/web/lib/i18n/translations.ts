@@ -439,6 +439,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'newListing.titleRequired': 'Title is required.',
     'newListing.selectNetworkRequired': 'Please select a network for this private listing.',
     'newListing.shippingCostRequiredError': 'Shipping cost is required for {incoterms} — you arrange and pay for shipping under this incoterm.',
+    'newListing.lineItemsRequired': 'Add at least one item with a quantity and unit price — a listing\'s total is calculated from its items, not typed in directly.',
     'newListing.somethingWentWrong': 'Something went wrong. Please try again.',
 
     'listingDetail.item': 'Item',
@@ -2904,6 +2905,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'newListing.titleRequired': 'العنوان مطلوب.',
     'newListing.selectNetworkRequired': 'يرجى اختيار شبكة لهذا العرض الخاص.',
     'newListing.shippingCostRequiredError': 'تكلفة الشحن مطلوبة لشرط {incoterms} — أنت من يرتب ويدفع تكلفة الشحن بموجب هذا الشرط.',
+    'newListing.lineItemsRequired': 'أضف عنصرًا واحدًا على الأقل بكمية وسعر للوحدة — يتم احتساب إجمالي العرض من عناصره، وليس بإدخاله مباشرة.',
     'newListing.somethingWentWrong': 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
 
     'listingDetail.item': 'الصنف',
@@ -5369,6 +5371,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'newListing.titleRequired': 'El título es obligatorio.',
     'newListing.selectNetworkRequired': 'Selecciona una red para esta publicación privada.',
     'newListing.shippingCostRequiredError': 'El costo de envío es obligatorio para {incoterms} — tú organizas y pagas el envío bajo este incoterm.',
+    'newListing.lineItemsRequired': 'Agrega al menos un artículo con cantidad y precio unitario — el total de un anuncio se calcula a partir de sus artículos, no se escribe directamente.',
     'newListing.somethingWentWrong': 'Algo salió mal. Inténtalo de nuevo.',
 
     'listingDetail.item': 'Artículo',

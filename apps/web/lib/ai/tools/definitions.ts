@@ -44,17 +44,18 @@ const CREATE_MARKETPLACE_LISTING = {
       network_id: { type: 'string', description: 'Required if visibility=network_only' },
       line_items: {
         type: 'array',
+        description: 'Required — a listing\'s total price is always derived from these, never a number you set directly. Every item needs a real quantity and unit_price; never omit pricing or leave it to be filled in later.',
         items: {
           type: 'object',
           properties: {
             name: { type: 'string' },
             description: { type: 'string' },
-            quantity: { type: 'number' },
+            quantity: { type: 'number', description: 'Required — must be greater than 0.' },
             unit: { type: 'string', default: 'units' },
-            unit_price: { type: 'number' },
+            unit_price: { type: 'number', description: 'Required — must be greater than 0.' },
             specs: { type: 'object' },
           },
-          required: ['name'],
+          required: ['name', 'quantity', 'unit_price'],
         },
       },
     },

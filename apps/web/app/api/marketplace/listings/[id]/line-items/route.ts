@@ -5,6 +5,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { recomputeListingTotal } from '@/lib/marketplace/listing-pricing'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,6 +70,15 @@ export async function POST(req: Request, ctx: Ctx) {
   const { name, description, quantity, unit, unit_price, currency, specs, sort_order } = body
 
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  // A listing's total is always derived from its line items, so an unpriced
+  // item is never allowed to exist — quantity and unit_price are required,
+  // not optional, on every single one.
+  if (!(Number(quantity) > 0)) {
+    return NextResponse.json({ error: 'quantity is required and must be greater than 0' }, { status: 400 })
+  }
+  if (!(Number(unit_price) > 0)) {
+    return NextResponse.json({ error: 'unit_price is required and must be greater than 0' }, { status: 400 })
+  }
 
   const { data: item, error } = await adminClient
     .from('listing_line_items')
@@ -76,9 +86,9 @@ export async function POST(req: Request, ctx: Ctx) {
       listing_id: listingId,
       name: name.trim(),
       description: description?.trim() ?? null,
-      quantity: quantity ?? null,
+      quantity,
       unit: unit?.trim() ?? null,
-      unit_price: unit_price ?? null,
+      unit_price,
       currency: currency?.trim() ?? 'USD',
       specs: specs ?? [],
       sort_order: sort_order ?? 0,
@@ -87,5 +97,6 @@ export async function POST(req: Request, ctx: Ctx) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recomputeListingTotal(adminClient, listingId)
   return NextResponse.json({ item }, { status: 201 })
 }

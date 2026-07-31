@@ -1,4 +1,5 @@
 import { adminClient } from '../admin'
+import { recomputeListingTotal, validateLineItems } from '@/lib/marketplace/listing-pricing'
 
 interface LineItem {
   name: string
@@ -31,6 +32,18 @@ export interface CreateMarketplaceListingInput {
 
 export async function createMarketplaceListing(input: CreateMarketplaceListingInput) {
   const currency = input.currency ?? 'USD'
+
+  // Every line item must carry real pricing — a listing's total is always
+  // derived from these, never a number set directly, so this is required
+  // up front rather than tolerated as optional.
+  const lineItemsError = validateLineItems(
+    (input.line_items ?? []).map(item => ({
+      name: item.name,
+      quantity: item.quantity ?? 0,
+      unit_price: item.unit_price ?? 0,
+    }))
+  )
+  if (lineItemsError) return { error: lineItemsError }
 
   const { data: listing, error: listingErr } = await adminClient
     .from('marketplace_listings')
@@ -83,16 +96,17 @@ export async function createMarketplaceListing(input: CreateMarketplaceListingIn
     return { error: `Failed to create line items: ${lineItemsErr.message}` }
   }
 
-  const totalValue = input.line_items.reduce((sum, item) => {
-    if (item.quantity && item.unit_price) return sum + item.quantity * item.unit_price
-    return sum
-  }, 0)
+  // Writes the real total onto marketplace_listings.target_price — this was
+  // previously never persisted here, so AI-created listings' target_price
+  // stayed null forever (any reader that doesn't independently join line
+  // items, e.g. financing pages, admin, PDF exports, saw a blank price).
+  const totalValue = await recomputeListingTotal(adminClient, listing.id)
 
   return {
     listing_id: listing.id,
     line_item_ids: (lineItems ?? []).map((li: { id: string }) => li.id),
     line_items: lineItems ?? [],
-    total_value: totalValue > 0 ? totalValue : null,
+    total_value: totalValue,
     currency,
     status: 'active',
     created_at: listing.created_at,
