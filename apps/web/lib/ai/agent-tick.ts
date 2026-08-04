@@ -38,7 +38,10 @@ export interface TickResult {
   outcome: string
 }
 
-export async function runAgentTick(orgId?: string): Promise<{ processed: number; results: TickResult[] }> {
+export async function runAgentTick(
+  orgId?: string,
+  claimWindowMs?: number
+): Promise<{ processed: number; results: TickResult[] }> {
   let query = adminClient.from('agent_negotiations').select('*').eq('status', 'active')
   if (orgId) query = query.eq('org_id', orgId)
   const { data: negotiations } = await query
@@ -46,7 +49,7 @@ export async function runAgentTick(orgId?: string): Promise<{ processed: number;
   const results: TickResult[] = []
   for (const neg of negotiations ?? []) {
     try {
-      const outcome = await tickOne(neg as Row)
+      const outcome = await tickOne(neg as Row, claimWindowMs)
       results.push({ negotiation_id: neg.id, outcome })
     } catch (err) {
       results.push({ negotiation_id: neg.id, outcome: `error: ${err instanceof Error ? err.message : 'unknown'}` })
@@ -472,16 +475,18 @@ async function notifyOrgAdmins(orgId: string, title: string, body: string): Prom
   }
 }
 
-async function tickOne(neg: Row): Promise<string> {
+async function tickOne(neg: Row, claimWindowMs = 90 * 1000): Promise<string> {
   // Atomic claim — prevents two overlapping cron invocations double-acting on
   // the same negotiation. A row is claimable if it's never been ticked, or its
-  // last tick was more than 90s ago. This is the actual round-to-round cadence
-  // ceiling for this side of a negotiation — keep it a few multiples above the
-  // real tick interval (pg_cron fires every 60s, see CLAUDE.md) so overlapping
-  // invocations still can't double-claim, without making a demo wait 4+ minutes
-  // between rounds the way the original 4-minute window (sized for a 5-minute
-  // GitHub Actions cadence) did.
-  const claimBefore = new Date(Date.now() - 90 * 1000).toISOString()
+  // last tick was more than `claimWindowMs` ago. This is the actual round-to-
+  // round cadence ceiling for this side of a negotiation — the 90s default
+  // stays a few multiples above the real tick interval (pg_cron fires every
+  // 60s, see CLAUDE.md) so overlapping invocations still can't double-claim.
+  // The demo tour's accelerated tick loop (app/api/demo/tick/route.ts) passes
+  // a much shorter window — safe there specifically because it's the only
+  // caller driving that pace on purpose against an isolated demo tenant, not
+  // because the row-level atomicity itself works any differently.
+  const claimBefore = new Date(Date.now() - claimWindowMs).toISOString()
   const { data: claimed } = await adminClient
     .from('agent_negotiations')
     .update({ last_tick_at: new Date().toISOString() })

@@ -492,7 +492,7 @@ export default function DealsPage() {
                   const fin = deal.financing_request
                   const financeable = isFinanceable(deal)
                   return (
-                    <tr key={deal.id} className="card-interactive" style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)}>
+                    <tr key={deal.id} className="card-interactive" style={{ cursor: 'pointer' }} onClick={() => router.push(`/deals/${deal.id}`)} data-demo-target={`deal-row-${deal.id}`}>
                       <td>
                         {deal.marketplace_listings?.title ? (
                           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{deal.marketplace_listings.title}</span>

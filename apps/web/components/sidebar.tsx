@@ -451,6 +451,15 @@ export function Sidebar() {
                   // TA.2 — native tooltip surfaces the label when collapsed (icons-only).
                   title={collapsed ? label : undefined}
                   aria-label={badge ? `${label} (${badge} unread)` : label}
+                  // One target per real nav destination — the demo tour clicks
+                  // these exactly like a user would (see DemoConductor's
+                  // navSteps), rather than router.push()-ing straight to a
+                  // page. '/marketplace/financing' keeps its own legacy alias
+                  // since some scenes already reference 'nav-financing'.
+                  data-demo-target={
+                    item.href === '/marketplace/financing' ? 'nav-financing'
+                    : `nav-${item.href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`
+                  }
                 >
                   {/* TG.3 — collapsed mode hides .nav-badge, so overlay a small dot on
                       the rooms icon to keep the unread signal visible icons-only. */}
@@ -507,6 +516,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => { setUserMenuOpen(false); router.push('/settings') }}
+              data-demo-target="user-menu-settings"
               style={{
                 width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'none', border: 'none', cursor: 'pointer',
@@ -556,6 +566,7 @@ export function Sidebar() {
           onClick={() => setUserMenuOpen(o => !o)}
           title={collapsed ? `${userName} — open menu` : undefined}
           aria-label="Open user menu"
+          data-demo-target="user-menu-button"
           style={{
             width: '100%', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left',
             borderTop: '1px solid var(--border)', padding: collapsed ? '14px 0' : 16,

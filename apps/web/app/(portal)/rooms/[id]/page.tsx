@@ -34,6 +34,7 @@ interface Participant {
 interface Message {
   id: string
   user_id: string | null
+  org_id: string | null
   content: string
   message_type: 'message' | 'system' | 'ai_suggestion' | 'document_share' | 'offer_update' | 'contract_draft'
   status: string
@@ -148,18 +149,45 @@ function SystemMsg({ msg }: { msg: Message }) {
   )
 }
 
-function AiMsg({ msg }: { msg: Message }) {
+// `isOwn` mirrors BubbleMsg's own/other split (own = sent from the viewer's
+// org, rendered right-aligned; other = the counterparty, left-aligned) so an
+// autonomous round from OUR agent reads like a message we sent and a round
+// from THEIRS reads like a message we received — not two identical cards
+// stacked in the same left-aligned column, which is confusing since both
+// sides' agents post into the same shared room.
+function AiMsg({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
   const t = useT()
   return (
-    <div className="room-msg room-msg-ai fade-in">
+    <div
+      className="room-msg fade-in"
+      style={{ flexDirection: isOwn ? 'row-reverse' : 'row' }}
+    >
       <div className="room-msg-avatar room-msg-avatar-ai">✦</div>
       {/* .ai-sheen — animated gradient border so agent reasoning visually reads as AI */}
-      <div className="room-msg-body ai-sheen" style={{ borderRadius: 10, padding: '8px 10px' }}>
-        <div className="room-msg-meta">
+      <div
+        className="ai-sheen"
+        style={{
+          borderRadius: 10, padding: '8px 10px', maxWidth: '78%',
+          borderLeft: isOwn ? 'none' : '3px solid var(--teal)',
+          borderRight: isOwn ? '3px solid var(--teal)' : 'none',
+        }}
+      >
+        <div className="room-msg-meta" style={{ flexDirection: isOwn ? 'row-reverse' : 'row' }}>
           <span className="room-msg-sender room-msg-sender-ai">{t('nav.strikeAi')}</span>
+          {/* Which side's agent made this move. Both parties' autonomous rounds
+              land in the same room as ai_suggestion messages, so without the
+              acting org here the transcript reads as a single agent talking to
+              itself rather than two agents negotiating against each other. */}
+          {msg.sender_org_name && (
+            <span style={{ fontSize: 11, color: 'var(--gray)', fontWeight: 600 }}>
+              · {msg.sender_org_name}
+            </span>
+          )}
           <span className="room-msg-time">{formatTime(msg.created_at)}</span>
         </div>
-        <div className="room-msg-content">{msg.content.includes('[[STRIKE_BLOCK:') ? renderTextWithStrikeBlocks(msg.content) : msg.content}</div>
+        <div className="room-msg-content" style={{ textAlign: isOwn ? 'right' : 'left' }}>
+          {msg.content.includes('[[STRIKE_BLOCK:') ? renderTextWithStrikeBlocks(msg.content) : msg.content}
+        </div>
       </div>
     </div>
   )
@@ -670,6 +698,7 @@ export default function RoomPage() {
         ref={threadRef}
         className="room-thread"
         onScroll={handleThreadScroll}
+        data-demo-target="room-thread"
       >
         {messages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -688,12 +717,16 @@ export default function RoomPage() {
               !showDateDivider
             const hideAvatar = sameSenderAsPrev
             const isOwn = !!user && msg.user_id === user.id
+            // AI-suggestion messages have no user_id (the agent sent it, not a
+            // person) — attribute by org instead, same signal isOwn uses for
+            // human messages.
+            const isOwnAgent = !!user?.org_id && msg.org_id === user.org_id
 
             return (
               <React.Fragment key={msg.id}>
                 {showDateDivider && <DateDivider label={formatDate(msg.created_at, t)} />}
                 {msg.message_type === 'system' && <SystemMsg msg={msg} />}
-                {msg.message_type === 'ai_suggestion' && <AiMsg msg={msg} />}
+                {msg.message_type === 'ai_suggestion' && <AiMsg msg={msg} isOwn={isOwnAgent} />}
                 {msg.message_type === 'document_share' && (
                   <DocumentMsg msg={msg} hideAvatar={hideAvatar} />
                 )}

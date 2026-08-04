@@ -110,6 +110,7 @@ function ConversationPanel({
         className={`rooms-nav-item${isActive ? ' rooms-nav-item-active' : ''}`}
         onClick={() => onNavigate(room.id)}
         title={title}
+        data-demo-target={`room-item-${room.id}`}
       >
         <div className="rooms-nav-item-top">
           <span className="rooms-nav-item-name">{room.name}</span>

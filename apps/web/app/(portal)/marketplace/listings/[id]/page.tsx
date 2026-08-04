@@ -1404,7 +1404,7 @@ export default function ListingDetailPage() {
         }
       />
 
-      <div className="page mp-page" data-page-name="Listing" data-ai-context={aiContext}>
+      <div className="page mp-page" data-page-name="Listing" data-ai-context={aiContext} data-demo-target="listing-detail">
         <div className="split-panel">
 
           {/* ── Main panel ── */}

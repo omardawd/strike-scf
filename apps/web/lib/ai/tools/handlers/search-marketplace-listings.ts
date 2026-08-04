@@ -16,6 +16,15 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
   const limit = input.limit ?? 10
   const listingType = input.listing_type ?? 'all'
 
+  // Fetch a much larger pool than `limit` and apply the keyword filter
+  // (below) before truncating — the keyword match happens client-side since
+  // there's no full-text index on these columns, so limiting the DB query to
+  // `limit` rows *before* filtering meant a real match could be silently
+  // pushed out by newer, unrelated listings and never even get to the
+  // keyword check. Confirmed live: searching "steel" returned zero results
+  // despite two active, visible steel listings existing, because 11 more
+  // recently created (unrelated) listings filled the old `limit(10)` window.
+  const FETCH_POOL_SIZE = 300
   let q = adminClient
     .from('marketplace_listings')
     .select(`
@@ -30,7 +39,7 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
     `)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .limit(FETCH_POOL_SIZE)
 
   // Without an org_id we can only safely show public listings. With one,
   // include network_only listings this org is actually entitled to see —
@@ -95,7 +104,7 @@ export async function searchMarketplaceListings(input: SearchMarketplaceListings
     return words.some((w) => haystacks.some((h) => h.includes(w)))
   })
 
-  const results = filtered.map((l: any) => ({
+  const results = filtered.slice(0, limit).map((l: any) => ({
     id: l.id,
     listing_type: l.listing_type,
     title: l.title,

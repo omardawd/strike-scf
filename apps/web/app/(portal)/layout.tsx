@@ -5,6 +5,8 @@ import { PortalProvider, type PortalType } from '@/lib/portal-context'
 import { UserProvider, type UserOrg } from '@/lib/user-context'
 import { PortalShell } from './portal-shell'
 import { KybStatusPage } from '@/components/kyb-status-page'
+import { isDemoAccount } from '@/lib/demo'
+import { DemoConductor } from '@/components/demo/DemoConductor'
 
 const adminClient = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +60,7 @@ export default async function PortalLayout({ children }: { children: React.React
   // Non-approved orgs see ONLY the status page — no sidebar, no other route
   // is reachable — until Strike approves their application.
   const needsKybGate = !!org && org.kyb_status !== 'approved'
+  const isDemo = isDemoAccount(userData.email)
 
   return (
     <PortalProvider portal={portal}>
@@ -74,7 +77,7 @@ export default async function PortalLayout({ children }: { children: React.React
           <KybStatusPage />
         ) : (
           <PortalShell portal={portal} userName={userData.full_name ?? undefined}>
-            {children}
+            {isDemo ? <DemoConductor>{children}</DemoConductor> : children}
           </PortalShell>
         )}
       </UserProvider>

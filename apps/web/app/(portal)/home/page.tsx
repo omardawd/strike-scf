@@ -17,6 +17,7 @@ import {
   newId, loadConversations, saveConversations, deriveTitle,
 } from '@/lib/ai/conversation-store'
 import { useT, useLocale } from '@/lib/i18n/locale-context'
+import { useDemoFormBridge } from '@/components/demo/DemoFormBridge'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -133,6 +134,7 @@ export default function Dashboard2Page() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const demoBridge = useDemoFormBridge()
 
   // ── Load real dashboard data (mirrors app/(portal)/dashboard/page.tsx's per-portal fetch) ──
   useEffect(() => {
@@ -353,6 +355,19 @@ export default function Dashboard2Page() {
     if (!started) runFirstMessage(input)
     else runFollowUpMessage(input)
   }
+
+  // Lets the demo tour's Scene 7 (DemoAgentActivityFeed) send a scripted
+  // message through this exact same real send path — same request shape,
+  // same conversation state, same rendering — rather than a parallel/mocked
+  // one. No-op registration for every non-demo user (useDemoFormBridge()
+  // returns null without a DemoConductor provider in the tree).
+  useEffect(() => {
+    if (!demoBridge) return
+    demoBridge.registerChatApi({
+      sendMessage: (text) => (started ? runFollowUpMessage(text) : runFirstMessage(text)),
+    })
+    return () => demoBridge.registerChatApi(null)
+  }, [demoBridge, started, runFirstMessage, runFollowUpMessage])
 
   function resetToIdle() {
     setStarted(false)
@@ -711,6 +726,7 @@ export default function Dashboard2Page() {
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }}
+                    data-demo-target="home-chat-input"
                   />
                   <button type="button" className="d2-send" onClick={handleSubmit} disabled={!input.trim()} aria-label={t('aiPage.send')}>
                     <SendIcon />

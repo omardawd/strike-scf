@@ -278,6 +278,13 @@ export async function counterOffer(params: {
 
     await adminClient.from('room_messages').insert({
       room_id: roomId,
+      // Attribute the round to the org whose agent actually made it. Without
+      // this the message lands with org_id NULL, so BOTH sides' autonomous
+      // counters render as an identical, unattributed "Strike AI" card and the
+      // room reads as one agent talking to itself instead of a real two-sided
+      // negotiation. The room UI (AiMsg in app/(portal)/rooms/[id]/page.tsx)
+      // reads sender_org_name, which is derived from this column.
+      org_id: actingOrgId,
       content,
       message_type: isAutonomous ? 'ai_suggestion' : 'system',
       status: 'visible',
@@ -460,6 +467,7 @@ export async function rejectOffer(params: {
       if (!existingRoomId) await adminClient.from('marketplace_offers').update({ room_id: roomId }).eq('id', offerId)
       await adminClient.from('room_messages').insert({
         room_id: roomId,
+        org_id: actingOrgId, // see the counter insert above — attribution, not decoration
         content: `${rejectingOrg?.legal_name ?? 'A party'} has rejected the offer.\n\n${reasoning}`,
         message_type: 'ai_suggestion',
         status: 'visible',

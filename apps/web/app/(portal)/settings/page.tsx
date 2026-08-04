@@ -646,6 +646,7 @@ export default function SettingsPage() {
               type="button"
               className={`btn btn-sm ${tab === 'erp' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setTab('erp')}
+              data-demo-target="settings-tab-erp"
             >
               {t('settingsPage.erpIntegration')}
             </button>
@@ -1269,7 +1270,7 @@ export default function SettingsPage() {
             ) : erpConnection ? (
               /* ── Connected state ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div className="card">
+                <div className="card" data-demo-target="erp-connection-card">
                   <div className="card-body">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

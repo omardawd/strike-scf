@@ -23,6 +23,7 @@ import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@str
 import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 import { FINANCEABLE_STATUSES } from '@/lib/deals/transitions'
 import { useT } from '@/lib/i18n/locale-context'
+import { useDemoFormBridge } from '@/components/demo/DemoFormBridge'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -666,6 +667,22 @@ export default function DealDetailPage() {
     } finally { setFinSubmitting(false) }
   }
 
+  // Lets the demo cinematic (demo@demo.com only) drive this exact form via
+  // real state setters instead of synthetic DOM events. `demoBridge` is null
+  // for every other account — this effect is then a no-op.
+  const demoBridge = useDemoFormBridge()
+  useEffect(() => {
+    if (!demoBridge) return
+    demoBridge.registerFinancingForm({
+      setShowForm: setShowFinancingForm,
+      setType: setFinType,
+      setAmount: setFinAmount,
+      setRateMax: setFinRateMax,
+      submit: submitFinancingRequest,
+    })
+    return () => demoBridge.registerFinancingForm(null)
+  }, [demoBridge, finType, finAmount, finRateMax])
+
   async function cancelDeal() {
     setCancelLoading(true)
     try {
@@ -925,7 +942,7 @@ export default function DealDetailPage() {
           {/* ── Main panel ── */}
           <div className="split-panel-main reveal-stagger">
             {/* Roadmap — G4.1 */}
-            <div className="card reveal">
+            <div className="card reveal" data-demo-target="deal-negotiation">
               <div className="card-head">{t('dealDetail.dealProgress')}</div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
                 <DealRoadmap
@@ -1335,7 +1352,7 @@ export default function DealDetailPage() {
                   <div style={{ marginTop: 16 }}><Link href={`/marketplace/financing/${financing_request.id}`} className="btn btn-ghost btn-sm">{t('dealDetail.viewFinancingRequest')}</Link></div>
                 </div>
               ) : showFinancingForm ? (
-                <div className="card-body">
+                <div className="card-body" data-demo-target="financing-form">
                   {finError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{finError}</div>}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div className="form-field">
@@ -1356,7 +1373,7 @@ export default function DealDetailPage() {
                       <div className="alert alert-warn" style={{ fontSize: 12 }}>{t('dealDetail.poFinancingHint')}</div>
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-blue btn-sm" disabled={finSubmitting || !finAmount} onClick={submitFinancingRequest}>{finSubmitting ? t('listingDetail.submitting') : t('dealDetail.submitFinancingRequest')}</button>
+                      <button className="btn btn-blue btn-sm" data-demo-target="financing-submit" disabled={finSubmitting || !finAmount} onClick={submitFinancingRequest}>{finSubmitting ? t('listingDetail.submitting') : t('dealDetail.submitFinancingRequest')}</button>
                       <button className="btn btn-ghost btn-sm" disabled={finSubmitting} onClick={() => { setShowFinancingForm(false); setFinError(null) }}>{t('common.cancel')}</button>
                     </div>
                   </div>
@@ -1369,6 +1386,7 @@ export default function DealDetailPage() {
                     style={{ alignSelf: 'flex-start' }}
                     onClick={() => { setFinAmount(String(dealValue ?? '')); setShowFinancingForm(true) }}
                     disabled={!canFinance}
+                    data-demo-target="financing-toggle"
                   >
                     {t('dealDetail.requestFinancing')}
                   </button>

@@ -249,7 +249,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
 
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {/* ── Score + summary row ── */}
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <div data-demo-target="passport-score-summary" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
           {/* Big score */}
           <div style={{ textAlign: 'center', minWidth: 80, flexShrink: 0 }}>
             <div style={{
@@ -282,7 +282,7 @@ function ScoreBreakdownCard({ analysis, onRerun, rerunning }: { analysis: Expert
         </div>
 
         {/* ── 4 dimension bars ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
+        <div data-demo-target="passport-dimensions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
           {dims(t).map(({ key, label }) => {
             const dim = analysis.scores[key]
             const color = dimColor(dim.score)
@@ -735,7 +735,9 @@ export default function MyPassportPage() {
 
               {/* Score breakdown — only shown when analysis exists */}
               {expertAnalysis && (
-                <ScoreBreakdownCard analysis={expertAnalysis} onRerun={runAiReview} rerunning={runningAiReview} />
+                <div data-demo-target="passport-breakdown">
+                  <ScoreBreakdownCard analysis={expertAnalysis} onRerun={runAiReview} rerunning={runningAiReview} />
+                </div>
               )}
 
               <PassportSections

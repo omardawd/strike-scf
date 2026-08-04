@@ -142,6 +142,7 @@ function ListingCard({ item, isOwn = false }: { item: ListingWithPassport & { li
     <div
       className="listing-card card-interactive"
       onClick={() => router.push(`/marketplace/listings/${listing.id}`)}
+      data-demo-target={`listing-card-${listing.id}`}
     >
       <div className="listing-card-image-wrap">
         {images.length > 0 ? (
@@ -530,7 +531,7 @@ export default function MarketplacePage() {
               )}
 
               {/* Feed */}
-              <div className="mp-listing-grid reveal-stagger">
+              <div className="mp-listing-grid reveal-stagger" data-demo-target="marketplace-grid">
                 {loading
                   ? skeletons.map((_, i) => (
                       <SkeletonCard key={i} height={220} />
