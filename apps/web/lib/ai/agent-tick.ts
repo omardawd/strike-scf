@@ -13,6 +13,8 @@ import { getAgentPreferences } from './agent-preferences'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { counterOffer as counterOfferDirect, TurnOrderError, InvalidStateError, GuardrailError } from '@/lib/marketplace/offer-actions'
 import { NO_EMOJI_RULE } from './system-prompt'
+import { DEMO_ALL_ORG_IDS } from '@/lib/demo-entities'
+import { getCachedAiResponse, setCachedAiResponse } from './demo-ai-cache'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -912,61 +914,80 @@ Make one decision now. If you call counter_marketplace_offer, reject_marketplace
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [{ role: 'user', content: 'Decide how to respond to the counterparty\'s latest offer.' }]
 
-  for (let i = 0; i < 3; i++) {
-    let res: Response
-    try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'prompt-caching-2024-07-31',
-          'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 1024,
-          system,
-          messages,
-          // NEGOTIATION_TOOLS is static — cache_control on the last entry caches
-          // everything before it too. This is the highest-frequency call site in
-          // the app (pg_cron every ~60s x every active negotiation, PLUS this
-          // loop's own 2-3 internal iterations resending the same array), so
-          // caching pays off within a single tick, not just across ticks.
-          tools: NEGOTIATION_TOOLS.map((t, i) =>
-            i === NEGOTIATION_TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
-          ),
-          // disable_parallel_tool_use is required here — with plain {type:'any'},
-          // Claude sometimes returns two tool_use blocks in one turn (e.g. both
-          // get_pricing_insights and evaluate_listing_offers), but this loop only
-          // ever sends a tool_result for the first one, which leaves the second
-          // unanswered and makes the NEXT API call malformed (Anthropic requires
-          // every tool_use to get a matching tool_result before the next turn).
-          tool_choice: { type: 'any', disable_parallel_tool_use: true },
-        }),
-      })
-    } catch {
-      return null
-    }
-    if (!res.ok) return null
+  // Demo tour replay caching (see lib/ai/demo-ai-cache.ts) — the demo tenant's
+  // negotiation always starts from the same freshly-reset state, so replaying
+  // the same (org, round, internal-iteration) position again reuses the first
+  // real run's decision instead of re-spending real Sonnet tokens on every
+  // tour playthrough. Gated strictly to the demo tenant's own org ids, so
+  // this can never affect a real org's negotiation — a real actingOrgId
+  // simply never matches and every call below behaves exactly as before.
+  const demoCacheEnabled = DEMO_ALL_ORG_IDS.includes(actingOrgId)
+  const demoRoundLabel = `negotiation:${actingOrgId}:round${offer.current_round ?? 1}`
 
+  for (let i = 0; i < 3; i++) {
+    const iterCacheKey = demoCacheEnabled ? `${demoRoundLabel}:iter${i}` : null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await res.json()
-    // This loop previously logged nothing to ai_usage — every autonomous
-    // tick's Sonnet call was invisible to any in-app spend tracking. Confirmed
-    // live as part of a multi-million-token spend spike that only showed up
-    // on the Anthropic billing dashboard, not here. Fire-and-forget so a
-    // logging failure never blocks an actual negotiation decision.
-    try {
-      await adminClient.from('ai_usage').insert({
-        org_id: actingOrgId,
-        feature: 'negotiation_tick',
-        tokens_input: data.usage?.input_tokens ?? 0,
-        tokens_output: data.usage?.output_tokens ?? 0,
-        tokens_total: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
-        model: MODEL,
-      })
-    } catch { /* never let logging failure block a negotiation decision */ }
+    let data: any = iterCacheKey ? await getCachedAiResponse(iterCacheKey) : null
+
+    if (!data) {
+      let res: Response
+      try {
+        res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+            'anthropic-beta': 'prompt-caching-2024-07-31',
+            'x-api-key': process.env.ANTHROPIC_API_KEY!,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 1024,
+            system,
+            messages,
+            // NEGOTIATION_TOOLS is static — cache_control on the last entry caches
+            // everything before it too. This is the highest-frequency call site in
+            // the app (pg_cron every ~60s x every active negotiation, PLUS this
+            // loop's own 2-3 internal iterations resending the same array), so
+            // caching pays off within a single tick, not just across ticks.
+            tools: NEGOTIATION_TOOLS.map((t, i) =>
+              i === NEGOTIATION_TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+            ),
+            // disable_parallel_tool_use is required here — with plain {type:'any'},
+            // Claude sometimes returns two tool_use blocks in one turn (e.g. both
+            // get_pricing_insights and evaluate_listing_offers), but this loop only
+            // ever sends a tool_result for the first one, which leaves the second
+            // unanswered and makes the NEXT API call malformed (Anthropic requires
+            // every tool_use to get a matching tool_result before the next turn).
+            tool_choice: { type: 'any', disable_parallel_tool_use: true },
+          }),
+        })
+      } catch {
+        return null
+      }
+      if (!res.ok) return null
+
+      data = await res.json()
+      if (iterCacheKey) setCachedAiResponse(iterCacheKey, data)
+
+      // This loop previously logged nothing to ai_usage — every autonomous
+      // tick's Sonnet call was invisible to any in-app spend tracking. Confirmed
+      // live as part of a multi-million-token spend spike that only showed up
+      // on the Anthropic billing dashboard, not here. Fire-and-forget so a
+      // logging failure never blocks an actual negotiation decision. Skipped
+      // entirely on a cache hit — no real tokens were spent that round.
+      try {
+        await adminClient.from('ai_usage').insert({
+          org_id: actingOrgId,
+          feature: 'negotiation_tick',
+          tokens_input: data.usage?.input_tokens ?? 0,
+          tokens_output: data.usage?.output_tokens ?? 0,
+          tokens_total: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
+          model: MODEL,
+        })
+      } catch { /* never let logging failure block a negotiation decision */ }
+    }
+
     const content = data.content ?? []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toolUse = content.find((b: any) => b.type === 'tool_use')

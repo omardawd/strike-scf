@@ -18,6 +18,7 @@ import {
 } from '@/lib/ai/conversation-store'
 import { useT, useLocale } from '@/lib/i18n/locale-context'
 import { useDemoFormBridge } from '@/components/demo/DemoFormBridge'
+import { sleep } from '@/components/demo/demo-utils'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -231,7 +232,7 @@ export default function Dashboard2Page() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  const runFirstMessage = useCallback(async (text: string) => {
+  const runFirstMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
     if (!trimmed || sending) return
 
@@ -273,6 +274,7 @@ export default function Dashboard2Page() {
           messages: convo.messages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
           locale,
+          demoCacheKey: cacheKey,
         }),
       })
       const data = await res.json()
@@ -301,7 +303,7 @@ export default function Dashboard2Page() {
     }
   }, [opener, portal, sending, t, user?.full_name, user?.org_id, user?.bank_id, locale])
 
-  const runFollowUpMessage = useCallback(async (text: string) => {
+  const runFollowUpMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
     if (!trimmed || sending || !conversationId) return
 
@@ -325,6 +327,7 @@ export default function Dashboard2Page() {
           messages: withUser.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
           locale,
+          demoCacheKey: cacheKey,
         }),
       })
       const data = await res.json()
@@ -360,11 +363,23 @@ export default function Dashboard2Page() {
   // message through this exact same real send path — same request shape,
   // same conversation state, same rendering — rather than a parallel/mocked
   // one. No-op registration for every non-demo user (useDemoFormBridge()
-  // returns null without a DemoConductor provider in the tree).
+  // returns null without a DemoConductor provider in the tree). Types the
+  // message into the visible input first, the way a real user would, rather
+  // than having it appear already-sent — `runFirstMessage`/`runFollowUpMessage`
+  // both take the text as an argument (not from `input` state), so this
+  // typing animation is purely visual and never races the actual send.
   useEffect(() => {
     if (!demoBridge) return
     demoBridge.registerChatApi({
-      sendMessage: (text) => (started ? runFollowUpMessage(text) : runFirstMessage(text)),
+      sendMessage: async (text, cacheKey) => {
+        for (let i = 1; i <= text.length; i++) {
+          setInput(text.slice(0, i))
+          await sleep(16)
+        }
+        await sleep(450)
+        setInput('')
+        return started ? runFollowUpMessage(text, cacheKey) : runFirstMessage(text, cacheKey)
+      },
     })
     return () => demoBridge.registerChatApi(null)
   }, [demoBridge, started, runFirstMessage, runFollowUpMessage])

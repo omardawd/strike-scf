@@ -215,7 +215,7 @@ function OfferForm({
   const canSubmit = (!hasItems || total > 0) && (!isPORequest || !!form.bank_account_id) && (!shippingCostRequired || !!form.shipping_cost)
 
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card" style={{ marginTop: 16 }} data-demo-target="listing-detail-offer">
       <div className="card-head">{t('listingDetail.submitYourOffer')}</div>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 

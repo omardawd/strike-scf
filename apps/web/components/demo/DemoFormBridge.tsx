@@ -24,7 +24,11 @@ export interface FinancingFormApi {
 // (success or handled failure), so the caller can safely poll for follow-on
 // server state (e.g. a new agent_tasks row) right after awaiting it.
 export interface ChatApi {
-  sendMessage: (text: string) => Promise<void>
+  /** `cacheKey`, when set, is forwarded to /api/ai/chat as `demoCacheKey` — the
+   *  server replays a cached response for the demo org instead of calling
+   *  Claude again once one exists, so repeated tour replays stop spending
+   *  real API credits. See lib/ai/demo-ai-cache.ts. */
+  sendMessage: (text: string, cacheKey?: string) => Promise<void>
 }
 
 interface DemoFormBridgeValue {

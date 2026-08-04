@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { languageInstruction, NO_EMOJI_RULE } from '@/lib/ai/system-prompt'
+import { DEMO_ORG_ID } from '@/lib/demo-entities'
+import { getCachedAiResponse, setCachedAiResponse } from '@/lib/ai/demo-ai-cache'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -130,57 +132,75 @@ Respond with ONLY valid JSON, no markdown, no preamble:
 }
 Max 2 actions. Actions are optional. insight is required. Be specific — reference actual numbers from the data. Never be generic.${languageInstruction(typeof body.locale === 'string' ? body.locale : undefined)}${NO_EMOJI_RULE}`
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      // Non-Latin scripts (ar) and longer Romance phrasing (es) tokenize far
-      // heavier than English — at 256 the JSON was getting truncated mid-object
-      // and silently falling through to FALLBACK. This is a ceiling, not a
-      // target, so English responses cost the same as before.
-      max_tokens: 700,
-      system,
-      messages: [{ role: 'user', content: 'Generate the insight JSON for this page.' }],
-    }),
-  })
+  // Demo tour replay caching (see lib/ai/demo-ai-cache.ts) — the demo org's
+  // Home/Passport/etc. briefings are requested fresh on every page load, and
+  // every replay of the tour re-triggers them from a freshly-reset (so
+  // identically-shaped) demo tenant. Cache by page only — real customers
+  // never match this key since it's gated on the exact demo org id.
+  const insightCacheKey = userRow.org_id === DEMO_ORG_ID ? `insight:${page}` : null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cachedResult: any = insightCacheKey ? await getCachedAiResponse(insightCacheKey) : null
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    console.error('[AI] Insight Anthropic error:', err)
-    return NextResponse.json(fallbackFor(typeof body.locale === 'string' ? body.locale : undefined))
-  }
+  let result: { content?: { text?: string }[]; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } }
 
-  const result = await response.json()
-  const raw: string = result.content?.[0]?.text ?? ''
-  if (result.stop_reason === 'max_tokens') {
-    console.warn('[AI] Insight hit max_tokens — output truncated, falling back. locale:', body.locale)
-  }
-  const parsed = parseInsight(raw, typeof body.locale === 'string' ? body.locale : undefined)
-  const usage = result.usage ?? {}
-
-  // Log usage
-  try {
-    const { error: usageErr } = await adminClient
-      .from('ai_usage')
-      .insert({
-        user_id: userRow.id,
-        org_id: userRow.org_id ?? null,
-        bank_id: userRow.bank_id ?? null,
-        feature: 'insight',
-        tokens_input: usage.input_tokens ?? 0,
-        tokens_output: usage.output_tokens ?? 0,
-        tokens_total: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+  if (cachedResult) {
+    result = cachedResult
+  } else {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      },
+      body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-      })
-    if (usageErr) console.error('[AI] Usage log error:', usageErr)
-  } catch {
-    // silently continue if table doesn't exist
+        // Non-Latin scripts (ar) and longer Romance phrasing (es) tokenize far
+        // heavier than English — at 256 the JSON was getting truncated mid-object
+        // and silently falling through to FALLBACK. This is a ceiling, not a
+        // target, so English responses cost the same as before.
+        max_tokens: 700,
+        system,
+        messages: [{ role: 'user', content: 'Generate the insight JSON for this page.' }],
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      console.error('[AI] Insight Anthropic error:', err)
+      return NextResponse.json(fallbackFor(typeof body.locale === 'string' ? body.locale : undefined))
+    }
+
+    result = await response.json()
+    if (insightCacheKey) setCachedAiResponse(insightCacheKey, result)
+
+    if (result.stop_reason === 'max_tokens') {
+      console.warn('[AI] Insight hit max_tokens — output truncated, falling back. locale:', body.locale)
+    }
+
+    // Only log real spend — a cache hit never reaches this branch.
+    const usage = result.usage ?? {}
+    try {
+      const { error: usageErr } = await adminClient
+        .from('ai_usage')
+        .insert({
+          user_id: userRow.id,
+          org_id: userRow.org_id ?? null,
+          bank_id: userRow.bank_id ?? null,
+          feature: 'insight',
+          tokens_input: usage.input_tokens ?? 0,
+          tokens_output: usage.output_tokens ?? 0,
+          tokens_total: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+          model: 'claude-haiku-4-5-20251001',
+        })
+      if (usageErr) console.error('[AI] Usage log error:', usageErr)
+    } catch {
+      // silently continue if table doesn't exist
+    }
   }
+
+  const raw: string = result.content?.[0]?.text ?? ''
+  const parsed = parseInsight(raw, typeof body.locale === 'string' ? body.locale : undefined)
 
   return NextResponse.json(parsed)
 }

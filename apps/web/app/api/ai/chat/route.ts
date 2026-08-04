@@ -5,6 +5,8 @@ import { getToolsForPortal, OVERLAY_TOOLS } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
 import { languageInstruction } from '@/lib/ai/system-prompt'
+import { DEMO_ORG_ID } from '@/lib/demo-entities'
+import { getCachedAiResponse, setCachedAiResponse } from '@/lib/ai/demo-ai-cache'
 
 // generate_document (executeTool below) uses pdfkit, which is excluded from
 // webpack bundling (serverExternalPackages in next.config.ts) — needs Node runtime.
@@ -146,6 +148,15 @@ export async function POST(req: NextRequest) {
   let totalInputTokens = 0
   let totalOutputTokens = 0
 
+  // Demo tour replay caching (see lib/ai/demo-ai-cache.ts) — the scripted
+  // Scene 7 messages (DemoAgentActivityFeed.tsx) pass a fixed label per
+  // message ('demo-plan'/'demo-revise'/'demo-execute') as `demoCacheKey`.
+  // Gated on the acting org being the demo tenant so this can never affect
+  // a real customer's conversation, even if a client somehow sent the field.
+  const demoCacheLabel = userRow.org_id === DEMO_ORG_ID && typeof body.demoCacheKey === 'string'
+    ? body.demoCacheKey
+    : null
+
   for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
     const anthropicBody: Record<string, unknown> = {
       model,
@@ -180,27 +191,36 @@ export async function POST(req: NextRequest) {
       if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-      },
-      body: JSON.stringify(anthropicBody),
-    })
-
-    if (!response.ok) {
-      const err = await response.json()
-      console.error('[AI] Anthropic error:', err)
-      return NextResponse.json({ error: 'AI service error' }, { status: 502 })
-    }
-
+    const iterCacheKey = demoCacheLabel ? `chat:${demoCacheLabel}:${iter}` : null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await response.json()
-    totalInputTokens += data.usage?.input_tokens ?? 0
-    totalOutputTokens += data.usage?.output_tokens ?? 0
+    let data: any = iterCacheKey ? await getCachedAiResponse(iterCacheKey) : null
+
+    if (!data) {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
+          'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        },
+        body: JSON.stringify(anthropicBody),
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        console.error('[AI] Anthropic error:', err)
+        return NextResponse.json({ error: 'AI service error' }, { status: 502 })
+      }
+
+      data = await response.json()
+      if (iterCacheKey) setCachedAiResponse(iterCacheKey, data)
+
+      // Only real calls spend real tokens — a cache hit shouldn't inflate this
+      // conversation's logged usage or count against the demo user's daily limit.
+      totalInputTokens += data.usage?.input_tokens ?? 0
+      totalOutputTokens += data.usage?.output_tokens ?? 0
+    }
 
     // If Claude is done (or tools are off), exit the loop with this response.
     if (data.stop_reason !== 'tool_use' || !useTools) {

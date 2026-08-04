@@ -12,11 +12,15 @@ function SpeakerIcon() {
     </svg>
   )
 }
+// Same arrow shape DemoCursor.tsx draws for the tour's actual on-screen
+// cursor — reused here (plus small radiating click ticks) so this "you'll
+// see a cursor click things" icon visually matches the cursor it's
+// introducing, rather than being an unrelated, hard-to-parse glyph.
 function ClickIcon() {
   return (
     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.5 12.5 5 3l9.5 4.5-4 2 4 4-2 2-4-4-2 4z" />
-      <path d="M16 16l3 5" />
+      <path d="M4 2.5 L4 18.5 L8.2 14.8 L10.7 20.5 L13.2 19.4 L10.8 13.7 L16.3 13.2 Z" fill="currentColor" stroke="none" />
+      <path d="M18.5 2.5l1.6 1.6M22 8h2.2M18.5 13.5l1.6-1.6" />
     </svg>
   )
 }
@@ -205,13 +209,19 @@ export function TextScene({ title, subtitle, logoInTitle, dark, aiGradient, icon
             </span>
           ))}
           {logoInTitle && (
+            // /logo-wordmark.png is a tightly-cropped version of the shared
+            // /logo.png asset — the original has a huge transparent margin
+            // around the mark (its own bounding box is only ~⅓ of the canvas
+            // height), so sizing by height against the untrimmed file rendered
+            // the wordmark visibly smaller than the "Welcome to"/"This is"
+            // text next to it no matter how large the height clamp went.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src="/logo.png"
+              src="/logo-wordmark.png"
               alt="Strike SCF"
               className="demo-ts-word"
               style={{
-                height: 'clamp(40px, 7vw, 88px)', width: 'auto',
+                height: 'clamp(44px, 7.6vw, 96px)', width: 'auto',
                 animationDelay: `${words.length * 85}ms`,
               }}
             />

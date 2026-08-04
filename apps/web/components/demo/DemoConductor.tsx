@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { DEMO_SCENES, type NavStep } from './demo-script'
 import { TextScene } from './TextScene'
 import { SpotlightOverlay } from './SpotlightOverlay'
-import { SlackMockup } from './SlackMockup'
 import { DemoNarrator } from './DemoNarrator'
 import { DemoAgentActivityFeed } from './DemoAgentActivityFeed'
 import { DemoCursor, type DemoCursorHandle } from './DemoCursor'
@@ -27,11 +26,6 @@ function DemoRunner() {
   const [displayedIndex, setDisplayedIndex] = useState<number | null>(null)
   const reducedMotionRef = useRef(false)
   const beatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Tracks the kind of the currently-displayed beat so a full-screen text/
-  // mockup overlay can be cleared BEFORE the next beat's click-path starts —
-  // otherwise the cursor would appear to click on an opaque title card
-  // instead of the real page underneath it.
-  const displayedKindRef = useRef<'text' | 'spotlight' | 'mockup' | 'agent-demo' | null>(null)
   // Resolves the current beat's "wait for a click" gate — only the audio-gate
   // scene uses this (`requireClick`), so the hold timer never starts until
   // the viewer has actually clicked (which also arms audio playback later).
@@ -94,10 +88,11 @@ function DemoRunner() {
     fetch('/api/demo/reset', { method: 'POST' })
       .catch(() => {})
       .finally(() => {
-        // The tour always begins its click-through navigation from Home,
-        // exactly like a real login would — hidden behind the audio-gate/
-        // welcome text scenes while it loads.
-        router.push('/home')
+        // The tour opens on Passport (the 'passport-score' beat fades into
+        // it directly — see fadeReveal in demo-script.ts), hidden behind the
+        // audio-gate/welcome text scenes while it loads. Every later beat
+        // still navigates via real cursor clicks from wherever this lands.
+        router.push('/passport')
         setBeatIndex(0)
         setStatus('running')
       })
@@ -117,13 +112,14 @@ function DemoRunner() {
       //    (sidebar link, list item, tab button), never a direct route jump.
       //    The previous beat's content stays on screen the whole time.
       if (beat.navSteps && beat.navSteps.length > 0) {
-        // A full-screen text/mockup overlay is opaque — clear it first so the
-        // real page (and the cursor clicking on it) is actually visible.
-        if (displayedKindRef.current === 'text' || displayedKindRef.current === 'mockup') {
-          setDisplayedIndex(null)
-          await sleep(60)
-          if (cancelled) return
-        }
+        // Clear whatever the previous beat was showing — a spotlight box
+        // left over from the last beat would otherwise sit there, dimmed and
+        // irrelevant, while the cursor visibly moves on to click something
+        // else entirely. The cursor itself is the thing to watch during a
+        // navSteps sequence, not a stale highlight.
+        setDisplayedIndex(null)
+        await sleep(60)
+        if (cancelled) return
         await performNavSteps(beat.navSteps, cancelledRef)
         if (cancelled) return
         cursorRef.current?.hide()
@@ -143,7 +139,6 @@ function DemoRunner() {
       if (cancelled) return
 
       setDisplayedIndex(beatIndex)
-      displayedKindRef.current = beat.kind
 
       // 3. Now that the beat is actually showing, run its side effects.
       if (beat.formFill && bridge) {
@@ -251,18 +246,36 @@ function DemoRunner() {
     )
   }
 
-  if (beat.kind === 'mockup') {
-    return <>{beat.mockupId === 'slack' && <SlackMockup onSkip={finish} />}{cursor}</>
-  }
-
   if (beat.kind === 'agent-demo') {
     return <><DemoAgentActivityFeed onDone={advance} onSkip={finish} />{cursor}</>
   }
 
+  // fadeReveal beats (just 'passport-score', the very first reveal) "load
+  // in" rather than being clicked to — a brief white veil, already sitting
+  // over the real page and spotlight underneath, fades out instead of the
+  // cursor driving a click. See the module doc comment in demo-script.ts.
+  const veil = beat.fadeReveal && (
+    <>
+      <style>{`
+        @keyframes demo-fade-veil { from { opacity: 1 } to { opacity: 0 } }
+        @media (prefers-reduced-motion: reduce) { .demo-fade-veil { animation-duration: 1ms !important; } }
+      `}</style>
+      <div
+        aria-hidden="true"
+        className="demo-fade-veil"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9998, background: 'var(--white)',
+          pointerEvents: 'none', animation: 'demo-fade-veil 650ms ease both',
+        }}
+      />
+    </>
+  )
+
   return (
     <>
-      {beat.target && <SpotlightOverlay targetSelector={beat.target} />}
+      {beat.target && !beat.noHighlight && <SpotlightOverlay targetSelector={beat.target} />}
       <DemoNarrator line={beat.narration} onSkip={finish} />
+      {veil}
       {cursor}
     </>
   )

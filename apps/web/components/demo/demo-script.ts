@@ -1,26 +1,27 @@
 // The scripted timeline for the demo@demo.com cinematic tour. Every
 // `navSteps` target and every `target` is a `data-demo-target` attribute on a
 // real, live component — there is no cloned or mocked version of the
-// platform anywhere in this feature, with one deliberate, clearly-labeled
-// exception (the Scene 8 Slack "Coming soon" mockup — see SlackMockup.tsx).
-// IDs below come from supabase/seed-demo.sql (the isolated demo tenant) —
-// see lib/demo-entities.ts for the full seeded entity list.
+// platform anywhere in this feature. IDs below come from
+// supabase/seed-demo.sql (the isolated demo tenant) — see lib/demo-entities.ts
+// for the full seeded entity list.
 //
 // Scenes are either full-screen narrated text (`kind: 'text'`), a spotlight
 // highlight on a real live UI element (`kind: 'spotlight'`), or the one
-// static concept mockup (`kind: 'mockup'`). Getting from one real page to the
-// next is never a direct route jump — DemoConductor drives a visible cursor
-// through the SAME clicks a real user would make (`navSteps`), e.g. sidebar
-// link -> list item -> detail page, exactly like clicking through the app.
+// live agent-demo scene. Getting from one real page to the next is never a
+// direct route jump — DemoConductor drives a visible cursor through the SAME
+// clicks a real user would make (`navSteps`), e.g. sidebar link -> list item
+// -> detail page, exactly like clicking through the app. The one deliberate
+// exception is the very first reveal (`fadeReveal`, see 'passport-score'
+// below) — that's the moment the app itself "loads you in" after the welcome
+// title, not a navigation a user performs, so it fades rather than clicks.
 
 import {
   DEMO_IRONBRIDGE_COILS_LISTING_ID,
-  DEMO_IRONBRIDGE_DEAL_ID,
   DEMO_CEDARLINE_DEAL_ID,
   DEMO_ROOM_ID,
 } from '@/lib/demo-entities'
 
-export type SceneKind = 'text' | 'spotlight' | 'mockup' | 'agent-demo'
+export type SceneKind = 'text' | 'spotlight' | 'agent-demo'
 
 export interface DemoFormFill {
   type: string
@@ -46,7 +47,7 @@ export interface DemoBeat {
    *  why the tour used to go visually silent from the Scene 5 twist onward. */
   subtitle?: string
   /** Replaces the "Strike SCF" wordmark text in the title with the real logo
-   *  image — only meaningful on the 'welcome' beat. */
+   *  image — used on the 'welcome' and 'closing' beats. */
   logoInTitle?: boolean
   /** Ordered real clicks (sidebar link, list item, tab button...) the cursor
    *  performs to get from wherever the previous beat left off to this beat's
@@ -57,15 +58,22 @@ export interface DemoBeat {
    *  DemoConductor waits for this element to actually mount before starting
    *  the hold countdown, so a slow page/navigation never gets cut off mid-load. */
   target?: string
+  /** Skip the dimming/highlight box around `target` — the element is still
+   *  used to gate readiness, but nothing is drawn around it. Used for a beat
+   *  that wants the viewer to take in a whole page rather than have one
+   *  region called out (e.g. the Strike Place grid on first arrival). */
+  noHighlight?: boolean
+  /** The one beat that "loads in" rather than being clicked to — a brief
+   *  white veil fades out over the already-rendered page/spotlight instead of
+   *  a cursor click driving a navSteps sequence. See the module doc comment. */
+  fadeReveal?: boolean
   /** Dark, high-contrast variant of `kind: 'text'` — the one deliberate Scene 5 beat. */
   dark?: boolean
-  /** Ambient AI-gradient background for `kind: 'text'` (Scene 6). */
+  /** Ambient AI-gradient background for `kind: 'text'`. */
   aiGradient?: boolean
   iconSet?: 'audio'
   /** Text scenes only — don't auto-advance; wait for a click (arms audio playback), then hold `holdMs`. */
   requireClick?: boolean
-  /** Which static mockup to render for `kind: 'mockup'`. */
-  mockupId?: 'slack'
   /** Fill the deal page's financing-request form via DemoFormBridge. */
   formFill?: DemoFormFill
   /** Submit the financing-request form via DemoFormBridge (creates a real row). */
@@ -107,22 +115,29 @@ export const DEMO_SCENES: DemoBeat[] = [
     narration: 'Welcome to Strike SCF.',
   }),
 
-  // ── Scene 2 — Strike Passport (real click path: sidebar -> Strike Passport) ──
-  // Lands on Home first (see DemoConductor's start()) — this is the beat that
-  // actually clicks away from it, so the tour visibly begins from the same
-  // page a real login would.
+  // ── Scene 2 — Strike Passport ────────────────────────────────────────────
+  // Lands directly on the Passport page (see DemoConductor's start()) — the
+  // app "loading you in" right after the title, not a click a user performs,
+  // so this one beat fades in rather than driving the cursor to a sidebar link.
   scene({
     id: 'passport-score',
     kind: 'spotlight',
     narration: 'Every business on Strike carries a PassportScore — a real-time trust score built from real trade activity, scored the same way our own analysts would.',
-    navSteps: [{ target: 'nav-passport' }],
+    fadeReveal: true,
     target: 'passport-score-summary',
   }),
   scene({
     id: 'passport-breakdown',
     kind: 'spotlight',
-    narration: 'KYB compliance, financial health, trade reliability, network reputation — scored, explained, and always current.',
+    narration: 'KYB compliance verifies who they legally are. Financial health reads the balance sheet. Trade reliability tracks on-time delivery and payment history. Network reputation weighs real peer reviews — each worth up to 25 points, rolling up into one number a CFO can trust at a glance.',
     target: 'passport-dimensions',
+    extraMs: 800,
+  }),
+  scene({
+    id: 'passport-documents',
+    kind: 'spotlight',
+    narration: 'And the underwriting paper trail lives right here too — ISO certificates, incorporation records, compliance documents — not buried in an email thread.',
+    target: 'passport-documents',
   }),
 
   // ── Scene 3 — Strike Place + Strike Rooms ───────────────────────────────
@@ -132,12 +147,15 @@ export const DEMO_SCENES: DemoBeat[] = [
     narration: 'Strike Place is where businesses list and discover real trade opportunities on the network.',
     navSteps: [{ target: 'nav-marketplace' }],
     target: 'marketplace-grid',
+    noHighlight: true,
   }),
   scene({
     id: 'strike-place-listing',
     kind: 'spotlight',
-    narration: 'Real inventory, from a real, verified counterparty.',
-    target: `listing-card-${DEMO_IRONBRIDGE_COILS_LISTING_ID}`,
+    narration: 'Open a listing and this is how you’d submit an offer — or counter one already on the table.',
+    navSteps: [{ target: `listing-card-${DEMO_IRONBRIDGE_COILS_LISTING_ID}` }],
+    target: 'listing-detail-offer',
+    extraMs: 400,
   }),
   scene({
     id: 'strike-rooms',
@@ -148,19 +166,22 @@ export const DEMO_SCENES: DemoBeat[] = [
     extraMs: 800,
   }),
 
-  // ── Scene 4 — deal flow + financing request ─────────────────────────────
+  // ── Scene 4 — deal lifecycle + financing request ────────────────────────
+  // One deal carries both beats — the same page shows the full agreed-to-
+  // completed roadmap AND the financing action, so there's no confusing
+  // "back to the list, into a different deal" hop between them.
   scene({
     id: 'deal-flow',
     kind: 'spotlight',
-    narration: 'Once terms are agreed, the deal moves through one clear lifecycle — from contract to shipment to payment.',
-    navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_IRONBRIDGE_DEAL_ID}` }],
+    narration: 'Once terms are agreed, the deal moves through one clear lifecycle — agreed, contract, in business, shipped, received, accepted, payment, completed — eight stages from handshake to close.',
+    navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_CEDARLINE_DEAL_ID}` }],
     target: 'deal-negotiation',
+    extraMs: 600,
   }),
   scene({
     id: 'financing-1',
     kind: 'spotlight',
-    narration: 'And at any point, you can request financing against a receivable directly from the deal.',
-    navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_CEDARLINE_DEAL_ID}` }],
+    narration: 'And at any point, you can request financing against a receivable directly from the same deal.',
     target: 'financing-toggle',
   }),
   scene({
@@ -185,48 +206,26 @@ export const DEMO_SCENES: DemoBeat[] = [
     id: 'twist-1',
     kind: 'text',
     dark: true,
-    title: "But none of this is built for you.",
-    subtitle: 'Everything you just saw — the sourcing, the vetting, the back-and-forth, the paperwork — is work nobody should have to do by hand.',
-    narration: "But none of this is built for you. Everything you just saw is work nobody should have to do by hand.",
+    title: 'But none of this is built for you.',
+    narration: 'But none of this is built for you.',
     extraMs: 600,
   }),
   scene({
     id: 'twist-2',
     kind: 'text',
     dark: true,
-    title: 'It’s built for Strike AI.',
-    subtitle: 'Your business agent. It works the platform on your behalf — and only ever stops to ask when something is about to become a real commitment.',
-    narration: "It's built for Strike AI — your business agent. It works the platform on your behalf, and only stops to ask when something becomes a real commitment.",
+    title: 'It’s built for your agent, Strike AI.',
+    narration: 'It’s built for your agent, Strike AI.',
     extraMs: 800,
   }),
 
-  // ── Scene 6 — what Strike AI does ───────────────────────────────────────
-  scene({
-    id: 'capabilities-1',
-    kind: 'text',
-    aiGradient: true,
-    title: 'It sources. It vets. It negotiates. It closes. It finances.',
-    subtitle: 'Not suggestions or drafts — real offers, real counter-offers, real deals, against real counterparties on the live network.',
-    narration: 'It sources, vets, negotiates, closes, and finances — real offers against real counterparties, not drafts.',
-  }),
-  scene({
-    id: 'capabilities-2',
-    kind: 'text',
-    aiGradient: true,
-    title: 'The entire trade lifecycle — end to end.',
-    subtitle: 'You stay in control of every commitment. Nothing becomes binding without you. Watch it work, live, right now.',
-    narration: 'The entire trade lifecycle, end to end — with you in control of every commitment. Watch it work, live.',
-    extraMs: 600,
-  }),
-
-  // ── Scene 7 — live agent demo (DemoAgentActivityFeed) ───────────────────
+  // ── Scene 6 — live agent demo (DemoAgentActivityFeed) ───────────────────
   // No `holdMs`/reading-time pacing here — the component drives its own
-  // advance once the real propose → revise → GATE 1 → negotiate → GATE 2 →
-  // finance sequence actually completes (see DemoConductor's `agent-demo`
-  // special-case). `narration` is unused for pacing; the panel writes its
-  // own live captions as the sequence progresses. The real underlying page
-  // never left the Cedarline deal (financing-3) while the last two text
-  // scenes covered it — this is the click back to Home.
+  // advance once the real propose -> revise -> execute -> negotiate ->
+  // finalize -> finance sequence actually completes (see DemoConductor's
+  // `agent-demo` special-case). `narration` is unused for pacing; the panel
+  // writes its own live captions as the sequence progresses. This is the
+  // click back to Home from wherever the last spotlight beat left off.
   {
     id: 'live-agent-demo',
     kind: 'agent-demo',
@@ -236,7 +235,7 @@ export const DEMO_SCENES: DemoBeat[] = [
     holdMs: 0,
   },
 
-  // ── Scene 8 — integrations ──────────────────────────────────────────────
+  // ── Scene 7 — integrations ───────────────────────────────────────────────
   // Settings has no sidebar link — a real user reaches it through the
   // account menu, so that's the click path here too.
   scene({
@@ -246,23 +245,17 @@ export const DEMO_SCENES: DemoBeat[] = [
     navSteps: [{ target: 'user-menu-button' }, { target: 'user-menu-settings' }, { target: 'settings-tab-erp' }],
     target: 'erp-connection-card',
   }),
-  scene({
-    id: 'slack-mockup',
-    kind: 'mockup',
-    mockupId: 'slack',
-    narration: 'And soon, right inside Slack.',
-  }),
 
-  // ── Scene 9 — closing ────────────────────────────────────────────────────
+  // ── Scene 8 — closing ────────────────────────────────────────────────────
   scene({
     id: 'closing',
     kind: 'text',
-    title: 'This is Strike.',
-    subtitle: 'Sourcing to financing, run by an agent that never sleeps — and never commits you to anything you haven’t seen. The platform is yours now; go try it.',
+    title: 'This is',
+    logoInTitle: true,
     narration: 'This is Strike. Sourcing to financing, run by an agent that never commits you to anything you haven’t seen.',
     extraMs: 900,
   }),
 
-  // Scene 10 (handoff) has no beat of its own — the overlay simply ends here
+  // Scene 9 (handoff) has no beat of its own — the overlay simply ends here
   // and the user free-drives the real platform themselves.
 ]

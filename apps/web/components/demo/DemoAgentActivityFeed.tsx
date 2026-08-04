@@ -2,25 +2,36 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useDemoFormBridge } from './DemoFormBridge'
-import { TaskThreadView, type AgentTask } from '@/components/agent-task-thread'
-import { DemoPlanCard, type PlanFacts } from './DemoPlanCard'
 import { DemoNarrator } from './DemoNarrator'
 import { sleep } from './demo-utils'
 
-// The one scripted line in this entire scene — everything downstream is a
-// real, live Claude response and real backend state. Has to be decisive
-// enough for Claude to commit to a real submit_marketplace_offer tool call
-// in one turn rather than only searching/recommending and asking a
-// clarifying question first — a vaguer "we need more steel" phrasing was
-// tested and reliably stopped short of actually opening an offer.
-const STEEL_MESSAGE =
-  "We need to lock in a larger steel inventory before Q4. Find the best available steel listing on Strike Place and submit an opening offer on our behalf now — use your judgment on quantity and price within a sensible market range."
+// Three scripted chat messages — everything downstream (the plan Strike AI
+// proposes, the real submit_marketplace_offer tool call, the real GATE-1
+// auto-approval that comes from an explicit chat instruction, the real
+// tick-loop negotiation, GATE 2, and the resulting deal) is live, not
+// scripted. Splitting this into propose -> revise -> execute (rather than
+// one message that both researches AND submits) mirrors the real two-gate
+// shape: the agent has to lay out a plan and be told to act before it
+// commits anything.
+const PLAN_MESSAGE =
+  "We need to lock in a larger steel inventory for Q4. Before we commit to anything, put together a plan — the best available listing on Strike Place, a target quantity, and a sensible opening price."
 const REVISE_MESSAGE =
-  "Actually, tighten the price ceiling a bit and make sure the deadline is no more than 14 days out before you send it."
+  "Tighten the price ceiling a bit and make sure the deadline is no more than 14 days out."
+const EXECUTE_MESSAGE =
+  "That works — go ahead and submit the opening offer now."
 
-type Phase = 'sending' | 'waiting' | 'plan' | 'thread' | 'done' | 'error'
+type Phase = 'landing' | 'planning' | 'revising' | 'executing' | 'negotiating' | 'wrapping' | 'done' | 'error'
 
 interface TaskListItem { id: string }
+interface ThreadMessage { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at: string }
+interface NegotiationInfo { status: string; current_round: number }
+interface ThreadTask {
+  id: string
+  status: string
+  type: string
+  result?: Record<string, unknown> | null
+  negotiation?: NegotiationInfo | null
+}
 
 async function fetchTaskIds(): Promise<Set<string>> {
   try {
@@ -33,27 +44,14 @@ async function fetchTaskIds(): Promise<Set<string>> {
   }
 }
 
-async function fetchThread(rootId: string): Promise<{ rootTask: AgentTask | null; currentTask: AgentTask | null }> {
+async function fetchThread(rootId: string): Promise<{ rootTask: ThreadTask | null; currentTask: ThreadTask | null; messages: ThreadMessage[] }> {
   try {
     const res = await fetch(`/api/agents/tasks/${rootId}/messages`, { cache: 'no-store' })
-    if (!res.ok) return { rootTask: null, currentTask: null }
+    if (!res.ok) return { rootTask: null, currentTask: null, messages: [] }
     const data = await res.json()
-    return { rootTask: data.rootTask ?? null, currentTask: data.currentTask ?? null }
+    return { rootTask: data.rootTask ?? null, currentTask: data.currentTask ?? null, messages: data.messages ?? [] }
   } catch {
-    return { rootTask: null, currentTask: null }
-  }
-}
-
-async function postRevise(rootId: string, content: string) {
-  try {
-    await fetch(`/api/agents/tasks/${rootId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    })
-  } catch {
-    // Best-effort — the sequence continues to GATE 1 with the original terms
-    // if the revise round fails for any reason.
+    return { rootTask: null, currentTask: null, messages: [] }
   }
 }
 
@@ -66,35 +64,24 @@ async function postApprove(taskId: string): Promise<boolean> {
   }
 }
 
-interface CounterpartyTaskInfo {
-  id: string
-  type: string
-  status: string
-}
+interface CounterpartyTaskInfo { id: string; type: string; status: string }
 
 // A good offer can be finalized from EITHER side of a negotiation (see
 // runListingDefenseTick in lib/ai/agent-tick.ts) — when the counterparty
 // (listing owner) decides to accept, that finalize task is created under
 // THEIR org, invisible to our own thread. There's no counterparty session in
 // this demo to click their own approve button, so this cross-org lookup +
-// approve pair (both demo-gated, see their route doc comments) lets the loop
-// react to whichever side actually produces the finalize card.
-async function fetchDemoStatus(rootId: string): Promise<{ counterpartyTask: CounterpartyTaskInfo | null; planFacts: PlanFacts | null }> {
+// approve pair (both demo-gated) lets the loop react to whichever side
+// actually produces the finalize card.
+async function fetchCounterpartyTask(rootId: string): Promise<CounterpartyTaskInfo | null> {
   try {
     const res = await fetch(`/api/demo/negotiation-status?rootTaskId=${rootId}`, { cache: 'no-store' })
-    if (!res.ok) return { counterpartyTask: null, planFacts: null }
+    if (!res.ok) return null
     const data = await res.json()
-    return {
-      counterpartyTask: (data?.counterpartyTask ?? null) as CounterpartyTaskInfo | null,
-      planFacts: (data?.planFacts ?? null) as PlanFacts | null,
-    }
+    return (data?.counterpartyTask ?? null) as CounterpartyTaskInfo | null
   } catch {
-    return { counterpartyTask: null, planFacts: null }
+    return null
   }
-}
-
-async function fetchCounterpartyTask(rootId: string): Promise<CounterpartyTaskInfo | null> {
-  return (await fetchDemoStatus(rootId)).counterpartyTask
 }
 
 async function postApproveAny(taskId: string): Promise<Record<string, unknown> | null> {
@@ -125,7 +112,7 @@ async function postTick() {
   }
 }
 
-// Finds the agent_tasks thread the scripted message just created by diffing
+// Finds the agent_tasks thread the EXECUTE_MESSAGE just created by diffing
 // against the task ids that existed right before sending it — reliable even
 // though the demo org already has several seeded, unrelated pending tasks.
 async function pollForNewTask(before: Set<string>, isCancelled: () => boolean): Promise<string | null> {
@@ -150,14 +137,18 @@ const TERMINAL_NEGOTIATION_STATUSES = new Set([
 // Drives the real tick loop at demo speed (every ~1.5s instead of pg_cron's
 // once-a-minute cadence) and auto-approves whatever comes back needing a
 // human — an escalation (out-of-guardrail terms) or the GATE-2 finalize card
-// — exactly the same way a live viewer clicking Approve would. Returns the
-// resulting deal id once GATE 2 is actually approved, or null if the
-// negotiation ends any other way (rejected, deadline, guardrail halt, or the
-// loop's own safety cap) — a live negotiation is not guaranteed to close.
+// — exactly the same way a live viewer clicking Approve would. Streams every
+// real round to the caller via `onMessages`/`onStatus` (the caller decides
+// how much of that to actually show — see `roundsShown` in the component
+// below, which freezes the visible feed after a few rounds while the loop
+// itself keeps running for real underneath). Returns the resulting deal id
+// once GATE 2 is actually approved, or null if the negotiation ends any
+// other way — a live negotiation is not guaranteed to close.
 async function runNegotiationLoop(
   rootId: string,
   isCancelled: () => boolean,
-  setCaption: (s: string) => void
+  onStatus: (s: string, round: number) => void,
+  onMessages: (msgs: ThreadMessage[]) => void
 ): Promise<string | null> {
   const deadline = Date.now() + 100000
   let ticks = 0
@@ -168,21 +159,23 @@ async function runNegotiationLoop(
     await sleep(1500)
     if (isCancelled()) return null
 
-    const { rootTask, currentTask } = await fetchThread(rootId)
+    const { rootTask, currentTask, messages } = await fetchThread(rootId)
+    onMessages(messages)
     if (!rootTask || !currentTask) continue
 
     if (currentTask.status === 'awaiting_approval') {
       const isFinalize = currentTask.type === 'negotiation_ready_to_finalize'
-      setCaption(
+      onStatus(
         isFinalize
-          ? 'Terms look good — one final human approval before this becomes a real deal.'
-          : 'It hit a guardrail and is asking for guidance — approving to keep it moving.'
+          ? 'Terms look good — one final approval before this becomes a real deal.'
+          : 'It hit a guardrail and is asking for guidance — approving to keep it moving.',
+        rootTask.negotiation?.current_round ?? 0
       )
-      await sleep(2200)
+      await sleep(1800)
       if (isCancelled()) return null
       await postApprove(currentTask.id)
       if (isFinalize) {
-        await sleep(1200)
+        await sleep(1000)
         const { currentTask: finalized } = await fetchThread(rootId)
         const dealId = finalized?.result?.deal_id
         return typeof dealId === 'string' ? dealId : null
@@ -191,11 +184,11 @@ async function runNegotiationLoop(
     }
 
     // Our own side has nothing pending — check whether the COUNTERPARTY's
-    // agent decided to accept instead (see fetchCounterpartyTask doc comment).
+    // agent decided to accept instead.
     const counterpartyTask = await fetchCounterpartyTask(rootId)
     if (counterpartyTask?.type === 'negotiation_ready_to_finalize') {
-      setCaption('The counterparty’s agent is ready to accept — approving finalization.')
-      await sleep(2200)
+      onStatus('The counterparty’s agent is ready to accept — approving finalization.', rootTask.negotiation?.current_round ?? 0)
+      await sleep(1800)
       if (isCancelled()) return null
       const result = await postApproveAny(counterpartyTask.id)
       const dealId = result?.deal_id
@@ -205,13 +198,13 @@ async function runNegotiationLoop(
 
     const negStatus = rootTask.negotiation?.status
     if (negStatus && TERMINAL_NEGOTIATION_STATUSES.has(negStatus)) {
-      setCaption('This round didn’t land a deal — even Strike AI knows when to walk away.')
+      onStatus('This round didn’t land a deal — even Strike AI knows when to walk away.', rootTask.negotiation?.current_round ?? 0)
       return null
     }
 
-    setCaption(`Round ${rootTask.negotiation?.current_round ?? '—'} — reasoning through terms in real time.`)
+    onStatus(`Round ${rootTask.negotiation?.current_round ?? '—'} — reasoning through terms in real time.`, rootTask.negotiation?.current_round ?? 0)
   }
-  setCaption('Still negotiating — real rounds can take a little longer than a script.')
+  onStatus('Still negotiating — real rounds can take a little longer than a script.', 0)
   return null
 }
 
@@ -226,10 +219,6 @@ async function submitFinancing(dealId: string): Promise<string | null> {
     const res = await fetch('/api/marketplace/financing', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // structure_type 'open' + no financing_type deliberately avoids the
-      // reverse-factoring/PO-financing shipment-stage gates in
-      // app/api/marketplace/financing/route.ts — this deal is fresh
-      // ('agreed'), not yet shipped.
       body: JSON.stringify({
         deal_id: dealId,
         structure_type: 'open',
@@ -245,40 +234,128 @@ async function submitFinancing(dealId: string): Promise<string | null> {
   }
 }
 
-function TypingDots() {
+// Trims a system-narration message down to one readable line for the compact
+// log feed — the full-fidelity version (with [[STRIKE_BLOCK:...]] comparison
+// cards) already renders in the real Agent tab; this is deliberately "a
+// window into it," not a second copy of it.
+function shortMsg(content: string): string {
+  const cut = content.indexOf('[[')
+  const plain = (cut >= 0 ? content.slice(0, cut) : content).trim()
+  return plain.length > 130 ? `${plain.slice(0, 127)}…` : plain
+}
+
+const MAX_ROUNDS_SHOWN = 3
+
+// Small collapsible status pill, bottom-right — replaces the old fixed panel
+// that used to sit over the chat log. Collapsed, it's just a one-line status
+// ("Strike AI is negotiating — round 2"); expanded, it shows what it's doing
+// now/next and a capped, read-only feed of the real negotiation rounds, like
+// a small window into the Strike Room rather than a full replica of it.
+function AgentLogPanel({
+  expanded,
+  onToggle,
+  status,
+  now,
+  next,
+  feed,
+  moreRoundsHappening,
+}: {
+  expanded: boolean
+  onToggle: () => void
+  status: string
+  now: string
+  next: string | null
+  feed: ThreadMessage[]
+  moreRoundsHappening: boolean
+}) {
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ display: 'flex', gap: 4 }}>
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            style={{
-              width: 6, height: 6, borderRadius: '50%', background: 'var(--blue)',
-              animation: `ai-dot-pulse 1.2s ease-in-out ${i * 0.15}s infinite`,
-            }}
-          />
-        ))}
-      </span>
+    <div
+      style={{
+        position: 'fixed', right: 20, bottom: 100, zIndex: 9997,
+        width: expanded ? 340 : 'auto', maxWidth: 'calc(100vw - 40px)',
+        background: 'var(--white)', borderRadius: 'var(--radius-card)',
+        boxShadow: 'var(--shadow-elevated)', border: '1px solid var(--border-strong)',
+        overflow: 'hidden', transition: 'width 240ms ease',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          padding: '10px 14px', background: expanded ? 'var(--gradient-ai)' : 'var(--white)',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+          background: expanded ? '#fff' : 'var(--blue)',
+          animation: 'badge-pulse 2.4s ease infinite',
+        }} />
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600,
+          color: expanded ? '#fff' : 'var(--ink)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {expanded ? 'Agent Log' : status}
+        </span>
+        <span style={{ fontSize: 10, color: expanded ? 'rgba(255,255,255,0.85)' : 'var(--gray-soft)', flexShrink: 0 }}>
+          {expanded ? '▾' : '▸'}
+        </span>
+      </button>
+
+      {expanded && (
+        <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 3 }}>Now</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink)', lineHeight: 1.45 }}>{now}</div>
+          </div>
+          {next && (
+            <div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 3 }}>Up next</div>
+              <div style={{ fontSize: 12.5, color: 'var(--gray)', lineHeight: 1.45 }}>{next}</div>
+            </div>
+          )}
+
+          {feed.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 200, overflowY: 'auto' }}>
+              {feed.map((m) => (
+                <div key={m.id} style={{ fontSize: 11.5, lineHeight: 1.45, color: m.role === 'system' ? 'var(--ink-soft, var(--ink))' : 'var(--gray)' }}>
+                  {shortMsg(m.content)}
+                </div>
+              ))}
+              {moreRoundsHappening && (
+                <div style={{ fontSize: 11, color: 'var(--gray-soft)', fontStyle: 'italic' }}>
+                  …more rounds happening live, condensed here.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 // Scene 7's centerpiece — the one entirely live, unscripted stretch of the
-// tour. The chat message is scripted (for reliability in front of a live
-// prospect) but everything downstream is real: the actual /api/ai/chat
-// sourcing + vetting + offer, the actual GATE-1/GATE-2 approval thread
-// (TaskThreadView, unmodified — the same component the real Agent tab uses),
-// a real accelerated tick-loop negotiation, and a real financing request on
-// the resulting deal. Docked beside the real chat rather than covering it —
-// the point of this scene is "watch it happen inline," not a fullscreen
-// takeover.
+// tour. Three chat messages are scripted (for reliability in front of a live
+// prospect): propose a plan, revise it, then say go — but everything that
+// happens as a result is real: the actual /api/ai/chat replies (rendered in
+// the real Home chat log, not a copy of it), a real submit_marketplace_offer
+// tool call, a real accelerated tick-loop negotiation, a real GATE-2
+// finalize, and a real financing request on the resulting deal. This
+// component itself only renders the caption + the small collapsible Agent
+// Log — the conversation is the real chat UI on the page underneath it.
 export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
   const bridge = useDemoFormBridge()
-  const [phase, setPhase] = useState<Phase>('sending')
-  const [caption, setCaption] = useState('Sending a real request to Strike AI…')
-  const [taskId, setTaskId] = useState<string | null>(null)
-  const [planFacts, setPlanFacts] = useState<PlanFacts | null>(null)
-  const [financingSummary, setFinancingSummary] = useState<string | null>(null)
+  const [phase, setPhase] = useState<Phase>('landing')
+  const [caption, setCaption] = useState('Landing on Home…')
+  const [expanded, setExpanded] = useState(false)
+  const [logStatus, setLogStatus] = useState('Strike AI is idle')
+  const [logNow, setLogNow] = useState('Getting oriented on Home.')
+  const [logNext, setLogNext] = useState<string | null>(null)
+  const [feed, setFeed] = useState<ThreadMessage[]>([])
+  const [roundsShown, setRoundsShown] = useState(0)
   const onDoneRef = useRef(onDone)
   onDoneRef.current = onDone
 
@@ -286,100 +363,121 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
     // A local closure variable, not a ref — React StrictMode double-invokes
     // this effect in dev (mount -> cleanup -> mount again), and a shared ref
     // would have the second invocation's reset silently un-cancel the first,
-    // now-orphaned run, leaving two concurrent copies of this whole sequence
-    // racing each other (duplicate chat sends, a stale poll latching onto an
-    // unrelated older task). Matches the same pattern DemoConductor.tsx
-    // already uses for its own beat-scheduling effect.
+        // now-orphaned run, leaving two concurrent copies of this whole sequence
+    // racing each other. Matches the same pattern DemoConductor.tsx uses for
+    // its own beat-scheduling effect.
     let cancelled = false
     const isCancelled = () => cancelled
+    let framesFrozen = false
+
+    async function expandFor(ms: number) {
+      setExpanded(true)
+      await sleep(ms)
+      if (!isCancelled()) setExpanded(false)
+    }
 
     ;(async () => {
       try {
+        await sleep(1400) // let the Home page visibly settle before anything moves
+        if (isCancelled()) return
+
+        // ── 1. Propose a plan ──────────────────────────────────────────────
+        setPhase('planning')
+        setCaption('Watch it plan first, then act — nothing gets submitted yet.')
+        setLogStatus('Strike AI is researching…')
+        setLogNow('Searching Strike Place and benchmarking price for a larger steel order.')
+        setLogNext('Come back with a recommended listing, quantity, and opening price.')
+        void expandFor(3200)
+        await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan')
+        if (isCancelled()) return
+
+        // ── 2. Revise it ─────────────────────────────────────────────────
+        setPhase('revising')
+        setCaption('A quick revision, the same way you’d ask a real analyst.')
+        setLogStatus('Revising the plan…')
+        setLogNow('Tightening the price ceiling and shortening the deadline.')
+        setLogNext('Wait for a go-ahead before submitting anything.')
+        await sleep(1200)
+        if (isCancelled()) return
+        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
+        if (isCancelled()) return
+
+        // ── 3. Execute — this is the one message that actually acts ────────
+        setPhase('executing')
+        setCaption('One instruction to act — everything after this is real.')
+        setLogStatus('Submitting the offer…')
+        setLogNow('Opening a real offer on the listing, on your behalf.')
+        setLogNext(null)
+        await sleep(1000)
+        if (isCancelled()) return
         const before = await fetchTaskIds()
+        await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute')
         if (isCancelled()) return
 
-        await bridge?.getChatApi()?.sendMessage(STEEL_MESSAGE)
-        if (isCancelled()) return
-
-        setCaption('Sourced and vetted — now watch it open a real offer.')
-        setPhase('waiting')
         const rootId = await pollForNewTask(before, isCancelled)
         if (isCancelled()) return
         if (!rootId) {
-          setCaption('The proposal is taking longer than usual to appear this run.')
+          setCaption('The offer is taking longer than usual to appear this run.')
           setPhase('error')
-          await sleep(3500)
+          await sleep(3200)
           if (!isCancelled()) onDoneRef.current()
           return
         }
-        setTaskId(rootId)
 
-        // Show the reasoning BEFORE the transcript: which listing it picked,
-        // what it bid, who it's dealing with — scored the same way the Passport
-        // scores a company, so the plan is legible rather than a black box.
-        const status = await fetchDemoStatus(rootId)
-        if (isCancelled()) return
-        if (status.planFacts) {
-          setPlanFacts(status.planFacts)
-          setPhase('plan')
-          setCaption('Before sending anything, it scored the deal — price position, counterparty trust, execution risk, and how tightly it is allowed to act.')
-          await sleep(7000)
-          if (isCancelled()) return
-        }
-
-        setPhase('thread')
-        setCaption('This is the real agent activity log — every round it runs on your behalf lands here, live.')
-
-        await sleep(2800)
-        if (isCancelled()) return
-        const { currentTask } = await fetchThread(rootId)
-
-        // A direct chat request to submit an offer is itself the human
-        // approval (see lib/ai/agent-negotiation-setup.ts) — the resulting
-        // task starts life already 'executing', with no separate GATE-1 card.
-        // Only a scan-sourced proposal (not this path) would still be
-        // 'awaiting_approval' here, but this stays defensive against that
-        // case rather than assuming.
-        if (currentTask?.status === 'awaiting_approval') {
-          setCaption('Tightening the terms before it goes any further.')
-          await postRevise(rootId, REVISE_MESSAGE)
-          await sleep(2200)
-          if (isCancelled()) return
-          setCaption('One human approval starts it — then it runs on its own.')
-          await sleep(1600)
-          if (isCancelled()) return
-          const { currentTask: reloaded } = await fetchThread(rootId)
-          if (reloaded?.status === 'awaiting_approval') await postApprove(reloaded.id)
-        } else {
-          setCaption('It already sourced, vetted, and opened a real offer — sending it was the approval.')
-          await sleep(2600)
-        }
-        if (isCancelled()) return
-
+        // ── 4. Negotiate — real, live, capped to a few visible rounds ───────
+        setPhase('negotiating')
         setCaption('Live — negotiating autonomously, inside the limits it was given.')
-        const dealId = await runNegotiationLoop(rootId, isCancelled, setCaption)
+        setLogStatus('Negotiating…')
+        setLogNow('Live round-by-round negotiation with the counterparty’s own agent.')
+        void expandFor(2600)
+
+        const dealId = await runNegotiationLoop(
+          rootId,
+          isCancelled,
+          (status, round) => {
+            if (isCancelled() || framesFrozen) return
+            setLogNow(status)
+            if (round >= MAX_ROUNDS_SHOWN) {
+              framesFrozen = true
+              setPhase('wrapping')
+              setCaption('A few real rounds in — fast-forwarding past the rest.')
+              setLogStatus('Wrapping up…')
+              setLogNow('Reviewing final terms in the background — the rest of the back-and-forth is condensed here.')
+              setExpanded(false)
+            }
+          },
+          (msgs) => {
+            if (isCancelled() || framesFrozen) return
+            setFeed(msgs.slice(-6))
+            setRoundsShown(r => r + 1)
+          }
+        )
         if (isCancelled()) return
 
         if (!dealId) {
           setPhase('done')
-          await sleep(4000)
+          setLogStatus('Round ended without a deal')
+          await sleep(3800)
           if (!isCancelled()) onDoneRef.current()
           return
         }
 
-        setCaption('Deal closed — now it requests financing automatically.')
-        await sleep(2000)
+        setPhase('done')
+        setCaption('Deal closed — now it’s in the contract period, and it requests financing automatically.')
+        setLogStatus('Deal finalized ✓')
+        setLogNow('Terms agreed. Now in the contract period.')
+        setLogNext(null)
+        await sleep(1800)
         if (isCancelled()) return
         const summary = await submitFinancing(dealId)
         if (isCancelled()) return
-        setFinancingSummary(summary)
+        if (summary) setLogNow(`Terms agreed — now in the contract period. Financing requested: ${summary}.`)
         setCaption(
           summary
             ? 'Sourced to financed — with a human only ever asked to say yes.'
-            : 'Deal closed. Sourced to signed — with a human only ever asked to say yes.'
+            : 'Deal closed. Sourced to signed — now in the contract period.'
         )
-        setPhase('done')
-        await sleep(4600)
+        await sleep(4400)
         if (!isCancelled()) onDoneRef.current()
       } catch {
         if (isCancelled()) return
@@ -398,55 +496,16 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
   return (
     <>
-    {/* Same narrator bar the spotlight scenes use, so Scene 7 is narrated like
-        every other beat instead of being the one stretch with no dialogue. */}
-    <DemoNarrator line={caption} onSkip={onSkip} />
-    <div
-      style={{
-        // Sits clear of the narrator bar at the bottom of the viewport.
-        position: 'fixed', top: 76, right: 20, bottom: 150, width: 420, maxWidth: 'calc(100vw - 40px)',
-        background: 'var(--white)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-elevated)',
-        border: '1px solid var(--border-strong)', zIndex: 9997,
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}
-    >
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--gradient-ai)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <span style={{
-            width: 7, height: 7, borderRadius: '50%', background: '#fff',
-            animation: 'badge-pulse 2.4s ease infinite',
-          }} />
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: '#fff' }}>
-            Strike AI — Agent activity, live
-          </span>
-        </div>
-        <div style={{ fontSize: 13.5, lineHeight: 1.45, color: '#fff' }}>{caption}</div>
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        {phase === 'plan' ? (
-          planFacts ? <DemoPlanCard facts={planFacts} /> : <TypingDots />
-        ) : phase === 'thread' || phase === 'done' ? (
-          <>
-            {planFacts && <DemoPlanCard facts={planFacts} />}
-            {taskId ? <TaskThreadView taskId={taskId} onBack={() => {}} /> : <TypingDots />}
-          </>
-        ) : phase === 'error' ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-            <div style={{ color: 'var(--gray)', fontSize: 13.5 }}>{caption}</div>
-          </div>
-        ) : (
-          <TypingDots />
-        )}
-      </div>
-
-      {financingSummary && (
-        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', background: '#EDFAF4', fontSize: 12.5, color: 'var(--color-green)', fontWeight: 600 }}>
-          Financing requested: {financingSummary}
-        </div>
-      )}
-
-    </div>
+      <DemoNarrator line={caption} onSkip={onSkip} />
+      <AgentLogPanel
+        expanded={expanded}
+        onToggle={() => setExpanded(v => !v)}
+        status={logStatus}
+        now={logNow}
+        next={logNext}
+        feed={phase === 'negotiating' || phase === 'wrapping' || phase === 'done' ? feed : []}
+        moreRoundsHappening={phase === 'wrapping' && roundsShown >= MAX_ROUNDS_SHOWN}
+      />
     </>
   )
 }

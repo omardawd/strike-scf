@@ -762,7 +762,11 @@ export default function MyPassportPage() {
 
             {/* RIGHT — slim sticky panel */}
             <div className="reveal-stagger" style={{ position: 'sticky', top: 62, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Run / Re-run AI Analysis button */}
+              {/* Run / Re-run AI Analysis button — commented out (not removed,
+                  may come back later): redundant with the "Update Score" pill
+                  already in ScoreBreakdownCard's own header (same runAiReview
+                  handler, via the onRerun prop below), so hiding this doesn't
+                  drop any capability.
               <div className="card">
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray)' }}>
@@ -785,6 +789,7 @@ export default function MyPassportPage() {
                   </p>
                 </div>
               </div>
+              */}
 
               {/* View counts */}
               <div className="card">

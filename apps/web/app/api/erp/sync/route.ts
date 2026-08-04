@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateErpAdvisories } from '@/lib/ai/advisory'
 import { assertPublicHttpUrl } from '@/lib/ssrf'
+import { DEMO_ORG_ID } from '@/lib/demo-entities'
 
 // Node runtime: the SSRF guard uses node:dns / node:net.
 export const runtime = 'nodejs'
@@ -483,11 +484,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Sync all active connections
+  // Sync all active connections — excluding the demo tenant, whose
+  // erp_connections row points at a fake sandbox URL purely for the cinematic
+  // tour's ERP scene; a real sync attempt against it always fails with an
+  // HTML 404 body ("Unexpected token '<'... is not valid JSON") and flips the
+  // demo org's connection to a permanent error state until manually reset.
   const { data: connections } = await adminClient
     .from('erp_connections')
     .select('org_id')
     .eq('status', 'active')
+    .neq('org_id', DEMO_ORG_ID)
 
   if (!connections?.length) return NextResponse.json({ ok: true, synced: 0 })
 

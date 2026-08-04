@@ -366,26 +366,28 @@ export function PassportSections({
       </div>
 
       {/* Documents & Certifications — quality/ISO/compliance docs, distinct from onboarding/KYB documents */}
-      <PassportDocsCard
-        title="Documents"
-        hint="Quality, compliance, and trade documents appear here."
-        docs={documents}
-        isOwn={isOwnPassport}
-        uploading={uploadingDocs}
-        onUpload={onUploadDocument}
-        onDelete={onDeleteDocument}
-        deletingId={deletingDocId}
-      />
-      <PassportDocsCard
-        title="Certifications"
-        hint="ISO certificates and other quality credentials appear here."
-        docs={certifications}
-        isOwn={isOwnPassport}
-        uploading={uploadingCerts}
-        onUpload={onUploadCertification}
-        onDelete={onDeleteDocument}
-        deletingId={deletingDocId}
-      />
+      <div data-demo-target="passport-documents" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <PassportDocsCard
+          title="Documents"
+          hint="Quality, compliance, and trade documents appear here."
+          docs={documents}
+          isOwn={isOwnPassport}
+          uploading={uploadingDocs}
+          onUpload={onUploadDocument}
+          onDelete={onDeleteDocument}
+          deletingId={deletingDocId}
+        />
+        <PassportDocsCard
+          title="Certifications"
+          hint="ISO certificates and other quality credentials appear here."
+          docs={certifications}
+          isOwn={isOwnPassport}
+          uploading={uploadingCerts}
+          onUpload={onUploadCertification}
+          onDelete={onDeleteDocument}
+          deletingId={deletingDocId}
+        />
+      </div>
 
       {/* (f) Financial Snapshot */}
       <div className="card">

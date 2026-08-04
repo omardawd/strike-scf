@@ -98,7 +98,7 @@ INSERT INTO public.organizations (
   credit_score, risk_score, risk_tier, country_of_origin,
   product_categories, sourcing_countries, primary_currency, ai_matching_opt_in,
   network_visible, passport_score, passport_published_at, trade_count_total, trade_volume_total,
-  created_at, updated_at
+  created_at, updated_at, logo_url
 )
 VALUES
   ('de200000-0000-0000-0000-000000000001', 'de100000-0000-0000-0000-000000000001', 'anchor', 'active',
@@ -111,7 +111,11 @@ VALUES
    82, 18, 'green', 'US',
    '["steel","packaging","electronics components","retail fixtures"]'::jsonb, '["US","MX","VN"]'::jsonb, 'USD', true,
    true, 84, now() - interval '85 days', 6, 1180000,
-   now() - interval '90 days', now()),
+   now() - interval '90 days', now(),
+   -- Inline lettermark SVG data URI (no real brand asset for a fictional
+   -- company) — renders in place of the passport page's plain "HR" initials
+   -- fallback avatar.
+   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Cdefs%3E%3ClinearGradient id="g" x1="0" y1="0" x2="1" y2="1"%3E%3Cstop offset="0" stop-color="%230F1B3D"/%3E%3Cstop offset="1" stop-color="%231E3A6E"/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="64" height="64" rx="14" fill="url(%23g)"/%3E%3Ctext x="32" y="41" font-family="Arial, sans-serif" font-size="26" font-weight="700" fill="%23D4AF6A" text-anchor="middle"%3EHR%3C/text%3E%3C/svg%3E'),
 
   ('de200000-0000-0000-0000-000000000002', 'de100000-0000-0000-0000-000000000001', 'supplier', 'active',
    'Ironbridge Steel Works, Inc.', 'Ironbridge Steel Works', '88-5512034', 'corporation',
@@ -123,7 +127,7 @@ VALUES
    78, 24, 'green', 'US',
    '["steel","structural steel","metal fabrication"]'::jsonb, '["US"]'::jsonb, 'USD', true,
    true, 81, now() - interval '115 days', 41, 6400000,
-   now() - interval '120 days', now()),
+   now() - interval '120 days', now(), NULL),
 
   ('de200000-0000-0000-0000-000000000003', 'de100000-0000-0000-0000-000000000001', 'supplier', 'active',
    'Cedarline Packaging Solutions LLC', 'Cedarline Packaging', '88-6623145', 'llc',
@@ -135,7 +139,7 @@ VALUES
    68, 34, 'amber', 'US',
    '["packaging","corrugated boxes","protective packaging"]'::jsonb, '["US"]'::jsonb, 'USD', true,
    true, 71, now() - interval '70 days', 19, 980000,
-   now() - interval '75 days', now()),
+   now() - interval '75 days', now(), NULL),
 
   ('de200000-0000-0000-0000-000000000004', 'de100000-0000-0000-0000-000000000001', 'supplier', 'active',
    'Vantage Circuit Technologies Inc.', 'Vantage Circuit Technologies', '88-7734256', 'corporation',
@@ -147,7 +151,7 @@ VALUES
    80, 20, 'green', 'US',
    '["electronics components","PCB assembly","connectors"]'::jsonb, '["US"]'::jsonb, 'USD', true,
    true, 85, now() - interval '55 days', 27, 3100000,
-   now() - interval '60 days', now())
+   now() - interval '60 days', now(), NULL)
 ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -433,6 +437,23 @@ VALUES (
   'https://harborview.erpnext.com', 'demo_seed_netsuite_key_7f2a9c', 'demo_seed_netsuite_secret_b19e44',
   'active', now() - interval '3 hours', now() - interval '85 days', now() - interval '3 hours'
 )
+ON CONFLICT (id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- 12b. Passport documents & certifications — Harborview Retail. Fake
+-- storage_path values (no real file behind them): the passport documents API
+-- (app/api/passport/[org_id]/documents/route.ts) calls createSignedUrl per
+-- row and gracefully falls back to a null url on a miss, so the doc still
+-- renders (name/date, "—" instead of a Download link) with nothing broken.
+-- ---------------------------------------------------------------------------
+INSERT INTO public.documents (
+  id, org_id, entity_type, entity_id, document_kind, name, storage_path, file_size_bytes, mime_type, ai_extracted, created_at
+)
+VALUES
+  ('de950000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000001', 'organization', 'de200000-0000-0000-0000-000000000001', 'passport_certification', 'ISO 9001-2015 Quality Management Certificate.pdf', 'demo/harborview-iso-9001-2015.pdf', 412000, 'application/pdf', false, now() - interval '140 days'),
+  ('de950000-0000-0000-0000-000000000002', 'de200000-0000-0000-0000-000000000001', 'organization', 'de200000-0000-0000-0000-000000000001', 'passport_certification', 'SOC 2 Type II Report.pdf', 'demo/harborview-soc2-type2.pdf', 861000, 'application/pdf', false, now() - interval '95 days'),
+  ('de950000-0000-0000-0000-000000000003', 'de200000-0000-0000-0000-000000000001', 'organization', 'de200000-0000-0000-0000-000000000001', 'passport_document', 'Certificate of Incorporation.pdf', 'demo/harborview-certificate-of-incorporation.pdf', 188000, 'application/pdf', false, now() - interval '210 days'),
+  ('de950000-0000-0000-0000-000000000004', 'de200000-0000-0000-0000-000000000001', 'organization', 'de200000-0000-0000-0000-000000000001', 'passport_document', 'W-9 Tax Form.pdf', 'demo/harborview-w9.pdf', 94000, 'application/pdf', false, now() - interval '180 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
