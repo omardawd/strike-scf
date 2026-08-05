@@ -286,6 +286,67 @@ function highlightHoldMs(text: string, maxMs = 6500): number {
   return Math.min(maxMs, Math.max(3200, text.split(' ').length * 230))
 }
 
+// The real plan reply comes back genuinely structured — Claude writes it in
+// **Bold Section Header** blocks (Recommended Listing, Pricing Analysis,
+// Target Quantity, Counterparty Assessment, Recommended Next Steps — see the
+// live cached response). Splitting on those headers turns "one excerpt" into
+// an actual walkthrough of the plan's real components, each narrated on its
+// own beat — which is the whole point Claude AI was asked to go deeper on:
+// how it vetted the counterparty, what it found, what it's proposing, one
+// piece at a time, instead of one paragraph skimmed past.
+interface PlanSection { title: string; body: string }
+
+function parsePlanSections(reply: string, maxSections = 5, maxBodyLen = 320): PlanSection[] {
+  const cleaned = reply
+    .replace(/\[LISTING_CARD:[^\]]+\]/g, '')
+    .replace(/\[\[STRIKE_BLOCK:[\s\S]*?\]\]/g, '')
+    .replace(/^---+$/gm, '')
+
+  // Splitting on **...** alternates [preamble, header1, body1, header2, body2, ...].
+  const parts = cleaned.split(/\*\*([^*]+)\*\*/g)
+  const sections: PlanSection[] = []
+  // Headers whose body ended up empty (almost always because the only real
+  // content between this header and the next was a stripped STRIKE_BLOCK/
+  // LISTING_CARD directive) — folded into the next header that DOES have
+  // something to say, rather than silently dropped. Without this, the
+  // "Counterparty Assessment" header — the one covering how it vetted the
+  // counterparty, exactly what this walkthrough exists to surface — was
+  // getting lost to a throwaway "Proceed with standard due diligence."
+  // sub-heading immediately after it.
+  const pendingTitles: string[] = []
+
+  for (let i = 1; i < parts.length && sections.length < maxSections; i += 2) {
+    const title = (parts[i] ?? '').replace(/\s+/g, ' ').trim()
+    if (!title) continue
+    // Line-based cleanup (before whitespace collapse) so a leading "- " or
+    // "1. " list marker is stripped without also eating a real mid-word
+    // hyphen like "KYB-approved" once everything's flattened to one line.
+    const rawBody = (parts[i + 1] ?? '')
+      .split('\n')
+      .map(line => line.replace(/^[\s|]*[-•]\s+/, '').replace(/^[\s|]*\d+\.\s+/, '').trim())
+      .filter(Boolean)
+      .join(' ')
+    if (!rawBody || !/[.!?]/.test(rawBody)) {
+      pendingTitles.push(title)
+      continue
+    }
+
+    const combinedTitle = pendingTitles.length ? [...pendingTitles, title].join(' — ') : title
+    pendingTitles.length = 0
+
+    const body = rawBody.length <= maxBodyLen
+      ? rawBody
+      : (() => {
+          const window = rawBody.slice(0, maxBodyLen + 40)
+          const lastStop = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '))
+          return lastStop > maxBodyLen * 0.5 ? window.slice(0, lastStop + 1) : `${rawBody.slice(0, maxBodyLen - 3)}…`
+        })()
+
+    sections.push({ title: combinedTitle, body })
+  }
+  return sections
+}
+
 const MAX_ROUNDS_SHOWN = 3
 
 // Narrates the scene from the TOP of the screen instead of the bottom — the
@@ -486,21 +547,41 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         ])
         if (isCancelled()) return
 
-        // ── 1b. Spotlight the plan's real reply, right where it actually
-        //     rendered in the chat, and read out what it says — in real depth
-        //     (a longer excerpt, held longer) rather than a one-line teaser,
-        //     since this is the moment that actually shows what Strike AI did:
-        //     which counterparty it vetted, what it found, and what it's
-        //     proposing — not just that a plan exists.
+        // ── 1b. Walk through the plan's real components one at a time —
+        //     spotlighted on the actual chat bubble the whole way through.
+        //     The real reply comes back genuinely structured (Recommended
+        //     Listing, Pricing Analysis, Target Quantity, Counterparty
+        //     Assessment, Next Steps — see parsePlanSections' doc comment),
+        //     so this is a real walkthrough of what Strike AI actually did —
+        //     which counterparty it vetted, what it found, what it's
+        //     proposing — not a single skimmed-past paragraph.
         setSpotlightChat(true)
-        const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:', 480)
-        setCaption(planText)
-        setLogNow('Plan received — reviewing it before deciding what to change.')
-        // Promise.all, not a race — the hold is a floor, not a cap. Real TTS
-        // for a long excerpt can run past the estimate; this is what actually
-        // stops the plan reveal (the centerpiece "look what it did" beat)
-        // from getting talked over by the next line.
-        await Promise.all([sleep(highlightHoldMs(planText, 13000)), speak(planText)])
+        const sections = parsePlanSections(planReply || '')
+        setLogNow('Plan received — walking through what it found before deciding what to change.')
+
+        if (sections.length > 0) {
+          const walkthroughIntro = 'Here’s the plan it came back with — let’s walk through it.'
+          setCaption(walkthroughIntro)
+          await Promise.all([sleep(2200), speak(walkthroughIntro)])
+          if (isCancelled()) return
+
+          for (const section of sections) {
+            if (isCancelled()) return
+            const sectionText = `${section.title}: ${section.body}`
+            setCaption(sectionText)
+            // Promise.all, not a race — each component's hold is a floor,
+            // not a cap, so real TTS for a longer section can run past the
+            // estimate without getting talked over by the next component.
+            await Promise.all([sleep(highlightHoldMs(sectionText, 9500)), speak(sectionText)])
+          }
+        } else {
+          // Fallback for the rare reply that doesn't come back in the usual
+          // **Section Header** shape — still show something real rather than
+          // nothing.
+          const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:', 480)
+          setCaption(planText)
+          await Promise.all([sleep(highlightHoldMs(planText, 13000)), speak(planText)])
+        }
         if (isCancelled()) return
         setSpotlightChat(false)
 
