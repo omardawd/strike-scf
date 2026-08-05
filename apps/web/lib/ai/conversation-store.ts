@@ -19,8 +19,18 @@ export interface Conversation {
   updatedAt: string
 }
 
-export const CONVERSATIONS_KEY = 'strike-ai-conversations'
 export const MAX_CONVERSATIONS = 50
+
+// Scoped per logged-in user, not a single fixed key — localStorage is shared
+// across every account that ever logs into the SAME browser/device, so a
+// fixed key meant one user's real conversation history (including the demo
+// tour's own scripted exchange) was readable by whoever logged in next on
+// that machine. `userId` is `auth.users.id` (from useUser()), never an org
+// id, since a colleague on the same org sharing a browser shouldn't see it
+// either — conversation history is personal to the signed-in person.
+function conversationsKey(userId: string): string {
+  return `strike-ai-conversations:${userId}`
+}
 
 export function newId(): string {
   try {
@@ -48,9 +58,9 @@ function isConversation(v: unknown): v is Conversation {
     o.messages.every(isMessage)
 }
 
-export function loadConversations(): Conversation[] {
+export function loadConversations(userId: string): Conversation[] {
   try {
-    const raw = localStorage.getItem(CONVERSATIONS_KEY)
+    const raw = localStorage.getItem(conversationsKey(userId))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -60,12 +70,12 @@ export function loadConversations(): Conversation[] {
   }
 }
 
-export function saveConversations(convos: Conversation[]) {
+export function saveConversations(userId: string, convos: Conversation[]) {
   try {
     const pruned = [...convos]
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, MAX_CONVERSATIONS)
-    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(pruned))
+    localStorage.setItem(conversationsKey(userId), JSON.stringify(pruned))
   } catch {}
 }
 

@@ -260,7 +260,8 @@ export default function Dashboard2Page() {
 
   const runFirstMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
-    if (!trimmed || sending) return ''
+    const uid = user?.id
+    if (!trimmed || sending || !uid) return ''
 
     setCollapsing(true)
     // Swap just before the leave animation fully settles so the two states
@@ -286,7 +287,7 @@ export default function Dashboard2Page() {
     setSending(true)
     // localStorage read+write is synchronous and was landing right in the middle
     // of the leave animation — defer it past the transition so it can't drop frames.
-    setTimeout(() => saveConversations([convo, ...loadConversations()]), 500)
+    setTimeout(() => saveConversations(uid, [convo, ...loadConversations(uid)]), 500)
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -311,8 +312,8 @@ export default function Dashboard2Page() {
       const assistantMsg: Message = { role: 'assistant', content: reply, timestamp: replyTime }
       setMessages(prev => {
         const updated = [...prev, assistantMsg]
-        const all = loadConversations().map(c => c.id === id ? { ...c, messages: updated, updatedAt: replyTime } : c)
-        saveConversations(all)
+        const all = loadConversations(uid).map(c => c.id === id ? { ...c, messages: updated, updatedAt: replyTime } : c)
+        saveConversations(uid, all)
         return updated
       })
       return reply
@@ -321,19 +322,20 @@ export default function Dashboard2Page() {
       const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
       setMessages(prev => {
         const updated = [...prev, errMsg]
-        const all = loadConversations().map(c => c.id === id ? { ...c, messages: updated, updatedAt: errTime } : c)
-        saveConversations(all)
+        const all = loadConversations(uid).map(c => c.id === id ? { ...c, messages: updated, updatedAt: errTime } : c)
+        saveConversations(uid, all)
         return updated
       })
       return ''
     } finally {
       setSending(false)
     }
-  }, [opener, portal, sending, t, user?.full_name, user?.org_id, user?.bank_id, locale])
+  }, [opener, portal, sending, t, user?.id, user?.full_name, user?.org_id, user?.bank_id, locale])
 
   const runFollowUpMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
-    if (!trimmed || sending || !conversationId) return ''
+    const uid = user?.id
+    if (!trimmed || sending || !conversationId || !uid) return ''
 
     const now = new Date().toISOString()
     const userMsg: Message = { role: 'user', content: trimmed, timestamp: now }
@@ -341,7 +343,7 @@ export default function Dashboard2Page() {
     setMessages(withUser)
     setInput('')
     setSending(true)
-    saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: withUser, title: deriveTitle(withUser, t), updatedAt: now } : c))
+    saveConversations(uid, loadConversations(uid).map(c => c.id === conversationId ? { ...c, messages: withUser, title: deriveTitle(withUser, t), updatedAt: now } : c))
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -366,7 +368,7 @@ export default function Dashboard2Page() {
       const assistantMsg: Message = { role: 'assistant', content: reply, timestamp: replyTime }
       setMessages(prev => {
         const updated = [...prev, assistantMsg]
-        saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: replyTime } : c))
+        saveConversations(uid, loadConversations(uid).map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: replyTime } : c))
         return updated
       })
       return reply
@@ -375,14 +377,14 @@ export default function Dashboard2Page() {
       const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
       setMessages(prev => {
         const updated = [...prev, errMsg]
-        saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: errTime } : c))
+        saveConversations(uid, loadConversations(uid).map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: errTime } : c))
         return updated
       })
       return ''
     } finally {
       setSending(false)
     }
-  }, [messages, sending, conversationId, portal, t, user?.full_name, user?.org_id, user?.bank_id, locale])
+  }, [messages, sending, conversationId, portal, t, user?.id, user?.full_name, user?.org_id, user?.bank_id, locale])
 
   function handleSubmit() {
     if (!started) runFirstMessage(input)
@@ -394,15 +396,16 @@ export default function Dashboard2Page() {
   // real negotiation rounds (already fetched from agent_task_messages) into
   // the actual chat instead of only its own small Agent Log panel.
   const appendAssistantMessage = useCallback((text: string) => {
-    if (!conversationId) return
+    if (!conversationId || !user?.id) return
+    const uid = user.id
     const now = new Date().toISOString()
     const msg: Message = { role: 'assistant', content: text, timestamp: now }
     setMessages(prev => {
       const updated = [...prev, msg]
-      saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: now } : c))
+      saveConversations(uid, loadConversations(uid).map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: now } : c))
       return updated
     })
-  }, [conversationId])
+  }, [conversationId, user?.id])
 
   // Lets the demo tour's Scene 7 (DemoAgentActivityFeed) send a scripted
   // message through this exact same real send path — same request shape,

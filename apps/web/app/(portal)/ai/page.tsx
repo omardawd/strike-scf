@@ -281,13 +281,17 @@ function AIWorkspaceInner() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Load on mount ──
+  // ── Load on mount — waits on user.id since conversations are scoped per
+  //    signed-in user (see conversation-store.ts); re-runs if it changes
+  //    (e.g. a different account signs in on the same browser) so this
+  //    account never sees another one's history. ──
   useEffect(() => {
-    setConversations(loadConversations())
+    if (!user?.id) { setConversations([]); return }
+    setConversations(loadConversations(user.id))
     try {
       setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1')
     } catch {}
-  }, [])
+  }, [user?.id])
 
   // ── Agent-originated threads for the sidebar — the agent's own proposals/
   // negotiations are real conversations too, not just entries under the Agent tab. ──
@@ -357,8 +361,8 @@ function AIWorkspaceInner() {
 
   const persist = useCallback((convos: Conversation[]) => {
     setConversations(convos)
-    saveConversations(convos)
-  }, [])
+    if (user?.id) saveConversations(user.id, convos)
+  }, [user?.id])
 
   const runMessage = useCallback(async (text: string, attachmentName?: string) => {
     const trimmed = text.trim()
@@ -429,7 +433,7 @@ function AIWorkspaceInner() {
             ? { ...c, messages: [...c.messages, assistantMsg], updatedAt: replyTime }
             : c
         )
-        saveConversations(updated)
+        if (user?.id) saveConversations(user.id, updated)
         return updated
       })
     } catch {
@@ -439,13 +443,13 @@ function AIWorkspaceInner() {
         const updated = prev.map(c =>
           c.id === convoId ? { ...c, messages: [...c.messages, errMsg], updatedAt: errTime } : c
         )
-        saveConversations(updated)
+        if (user?.id) saveConversations(user.id, updated)
         return updated
       })
     } finally {
       setLoading(false)
     }
-  }, [activeId, conversations, loading, persist, portal, userName, t, locale])
+  }, [activeId, conversations, loading, persist, portal, userName, user?.id, t, locale])
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
