@@ -251,6 +251,20 @@ function shortMsg(content: string): string {
   return plain.length > 200 ? `${plain.slice(0, 197)}…` : plain
 }
 
+// Distills the real plan reply into a short spoken-style highlight — gives
+// the plan a beat of its own instead of vanishing straight into the revise
+// message, so the viewer actually registers what Strike AI came back with.
+function planHighlight(reply: string): string {
+  const stripped = reply
+    .replace(/\[LISTING_CARD:[^\]]+\]/g, '')
+    .replace(/\[\[STRIKE_BLOCK:[\s\S]*?\]\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!stripped) return 'Here’s the plan it came back with.'
+  const excerpt = stripped.length > 200 ? `${stripped.slice(0, 197)}…` : stripped
+  return `Here’s the plan it came back with: ${excerpt}`
+}
+
 const MAX_ROUNDS_SHOWN = 3
 
 // Narrates the scene from the TOP of the screen instead of the bottom — the
@@ -430,7 +444,16 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogNow('Searching Strike Place and benchmarking price for a larger steel order.')
         setLogNext('Come back with a recommended listing, quantity, and opening price.')
         void expandFor(2400)
-        await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan')
+        const planReply = await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan')
+        if (isCancelled()) return
+
+        // ── 1b. Give the plan itself a beat before revising it — otherwise
+        //     it lands and immediately gets talked over, and the viewer never
+        //     actually registers what Strike AI produced.
+        const highlight = planHighlight(planReply || '')
+        setCaption(highlight)
+        setLogNow('Plan received — reviewing it before deciding what to change.')
+        await sleep(Math.min(6000, Math.max(3000, highlight.split(' ').length * 220)))
         if (isCancelled()) return
 
         // ── 2. Revise it ─────────────────────────────────────────────────
@@ -496,12 +519,17 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
             if (framesFrozen) return
             // Surface each new real round straight into the visible chat —
             // not just the small Agent Log — so the negotiation is actually
-            // watchable where the rest of this scene has been happening.
+            // watchable where the rest of this scene has been happening. Full
+            // content (not shortMsg's truncated version) so the round's own
+            // [[STRIKE_BLOCK:{"type":"comparison",...}]] renders as a real
+            // "their offer" vs "our counter" card — this IS the window into
+            // the two agents actually negotiating with each other, not just a
+            // one-line price update.
             for (const m of msgs) {
               if (m.role !== 'system' || chatAppendedIds.has(m.id)) continue
               if (chatAppendedIds.size >= MAX_ROUNDS_SHOWN) break
               chatAppendedIds.add(m.id)
-              bridge?.getChatApi()?.appendAssistantMessage?.(shortMsg(m.content))
+              bridge?.getChatApi()?.appendAssistantMessage?.(m.content)
             }
           }
         )
@@ -513,6 +541,18 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
           await sleep(2200)
           if (!isCancelled()) onDoneRef.current()
           return
+        }
+
+        // However many rounds were actually visible above (the round cap
+        // freezes the chat feed after MAX_ROUNDS_SHOWN so a long real
+        // negotiation doesn't stall the tour), the convergence itself always
+        // gets its own line in the chat — the viewer needs to see the two
+        // agents actually landing on terms, not just watch the feed go quiet.
+        const { messages: finalMsgs } = await fetchThread(rootId)
+        const finalSystemMsg = [...finalMsgs].reverse().find(m => m.role === 'system')
+        if (finalSystemMsg && !chatAppendedIds.has(finalSystemMsg.id)) {
+          chatAppendedIds.add(finalSystemMsg.id)
+          bridge?.getChatApi()?.appendAssistantMessage?.(finalSystemMsg.content)
         }
 
         setPhase('done')

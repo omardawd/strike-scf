@@ -306,7 +306,7 @@ export default function DealsPage() {
 
         {/* ERP-sourced deals available to import — shown on All and Active tabs */}
         {!loading && erpImportable.length > 0 && (activeTab === 'all' || activeTab === 'active') && (
-          <div style={{ marginBottom: 16 }}>
+          <div data-demo-target="deals-erp-import" style={{ marginBottom: 16 }}>
             <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
               {t('deals.fromYourErp', { count: erpImportable.length })}
             </div>

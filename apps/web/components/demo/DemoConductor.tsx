@@ -88,7 +88,11 @@ function DemoRunner() {
     clickResolverRef.current = null
     setStatus('done')
     fetch('/api/demo/state', { method: 'POST' }).catch(() => {})
-  }, [])
+    // The closing beat ends wherever the last spotlight left the viewer (or
+    // wherever "Skip demo" was clicked) — send them back to Home rather than
+    // stranding them on a settings/ERP tab or mid-scene page.
+    router.push('/home')
+  }, [router])
 
   // The live agent-demo beat drives its own multi-step pacing (a real,
   // variable-length negotiation) rather than a fixed hold timer — it calls

@@ -415,6 +415,7 @@ export function Sidebar() {
           className={`nav-item shine${aiActive ? ' active' : ''}`}
           title={collapsed ? t('nav.strikeAi') : undefined}
           aria-label={t('nav.strikeAi')}
+          data-demo-target="nav-ai"
           style={{ transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)` }}
         >
           <NavIcon name="ai" size={18} />

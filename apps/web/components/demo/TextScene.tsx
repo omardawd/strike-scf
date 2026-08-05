@@ -189,7 +189,7 @@ export function TextScene({ title, subtitle, logoInTitle, dark, aiGradient, icon
         </div>
       )}
 
-      {title && (
+      {(title || logoInTitle) && (
         <h1
           style={{
             position: 'relative', zIndex: 1, margin: 0,

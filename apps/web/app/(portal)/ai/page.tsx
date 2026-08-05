@@ -684,6 +684,7 @@ function AIWorkspaceInner() {
                 <button
                   key={tab}
                   type="button"
+                  data-demo-target={tab === 'agent' ? 'ai-tab-agent' : undefined}
                   onClick={() => {
                     setActiveTab(tab)
                     router.replace(`/ai${tab === 'agent' ? '?tab=agent' : ''}`, { scroll: false })

@@ -28,7 +28,10 @@ export interface ChatApi {
    *  server replays a cached response for the demo org instead of calling
    *  Claude again once one exists, so repeated tour replays stop spending
    *  real API credits. See lib/ai/demo-ai-cache.ts. */
-  sendMessage: (text: string, cacheKey?: string) => Promise<void>
+  /** Resolves with the assistant's reply text (empty string on a handled
+   *  failure) — lets a caller briefly narrate what actually came back rather
+   *  than immediately moving on to the next scripted step. */
+  sendMessage: (text: string, cacheKey?: string) => Promise<string>
   /** Appends a message straight into the real chat's conversation state, as
    *  if it were an assistant reply — no /api/ai/chat call at all. Used by
    *  DemoAgentActivityFeed (Scene 7) to surface real negotiation rounds

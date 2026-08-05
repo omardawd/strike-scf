@@ -134,6 +134,14 @@ export default function Dashboard2Page() {
   const [sending, setSending] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  // The messages container's own `overflowY:'auto'` never actually engages —
+  // its flex ancestor chain up to `.page` uses `minHeight` (not a bounded
+  // `height`), so the container just grows with its content and the real
+  // document/window ends up doing the scrolling instead. scrollTo() on
+  // scrollRef was therefore a no-op past the first exchange (which happens to
+  // fit the initial viewport). A sentinel scrollIntoView follows the actual
+  // scrolling ancestor, whichever element that turns out to be.
+  const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const demoBridge = useDemoFormBridge()
 
@@ -229,12 +237,12 @@ export default function Dashboard2Page() {
   }, [loading])
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, sending])
 
   const runFirstMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
-    if (!trimmed || sending) return
+    if (!trimmed || sending) return ''
 
     setCollapsing(true)
     // Swap just before the leave animation fully settles so the two states
@@ -289,6 +297,7 @@ export default function Dashboard2Page() {
         saveConversations(all)
         return updated
       })
+      return reply
     } catch {
       const errTime = new Date().toISOString()
       const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
@@ -298,6 +307,7 @@ export default function Dashboard2Page() {
         saveConversations(all)
         return updated
       })
+      return ''
     } finally {
       setSending(false)
     }
@@ -305,7 +315,7 @@ export default function Dashboard2Page() {
 
   const runFollowUpMessage = useCallback(async (text: string, cacheKey?: string) => {
     const trimmed = text.trim()
-    if (!trimmed || sending || !conversationId) return
+    if (!trimmed || sending || !conversationId) return ''
 
     const now = new Date().toISOString()
     const userMsg: Message = { role: 'user', content: trimmed, timestamp: now }
@@ -341,6 +351,7 @@ export default function Dashboard2Page() {
         saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: replyTime } : c))
         return updated
       })
+      return reply
     } catch {
       const errTime = new Date().toISOString()
       const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
@@ -349,6 +360,7 @@ export default function Dashboard2Page() {
         saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: errTime } : c))
         return updated
       })
+      return ''
     } finally {
       setSending(false)
     }
@@ -1046,6 +1058,7 @@ export default function Dashboard2Page() {
                   <span className="d2-typing" aria-label={t('aiPage.thinking')}><i /><i /><i /></span>
                 </div>
               )}
+              <div ref={bottomRef} aria-hidden="true" />
             </div>
             <div className="d2-prompt" style={{ marginTop: 8 }}>
               <SparkIcon size={17} color="var(--blue)" />

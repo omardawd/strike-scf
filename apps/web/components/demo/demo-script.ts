@@ -19,6 +19,7 @@ import {
   DEMO_IRONBRIDGE_COILS_LISTING_ID,
   DEMO_CEDARLINE_DEAL_ID,
   DEMO_ROOM_ID,
+  DEMO_PLAN_TASK_ID,
 } from '@/lib/demo-entities'
 
 export type SceneKind = 'text' | 'spotlight' | 'agent-demo'
@@ -91,12 +92,15 @@ export interface DemoBeat {
 
 // How long a beat's content stays on screen once it's actually ready to show
 // (i.e. after navigation + target are confirmed present for spotlight beats).
-// Scales with how much there is to read — ~2 words/sec, deliberately
-// unhurried for a caption meant to be read *while* watching the scene.
+// Scales with how much there is to read — ~2.5 words/sec (a natural spoken
+// pace, not a slow one) plus a smaller fixed buffer for the beat to register
+// before the caption starts counting down. The old 2 words/sec + 2600ms combo
+// made anything past a one-line caption feel like a stall, especially beats
+// with no motion of their own to watch while reading.
 function readingHoldMs(narration: string, extraMs = 0): number {
   const words = narration.trim().split(/\s+/).filter(Boolean).length
-  const readMs = (words / 2) * 1000
-  return Math.round(Math.max(3600, readMs + 2600)) + extraMs
+  const readMs = (words / 2.5) * 1000
+  return Math.round(Math.max(3200, readMs + 1800)) + extraMs
 }
 
 function scene(input: Omit<DemoBeat, 'holdMs'> & { extraMs?: number }): DemoBeat {
@@ -142,9 +146,8 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'passport-breakdown',
     kind: 'spotlight',
-    narration: 'KYB compliance verifies who they legally are. Financial health reads the balance sheet. Trade reliability tracks on-time delivery and payment history. Network reputation weighs real peer reviews — each worth up to 25 points, rolling up into one number a CFO can trust at a glance.',
+    narration: 'KYB verifies who they are. Financial health reads the balance sheet. Trade reliability tracks delivery and payment history. And network reputation weighs real peer reviews — all rolling into one trust score.',
     target: 'passport-dimensions',
-    extraMs: 800,
   }),
   scene({
     id: 'passport-documents',
@@ -189,7 +192,7 @@ export const DEMO_SCENES: DemoBeat[] = [
     narration: 'Every negotiation happens in the open, in Strike Rooms — real terms, real reasoning, never hidden in a log somewhere.',
     navSteps: [{ target: 'nav-rooms' }, { target: `room-item-${DEMO_ROOM_ID}` }],
     target: 'room-thread',
-    extraMs: 800,
+    extraMs: 300,
   }),
 
   // ── Scene 4 — deal lifecycle + financing request ────────────────────────
@@ -199,10 +202,10 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'deal-flow',
     kind: 'spotlight',
-    narration: 'Once terms are agreed, the deal moves through one clear lifecycle — agreed, contract, in business, shipped, received, accepted, payment, completed — eight stages from handshake to close.',
+    narration: 'The deal then moves through one clear lifecycle — agreed, contracted, shipped, delivered, paid — eight tracked stages from handshake to close.',
     navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_CEDARLINE_DEAL_ID}` }],
     target: 'deal-negotiation',
-    extraMs: 600,
+    extraMs: 300,
   }),
   scene({
     id: 'deal-contract',
@@ -220,10 +223,10 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'financing-2',
     kind: 'spotlight',
-    narration: 'Reverse factoring on this receivable, up to a 6.5% rate ceiling.',
+    narration: 'Let’s submit a financing request — reverse factoring on this receivable, capped at a 6.5% maximum APR.',
     target: 'financing-form',
     formFill: { type: 'reverse_factoring', amount: '130000', rateMax: '6.5' },
-    extraMs: 1400,
+    extraMs: 800,
   }),
   scene({
     id: 'financing-3',
@@ -278,14 +281,41 @@ export const DEMO_SCENES: DemoBeat[] = [
     navSteps: [{ target: 'user-menu-button' }, { target: 'user-menu-settings' }, { target: 'settings-tab-erp' }],
     target: 'erp-connection-card',
   }),
+  // What the sync actually produces: a real, standing proposal Strike AI
+  // already wrote from the synced ERP data (the seeded 'de900000-...-001'
+  // scan_advisory task — flags a steel racking shortfall and recommends a
+  // follow-on offer) — not just a "data connected" checkmark with nothing
+  // to show for it.
+  scene({
+    id: 'erp-ai-proposal',
+    kind: 'spotlight',
+    narration: 'And it doesn’t just sync data — Strike AI reads it. This proposal came from your own ERP: a shortfall it caught and a follow-on offer it drafted, before anyone had to go looking.',
+    navSteps: [{ target: 'nav-ai' }, { target: 'ai-tab-agent' }],
+    target: `agent-task-${DEMO_PLAN_TASK_ID}`,
+    extraMs: 400,
+  }),
+  // The other side of the same ERP connection: existing receivables it
+  // already found, ready to become a deal (and a financing request) in one
+  // click, no manual data entry.
+  scene({
+    id: 'deals-erp-import',
+    kind: 'spotlight',
+    narration: 'Or skip sourcing entirely — Strike already found unpaid receivables sitting in your ERP, ready to import and submit for financing right away.',
+    navSteps: [{ target: 'nav-deals' }],
+    target: 'deals-erp-import',
+    extraMs: 300,
+  }),
 
   // ── Scene 8 — closing ────────────────────────────────────────────────────
+  // Logo only — no headline text, no closing line. DemoConductor redirects
+  // to /home once this beat's hold ends (see `finish()`), so the tour hands
+  // the viewer back to the real, live app rather than stranding them here.
   scene({
     id: 'closing',
     kind: 'text',
-    title: 'This is',
     logoInTitle: true,
-    narration: 'This is Strike. Sourcing to financing, run by an agent that never commits you to anything you haven’t seen.',
+    subtitle: '',
+    narration: 'This is Strike.',
     extraMs: 900,
   }),
 
