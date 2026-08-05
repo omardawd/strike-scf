@@ -253,31 +253,6 @@ function shortMsg(content: string): string {
   return plain.length > 200 ? `${plain.slice(0, 197)}…` : plain
 }
 
-// Distills a real reply into a spoken-style highlight, prefixed with a
-// lead-in — gives every scripted step's real response a beat of its own
-// (spotlighted in the actual chat, see 'chat-last-assistant' below) instead
-// of vanishing the instant it lands, so the viewer actually registers what
-// Strike AI produced at each step rather than just watching captions fly by.
-// Truncates on a sentence boundary near `maxLen` rather than a hard
-// mid-sentence cut, since the plan step in particular wants real depth —
-// which counterparty it vetted, what it found, what it's proposing — not
-// just the first clause.
-function replyHighlight(reply: string, leadIn: string, maxLen = 190): string {
-  const stripped = reply
-    .replace(/\[LISTING_CARD:[^\]]+\]/g, '')
-    .replace(/\[\[STRIKE_BLOCK:[\s\S]*?\]\]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (!stripped) return leadIn
-  if (stripped.length <= maxLen) return `${leadIn} ${stripped}`
-  const window = stripped.slice(0, maxLen + 40)
-  const lastStop = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '))
-  const excerpt = lastStop > maxLen * 0.5
-    ? window.slice(0, lastStop + 1)
-    : `${stripped.slice(0, maxLen - 3)}…`
-  return `${leadIn} ${excerpt}`
-}
-
 // How long to hold a reply's spotlight+highlight — scales with how much
 // there is to read, same spirit as demo-script.ts's readingHoldMs. `maxMs`
 // is raised for the plan step (the centerpiece "look what it actually did"
@@ -346,6 +321,31 @@ function parsePlanSections(reply: string, maxSections = 5, maxBodyLen = 320): Pl
   }
   return sections
 }
+
+// The real plan reply is only read for its STRUCTURE — which categories of
+// reasoning it covered, via each section's header — never read aloud
+// verbatim. Instead the narrator points out, in plain language, what KIND
+// of reasoning happened in each part (vetting, pricing, quantity...), while
+// the spotlight stays on the real chat bubble so anyone who wants the full
+// detail can just read it there. Order follows whatever order the real
+// sections came back in; a header that doesn't match a known category is
+// simply skipped rather than read out, keeping the walkthrough tight.
+const PLAN_SECTION_NARRATION: Array<{ match: RegExp; id: string; text: string }> = [
+  { match: /listing/i, id: 'plan-section-listing', text: 'It found the best available listing on the marketplace and is recommending it.' },
+  { match: /pricing/i, id: 'plan-section-pricing', text: 'It benchmarked real market prices to land on a competitive opening offer.' },
+  { match: /quantity/i, id: 'plan-section-quantity', text: 'It reasoned through your own portfolio and cash position to land on a sensible quantity.' },
+  { match: /counterparty|assessment/i, id: 'plan-section-counterparty', text: 'It already vetted this supplier — a trusted counterparty you’ve worked with before, with a strong PassportScore and no red flags.' },
+]
+
+function planSectionNarration(title: string): { id: string; text: string } | null {
+  for (const { match, id, text } of PLAN_SECTION_NARRATION) {
+    if (match.test(title)) return { id, text }
+  }
+  return null
+}
+
+const FALLBACK_PLAN_LINE = 'Here’s the plan it came back with — take a look.'
+const REVISE_UPDATE_LINE = 'It’s tightened the price ceiling and pulled the deadline in — ready for your final go-ahead.'
 
 const MAX_ROUNDS_SHOWN = 3
 
@@ -527,7 +527,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
         // ── 1. Propose a plan ──────────────────────────────────────────────
         setPhase('planning')
-        const planIntro = 'The agent will plan first, then based on your command, let’s ask it for help with stocking up on our inventory.'
+        const planIntro = 'Let’s ask the agent for help stocking up on our inventory — it’ll plan first, before anything gets submitted.'
         setCaption(planIntro)
         setLogStatus('Strike AI is researching…')
         setLogNow('Searching Strike Place and benchmarking price for a larger steel order.')
@@ -547,40 +547,39 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         ])
         if (isCancelled()) return
 
-        // ── 1b. Walk through the plan's real components one at a time —
+        // ── 1b. Point out the plan's real components one at a time —
         //     spotlighted on the actual chat bubble the whole way through.
         //     The real reply comes back genuinely structured (Recommended
         //     Listing, Pricing Analysis, Target Quantity, Counterparty
-        //     Assessment, Next Steps — see parsePlanSections' doc comment),
-        //     so this is a real walkthrough of what Strike AI actually did —
-        //     which counterparty it vetted, what it found, what it's
-        //     proposing — not a single skimmed-past paragraph.
+        //     Assessment, Next Steps — see parsePlanSections' doc comment);
+        //     each recognized section maps to a short, simplified narrator
+        //     callout (planSectionNarration) instead of reading the AI's own
+        //     prose verbatim — the real detail stays visible in the
+        //     spotlighted bubble for anyone who wants to read it themselves.
         setSpotlightChat(true)
         const sections = parsePlanSections(planReply || '')
-        setLogNow('Plan received — walking through what it found before deciding what to change.')
+        setLogNow('Plan received — pointing out how it got there before deciding what to change.')
 
-        if (sections.length > 0) {
-          const walkthroughIntro = 'Here’s the plan it came back with — let’s walk through it.'
-          setCaption(walkthroughIntro)
-          await Promise.all([sleep(2200), narrate(walkthroughIntro, 'scene6-plan-walkthrough-intro')])
-          if (isCancelled()) return
+        const walkthroughIntro = 'Here’s the plan it came back with — let’s walk through it.'
+        setCaption(walkthroughIntro)
+        await Promise.all([sleep(2200), narrate(walkthroughIntro, 'scene6-plan-walkthrough-intro')])
+        if (isCancelled()) return
 
-          for (const section of sections) {
+        const points = sections
+          .map(s => planSectionNarration(s.title))
+          .filter((p): p is { id: string; text: string } => p !== null)
+
+        if (points.length > 0) {
+          for (const point of points) {
             if (isCancelled()) return
-            const sectionText = `${section.title}: ${section.body}`
-            setCaption(sectionText)
-            // Promise.all, not a race — each component's hold is a floor,
-            // not a cap, so real TTS for a longer section can run past the
-            // estimate without getting talked over by the next component.
-            await Promise.all([sleep(highlightHoldMs(sectionText, 9500)), speak(sectionText)])
+            setCaption(point.text)
+            await Promise.all([sleep(highlightHoldMs(point.text, 5200)), narrate(point.text, point.id)])
           }
         } else {
-          // Fallback for the rare reply that doesn't come back in the usual
-          // **Section Header** shape — still show something real rather than
-          // nothing.
-          const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:', 480)
-          setCaption(planText)
-          await Promise.all([sleep(highlightHoldMs(planText, 13000)), speak(planText)])
+          // Rare fallback — the reply didn't come back in the usual
+          // **Section Header** shape recognizable enough to point at.
+          setCaption(FALLBACK_PLAN_LINE)
+          await Promise.all([sleep(highlightHoldMs(FALLBACK_PLAN_LINE, 4000)), speak(FALLBACK_PLAN_LINE)])
         }
         if (isCancelled()) return
         setSpotlightChat(false)
@@ -596,16 +595,16 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogNext('Wait for a go-ahead before submitting anything.')
         await Promise.all([sleep(2600), narrate(reviseIntro, 'scene6-revise-intro')])
         if (isCancelled()) return
-        const reviseReply = await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
+        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
         if (isCancelled()) return
 
-        // ── 2b. Same treatment for the revised plan — spotlight + read what
-        //     actually changed, before moving on to the go-ahead.
+        // ── 2b. Same treatment as the plan walkthrough — a short, simplified
+        //     callout instead of reading the revised reply's prose, with the
+        //     spotlight on the real chat bubble showing what changed.
         setSpotlightChat(true)
-        const reviseText = replyHighlight(reviseReply || '', 'Updated:')
-        setCaption(reviseText)
+        setCaption(REVISE_UPDATE_LINE)
         setLogNow('Revision received — ready for a go-ahead.')
-        await Promise.all([sleep(highlightHoldMs(reviseText)), speak(reviseText)])
+        await Promise.all([sleep(highlightHoldMs(REVISE_UPDATE_LINE, 5200)), narrate(REVISE_UPDATE_LINE, 'scene6-revise-reply')])
         if (isCancelled()) return
         setSpotlightChat(false)
 

@@ -307,16 +307,20 @@ export const DEMO_SCENES: DemoBeat[] = [
   }),
 
   // ── Scene 8 — closing ────────────────────────────────────────────────────
-  // Logo only — no headline text, no closing line. DemoConductor redirects
-  // to /home once this beat's hold ends (see `finish()`), so the tour hands
-  // the viewer back to the real, live app rather than stranding them here.
+  // Logo only — no headline text, no spoken line, no audio at all. An empty
+  // `narration` here means DemoConductor's hold timer runs silently (see its
+  // own `else` branch) instead of calling narrate(); `readingHoldMs('')`
+  // still floors at a sensible minimum so the beat holds for a beat, not
+  // zero seconds. DemoConductor redirects to /home once this beat's hold
+  // ends (see `finish()`), so the tour hands the viewer back to the real,
+  // live app rather than stranding them here.
   scene({
     id: 'closing',
     kind: 'text',
     logoInTitle: true,
     subtitle: '',
-    narration: 'This is Strike.',
-    extraMs: 900,
+    narration: '',
+    extraMs: 1400,
   }),
 
   // Scene 9 (handoff) has no beat of its own — the overlay simply ends here

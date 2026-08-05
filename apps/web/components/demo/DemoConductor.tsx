@@ -187,12 +187,6 @@ function DemoRunner() {
         }, 600)
       }
 
-      if (beat.submitForm && bridge) {
-        window.setTimeout(() => {
-          if (!cancelled) bridge.getFinancingForm()?.submit()
-        }, Math.max(beat.holdMs - 600, 300))
-      }
-
       // 4. requireClick beats (only the audio gate) don't start their hold
       //    countdown until the viewer clicks.
       if (beat.requireClick) {
@@ -204,7 +198,32 @@ function DemoRunner() {
       // fixed hold timer — its actual duration depends on a real negotiation.
       if (beat.kind === 'agent-demo') return
 
-      // 5. Narration is awaited ALONGSIDE the hold timer (Promise.all, not a
+      const hold = reducedMotionRef.current ? Math.min(beat.holdMs, 900) : beat.holdMs
+
+      // 5. submitForm beats: fire the real submit FIRST — after a brief pause
+      //    so the viewer actually sees the filled form before it goes — and
+      //    only start narration (e.g. "Submitted!") once the click has
+      //    genuinely happened. This used to run the other way around: the
+      //    submit was scheduled via a setTimeout near the END of the hold
+      //    while narration started immediately at the top of the hold, so
+      //    "Submitted!" was heard well before the button was actually
+      //    pressed.
+      if (beat.submitForm && bridge) {
+        const preSubmitMs = Math.min(700, hold)
+        await sleep(preSubmitMs)
+        if (cancelled) return
+        bridge.getFinancingForm()?.submit()
+        const remaining = Math.max(hold - preSubmitMs, 300)
+        if (reducedMotionRef.current) {
+          await sleep(remaining)
+        } else {
+          await Promise.all([sleep(remaining), narrate(beat.narration, beat.id)])
+        }
+        if (!cancelled) setBeatIndex(i => i + 1)
+        return
+      }
+
+      // 6. Narration is awaited ALONGSIDE the hold timer (Promise.all, not a
       //    race) — this is what actually fixes beats cutting themselves off
       //    mid-sentence: previously the caption components spoke on their
       //    own, decoupled from this timer, so a scene routinely advanced
@@ -212,12 +231,15 @@ function DemoRunner() {
       //    `hold` still sets a sensible floor for short lines or when
       //    narration is unsupported/disabled/reduced-motion. `narrate()`
       //    plays the real recorded clip at public/audio/demo/{beat.id}.mp3
-      //    when one exists, falling back to live Web Speech otherwise.
-      const hold = reducedMotionRef.current ? Math.min(beat.holdMs, 900) : beat.holdMs
+      //    when one exists, falling back to live Web Speech otherwise. A
+      //    beat with no narration at all (the closing scene) stays silent —
+      //    just the hold timer, no speech engine touched.
       if (reducedMotionRef.current) {
         await sleep(hold)
-      } else {
+      } else if (beat.narration) {
         await Promise.all([sleep(hold), narrate(beat.narration, beat.id)])
+      } else {
+        await sleep(hold)
       }
       if (!cancelled) setBeatIndex(i => i + 1)
     })()
