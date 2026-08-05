@@ -10,6 +10,7 @@ import { DemoAgentActivityFeed } from './DemoAgentActivityFeed'
 import { DemoCursor, type DemoCursorHandle } from './DemoCursor'
 import { DemoFormBridgeProvider, useDemoFormBridge } from './DemoFormBridge'
 import { waitForTarget, waitForRoute, sleep } from './demo-utils'
+import { stopSpeaking } from './demo-speech'
 
 type RunnerStatus = 'checking' | 'idle' | 'resetting' | 'running' | 'done'
 
@@ -86,6 +87,7 @@ function DemoRunner() {
   const finish = useCallback(() => {
     if (beatTimerRef.current) clearTimeout(beatTimerRef.current)
     clickResolverRef.current = null
+    stopSpeaking()
     setStatus('done')
     fetch('/api/demo/state', { method: 'POST' }).catch(() => {})
     // The closing beat ends wherever the last spotlight left the viewer (or
@@ -266,6 +268,7 @@ function DemoRunner() {
           // it has one, otherwise the narration itself (the audio-gate scene has
           // no headline, so its narration IS the copy).
           subtitle={beat.subtitle ?? (beat.title ? undefined : beat.narration)}
+          narration={beat.narration}
           logoInTitle={beat.logoInTitle}
           dark={beat.dark}
           aiGradient={beat.aiGradient}

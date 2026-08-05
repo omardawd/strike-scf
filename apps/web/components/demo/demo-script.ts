@@ -136,7 +136,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'passport-score',
     kind: 'spotlight',
-    narration: 'Every business on Strike carries a PassportScore — a real-time trust score built from real trade activity, scored the same way our own analysts would.',
+    narration: 'Every business on Strike carries a Passport, a real-time trust score built from real trade activity, documentation, financial health, and market credibility.',
     fadeReveal: true,
     directRoute: '/passport',
     spotlightDelayMs: 1100,
@@ -146,13 +146,13 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'passport-breakdown',
     kind: 'spotlight',
-    narration: 'KYB verifies who they are. Financial health reads the balance sheet. Trade reliability tracks delivery and payment history. And network reputation weighs real peer reviews — all rolling into one trust score.',
+    narration: 'The four main metrics that generate a PassportScore are onboarding KYB to verify who they are, financial health from the balance sheet, trade reliability by tracking delivery and payment history, and network reputation.',
     target: 'passport-dimensions',
   }),
   scene({
     id: 'passport-documents',
     kind: 'spotlight',
-    narration: 'And the underwriting paper trail lives right here too — ISO certificates, incorporation records, compliance documents — not buried in an email thread.',
+    narration: 'The Passport also houses an organization’s ISO certificates, incorporation records, compliance documents, and other relevant documents for their trade profile.',
     target: 'passport-documents',
   }),
 
@@ -160,7 +160,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'strike-place-intro',
     kind: 'spotlight',
-    narration: 'Strike Place is where businesses list and discover real trade opportunities on the network.',
+    narration: 'Strike Place is where businesses list their services or needs and discover real trade opportunities on the network.',
     navSteps: [{ target: 'nav-marketplace' }],
     target: 'marketplace-grid',
     noHighlight: true,
@@ -168,7 +168,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'strike-place-listing-intro',
     kind: 'spotlight',
-    narration: 'Every listing carries the full trade terms — quantity, incoterms, price — straight from the source.',
+    narration: 'Every listing carries the full trade terms — quantity, incoterms, price, and counterparty’s Passport.',
     navSteps: [{ target: `listing-card-${DEMO_IRONBRIDGE_COILS_LISTING_ID}` }],
     target: 'listing-detail-poster',
     noHighlight: true,
@@ -176,20 +176,20 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'strike-place-listing-passport',
     kind: 'spotlight',
-    narration: 'And right there is the counterparty’s own PassportScore — you know exactly who you’d be trading with before you ever make an offer.',
+    narration: 'And right there is the counterparty’s own PassportScore, where you can initially vet the counterparty before submitting an offer.',
     target: 'listing-detail-poster',
   }),
   scene({
     id: 'strike-place-listing-offer',
     kind: 'spotlight',
-    narration: 'This is how you’d submit an offer — or counter one already on the table.',
+    narration: 'Scroll down and you’ll find the offer submission window, where you can send your first offer or your counter-offer.',
     target: 'listing-detail-offer',
     extraMs: 400,
   }),
   scene({
     id: 'strike-rooms',
     kind: 'spotlight',
-    narration: 'Every negotiation happens in the open, in Strike Rooms — real terms, real reasoning, never hidden in a log somewhere.',
+    narration: 'Every negotiation occurs in the listing’s respective Strike Room, where representatives or agents can easily communicate.',
     navSteps: [{ target: 'nav-rooms' }, { target: `room-item-${DEMO_ROOM_ID}` }],
     target: 'room-thread',
     extraMs: 300,
@@ -202,7 +202,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'deal-flow',
     kind: 'spotlight',
-    narration: 'The deal then moves through one clear lifecycle — agreed, contracted, shipped, delivered, paid — eight tracked stages from handshake to close.',
+    narration: 'An active deal moves through one clear lifecycle with eight tracked stages, from agreeing on pricing to completing the transaction.',
     navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_CEDARLINE_DEAL_ID}` }],
     target: 'deal-negotiation',
     extraMs: 300,
@@ -210,20 +210,20 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'deal-contract',
     kind: 'spotlight',
-    narration: 'This deal is well past that first handshake — the trade contract was signed weeks ago, so what you’re looking at is already finalized.',
+    narration: 'This deal is well past that first handshake, where a trade contract was signed weeks ago, so this is already finalized.',
     target: 'deal-contract',
     extraMs: 400,
   }),
   scene({
     id: 'financing-1',
     kind: 'spotlight',
-    narration: 'And at any point, you can request financing against a receivable directly from the same deal.',
+    narration: 'At any point, you can request financing against a receivable directly from the same deal.',
     target: 'financing-toggle',
   }),
   scene({
     id: 'financing-2',
     kind: 'spotlight',
-    narration: 'Let’s submit a financing request — reverse factoring on this receivable, capped at a 6.5% maximum APR.',
+    narration: 'Let’s submit a financing request. We can try requesting a reverse factoring program on this receivable, capped at a 6.5% maximum APR.',
     target: 'financing-form',
     formFill: { type: 'reverse_factoring', amount: '130000', rateMax: '6.5' },
     extraMs: 800,
@@ -231,7 +231,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'financing-3',
     kind: 'spotlight',
-    narration: 'Submitted — competing banks can now offer on it.',
+    narration: 'Submitted! This request is now viewable by financial providers, and you’ll receive offers as they come in.',
     target: 'financing-submit',
     submitForm: true,
     extraMs: 800,
@@ -277,7 +277,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'erp-integration',
     kind: 'spotlight',
-    narration: 'Strike connects directly to your ERP — real inventory, cash, and receivables, synced automatically.',
+    narration: 'Strike AI can connect directly to your ERP with read-only permissions to keep your data safe.',
     navSteps: [{ target: 'user-menu-button' }, { target: 'user-menu-settings' }, { target: 'settings-tab-erp' }],
     target: 'erp-connection-card',
   }),
@@ -289,7 +289,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'erp-ai-proposal',
     kind: 'spotlight',
-    narration: 'And it doesn’t just sync data — Strike AI reads it. This proposal came from your own ERP: a shortfall it caught and a follow-on offer it drafted, before anyone had to go looking.',
+    narration: 'Reasoning from that resource is extremely powerful. Strike can generate proposals that came from your own ERP. You can revise its plan and then execute, like how we did before.',
     navSteps: [{ target: 'nav-ai' }, { target: 'ai-tab-agent' }],
     target: `agent-task-${DEMO_PLAN_TASK_ID}`,
     extraMs: 400,
@@ -300,7 +300,7 @@ export const DEMO_SCENES: DemoBeat[] = [
   scene({
     id: 'deals-erp-import',
     kind: 'spotlight',
-    narration: 'Or skip sourcing entirely — Strike already found unpaid receivables sitting in your ERP, ready to import and submit for financing right away.',
+    narration: 'Strike also can import your existing trade deals to submit financing requests easily.',
     navSteps: [{ target: 'nav-deals' }],
     target: 'deals-erp-import',
     extraMs: 300,

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useDemoFormBridge } from './DemoFormBridge'
 import { SpotlightOverlay } from './SpotlightOverlay'
 import { sleep } from './demo-utils'
+import { speak, stopSpeaking } from './demo-speech'
 
 // Three scripted chat messages — everything downstream (the plan Strike AI
 // proposes, the real submit_marketplace_offer tool call, the real GATE-1
@@ -15,7 +16,7 @@ import { sleep } from './demo-utils'
 // commits anything. Responses are cached per label after the first real run
 // (see lib/ai/demo-ai-cache.ts) — replays don't re-spend real API credits.
 const PLAN_MESSAGE =
-  "We need to lock in a larger steel inventory for Q4. Before we commit to anything, put together a plan — the best available listing on Strike Place, a target quantity, and a sensible opening price."
+  "We need to lock in a larger steel inventory for Q4. Before we commit to anything, put together a plan — the best available listing on Strike Place, a target quantity, a sensible opening price, and a quick read on the counterparty's trustworthiness before we commit to anything."
 const REVISE_MESSAGE =
   "Tighten the price ceiling a bit and make sure the deadline is no more than 14 days out."
 const EXECUTE_MESSAGE =
@@ -252,26 +253,37 @@ function shortMsg(content: string): string {
   return plain.length > 200 ? `${plain.slice(0, 197)}…` : plain
 }
 
-// Distills a real reply into a short spoken-style highlight, prefixed with a
+// Distills a real reply into a spoken-style highlight, prefixed with a
 // lead-in — gives every scripted step's real response a beat of its own
 // (spotlighted in the actual chat, see 'chat-last-assistant' below) instead
 // of vanishing the instant it lands, so the viewer actually registers what
 // Strike AI produced at each step rather than just watching captions fly by.
-function replyHighlight(reply: string, leadIn: string): string {
+// Truncates on a sentence boundary near `maxLen` rather than a hard
+// mid-sentence cut, since the plan step in particular wants real depth —
+// which counterparty it vetted, what it found, what it's proposing — not
+// just the first clause.
+function replyHighlight(reply: string, leadIn: string, maxLen = 190): string {
   const stripped = reply
     .replace(/\[LISTING_CARD:[^\]]+\]/g, '')
     .replace(/\[\[STRIKE_BLOCK:[\s\S]*?\]\]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
   if (!stripped) return leadIn
-  const excerpt = stripped.length > 190 ? `${stripped.slice(0, 187)}…` : stripped
+  if (stripped.length <= maxLen) return `${leadIn} ${stripped}`
+  const window = stripped.slice(0, maxLen + 40)
+  const lastStop = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '))
+  const excerpt = lastStop > maxLen * 0.5
+    ? window.slice(0, lastStop + 1)
+    : `${stripped.slice(0, maxLen - 3)}…`
   return `${leadIn} ${excerpt}`
 }
 
 // How long to hold a reply's spotlight+highlight — scales with how much
-// there is to read, same spirit as demo-script.ts's readingHoldMs.
-function highlightHoldMs(text: string): number {
-  return Math.min(6500, Math.max(3200, text.split(' ').length * 230))
+// there is to read, same spirit as demo-script.ts's readingHoldMs. `maxMs`
+// is raised for the plan step (the centerpiece "look what it actually did"
+// moment) and left tighter everywhere else.
+function highlightHoldMs(text: string, maxMs = 6500): number {
+  return Math.min(maxMs, Math.max(3200, text.split(' ').length * 230))
 }
 
 const MAX_ROUNDS_SHOWN = 3
@@ -281,6 +293,10 @@ const MAX_ROUNDS_SHOWN = 3
 // message list + its input box), and a bottom-fixed caption used to sit
 // right on top of both, hiding the very thing the scene is supposed to show.
 function TopCaption({ line, onSkip }: { line: string; onSkip: () => void }) {
+  useEffect(() => {
+    if (line) speak(line)
+  }, [line])
+
   if (!line) return null
   return (
     <div
@@ -449,23 +465,29 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
         // ── 1. Propose a plan ──────────────────────────────────────────────
         setPhase('planning')
-        setCaption('Watch it plan first, then act — nothing gets submitted yet.')
+        setCaption('The agent will plan first, then based on your command, let’s ask it for help with stocking up on our inventory.')
         setLogStatus('Strike AI is researching…')
         setLogNow('Searching Strike Place and benchmarking price for a larger steel order.')
         setLogNext('Come back with a recommended listing, quantity, and opening price.')
         void expandFor(2400)
-        const planReply = await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan')
+        // Cache key bumped to -v2 alongside PLAN_MESSAGE's new wording — the
+        // cache key doesn't include the message text itself, so reusing
+        // 'demo-plan' here would have replayed the OLD prompt's cached reply
+        // (no counterparty vetting ask in it) against the NEW prompt.
+        const planReply = await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan-v2')
         if (isCancelled()) return
 
         // ── 1b. Spotlight the plan's real reply, right where it actually
-        //     rendered in the chat, and read out what it says — the plan
-        //     otherwise lands and gets immediately talked over, and the
-        //     viewer never actually registers what Strike AI produced.
+        //     rendered in the chat, and read out what it says — in real depth
+        //     (a longer excerpt, held longer) rather than a one-line teaser,
+        //     since this is the moment that actually shows what Strike AI did:
+        //     which counterparty it vetted, what it found, and what it's
+        //     proposing — not just that a plan exists.
         setSpotlightChat(true)
-        const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:')
+        const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:', 480)
         setCaption(planText)
         setLogNow('Plan received — reviewing it before deciding what to change.')
-        await sleep(highlightHoldMs(planText))
+        await sleep(highlightHoldMs(planText, 13000))
         if (isCancelled()) return
         setSpotlightChat(false)
 
@@ -473,7 +495,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         //     sent, so the upcoming REVISE_MESSAGE reads as a deliberate
         //     decision instead of an abrupt scripted line.
         setPhase('revising')
-        setCaption('Let’s revise it a little — tighten the price ceiling and pull the deadline in.')
+        setCaption('Let’s revise it a little, how about we ask it to tighten the price ceiling and pull the deadline in.')
         setLogStatus('Revising the plan…')
         setLogNow('Tightening the price ceiling and shortening the deadline.')
         setLogNext('Wait for a go-ahead before submitting anything.')
@@ -494,7 +516,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
         // ── 3. Execute — this is the one message that actually acts ────────
         setPhase('executing')
-        setCaption('One instruction to act — everything after this is real.')
+        setCaption('Great, now let’s execute.')
         setLogStatus('Submitting the offer…')
         setLogNow('Opening a real offer on the listing, on your behalf.')
         setLogNext(null)
@@ -517,7 +539,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // ── 4. Negotiate — real, live, capped to a few visible rounds ───────
         negotiationStarted = true
         setPhase('negotiating')
-        setCaption('Live — negotiating autonomously, inside the limits it was given.')
+        setCaption('It’s triggering a negotiation with the counterparty’s agent.')
         setLogStatus('Negotiating…')
         setLogNow('Live round-by-round negotiation with the counterparty’s own agent.')
         void expandFor(2000)
@@ -531,7 +553,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
             if (round >= MAX_ROUNDS_SHOWN) {
               framesFrozen = true
               setPhase('wrapping')
-              setCaption('A few real rounds in — fast-forwarding past the rest.')
+              setCaption('Agents can negotiate up to 10 rounds — or stop early if either side asks it to.')
               setLogStatus('Wrapping up…')
               setLogNow('Reviewing final terms in the background — the rest of the back-and-forth is condensed here.')
               setExpanded(false)
@@ -581,7 +603,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         }
 
         setPhase('done')
-        setCaption('Deal closed — now it’s in the contract period, and it requests financing automatically.')
+        setCaption('Done. We have secured a deal and now it’s in the contract period. Let’s ask it to generate a financing request for that deal as well.')
         setLogStatus('Deal finalized ✓')
         setLogNow('Terms agreed. Now in the contract period.')
         setLogNext(null)
@@ -592,8 +614,8 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         if (summary) setLogNow(`Terms agreed — now in the contract period. Financing requested: ${summary}.`)
         setCaption(
           summary
-            ? 'Sourced to financed — with a human only ever asked to say yes.'
-            : 'Deal closed. Sourced to signed — now in the contract period.'
+            ? 'Our request is live. We have sourced, vetted, negotiated, and financed with Strike in less than 2 minutes!'
+            : 'Done. We have secured a deal and now it’s in the contract period.'
         )
         await sleep(2600)
         if (!isCancelled()) onDoneRef.current()

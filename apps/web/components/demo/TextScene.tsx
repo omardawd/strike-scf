@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { speak } from './demo-speech'
 
 // Small inline icon set for the audio-gate scene (scene 0) — stroke-based,
 // matching the sidebar's NAV_ICONS convention rather than emoji.
@@ -50,6 +51,11 @@ interface TextSceneProps {
    *  every text beat keeps a visible caption instead of going silent after the
    *  headline lands. */
   subtitle?: string
+  /** The full line to speak aloud (Web Speech API) — independent of what's
+   *  visually shown as `subtitle`, since a title-only beat (e.g. the closing
+   *  logo) still has something worth narrating even with no on-screen body
+   *  text. Falls back to `subtitle` when omitted. */
+  narration?: string
   /** Renders the real Strike wordmark image after `title`'s words instead of
    *  spelling "Strike SCF" out in text — only the welcome beat uses this. */
   logoInTitle?: boolean
@@ -65,14 +71,24 @@ interface TextSceneProps {
 // scene 5 dark "twist" beat, the scene 6 capability lines, and the closing.
 // Type-led: the headline animates in word by word over a slow ambient
 // background so a plain sentence still reads as a deliberate cinematic beat.
-export function TextScene({ title, subtitle, logoInTitle, dark, aiGradient, iconSet, requireClick, onReady, onSkip }: TextSceneProps) {
+export function TextScene({ title, subtitle, narration, logoInTitle, dark, aiGradient, iconSet, requireClick, onReady, onSkip }: TextSceneProps) {
   const [clicked, setClicked] = useState(false)
+  const spokenLine = narration ?? subtitle
 
   function handleClick() {
     if (!requireClick || clicked) return
     setClicked(true)
     onReady?.()
   }
+
+  useEffect(() => {
+    // The audio-gate scene is the one exception: speech (like any audio)
+    // can't start before the click that unlocks it, so this waits for
+    // `clicked` there. Every other text beat speaks immediately on mount.
+    if (requireClick && !clicked) return
+    if (spokenLine) speak(spokenLine)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spokenLine, clicked])
 
   const background = dark
     ? 'radial-gradient(120% 90% at 50% 40%, #1a1a20 0%, var(--ink) 62%)'
