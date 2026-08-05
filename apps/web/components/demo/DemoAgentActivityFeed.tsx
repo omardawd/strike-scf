@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useDemoFormBridge } from './DemoFormBridge'
 import { SpotlightOverlay } from './SpotlightOverlay'
 import { sleep } from './demo-utils'
-import { speak, stopSpeaking } from './demo-speech'
+import { narrate, speak, stopSpeaking } from './demo-speech'
 
 // Three scripted chat messages — everything downstream (the plan Strike AI
 // proposes, the real submit_marketplace_offer tool call, the real GATE-1
@@ -542,7 +542,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // animation + real API call comfortably covers a short line's speech,
         // but this makes it a guarantee rather than a coincidence of timing.
         const [, planReply] = await Promise.all([
-          speak(planIntro),
+          narrate(planIntro, 'scene6-plan-intro'),
           bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan-v2'),
         ])
         if (isCancelled()) return
@@ -562,7 +562,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         if (sections.length > 0) {
           const walkthroughIntro = 'Here’s the plan it came back with — let’s walk through it.'
           setCaption(walkthroughIntro)
-          await Promise.all([sleep(2200), speak(walkthroughIntro)])
+          await Promise.all([sleep(2200), narrate(walkthroughIntro, 'scene6-plan-walkthrough-intro')])
           if (isCancelled()) return
 
           for (const section of sections) {
@@ -594,7 +594,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Revising the plan…')
         setLogNow('Tightening the price ceiling and shortening the deadline.')
         setLogNext('Wait for a go-ahead before submitting anything.')
-        await Promise.all([sleep(2600), speak(reviseIntro)])
+        await Promise.all([sleep(2600), narrate(reviseIntro, 'scene6-revise-intro')])
         if (isCancelled()) return
         const reviseReply = await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
         if (isCancelled()) return
@@ -616,7 +616,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Submitting the offer…')
         setLogNow('Opening a real offer on the listing, on your behalf.')
         setLogNext(null)
-        await Promise.all([sleep(400), speak(executeLine)])
+        await Promise.all([sleep(400), narrate(executeLine, 'scene6-execute')])
         if (isCancelled()) return
         const before = await fetchTaskIds()
         await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute')
@@ -643,7 +643,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // Not awaited — the negotiation loop below (real network polling,
         // several seconds minimum per round) comfortably outlasts this short
         // line's speech, and blocking here would delay the first real tick.
-        void speak(negotiatingLine)
+        void narrate(negotiatingLine, 'scene6-negotiating')
         void expandFor(2000)
 
         const dealId = await runNegotiationLoop(
@@ -657,7 +657,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
               setPhase('wrapping')
               const wrapLine = 'Agents can negotiate up to 10 rounds — or stop early if either side asks it to.'
               setCaption(wrapLine)
-              void speak(wrapLine)
+              void narrate(wrapLine, 'scene6-wrapping')
               setLogStatus('Wrapping up…')
               setLogNow('Reviewing final terms in the background — the rest of the back-and-forth is condensed here.')
               setExpanded(false)
@@ -712,7 +712,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Deal finalized ✓')
         setLogNow('Terms agreed. Now in the contract period.')
         setLogNext(null)
-        await Promise.all([sleep(900), speak(closedLine)])
+        await Promise.all([sleep(900), narrate(closedLine, 'scene6-deal-closed')])
         if (isCancelled()) return
         const summary = await submitFinancing(dealId)
         if (isCancelled()) return
@@ -721,7 +721,9 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
           ? 'Our request is live. We have sourced, vetted, negotiated, and financed with Strike in less than 2 minutes!'
           : 'Done. We have secured a deal and now it’s in the contract period.'
         setCaption(finalLine)
-        await Promise.all([sleep(2600), speak(finalLine)])
+        // Only the "with financing" happy-path variant has a recorded clip —
+        // the no-financing fallback is an edge case, same as timeout/error.
+        await Promise.all([sleep(2600), narrate(finalLine, summary ? 'scene6-final-with-financing' : undefined)])
         if (!isCancelled()) onDoneRef.current()
       } catch {
         if (isCancelled()) return

@@ -10,7 +10,7 @@ import { DemoAgentActivityFeed } from './DemoAgentActivityFeed'
 import { DemoCursor, type DemoCursorHandle } from './DemoCursor'
 import { DemoFormBridgeProvider, useDemoFormBridge } from './DemoFormBridge'
 import { waitForTarget, waitForRoute, sleep } from './demo-utils'
-import { speak, stopSpeaking } from './demo-speech'
+import { narrate, stopSpeaking } from './demo-speech'
 
 type RunnerStatus = 'checking' | 'idle' | 'resetting' | 'running' | 'done'
 
@@ -204,18 +204,20 @@ function DemoRunner() {
       // fixed hold timer — its actual duration depends on a real negotiation.
       if (beat.kind === 'agent-demo') return
 
-      // 5. Speech is awaited ALONGSIDE the hold timer (Promise.all, not a
+      // 5. Narration is awaited ALONGSIDE the hold timer (Promise.all, not a
       //    race) — this is what actually fixes beats cutting themselves off
       //    mid-sentence: previously the caption components spoke on their
       //    own, decoupled from this timer, so a scene routinely advanced
-      //    (cancelling the utterance) before the browser's TTS engine had
-      //    finished reading the line. `hold` still sets a sensible floor for
-      //    short lines or when speech is unsupported/disabled/reduced-motion.
+      //    (cancelling the clip/utterance) before it had actually finished.
+      //    `hold` still sets a sensible floor for short lines or when
+      //    narration is unsupported/disabled/reduced-motion. `narrate()`
+      //    plays the real recorded clip at public/audio/demo/{beat.id}.mp3
+      //    when one exists, falling back to live Web Speech otherwise.
       const hold = reducedMotionRef.current ? Math.min(beat.holdMs, 900) : beat.holdMs
       if (reducedMotionRef.current) {
         await sleep(hold)
       } else {
-        await Promise.all([sleep(hold), speak(beat.narration)])
+        await Promise.all([sleep(hold), narrate(beat.narration, beat.id)])
       }
       if (!cancelled) setBeatIndex(i => i + 1)
     })()

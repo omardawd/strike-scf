@@ -47,8 +47,54 @@ function supported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
+let currentAudio: HTMLAudioElement | null = null
+
 export function stopSpeaking(): void {
   if (supported()) window.speechSynthesis.cancel()
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio = null
+  }
+}
+
+// Plays a real recorded clip (public/audio/demo/*.mp3) and resolves `true`
+// once it actually finishes — same "await the real thing, not just the
+// call" fix as speak() below, for the same reason. Resolves `false` on any
+// failure (404, decode error, blocked autoplay) so the caller can fall back
+// to speak() instead of the beat going silent.
+function playRecordedAudio(url: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const audio = new Audio(url)
+    currentAudio = audio
+    let settled = false
+    const finish = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      if (currentAudio === audio) currentAudio = null
+      resolve(ok)
+    }
+    audio.addEventListener('ended', () => finish(true))
+    audio.addEventListener('error', () => finish(false))
+    audio.play().catch(() => finish(false))
+    // Every recorded clip here is under 15s — this is only a backstop in
+    // case 'ended' never fires for some reason, not a real pacing limit.
+    setTimeout(() => finish(true), 30000)
+  })
+}
+
+// The single entry point every beat should call: plays the real recorded
+// clip for `audioId` if one exists (public/audio/demo/{audioId}.mp3),
+// falling back to live Web Speech if it's missing or fails to load. This is
+// what lets fixed lines sound like a real narrator while Scene 6's dynamic
+// captions (excerpts of Strike AI's actual live reply, different every run —
+// see DemoAgentActivityFeed.tsx) keep working exactly as before, since they
+// have no `audioId` and go straight to speak().
+export async function narrate(text: string, audioId?: string): Promise<void> {
+  if (audioId) {
+    const played = await playRecordedAudio(`/audio/demo/${audioId}.mp3`)
+    if (played) return
+  }
+  await speak(text)
 }
 
 // Strips the same directive syntax renderAssistantContent parses out
