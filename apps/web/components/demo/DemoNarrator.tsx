@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { speak } from './demo-speech'
 
 // Captions always render immediately from `line`, independent of audio.
 // `audioSrc` is optional — when a real recorded narration clip exists for
-// this beat, it plays alongside the caption. Without one, `line` is spoken
-// aloud via the free Web Speech API instead — no account, no generated
-// files, works today.
+// this beat, it plays alongside the caption. Speech (Web Speech API) is
+// driven centrally by DemoConductor, not from here — it needs to be
+// awaited against the beat's hold timer so a scene never advances before
+// its narration finishes (see demo-speech.ts's speak() doc comment).
 export function DemoNarrator({ line, audioSrc, onSkip }: { line: string; audioSrc?: string; onSkip: () => void }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -18,14 +18,6 @@ export function DemoNarrator({ line, audioSrc, onSkip }: { line: string; audioSr
     audio.play().catch(() => {}) // ignored — autoplay may still be blocked pre-gesture; captions carry the beat regardless
     return () => { audio.pause() }
   }, [audioSrc])
-
-  useEffect(() => {
-    if (audioSrc || !line) return
-    speak(line)
-    // No cleanup cancel here — DemoConductor cancels on beat change/finish
-    // itself, and cancelling on every dependency change would cut a line
-    // off mid-sentence the instant its own re-render fires.
-  }, [line, audioSrc])
 
   if (!line) return null
   return (

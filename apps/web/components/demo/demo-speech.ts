@@ -70,16 +70,44 @@ function speakableText(text: string): string {
 // before a user gesture — some browsers queue it silently rather than
 // throwing, and the audio-gate's own click satisfies the gesture
 // requirement for every beat that follows.
-export async function speak(text: string): Promise<void> {
-  if (!supported()) return
+//
+// Resolves once speech actually FINISHES (utterance 'end'/'error'), not the
+// instant `.speak()` is called — this used to resolve immediately, which is
+// exactly why beats were audibly cutting themselves off: the caller's own
+// visual hold timer ran on a fixed word-count estimate, completely
+// decoupled from how long the browser's TTS engine actually took to read
+// the line, so the scene routinely advanced (cancelling this utterance)
+// mid-sentence. Callers now combine this with their hold timer via
+// `Promise.all`, so a beat never advances before its narration is done. A
+// safety timeout still caps the wait in case 'end' never fires (a real
+// quirk in some browsers/voices), so a beat can never hang forever.
+export function speak(text: string): Promise<void> {
+  if (!supported()) return Promise.resolve()
   const clean = speakableText(text)
-  if (!clean) return
-  await ensureVoicesLoaded()
-  if (cachedVoice === undefined) cachedVoice = resolveVoice()
-  window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(clean)
-  if (cachedVoice) utterance.voice = cachedVoice
-  utterance.rate = 1.0
-  utterance.pitch = 1.0
-  window.speechSynthesis.speak(utterance)
+  if (!clean) return Promise.resolve()
+  return ensureVoicesLoaded().then(() => new Promise<void>(resolve => {
+    if (cachedVoice === undefined) cachedVoice = resolveVoice()
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(clean)
+    if (cachedVoice) utterance.voice = cachedVoice
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+
+    let settled = false
+    let safety: ReturnType<typeof setTimeout>
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(safety)
+      resolve()
+    }
+    utterance.onend = finish
+    utterance.onerror = finish
+    // ~150ms/word at a natural reading pace, generous floor/ceiling either
+    // side — this only ever matters when 'end' fails to fire at all.
+    const safetyMs = Math.min(20000, Math.max(3000, clean.split(' ').length * 420))
+    safety = setTimeout(finish, safetyMs)
+
+    window.speechSynthesis.speak(utterance)
+  }))
 }

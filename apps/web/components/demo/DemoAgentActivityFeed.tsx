@@ -292,11 +292,12 @@ const MAX_ROUNDS_SHOWN = 3
 // real chat this scene is built around lives at the bottom of the page (the
 // message list + its input box), and a bottom-fixed caption used to sit
 // right on top of both, hiding the very thing the scene is supposed to show.
+// Speech is driven explicitly alongside each caption's own wait in the main
+// sequence below (Promise.all), not from an effect here — the same fix as
+// DemoConductor.tsx, for the same reason: an effect firing independently of
+// the sequence's own pacing is exactly what let captions get cut off
+// mid-sentence when the next one landed first.
 function TopCaption({ line, onSkip }: { line: string; onSkip: () => void }) {
-  useEffect(() => {
-    if (line) speak(line)
-  }, [line])
-
   if (!line) return null
   return (
     <div
@@ -465,7 +466,8 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
         // ── 1. Propose a plan ──────────────────────────────────────────────
         setPhase('planning')
-        setCaption('The agent will plan first, then based on your command, let’s ask it for help with stocking up on our inventory.')
+        const planIntro = 'The agent will plan first, then based on your command, let’s ask it for help with stocking up on our inventory.'
+        setCaption(planIntro)
         setLogStatus('Strike AI is researching…')
         setLogNow('Searching Strike Place and benchmarking price for a larger steel order.')
         setLogNext('Come back with a recommended listing, quantity, and opening price.')
@@ -474,7 +476,14 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // cache key doesn't include the message text itself, so reusing
         // 'demo-plan' here would have replayed the OLD prompt's cached reply
         // (no counterparty vetting ask in it) against the NEW prompt.
-        const planReply = await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan-v2')
+        // Speech (Promise.all, not fire-and-forget) so the intro line is never
+        // cut off by the reply landing first — sendMessage's own typing
+        // animation + real API call comfortably covers a short line's speech,
+        // but this makes it a guarantee rather than a coincidence of timing.
+        const [, planReply] = await Promise.all([
+          speak(planIntro),
+          bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan-v2'),
+        ])
         if (isCancelled()) return
 
         // ── 1b. Spotlight the plan's real reply, right where it actually
@@ -487,7 +496,11 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:', 480)
         setCaption(planText)
         setLogNow('Plan received — reviewing it before deciding what to change.')
-        await sleep(highlightHoldMs(planText, 13000))
+        // Promise.all, not a race — the hold is a floor, not a cap. Real TTS
+        // for a long excerpt can run past the estimate; this is what actually
+        // stops the plan reveal (the centerpiece "look what it did" beat)
+        // from getting talked over by the next line.
+        await Promise.all([sleep(highlightHoldMs(planText, 13000)), speak(planText)])
         if (isCancelled()) return
         setSpotlightChat(false)
 
@@ -495,11 +508,12 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         //     sent, so the upcoming REVISE_MESSAGE reads as a deliberate
         //     decision instead of an abrupt scripted line.
         setPhase('revising')
-        setCaption('Let’s revise it a little, how about we ask it to tighten the price ceiling and pull the deadline in.')
+        const reviseIntro = 'Let’s revise it a little, how about we ask it to tighten the price ceiling and pull the deadline in.'
+        setCaption(reviseIntro)
         setLogStatus('Revising the plan…')
         setLogNow('Tightening the price ceiling and shortening the deadline.')
         setLogNext('Wait for a go-ahead before submitting anything.')
-        await sleep(2600)
+        await Promise.all([sleep(2600), speak(reviseIntro)])
         if (isCancelled()) return
         const reviseReply = await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
         if (isCancelled()) return
@@ -510,17 +524,18 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         const reviseText = replyHighlight(reviseReply || '', 'Updated:')
         setCaption(reviseText)
         setLogNow('Revision received — ready for a go-ahead.')
-        await sleep(highlightHoldMs(reviseText))
+        await Promise.all([sleep(highlightHoldMs(reviseText)), speak(reviseText)])
         if (isCancelled()) return
         setSpotlightChat(false)
 
         // ── 3. Execute — this is the one message that actually acts ────────
         setPhase('executing')
-        setCaption('Great, now let’s execute.')
+        const executeLine = 'Great, now let’s execute.'
+        setCaption(executeLine)
         setLogStatus('Submitting the offer…')
         setLogNow('Opening a real offer on the listing, on your behalf.')
         setLogNext(null)
-        await sleep(400)
+        await Promise.all([sleep(400), speak(executeLine)])
         if (isCancelled()) return
         const before = await fetchTaskIds()
         await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute')
@@ -529,9 +544,10 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         const rootId = await pollForNewTask(before, isCancelled)
         if (isCancelled()) return
         if (!rootId) {
-          setCaption('The offer is taking longer than usual to appear this run.')
+          const timeoutLine = 'The offer is taking longer than usual to appear this run.'
+          setCaption(timeoutLine)
           setPhase('error')
-          await sleep(2200)
+          await Promise.all([sleep(2200), speak(timeoutLine)])
           if (!isCancelled()) onDoneRef.current()
           return
         }
@@ -539,9 +555,14 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // ── 4. Negotiate — real, live, capped to a few visible rounds ───────
         negotiationStarted = true
         setPhase('negotiating')
-        setCaption('It’s triggering a negotiation with the counterparty’s agent.')
+        const negotiatingLine = 'It’s triggering a negotiation with the counterparty’s agent.'
+        setCaption(negotiatingLine)
         setLogStatus('Negotiating…')
         setLogNow('Live round-by-round negotiation with the counterparty’s own agent.')
+        // Not awaited — the negotiation loop below (real network polling,
+        // several seconds minimum per round) comfortably outlasts this short
+        // line's speech, and blocking here would delay the first real tick.
+        void speak(negotiatingLine)
         void expandFor(2000)
 
         const dealId = await runNegotiationLoop(
@@ -553,7 +574,9 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
             if (round >= MAX_ROUNDS_SHOWN) {
               framesFrozen = true
               setPhase('wrapping')
-              setCaption('Agents can negotiate up to 10 rounds — or stop early if either side asks it to.')
+              const wrapLine = 'Agents can negotiate up to 10 rounds — or stop early if either side asks it to.'
+              setCaption(wrapLine)
+              void speak(wrapLine)
               setLogStatus('Wrapping up…')
               setLogNow('Reviewing final terms in the background — the rest of the back-and-forth is condensed here.')
               setExpanded(false)
@@ -603,28 +626,29 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         }
 
         setPhase('done')
-        setCaption('Done. We have secured a deal and now it’s in the contract period. Let’s ask it to generate a financing request for that deal as well.')
+        const closedLine = 'Done. We have secured a deal and now it’s in the contract period. Let’s ask it to generate a financing request for that deal as well.'
+        setCaption(closedLine)
         setLogStatus('Deal finalized ✓')
         setLogNow('Terms agreed. Now in the contract period.')
         setLogNext(null)
-        await sleep(900)
+        await Promise.all([sleep(900), speak(closedLine)])
         if (isCancelled()) return
         const summary = await submitFinancing(dealId)
         if (isCancelled()) return
         if (summary) setLogNow(`Terms agreed — now in the contract period. Financing requested: ${summary}.`)
-        setCaption(
-          summary
-            ? 'Our request is live. We have sourced, vetted, negotiated, and financed with Strike in less than 2 minutes!'
-            : 'Done. We have secured a deal and now it’s in the contract period.'
-        )
-        await sleep(2600)
+        const finalLine = summary
+          ? 'Our request is live. We have sourced, vetted, negotiated, and financed with Strike in less than 2 minutes!'
+          : 'Done. We have secured a deal and now it’s in the contract period.'
+        setCaption(finalLine)
+        await Promise.all([sleep(2600), speak(finalLine)])
         if (!isCancelled()) onDoneRef.current()
       } catch {
         if (isCancelled()) return
         setSpotlightChat(false)
-        setCaption('Something interrupted this live run.')
+        const errorLine = 'Something interrupted this live run.'
+        setCaption(errorLine)
         setPhase('error')
-        await sleep(2000)
+        await Promise.all([sleep(2000), speak(errorLine)])
         if (!isCancelled()) onDoneRef.current()
       } finally {
         // Whatever happened — success, timeout, or error — a real
@@ -637,6 +661,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
     return () => {
       cancelled = true
+      stopSpeaking()
       // Covers an early skip/navigation-away mid-negotiation — the async
       // function above may never reach its own `finally` if it's paused on
       // an in-flight await when this fires, so close defensively here too.

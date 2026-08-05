@@ -215,8 +215,20 @@ export default function Dashboard2Page() {
   }, [portal, user?.org_id, t])
 
   // ── Personalized, actionable opener (same /api/ai/insight the rest of the app uses) ──
+  // insightFetchedRef guards against firing this more than once per mount —
+  // confirmed live (via network-request logging) that this effect was
+  // issuing THREE real POSTs per page load instead of one, each one paying
+  // full AI cost whenever the server-side cache hadn't been populated yet
+  // (React StrictMode's dev-mode double-invoke plus at least one more re-run
+  // from this effect's own dependency instability). The server-side cache in
+  // /api/ai/insight only protects the demo org and only once a value exists;
+  // this ref-guard is what actually stops the redundant calls from firing in
+  // the first place, for every user, not just the demo org.
+  const insightFetchedRef = useRef(false)
   useEffect(() => {
     if (loading) return
+    if (insightFetchedRef.current) return
+    insightFetchedRef.current = true
     let cancelled = false
     fetch('/api/ai/insight', {
       method: 'POST',
