@@ -1736,7 +1736,7 @@ export default function ListingDetailPage() {
 
             {/* Poster passport */}
             {poster_org && (
-              <Reveal delay={0} className="card">
+              <Reveal delay={0} className="card" data-demo-target="listing-detail-poster">
                 <div className="card-head">{t('listingDetail.listingPostedBy')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px 16px' }}>
                   <PassportScoreRing

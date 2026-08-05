@@ -29,6 +29,12 @@ export interface ChatApi {
    *  Claude again once one exists, so repeated tour replays stop spending
    *  real API credits. See lib/ai/demo-ai-cache.ts. */
   sendMessage: (text: string, cacheKey?: string) => Promise<void>
+  /** Appends a message straight into the real chat's conversation state, as
+   *  if it were an assistant reply — no /api/ai/chat call at all. Used by
+   *  DemoAgentActivityFeed (Scene 7) to surface real negotiation rounds
+   *  (already fetched from agent_task_messages) into the visible chat
+   *  instead of only the small Agent Log panel. */
+  appendAssistantMessage?: (text: string) => void
 }
 
 interface DemoFormBridgeValue {

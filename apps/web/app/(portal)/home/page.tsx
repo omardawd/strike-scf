@@ -359,6 +359,21 @@ export default function Dashboard2Page() {
     else runFollowUpMessage(input)
   }
 
+  // Appends a message straight into the visible conversation — no
+  // /api/ai/chat call — used by DemoAgentActivityFeed (Scene 7) to surface
+  // real negotiation rounds (already fetched from agent_task_messages) into
+  // the actual chat instead of only its own small Agent Log panel.
+  const appendAssistantMessage = useCallback((text: string) => {
+    if (!conversationId) return
+    const now = new Date().toISOString()
+    const msg: Message = { role: 'assistant', content: text, timestamp: now }
+    setMessages(prev => {
+      const updated = [...prev, msg]
+      saveConversations(loadConversations().map(c => c.id === conversationId ? { ...c, messages: updated, updatedAt: now } : c))
+      return updated
+    })
+  }, [conversationId])
+
   // Lets the demo tour's Scene 7 (DemoAgentActivityFeed) send a scripted
   // message through this exact same real send path — same request shape,
   // same conversation state, same rendering — rather than a parallel/mocked
@@ -380,9 +395,10 @@ export default function Dashboard2Page() {
         setInput('')
         return started ? runFollowUpMessage(text, cacheKey) : runFirstMessage(text, cacheKey)
       },
+      appendAssistantMessage,
     })
     return () => demoBridge.registerChatApi(null)
-  }, [demoBridge, started, runFirstMessage, runFollowUpMessage])
+  }, [demoBridge, started, runFirstMessage, runFollowUpMessage, appendAssistantMessage])
 
   function resetToIdle() {
     setStarted(false)

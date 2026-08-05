@@ -1005,7 +1005,7 @@ export default function DealDetailPage() {
 
             {/* Contract Panel — v2 procurement flow */}
             {contractData?.contract?.submitted_at && (
-              <div className="card">
+              <div className="card" data-demo-target="deal-contract">
                 <div className="card-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {t('dealDetail.tradeContract')}
                   {contractData.contract.supplier_signed_at

@@ -9,9 +9,26 @@ import { DemoNarrator } from './DemoNarrator'
 import { DemoAgentActivityFeed } from './DemoAgentActivityFeed'
 import { DemoCursor, type DemoCursorHandle } from './DemoCursor'
 import { DemoFormBridgeProvider, useDemoFormBridge } from './DemoFormBridge'
-import { waitForTarget, sleep } from './demo-utils'
+import { waitForTarget, waitForRoute, sleep } from './demo-utils'
 
 type RunnerStatus = 'checking' | 'idle' | 'resetting' | 'running' | 'done'
+
+// Holds off mounting the dimming/highlight box for `delayMs` after the
+// target is otherwise ready — used on the very first reveal (passport-score)
+// so the real page gets a beat to just be seen, plainly, before the tour
+// starts pointing at anything on it.
+function DelayedSpotlight({ targetSelector, delayMs }: { targetSelector: string; delayMs: number }) {
+  const [ready, setReady] = useState(delayMs <= 0)
+  useEffect(() => {
+    if (delayMs <= 0) return
+    setReady(false)
+    const t = setTimeout(() => setReady(true), delayMs)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSelector, delayMs])
+  if (!ready) return null
+  return <SpotlightOverlay targetSelector={targetSelector} />
+}
 
 function DemoRunner() {
   const router = useRouter()
@@ -88,11 +105,13 @@ function DemoRunner() {
     fetch('/api/demo/reset', { method: 'POST' })
       .catch(() => {})
       .finally(() => {
-        // The tour opens on Passport (the 'passport-score' beat fades into
-        // it directly — see fadeReveal in demo-script.ts), hidden behind the
-        // audio-gate/welcome text scenes while it loads. Every later beat
-        // still navigates via real cursor clicks from wherever this lands.
-        router.push('/passport')
+        // The tour opens on Home, exactly like a real login would. The
+        // 'passport-score' beat pushes to /passport itself, timed right
+        // before its own reveal (see `directRoute` below) — not here — so
+        // that page's real mount + entrance animation is still fresh/visible
+        // when the veil lifts, instead of having already finished minutes
+        // earlier during the audio-gate/welcome hold.
+        router.push('/home')
         setBeatIndex(0)
         setStatus('running')
       })
@@ -107,6 +126,16 @@ function DemoRunner() {
     const cancelledRef = { current: false }
 
     ;(async () => {
+      // 0. The one beat that "loads in" rather than being clicked to (see
+      //    fadeReveal below) navigates itself, timed so the destination
+      //    page's own mount/entrance animation is still playing when the
+      //    veil lifts a moment later, instead of long since finished.
+      if (beat.directRoute) {
+        router.push(beat.directRoute)
+        await waitForRoute(beat.directRoute, 8000)
+        if (cancelled) return
+      }
+
       // 1. Drive the visible cursor through this beat's real click path, if
       //    it has one — the same clicks a viewer would make to get here
       //    (sidebar link, list item, tab button), never a direct route jump.
@@ -265,7 +294,7 @@ function DemoRunner() {
         className="demo-fade-veil"
         style={{
           position: 'fixed', inset: 0, zIndex: 9998, background: 'var(--white)',
-          pointerEvents: 'none', animation: 'demo-fade-veil 650ms ease both',
+          pointerEvents: 'none', animation: 'demo-fade-veil 900ms ease both',
         }}
       />
     </>
@@ -273,7 +302,9 @@ function DemoRunner() {
 
   return (
     <>
-      {beat.target && !beat.noHighlight && <SpotlightOverlay targetSelector={beat.target} />}
+      {beat.target && !beat.noHighlight && (
+        <DelayedSpotlight targetSelector={beat.target} delayMs={beat.spotlightDelayMs ?? 0} />
+      )}
       <DemoNarrator line={beat.narration} onSkip={finish} />
       {veil}
       {cursor}

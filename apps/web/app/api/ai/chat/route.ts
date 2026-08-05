@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
       toolUseBlocks.map(async (block: any) => {
         let result: Record<string, unknown>
         try {
-          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>)
+          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>, { demoCacheable: demoCacheLabel !== null })
         } catch (err) {
           result = { error: err instanceof Error ? err.message : 'Tool execution failed' }
         }

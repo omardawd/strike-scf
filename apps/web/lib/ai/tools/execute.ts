@@ -28,6 +28,7 @@ import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './ha
 import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './handlers/accept-marketplace-offer'
 import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
 import { generateDocument, type GenerateDocumentInput } from './handlers/generate-document'
+import { getCachedAiResponse, setCachedAiResponse } from '../demo-ai-cache'
 
 export type ToolName =
   | 'get_agent_tasks'
@@ -57,7 +58,40 @@ export type ToolName =
   | 'get_capital_position'
   | 'generate_document'
 
+// Stable (key-sorted) stringify so the same logical tool input always
+// produces the same cache key regardless of property insertion order.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const obj = value as Record<string, unknown>
+  const keys = Object.keys(obj).sort()
+  return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`
+}
+
 export async function executeTool(
+  toolName: ToolName,
+  toolInput: Record<string, unknown>,
+  // Set by demo-tour-only callers (see lib/ai/demo-ai-cache.ts) that already
+  // know they're inside the scripted demo tenant flow. Read-only/reasoning
+  // tools (anything not in WRITE_TOOLS) get their result cached and replayed
+  // on later tour runs instead of re-spending real API credits and DB reads
+  // — WRITE_TOOLS are always excluded here regardless of this flag, since
+  // those need to create fresh real state (offers, negotiations, deals)
+  // every single replay.
+  opts?: { demoCacheable?: boolean }
+): Promise<Record<string, unknown>> {
+  if (opts?.demoCacheable && !WRITE_TOOLS.includes(toolName)) {
+    const cacheKey = `tool:${toolName}:${stableStringify(toolInput)}`
+    const cached = await getCachedAiResponse(cacheKey)
+    if (cached) return cached as Record<string, unknown>
+    const result = await dispatchTool(toolName, toolInput)
+    setCachedAiResponse(cacheKey, result)
+    return result
+  }
+  return dispatchTool(toolName, toolInput)
+}
+
+async function dispatchTool(
   toolName: ToolName,
   toolInput: Record<string, unknown>
 ): Promise<Record<string, unknown>> {

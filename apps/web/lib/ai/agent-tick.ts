@@ -998,7 +998,7 @@ Make one decision now. If you call counter_marketplace_offer, reject_marketplace
     const reasoning = (textBlock?.text as string | undefined)?.trim() || (toolUse.input?.reasoning as string | undefined) || ''
 
     if (toolUse.name === 'get_pricing_insights' || toolUse.name === 'evaluate_listing_offers') {
-      const result = await executeTool(toolUse.name, toolUse.input)
+      const result = await executeTool(toolUse.name, toolUse.input, { demoCacheable: demoCacheEnabled })
       messages.push({ role: 'assistant', content })
       messages.push({
         role: 'user',

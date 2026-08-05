@@ -90,6 +90,14 @@ export function TextScene({ title, subtitle, logoInTitle, dark, aiGradient, icon
     titleLen > 46 ? 'clamp(28px, 4.4vw, 54px)'
     : titleLen > 26 ? 'clamp(34px, 5.8vw, 70px)'
     : 'clamp(40px, 7.4vw, 92px)'
+  // maxWidth used to be a flat 19ch regardless of tier — fine for a short
+  // title at the largest size, but a medium-length title (e.g. "It's built
+  // for your agent, Strike AI.", 38 chars) forced onto a 19ch box wraps to
+  // two lines even though its smaller font would otherwise fit on one.
+  const titleMaxWidth =
+    titleLen > 46 ? 'min(36ch, 94vw)'
+    : titleLen > 26 ? 'min(30ch, 92vw)'
+    : 'min(19ch, 90vw)'
   // Headline finishes landing before the supporting line arrives, so the two
   // read as one sentence delivered in sequence rather than a wall of text.
   const subtitleDelay = 260 + words.length * 85
@@ -189,7 +197,7 @@ export function TextScene({ title, subtitle, logoInTitle, dark, aiGradient, icon
             fontSize: titleSize,
             lineHeight: 1.06,
             letterSpacing: '-0.035em',
-            maxWidth: 'min(19ch, 90vw)',
+            maxWidth: titleMaxWidth,
             ...(logoInTitle
               ? { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '0.05em 0.32em' }
               : {}),

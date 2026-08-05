@@ -63,10 +63,19 @@ export interface DemoBeat {
    *  that wants the viewer to take in a whole page rather than have one
    *  region called out (e.g. the Strike Place grid on first arrival). */
   noHighlight?: boolean
-  /** The one beat that "loads in" rather than being clicked to — a brief
-   *  white veil fades out over the already-rendered page/spotlight instead of
-   *  a cursor click driving a navSteps sequence. See the module doc comment. */
+  /** Delays mounting the dimming/highlight box by this many ms after the
+   *  target is otherwise ready — the plain page gets a moment to just be
+   *  seen before the tour starts pointing at anything on it. */
+  spotlightDelayMs?: number
+  /** The one beat that "loads in" rather than being clicked to — pushes
+   *  `directRoute` itself (timed so the destination page's own mount +
+   *  entrance animation is still visible), then a brief white veil fades out
+   *  over the freshly-rendered page/spotlight instead of a cursor click
+   *  driving a navSteps sequence. See the module doc comment. */
   fadeReveal?: boolean
+  /** Real route this beat navigates to on its own — only meaningful paired
+   *  with `fadeReveal` (every other beat gets there via `navSteps` instead). */
+  directRoute?: string
   /** Dark, high-contrast variant of `kind: 'text'` — the one deliberate Scene 5 beat. */
   dark?: boolean
   /** Ambient AI-gradient background for `kind: 'text'`. */
@@ -116,15 +125,19 @@ export const DEMO_SCENES: DemoBeat[] = [
   }),
 
   // ── Scene 2 — Strike Passport ────────────────────────────────────────────
-  // Lands directly on the Passport page (see DemoConductor's start()) — the
-  // app "loading you in" right after the title, not a click a user performs,
-  // so this one beat fades in rather than driving the cursor to a sidebar link.
+  // Lands on the Passport page by navigating itself (directRoute), not a
+  // click a user performs — the app "loading you in" right after the title.
+  // The plain page shows first (spotlightDelayMs) so the viewer actually
+  // sees it arrive before anything gets highlighted on it.
   scene({
     id: 'passport-score',
     kind: 'spotlight',
     narration: 'Every business on Strike carries a PassportScore — a real-time trust score built from real trade activity, scored the same way our own analysts would.',
     fadeReveal: true,
+    directRoute: '/passport',
+    spotlightDelayMs: 1100,
     target: 'passport-score-summary',
+    extraMs: 1100,
   }),
   scene({
     id: 'passport-breakdown',
@@ -150,10 +163,23 @@ export const DEMO_SCENES: DemoBeat[] = [
     noHighlight: true,
   }),
   scene({
-    id: 'strike-place-listing',
+    id: 'strike-place-listing-intro',
     kind: 'spotlight',
-    narration: 'Open a listing and this is how you’d submit an offer — or counter one already on the table.',
+    narration: 'Every listing carries the full trade terms — quantity, incoterms, price — straight from the source.',
     navSteps: [{ target: `listing-card-${DEMO_IRONBRIDGE_COILS_LISTING_ID}` }],
+    target: 'listing-detail-poster',
+    noHighlight: true,
+  }),
+  scene({
+    id: 'strike-place-listing-passport',
+    kind: 'spotlight',
+    narration: 'And right there is the counterparty’s own PassportScore — you know exactly who you’d be trading with before you ever make an offer.',
+    target: 'listing-detail-poster',
+  }),
+  scene({
+    id: 'strike-place-listing-offer',
+    kind: 'spotlight',
+    narration: 'This is how you’d submit an offer — or counter one already on the table.',
     target: 'listing-detail-offer',
     extraMs: 400,
   }),
@@ -177,6 +203,13 @@ export const DEMO_SCENES: DemoBeat[] = [
     navSteps: [{ target: 'nav-deals' }, { target: `deal-row-${DEMO_CEDARLINE_DEAL_ID}` }],
     target: 'deal-negotiation',
     extraMs: 600,
+  }),
+  scene({
+    id: 'deal-contract',
+    kind: 'spotlight',
+    narration: 'This deal is well past that first handshake — the trade contract was signed weeks ago, so what you’re looking at is already finalized.',
+    target: 'deal-contract',
+    extraMs: 400,
   }),
   scene({
     id: 'financing-1',

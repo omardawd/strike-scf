@@ -549,6 +549,7 @@ INSERT INTO deals (
   shipment_tracking_ref, shipment_carrier, shipment_estimated_delivery, shipped_at,
   confirmed_at, in_preparation_at, goods_received_at, goods_confirmed_at,
   counterparty_confirmed, counterparty_confirmed_at,
+  contract_submitted_at, contract_submitted_by, contract_supplier_signature, contract_supplier_signed_at,
   agreed_at, created_at, updated_at
 ) VALUES (
   'de700000-0000-0000-0000-000000000002',
@@ -562,6 +563,11 @@ INSERT INTO deals (
   'CPS-88214-TRK', 'FedEx Freight', (now() - interval '5 days')::date, now() - interval '10 days',
   now() - interval '9 days', now() - interval '9 days', now() - interval '4 days', now() - interval '3 days',
   true, now() - interval '9 days',
+  -- Deal-level trade contract (see apps/web/CLAUDE.md's "Two separate contract
+  -- flows") — the demo tour's deal-contract beat spotlights this, so the
+  -- deal reads as genuinely well past the handshake stage it's already at.
+  now() - interval '13 days', 'de000000-0000-0000-0000-000000000001',
+  'Priya Nair, Owner & CEO — Cedarline Packaging Solutions LLC', now() - interval '12 days',
   now() - interval '14 days', now() - interval '14 days', now() - interval '3 days'
 )
 ON CONFLICT (id) DO NOTHING;

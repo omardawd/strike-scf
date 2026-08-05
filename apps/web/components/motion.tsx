@@ -98,15 +98,17 @@ export function Reveal({
   delay = 0,
   className,
   style,
+  'data-demo-target': dataDemoTarget,
 }: {
   children: ReactNode;
   delay?: number;
   className?: string;
   style?: CSSProperties;
+  'data-demo-target'?: string;
 }) {
   const combinedClassName = `reveal${className ? ` ${className}` : ''}`;
   return (
-    <div className={combinedClassName} style={{ animationDelay: `${delay}ms`, ...style }}>
+    <div className={combinedClassName} style={{ animationDelay: `${delay}ms`, ...style }} data-demo-target={dataDemoTarget}>
       {children}
     </div>
   );
