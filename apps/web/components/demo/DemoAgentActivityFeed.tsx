@@ -17,205 +17,60 @@ import { narrate, speak, stopSpeaking } from './demo-speech'
 // (see lib/ai/demo-ai-cache.ts) — replays don't re-spend real API credits.
 const PLAN_MESSAGE =
   "We need to lock in a larger steel inventory for Q4. Before we commit to anything, put together a plan — the best available listing on Strike Place, a target quantity, a sensible opening price, and a quick read on the counterparty's trustworthiness before we commit to anything."
+// Explicit "don't submit yet" — without it, Claude reasonably reads
+// "tighten the price ceiling and deadline" as authorization to go ahead and
+// call submit_marketplace_offer right then, since nothing in the message
+// says otherwise. That's exactly what happened under the previous wording:
+// the revise step's own real reply called the tool, so by the time the
+// EXECUTE_MESSAGE below actually ran, the offer already existed and Claude
+// (correctly, from its point of view) replied "already submitted" instead
+// of submitting — which is also why no new agent_tasks ever appeared for
+// EXECUTE's own poll to find.
 const REVISE_MESSAGE =
-  "Tighten the price ceiling a bit and make sure the deadline is no more than 14 days out."
+  "Tighten the price ceiling a bit and make sure the deadline is no more than 14 days out. Just update the plan for now — don't submit anything until I say go."
 const EXECUTE_MESSAGE =
   "That works — go ahead and submit the opening offer now."
 
 type Phase = 'landing' | 'planning' | 'revising' | 'executing' | 'negotiating' | 'wrapping' | 'done' | 'error'
 
-interface TaskListItem { id: string }
 interface ThreadMessage { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at: string }
-interface NegotiationInfo { status: string; current_round: number }
-interface ThreadTask {
-  id: string
-  status: string
-  type: string
-  result?: Record<string, unknown> | null
-  negotiation?: NegotiationInfo | null
-}
-
-async function fetchTaskIds(): Promise<Set<string>> {
-  try {
-    const res = await fetch('/api/agents/tasks?limit=100', { cache: 'no-store' })
-    if (!res.ok) return new Set()
-    const data = await res.json()
-    return new Set(((data.tasks ?? []) as TaskListItem[]).map((t) => t.id))
-  } catch {
-    return new Set()
-  }
-}
-
-async function fetchThread(rootId: string): Promise<{ rootTask: ThreadTask | null; currentTask: ThreadTask | null; messages: ThreadMessage[] }> {
-  try {
-    const res = await fetch(`/api/agents/tasks/${rootId}/messages`, { cache: 'no-store' })
-    if (!res.ok) return { rootTask: null, currentTask: null, messages: [] }
-    const data = await res.json()
-    return { rootTask: data.rootTask ?? null, currentTask: data.currentTask ?? null, messages: data.messages ?? [] }
-  } catch {
-    return { rootTask: null, currentTask: null, messages: [] }
-  }
-}
-
-async function postApprove(taskId: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/agents/tasks/${taskId}/approve`, { method: 'POST' })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-interface CounterpartyTaskInfo { id: string; type: string; status: string }
-
-// A good offer can be finalized from EITHER side of a negotiation (see
-// runListingDefenseTick in lib/ai/agent-tick.ts) — when the counterparty
-// (listing owner) decides to accept, that finalize task is created under
-// THEIR org, invisible to our own thread. There's no counterparty session in
-// this demo to click their own approve button, so this cross-org lookup +
-// approve pair (both demo-gated) lets the loop react to whichever side
-// actually produces the finalize card.
-async function fetchCounterpartyTask(rootId: string): Promise<CounterpartyTaskInfo | null> {
-  try {
-    const res = await fetch(`/api/demo/negotiation-status?rootTaskId=${rootId}`, { cache: 'no-store' })
-    if (!res.ok) return null
-    const data = await res.json()
-    return (data?.counterpartyTask ?? null) as CounterpartyTaskInfo | null
-  } catch {
-    return null
-  }
-}
-
-async function postApproveAny(taskId: string): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch('/api/demo/approve-task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId }),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    return (data?.result ?? null) as Record<string, unknown> | null
-  } catch {
-    return null
-  }
-}
-
-async function postTick() {
-  try {
-    // /api/demo/tick, not /api/agents/tick — the real, session-scoped tick
-    // route only advances the CALLER's own org's side of a negotiation, but
-    // Harborview (the demo login) just made the opening offer, so it's the
-    // counterparty's (listing owner's) turn to respond first. The demo-only
-    // route ticks both sides unscoped, same as the real pg_cron job does.
-    await fetch('/api/demo/tick', { method: 'POST' })
-  } catch {
-    // The next loop iteration just retries — a single missed tick isn't fatal.
-  }
-}
 
 // Force-closes the demo tenant's negotiation the instant this run is done
 // with it (success, timeout, error, or an early skip) — see the route's own
 // doc comment for why this can't just wait for the next Replay's reset.
 // Fire-and-forget: never let a cleanup call block or throw into the caller.
+// Mostly a defensive backstop now — the mock negotiation below already
+// finalizes the negotiation row itself on success — for the rare case
+// mock-negotiate 404s (no offer to act on) and leaves it sitting 'active'.
 function closeDemoNegotiation() {
   fetch('/api/demo/close-negotiation', { method: 'POST' }).catch(() => {})
 }
 
-// Finds the agent_tasks thread the EXECUTE_MESSAGE just created by diffing
-// against the task ids that existed right before sending it — reliable even
-// though the demo org already has several seeded, unrelated pending tasks.
-async function pollForNewTask(before: Set<string>, isCancelled: () => boolean): Promise<string | null> {
-  const deadline = Date.now() + 15000
-  while (Date.now() < deadline) {
-    if (isCancelled()) return null
-    const res = await fetch('/api/agents/tasks?limit=100', { cache: 'no-store' }).catch(() => null)
-    if (res?.ok) {
-      const data = await res.json()
-      const found = ((data.tasks ?? []) as TaskListItem[]).find((t) => !before.has(t.id))
-      if (found) return found.id
-    }
-    await sleep(450)
+// Resolves Scene 6's negotiation deterministically — see
+// app/api/demo/mock-negotiate/route.ts's own doc comment for why this
+// replaced polling the real tick loop here specifically (that loop is still
+// exactly how a real, non-demo negotiation runs; this is a demo-only
+// substitute for the one place a live sales audience can't tolerate the
+// real thing's timing uncertainty). The route writes real
+// marketplace_offers rounds and a real deals row via the same shared
+// counterOffer/acceptOffer functions the rest of the app uses — only the
+// PACE and the NUMBERS are scripted, not the underlying data.
+async function runMockNegotiation(isCancelled: () => boolean): Promise<{ rounds: ThreadMessage[]; dealId: string } | null> {
+  try {
+    const res = await fetch('/api/demo/mock-negotiate', { method: 'POST' })
+    if (isCancelled() || !res.ok) return null
+    const data = await res.json()
+    const dealId = data?.dealId
+    const rawRounds = Array.isArray(data?.rounds) ? data.rounds : []
+    if (typeof dealId !== 'string' || rawRounds.length === 0) return null
+    const now = Date.now()
+    const rounds: ThreadMessage[] = rawRounds.map((r: { content: string }, i: number) => ({
+      id: `mock-round-${i}`, role: 'system', content: r.content, created_at: new Date(now + i).toISOString(),
+    }))
+    return { rounds, dealId }
+  } catch {
+    return null
   }
-  return null
-}
-
-const TERMINAL_NEGOTIATION_STATUSES = new Set([
-  'completed_rejected', 'failed', 'halted_by_user', 'halted_guardrail', 'completed_withdrawn', 'completed_deadline',
-])
-
-// Drives the real tick loop at demo speed (every ~700ms instead of pg_cron's
-// once-a-minute cadence) and auto-approves whatever comes back needing a
-// human — an escalation (out-of-guardrail terms) or the GATE-2 finalize card
-// — exactly the same way a live viewer clicking Approve would. Streams every
-// real round to the caller via `onMessages`/`onStatus` (the caller decides
-// how much of that to actually show — see `roundsShown` in the component
-// below, which freezes the visible feed after a few rounds while the loop
-// itself keeps running for real underneath). Returns the resulting deal id
-// once GATE 2 is actually approved, or null if the negotiation ends any
-// other way — a live negotiation is not guaranteed to close.
-async function runNegotiationLoop(
-  rootId: string,
-  isCancelled: () => boolean,
-  onStatus: (s: string, round: number) => void,
-  onMessages: (msgs: ThreadMessage[]) => void
-): Promise<string | null> {
-  const deadline = Date.now() + 60000
-  let ticks = 0
-  while (Date.now() < deadline && ticks < 50) {
-    if (isCancelled()) return null
-    await postTick()
-    ticks++
-    await sleep(700)
-    if (isCancelled()) return null
-
-    const { rootTask, currentTask, messages } = await fetchThread(rootId)
-    onMessages(messages)
-    if (!rootTask || !currentTask) continue
-
-    if (currentTask.status === 'awaiting_approval') {
-      const isFinalize = currentTask.type === 'negotiation_ready_to_finalize'
-      onStatus(
-        isFinalize
-          ? 'Terms look good — one final approval before this becomes a real deal.'
-          : 'It hit a guardrail and is asking for guidance — approving to keep it moving.',
-        rootTask.negotiation?.current_round ?? 0
-      )
-      await sleep(900)
-      if (isCancelled()) return null
-      await postApprove(currentTask.id)
-      if (isFinalize) {
-        await sleep(500)
-        const { currentTask: finalized } = await fetchThread(rootId)
-        const dealId = finalized?.result?.deal_id
-        return typeof dealId === 'string' ? dealId : null
-      }
-      continue
-    }
-
-    // Our own side has nothing pending — check whether the COUNTERPARTY's
-    // agent decided to accept instead.
-    const counterpartyTask = await fetchCounterpartyTask(rootId)
-    if (counterpartyTask?.type === 'negotiation_ready_to_finalize') {
-      onStatus('The counterparty’s agent is ready to accept — approving finalization.', rootTask.negotiation?.current_round ?? 0)
-      await sleep(900)
-      if (isCancelled()) return null
-      const result = await postApproveAny(counterpartyTask.id)
-      const dealId = result?.deal_id
-      if (typeof dealId === 'string') return dealId
-      continue
-    }
-
-    const negStatus = rootTask.negotiation?.status
-    if (negStatus && TERMINAL_NEGOTIATION_STATUSES.has(negStatus)) {
-      onStatus('This round didn’t land a deal — even Strike AI knows when to walk away.', rootTask.negotiation?.current_round ?? 0)
-      return null
-    }
-
-    onStatus(`Round ${rootTask.negotiation?.current_round ?? '—'} — reasoning through terms in real time.`, rootTask.negotiation?.current_round ?? 0)
-  }
-  onStatus('Still negotiating — real rounds can take a little longer than a script.', 0)
-  return null
 }
 
 async function submitFinancing(dealId: string): Promise<string | null> {
@@ -350,8 +205,6 @@ function planSectionNarration(title: string): { id: string; text: string } | nul
 const FALLBACK_PLAN_LINE = 'Here’s the plan it came back with — take a look.'
 const REVISE_UPDATE_LINE = 'It’s tightened the price ceiling and pulled the deadline in — ready for your final go-ahead.'
 
-const MAX_ROUNDS_SHOWN = 3
-
 // Narrates the scene from the TOP of the screen instead of the bottom — the
 // real chat this scene is built around lives at the bottom of the page (the
 // message list + its input box), and a bottom-fixed caption used to sit
@@ -403,7 +256,6 @@ function AgentLogPanel({
   now,
   next,
   feed,
-  moreRoundsHappening,
 }: {
   expanded: boolean
   onToggle: () => void
@@ -411,7 +263,6 @@ function AgentLogPanel({
   now: string
   next: string | null
   feed: ThreadMessage[]
-  moreRoundsHappening: boolean
 }) {
   return (
     <div
@@ -469,11 +320,6 @@ function AgentLogPanel({
                   {shortMsg(m.content)}
                 </div>
               ))}
-              {moreRoundsHappening && (
-                <div style={{ fontSize: 10.5, color: 'var(--gray-soft)', fontStyle: 'italic' }}>
-                  …more rounds happening live, condensed here.
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -570,10 +416,12 @@ function NegotiationTicker({ lines }: { lines: string[] }) {
 // prospect): propose a plan, revise it, then say go — but everything that
 // happens as a result is real: the actual /api/ai/chat replies (rendered in
 // the real Home chat log, not a copy of it), a real submit_marketplace_offer
-// tool call, a real accelerated tick-loop negotiation, a real GATE-2
-// finalize, and a real financing request on the resulting deal. As the
-// negotiation runs, each new real round also gets appended straight into the
-// visible chat (not just the small Agent Log) — see appendAssistantMessage.
+// tool call, and a real financing request on the resulting deal. The
+// negotiation step itself is resolved deterministically (see
+// runMockNegotiation/app/api/demo/mock-negotiate — real DB writes, scripted
+// pace and numbers, zero live-timing risk for a demo audience) rather than
+// polling the real tick loop; each of its two rounds still gets appended
+// straight into the visible chat, same as the rest of this scene.
 export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
   const bridge = useDemoFormBridge()
   const [phase, setPhase] = useState<Phase>('landing')
@@ -583,7 +431,6 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
   const [logNow, setLogNow] = useState('Getting oriented on Home.')
   const [logNext, setLogNext] = useState<string | null>(null)
   const [feed, setFeed] = useState<ThreadMessage[]>([])
-  const [roundsShown, setRoundsShown] = useState(0)
   const [spotlightChat, setSpotlightChat] = useState(false)
   // When set, SpotlightOverlay highlights just this section of the real
   // reply instead of the whole chat bubble — see the plan-walkthrough loop
@@ -603,9 +450,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
     // its own beat-scheduling effect.
     let cancelled = false
     const isCancelled = () => cancelled
-    let framesFrozen = false
     let negotiationStarted = false
-    const chatAppendedIds = new Set<string>()
 
     async function expandFor(ms: number) {
       setExpanded(true)
@@ -702,18 +547,18 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         if (isCancelled()) return
         await sleep(SCENE_TRANSITION_MS)
         if (isCancelled()) return
-        // Cache label bumped to -v2: the OLD 'demo-revise' cache entry was
-        // captured against an earlier version of this script where the
-        // revise step's own message asked Claude to submit an offer
-        // outright — its cached reply (and tool call) genuinely did submit
-        // one. REVISE_MESSAGE no longer asks for that (just a plan change,
-        // talk only), but since the cache is keyed by label, not by the
-        // message text, replaying the OLD label kept serving that
-        // now-mismatched "I've submitted the offer" reply forever, which is
-        // exactly what made the EXECUTE step's reply insist "already
-        // submitted" and create no new task to negotiate. A fresh label
-        // forces a real, correctly-matched capture on the next run.
-        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise-v2')
+        // Cache label bumped to -v3. -v1 ('demo-revise') was captured
+        // against an even earlier script version whose revise message asked
+        // Claude to submit outright — that cached reply genuinely called
+        // submit_marketplace_offer. -v2 was a fresh capture after that got
+        // fixed, but REVISE_MESSAGE at the time still didn't say "don't
+        // submit yet" (see its own doc comment above), so Claude reasonably
+        // chose to submit anyway — same bug, different cache generation. The
+        // cache is keyed by label, not by message text, so either stale
+        // reply would keep replaying forever otherwise. Both -v1 and -v2
+        // rows have been cleared; -v3 forces a fresh, correctly-matched
+        // capture against the now-unambiguous message.
+        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise-v3')
         if (isCancelled()) return
 
         // ── 2b. Same treatment as the plan walkthrough — a short, simplified
@@ -738,100 +583,84 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogNext(null)
         await narrate(executeLine, 'scene6-execute')
         if (isCancelled()) return
-        const before = await fetchTaskIds()
-        // Cache label bumped to -v2 alongside 'demo-revise-v2' above — this
-        // is the FIRST and only message that should ever call
-        // submit_marketplace_offer; see the doc comment on the revise step.
-        await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute-v2')
+        // Cache label paired with 'demo-revise-v3' above — this is the FIRST
+        // and only message that should ever call submit_marketplace_offer;
+        // see the doc comment on REVISE_MESSAGE. sendMessage's own fetch
+        // already awaits the full tool call server-side, so by the time it
+        // resolves the real marketplace_offers row is guaranteed to exist —
+        // no separate poll-for-a-new-task step needed before moving on.
+        await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute-v3')
         if (isCancelled()) return
 
-        const rootId = await pollForNewTask(before, isCancelled)
-        if (isCancelled()) return
-        if (!rootId) {
-          const timeoutLine = 'The offer is taking longer than usual to appear this run.'
-          setCaption(timeoutLine)
-          setPhase('error')
-          await speak(timeoutLine)
-          if (!isCancelled()) await sleep(SCENE_TRANSITION_MS)
-          if (!isCancelled()) onDoneRef.current()
-          return
-        }
-
-        // ── 4. Negotiate — real, live, capped to a few visible rounds ───────
+        // ── 4. Negotiate — deterministic, real writes, no live-timing risk ──
         negotiationStarted = true
         setPhase('negotiating')
         const negotiatingLine = 'It’s triggering a negotiation with the counterparty’s agent.'
         setCaption(negotiatingLine)
         setLogStatus('Negotiating…')
         setLogNow('Live round-by-round negotiation with the counterparty’s own agent.')
-        // Not awaited — the negotiation loop below (real network polling,
-        // several seconds minimum per round) comfortably outlasts this short
-        // line's speech, and blocking here would delay the first real tick.
-        void narrate(negotiatingLine, 'scene6-negotiating')
+        await narrate(negotiatingLine, 'scene6-negotiating')
+        if (isCancelled()) return
+        await sleep(SCENE_TRANSITION_MS)
+        if (isCancelled()) return
         void expandFor(2000)
 
-        const dealId = await runNegotiationLoop(
-          rootId,
-          isCancelled,
-          (status, round) => {
-            if (isCancelled() || framesFrozen) return
-            setLogNow(status)
-            if (round >= MAX_ROUNDS_SHOWN) {
-              framesFrozen = true
-              setPhase('wrapping')
-              const wrapLine = 'Agents can negotiate up to 10 rounds — or stop early if either side asks it to.'
-              setCaption(wrapLine)
-              void narrate(wrapLine, 'scene6-wrapping')
-              setLogStatus('Wrapping up…')
-              setLogNow('Reviewing final terms in the background — the rest of the back-and-forth is condensed here.')
-              setExpanded(false)
-            }
-          },
-          (msgs) => {
-            if (isCancelled()) return
-            setFeed(msgs.slice(-6))
-            setRoundsShown(r => r + 1)
-            const latestSystem = [...msgs].reverse().find(m => m.role === 'system') ?? null
-            setTickerLines(framesFrozen ? [] : tickerLinesFor(latestSystem))
-            if (framesFrozen) return
-            // Surface each new real round straight into the visible chat —
-            // not just the small Agent Log — so the negotiation is actually
-            // watchable where the rest of this scene has been happening. Full
-            // content (not shortMsg's truncated version) so the round's own
-            // [[STRIKE_BLOCK:{"type":"comparison",...}]] renders as a real
-            // "their offer" vs "our counter" card — this IS the window into
-            // the two agents actually negotiating with each other, not just a
-            // one-line price update.
-            for (const m of msgs) {
-              if (m.role !== 'system' || chatAppendedIds.has(m.id)) continue
-              if (chatAppendedIds.size >= MAX_ROUNDS_SHOWN) break
-              chatAppendedIds.add(m.id)
-              bridge?.getChatApi()?.appendAssistantMessage?.(m.content)
-            }
-          }
-        )
+        const result = await runMockNegotiation(isCancelled)
         if (isCancelled()) return
-        setTickerLines([])
 
-        if (!dealId) {
+        if (!result) {
+          // No open offer to act on this run (execute didn't go through,
+          // most likely) — end gracefully rather than surfacing a raw error
+          // to a live demo audience.
           setPhase('done')
-          setLogStatus('Round ended without a deal')
-          await sleep(2200)
+          setLogStatus('No offer to negotiate this run')
+          await sleep(1600)
           if (!isCancelled()) onDoneRef.current()
           return
         }
 
-        // However many rounds were actually visible above (the round cap
-        // freezes the chat feed after MAX_ROUNDS_SHOWN so a long real
-        // negotiation doesn't stall the tour), the convergence itself always
-        // gets its own line in the chat — the viewer needs to see the two
-        // agents actually landing on terms, not just watch the feed go quiet.
-        const { messages: finalMsgs } = await fetchThread(rootId)
-        const finalSystemMsg = [...finalMsgs].reverse().find(m => m.role === 'system')
-        if (finalSystemMsg && !chatAppendedIds.has(finalSystemMsg.id)) {
-          chatAppendedIds.add(finalSystemMsg.id)
-          bridge?.getChatApi()?.appendAssistantMessage?.(finalSystemMsg.content)
+        const { rounds, dealId } = result
+        setFeed(rounds)
+
+        // Round 1 — the counterparty's counter.
+        if (rounds[0]) {
+          setCaption(shortMsg(rounds[0].content))
+          setLogNow(shortMsg(rounds[0].content))
+          setTickerLines(tickerLinesFor(rounds[0]))
+          bridge?.getChatApi()?.appendAssistantMessage?.(rounds[0].content)
+          await sleep(2600)
+          if (isCancelled()) return
         }
+
+        // A short aside explaining the general mechanic, paced between the
+        // two rounds — reuses the existing recorded line unchanged.
+        setPhase('wrapping')
+        const wrapLine = 'Agents can negotiate up to 10 rounds — or stop early if either side asks it to.'
+        setCaption(wrapLine)
+        setLogStatus('Wrapping up…')
+        await narrate(wrapLine, 'scene6-wrapping')
+        if (isCancelled()) return
+        await sleep(SCENE_TRANSITION_MS)
+        if (isCancelled()) return
+        setPhase('negotiating')
+
+        // Round 2 — our counter.
+        if (rounds[1]) {
+          setCaption(shortMsg(rounds[1].content))
+          setLogNow(shortMsg(rounds[1].content))
+          setTickerLines(tickerLinesFor(rounds[1]))
+          bridge?.getChatApi()?.appendAssistantMessage?.(rounds[1].content)
+          await sleep(2600)
+          if (isCancelled()) return
+        }
+
+        // Round 3 (if present) — the counterparty accepting, straight from
+        // the same real room transcript — so the convergence itself gets its
+        // own line in the chat rather than the feed just going quiet.
+        if (rounds[2]) {
+          bridge?.getChatApi()?.appendAssistantMessage?.(rounds[2].content)
+        }
+        setTickerLines([])
 
         setPhase('done')
         const closedLine = 'Done. We have secured a deal and now it’s in the contract period. Let’s ask it to generate a financing request for that deal as well.'
@@ -906,7 +735,6 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         now={logNow}
         next={logNext}
         feed={phase === 'negotiating' || phase === 'wrapping' || phase === 'done' ? feed : []}
-        moreRoundsHappening={phase === 'wrapping' && roundsShown >= MAX_ROUNDS_SHOWN}
       />
     </>
   )

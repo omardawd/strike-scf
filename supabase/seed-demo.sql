@@ -210,13 +210,20 @@ ON CONFLICT (id) DO NOTHING;
 --    (CLAUDE.md: "needs BOTH tick functions, not just one" — runAgentTick on
 --    the GATE-1 side AND runListingDefenseTick on the listing-owner side).
 -- ---------------------------------------------------------------------------
+-- ON CONFLICT DO UPDATE (not DO NOTHING) specifically for is_active: this
+-- flipped to false at some point outside this seed (a stray toggle via
+-- Settings -> Agent during testing, most likely) and, with DO NOTHING, every
+-- subsequent /api/demo/reset silently left it false forever — no autonomous
+-- follow-through ever ran after a live-tour offer submission, which is what
+-- actually broke Scene 7's negotiation step. Re-asserting it here every seed
+-- run means that class of drift can't get stuck again.
 INSERT INTO public.org_agents (id, org_id, name, persona, is_active, goals, created_at, updated_at)
 VALUES
   ('de500000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000001', 'Harborview Strike Agent',       'Sources retail supply-chain inputs at disciplined prices; prioritizes reliable delivery windows over marginal savings.', true, '[]'::jsonb, now() - interval '85 days', now()),
   ('de500000-0000-0000-0000-000000000002', 'de200000-0000-0000-0000-000000000002', 'Ironbridge Steel Works Strike Agent', 'Defends listing prices against current mill index benchmarks; will concede modestly to close volume orders.', true, '[]'::jsonb, now() - interval '110 days', now()),
   ('de500000-0000-0000-0000-000000000003', 'de200000-0000-0000-0000-000000000003', 'Cedarline Packaging Strike Agent',    'Flexible on price for repeat-order commitments; protects margin on custom-print runs.', true, '[]'::jsonb, now() - interval '65 days', now()),
   ('de500000-0000-0000-0000-000000000004', 'de200000-0000-0000-0000-000000000004', 'Vantage Circuit Strike Agent',        'Prioritizes fast-turn production slots; negotiates tenor over unit price where possible.', true, '[]'::jsonb, now() - interval '50 days', now())
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET is_active = true;
 
 -- ---------------------------------------------------------------------------
 -- 7. Marketplace listings — 4 live/browsable + 1 already matched (the listing

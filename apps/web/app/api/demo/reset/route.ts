@@ -153,7 +153,19 @@ export async function POST() {
     .update({ status: 'active', view_count: 0, offer_count: 0, matched_deal_id: null, created_at: new Date().toISOString() })
     .in('id', openListingIds)
 
-  // 8. Let the intro cinematic auto-play again on next login.
+  // 8. Re-assert every demo org's agent as active. Nothing in this reset
+  //    route (or the seed file's own ON CONFLICT DO NOTHING) previously
+  //    touched org_agents.is_active, so once it drifted false — by a stray
+  //    Settings -> Agent toggle during testing, most plausibly — it stayed
+  //    false forever across every future replay. With no active agent,
+  //    submit_marketplace_offer's post-tool startAutonomousFollowThrough()
+  //    step (app/api/ai/chat/route.ts) never creates the agent_negotiations/
+  //    agent_tasks pair a live run depends on, which is what actually broke
+  //    Scene 7's negotiation step. This makes that specific failure mode
+  //    impossible to get stuck in again.
+  await adminClient.from('org_agents').update({ is_active: true }).in('org_id', DEMO_ALL_ORG_IDS)
+
+  // 9. Let the intro cinematic auto-play again on next login.
   await adminClient
     .from('demo_account_state')
     .upsert(
