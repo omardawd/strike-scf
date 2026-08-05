@@ -237,7 +237,13 @@ export default function Dashboard2Page() {
   }, [loading])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    // 'smooth' here was the actual bug: a user message and its reply land in
+    // quick succession (two effect runs a beat apart), and the second smooth
+    // scroll — animating toward a target that just grew taller — regularly
+    // got cut short by the first animation still in flight, leaving the
+    // input pill just off the bottom of the viewport. Instant has no
+    // animation to interrupt, so it always lands exactly at the sentinel.
+    bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
   }, [messages, sending])
 
   const runFirstMessage = useCallback(async (text: string, cacheKey?: string) => {
@@ -1019,7 +1025,16 @@ export default function Dashboard2Page() {
             <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18, padding: '8px 2px 16px' }}>
               {messages.map((m, i) => (
                 m.role === 'assistant' ? (
-                  <div key={i} className="d2-msg" style={{ display: 'flex', gap: 11, alignItems: 'flex-start', maxWidth: '82%', animationDelay: `${Math.min(i, 3) * 70}ms` }}>
+                  <div
+                    key={i}
+                    className="d2-msg"
+                    // Lets DemoAgentActivityFeed (Scene 7) spotlight the AI's own
+                    // latest reply in the real chat — only ever the most recent
+                    // assistant bubble carries this, so the target always tracks
+                    // whichever response the tour is currently narrating.
+                    data-demo-target={i === messages.length - 1 ? 'chat-last-assistant' : undefined}
+                    style={{ display: 'flex', gap: 11, alignItems: 'flex-start', maxWidth: '82%', animationDelay: `${Math.min(i, 3) * 70}ms` }}
+                  >
                     <span className="d2-avatar" style={{
                       width: 30, height: 30, borderRadius: '50%', background: 'var(--gradient-ai)', flexShrink: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
@@ -1058,7 +1073,6 @@ export default function Dashboard2Page() {
                   <span className="d2-typing" aria-label={t('aiPage.thinking')}><i /><i /><i /></span>
                 </div>
               )}
-              <div ref={bottomRef} aria-hidden="true" />
             </div>
             <div className="d2-prompt" style={{ marginTop: 8 }}>
               <SparkIcon size={17} color="var(--blue)" />
@@ -1073,6 +1087,10 @@ export default function Dashboard2Page() {
                 <SendIcon />
               </button>
             </div>
+            {/* Scrolled into view *after* the input bar, not the last message —
+                otherwise the newest message lands flush with the viewport edge
+                and pushes the input pill itself out of view below it. */}
+            <div ref={bottomRef} aria-hidden="true" />
           </div>
         )}
       </div>

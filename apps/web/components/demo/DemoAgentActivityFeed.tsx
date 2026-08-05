@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useDemoFormBridge } from './DemoFormBridge'
+import { SpotlightOverlay } from './SpotlightOverlay'
 import { sleep } from './demo-utils'
 
 // Three scripted chat messages — everything downstream (the plan Strike AI
@@ -251,18 +252,26 @@ function shortMsg(content: string): string {
   return plain.length > 200 ? `${plain.slice(0, 197)}…` : plain
 }
 
-// Distills the real plan reply into a short spoken-style highlight — gives
-// the plan a beat of its own instead of vanishing straight into the revise
-// message, so the viewer actually registers what Strike AI came back with.
-function planHighlight(reply: string): string {
+// Distills a real reply into a short spoken-style highlight, prefixed with a
+// lead-in — gives every scripted step's real response a beat of its own
+// (spotlighted in the actual chat, see 'chat-last-assistant' below) instead
+// of vanishing the instant it lands, so the viewer actually registers what
+// Strike AI produced at each step rather than just watching captions fly by.
+function replyHighlight(reply: string, leadIn: string): string {
   const stripped = reply
     .replace(/\[LISTING_CARD:[^\]]+\]/g, '')
     .replace(/\[\[STRIKE_BLOCK:[\s\S]*?\]\]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-  if (!stripped) return 'Here’s the plan it came back with.'
-  const excerpt = stripped.length > 200 ? `${stripped.slice(0, 197)}…` : stripped
-  return `Here’s the plan it came back with: ${excerpt}`
+  if (!stripped) return leadIn
+  const excerpt = stripped.length > 190 ? `${stripped.slice(0, 187)}…` : stripped
+  return `${leadIn} ${excerpt}`
+}
+
+// How long to hold a reply's spotlight+highlight — scales with how much
+// there is to read, same spirit as demo-script.ts's readingHoldMs.
+function highlightHoldMs(text: string): number {
+  return Math.min(6500, Math.max(3200, text.split(' ').length * 230))
 }
 
 const MAX_ROUNDS_SHOWN = 3
@@ -410,6 +419,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
   const [logNext, setLogNext] = useState<string | null>(null)
   const [feed, setFeed] = useState<ThreadMessage[]>([])
   const [roundsShown, setRoundsShown] = useState(0)
+  const [spotlightChat, setSpotlightChat] = useState(false)
   const onDoneRef = useRef(onDone)
   onDoneRef.current = onDone
 
@@ -447,25 +457,40 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         const planReply = await bridge?.getChatApi()?.sendMessage(PLAN_MESSAGE, 'demo-plan')
         if (isCancelled()) return
 
-        // ── 1b. Give the plan itself a beat before revising it — otherwise
-        //     it lands and immediately gets talked over, and the viewer never
-        //     actually registers what Strike AI produced.
-        const highlight = planHighlight(planReply || '')
-        setCaption(highlight)
+        // ── 1b. Spotlight the plan's real reply, right where it actually
+        //     rendered in the chat, and read out what it says — the plan
+        //     otherwise lands and gets immediately talked over, and the
+        //     viewer never actually registers what Strike AI produced.
+        setSpotlightChat(true)
+        const planText = replyHighlight(planReply || '', 'Here’s the plan it came back with:')
+        setCaption(planText)
         setLogNow('Plan received — reviewing it before deciding what to change.')
-        await sleep(Math.min(6000, Math.max(3000, highlight.split(' ').length * 220)))
+        await sleep(highlightHoldMs(planText))
         if (isCancelled()) return
+        setSpotlightChat(false)
 
-        // ── 2. Revise it ─────────────────────────────────────────────────
+        // ── 2. Revise it — narrate the change being asked for BEFORE it's
+        //     sent, so the upcoming REVISE_MESSAGE reads as a deliberate
+        //     decision instead of an abrupt scripted line.
         setPhase('revising')
-        setCaption('A quick revision, the same way you’d ask a real analyst.')
+        setCaption('Let’s revise it a little — tighten the price ceiling and pull the deadline in.')
         setLogStatus('Revising the plan…')
         setLogNow('Tightening the price ceiling and shortening the deadline.')
         setLogNext('Wait for a go-ahead before submitting anything.')
-        await sleep(500)
+        await sleep(2600)
         if (isCancelled()) return
-        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
+        const reviseReply = await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
         if (isCancelled()) return
+
+        // ── 2b. Same treatment for the revised plan — spotlight + read what
+        //     actually changed, before moving on to the go-ahead.
+        setSpotlightChat(true)
+        const reviseText = replyHighlight(reviseReply || '', 'Updated:')
+        setCaption(reviseText)
+        setLogNow('Revision received — ready for a go-ahead.')
+        await sleep(highlightHoldMs(reviseText))
+        if (isCancelled()) return
+        setSpotlightChat(false)
 
         // ── 3. Execute — this is the one message that actually acts ────────
         setPhase('executing')
@@ -574,6 +599,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         if (!isCancelled()) onDoneRef.current()
       } catch {
         if (isCancelled()) return
+        setSpotlightChat(false)
         setCaption('Something interrupted this live run.')
         setPhase('error')
         await sleep(2000)
@@ -601,6 +627,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
   return (
     <>
+      {spotlightChat && <SpotlightOverlay targetSelector="chat-last-assistant" />}
       <TopCaption line={caption} onSkip={onSkip} />
       <AgentLogPanel
         expanded={expanded}
