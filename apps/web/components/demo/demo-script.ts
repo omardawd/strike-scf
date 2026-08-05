@@ -90,13 +90,14 @@ export interface DemoBeat {
   submitForm?: boolean
 }
 
-// How long a beat's content stays on screen once it's actually ready to show
-// (i.e. after navigation + target are confirmed present for spotlight beats).
-// Scales with how much there is to read — ~2.5 words/sec (a natural spoken
-// pace, not a slow one) plus a smaller fixed buffer for the beat to register
-// before the caption starts counting down. The old 2 words/sec + 2600ms combo
-// made anything past a one-line caption feel like a stall, especially beats
-// with no motion of their own to watch while reading.
+// A reading-pace ESTIMATE for `narration` — no longer the thing that paces a
+// normal beat (DemoConductor advances as soon as the real narration —
+// recorded clip or live speech — actually finishes, plus a small fixed
+// transition buffer; see SCENE_TRANSITION_MS in demo-utils.ts). This value is
+// still used as the visual-only hold for the two cases where there's no
+// narration completion to gate on: prefers-reduced-motion (skips narration
+// outright, capped separately) and a beat with empty `narration` (the
+// closing scene, which just holds in silence for this long).
 function readingHoldMs(narration: string, extraMs = 0): number {
   const words = narration.trim().split(/\s+/).filter(Boolean).length
   const readMs = (words / 2.5) * 1000

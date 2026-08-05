@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDemoFormBridge } from './DemoFormBridge'
 import { SpotlightOverlay } from './SpotlightOverlay'
-import { sleep } from './demo-utils'
+import { sleep, SCENE_TRANSITION_MS } from './demo-utils'
 import { narrate, speak, stopSpeaking } from './demo-speech'
 
 // Three scripted chat messages — everything downstream (the plan Strike AI
@@ -253,14 +253,6 @@ function shortMsg(content: string): string {
   return plain.length > 200 ? `${plain.slice(0, 197)}…` : plain
 }
 
-// How long to hold a reply's spotlight+highlight — scales with how much
-// there is to read, same spirit as demo-script.ts's readingHoldMs. `maxMs`
-// is raised for the plan step (the centerpiece "look what it actually did"
-// moment) and left tighter everywhere else.
-function highlightHoldMs(text: string, maxMs = 6500): number {
-  return Math.min(maxMs, Math.max(3200, text.split(' ').length * 230))
-}
-
 // The real plan reply comes back genuinely structured — Claude writes it in
 // **Bold Section Header** blocks (Recommended Listing, Pricing Analysis,
 // Target Quantity, Counterparty Assessment, Recommended Next Steps — see the
@@ -269,7 +261,17 @@ function highlightHoldMs(text: string, maxMs = 6500): number {
 // own beat — which is the whole point Claude AI was asked to go deeper on:
 // how it vetted the counterparty, what it found, what it's proposing, one
 // piece at a time, instead of one paragraph skimmed past.
-interface PlanSection { title: string; body: string }
+interface PlanSection {
+  title: string
+  body: string
+  /** The FIRST raw `**bold**` heading fragment that contributed to this
+   *  section (before any pendingTitles folding) — this is what actually
+   *  appears verbatim as a rendered `<strong>` run in the real chat bubble,
+   *  so SpotlightOverlay can find it there and highlight just this section
+   *  instead of the whole reply. `title` (used for category matching below)
+   *  can be a folded/combined string that never appears in the DOM as-is. */
+  headingText: string
+}
 
 function parsePlanSections(reply: string, maxSections = 5, maxBodyLen = 320): PlanSection[] {
   const cleaned = reply
@@ -306,6 +308,7 @@ function parsePlanSections(reply: string, maxSections = 5, maxBodyLen = 320): Pl
       continue
     }
 
+    const headingText = pendingTitles.length ? pendingTitles[0]! : title
     const combinedTitle = pendingTitles.length ? [...pendingTitles, title].join(' — ') : title
     pendingTitles.length = 0
 
@@ -317,7 +320,7 @@ function parsePlanSections(reply: string, maxSections = 5, maxBodyLen = 320): Pl
           return lastStop > maxBodyLen * 0.5 ? window.slice(0, lastStop + 1) : `${rawBody.slice(0, maxBodyLen - 3)}…`
         })()
 
-    sections.push({ title: combinedTitle, body })
+    sections.push({ title: combinedTitle, body, headingText })
   }
   return sections
 }
@@ -353,11 +356,12 @@ const MAX_ROUNDS_SHOWN = 3
 // real chat this scene is built around lives at the bottom of the page (the
 // message list + its input box), and a bottom-fixed caption used to sit
 // right on top of both, hiding the very thing the scene is supposed to show.
-// Speech is driven explicitly alongside each caption's own wait in the main
-// sequence below (Promise.all), not from an effect here — the same fix as
-// DemoConductor.tsx, for the same reason: an effect firing independently of
-// the sequence's own pacing is exactly what let captions get cut off
-// mid-sentence when the next one landed first.
+// Speech is driven explicitly in the main sequence below (each caption is
+// followed by its own `await narrate(...)`), not from an effect here — the
+// same fix as DemoConductor.tsx, for the same reason: an effect firing
+// independently of the sequence's own pacing is exactly what let captions
+// get cut off mid-sentence when the next one landed first (and, in the
+// other direction, sit on screen well after narration had already finished).
 function TopCaption({ line, onSkip }: { line: string; onSkip: () => void }) {
   if (!line) return null
   return (
@@ -478,6 +482,89 @@ function AgentLogPanel({
   )
 }
 
+// Each negotiation-round message agent-tick.ts posts already embeds a
+// structured [[STRIKE_BLOCK:{"type":"comparison",...}]] card with the two
+// sides' numbers labeled explicitly ("Their offer (Round N-1)" / "Our
+// counter" — see the doc comment above execCounter in lib/ai/agent-tick.ts).
+// Pulling that JSON out directly gives an accurate two-line "who did what"
+// summary for the ticker, instead of guessing which side a message belongs
+// to from its prose.
+function parseComparisonBlock(content: string): { leftLabel: string; leftValue: string; rightLabel: string; rightValue: string } | null {
+  const m = content.match(/\[\[STRIKE_BLOCK:(\{[\s\S]*?\})\]\]/)
+  if (!m) return null
+  try {
+    const data = JSON.parse(m[1]!) as {
+      type?: string
+      left?: { label?: string; items?: { label?: string; value?: string }[] }
+      right?: { label?: string; items?: { label?: string; value?: string }[] }
+    }
+    if (data.type !== 'comparison' || !data.left || !data.right) return null
+    const leftValue = data.left.items?.find(it => it.label === 'Price')?.value
+    const rightValue = data.right.items?.find(it => it.label === 'Price')?.value
+    if (!leftValue || !rightValue || !data.left.label || !data.right.label) return null
+    return { leftLabel: data.left.label, leftValue, rightLabel: data.right.label, rightValue }
+  } catch {
+    return null
+  }
+}
+
+// One or two short lines describing the latest real negotiation activity —
+// two ("Their offer: $X" / "Our counter: $Y") when the message carries a
+// comparison block, one (a trimmed summary) for anything else (an opening
+// offer, an escalation, a finalize note).
+function tickerLinesFor(msg: ThreadMessage | null): string[] {
+  if (!msg) return []
+  const cmp = parseComparisonBlock(msg.content)
+  if (cmp) return [`${cmp.leftLabel}: ${cmp.leftValue}`, `${cmp.rightLabel}: ${cmp.rightValue}`]
+  return [shortMsg(msg.content)]
+}
+
+// A small live-activity window anchored just under the real chat's last
+// message — not the top-right Agent Log, which the viewer has to notice and
+// open. Tracks `[data-demo-target="chat-last-assistant"]`'s position every
+// frame (same technique as SpotlightOverlay) since that target re-points at
+// a new bubble every time a round gets appended to the chat.
+function NegotiationTicker({ lines }: { lines: string[] }) {
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let raf = 0
+    function update() {
+      if (cancelled) return
+      const el = document.querySelector('[data-demo-target="chat-last-assistant"]')
+      if (el) {
+        const r = el.getBoundingClientRect()
+        setPos({ top: r.bottom + 10, left: r.left, width: Math.min(Math.max(r.width, 260), 380) })
+      }
+      raf = requestAnimationFrame(update)
+    }
+    update()
+    return () => { cancelled = true; cancelAnimationFrame(raf) }
+  }, [])
+
+  if (lines.length === 0 || !pos) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9993,
+        background: 'var(--white)', border: '1px solid var(--border-strong)',
+        borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-elevated)',
+        padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 5,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--blue)', flexShrink: 0, animation: 'badge-pulse 2.4s ease infinite' }} />
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--blue)' }}>Live negotiation</span>
+      </div>
+      {lines.map((line, i) => (
+        <div key={i} style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--ink)' }}>{line}</div>
+      ))}
+    </div>
+  )
+}
+
 // Scene 7's centerpiece — the one entirely live, unscripted stretch of the
 // tour. Three chat messages are scripted (for reliability in front of a live
 // prospect): propose a plan, revise it, then say go — but everything that
@@ -498,6 +585,12 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
   const [feed, setFeed] = useState<ThreadMessage[]>([])
   const [roundsShown, setRoundsShown] = useState(0)
   const [spotlightChat, setSpotlightChat] = useState(false)
+  // When set, SpotlightOverlay highlights just this section of the real
+  // reply instead of the whole chat bubble — see the plan-walkthrough loop
+  // below. Undefined/empty heading falls back to spotlighting the whole
+  // bubble (used for the intro line and the revise step).
+  const [spotlightSection, setSpotlightSection] = useState<{ heading: string; next?: string } | null>(null)
+  const [tickerLines, setTickerLines] = useState<string[]>([])
   const onDoneRef = useRef(onDone)
   onDoneRef.current = onDone
 
@@ -557,31 +650,43 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         //     prose verbatim — the real detail stays visible in the
         //     spotlighted bubble for anyone who wants to read it themselves.
         setSpotlightChat(true)
+        setSpotlightSection(null) // whole-bubble spotlight for the intro line — starts at the top of the reply
         const sections = parsePlanSections(planReply || '')
         setLogNow('Plan received — pointing out how it got there before deciding what to change.')
 
         const walkthroughIntro = 'Here’s the plan it came back with — let’s walk through it.'
         setCaption(walkthroughIntro)
-        await Promise.all([sleep(2200), narrate(walkthroughIntro, 'scene6-plan-walkthrough-intro')])
+        await narrate(walkthroughIntro, 'scene6-plan-walkthrough-intro')
+        if (isCancelled()) return
+        await sleep(SCENE_TRANSITION_MS)
         if (isCancelled()) return
 
         const points = sections
-          .map(s => planSectionNarration(s.title))
-          .filter((p): p is { id: string; text: string } => p !== null)
+          .map((section, i) => ({ section, next: sections[i + 1], point: planSectionNarration(section.title) }))
+          .filter((x): x is { section: PlanSection; next: PlanSection | undefined; point: { id: string; text: string } } => x.point !== null)
 
         if (points.length > 0) {
-          for (const point of points) {
+          for (const { section, next, point } of points) {
             if (isCancelled()) return
+            // Highlight just THIS section of the real, rendered plan — not
+            // the whole bubble — so the viewer can see exactly where on the
+            // page the callout being narrated is talking about.
+            setSpotlightSection({ heading: section.headingText, next: next?.headingText })
             setCaption(point.text)
-            await Promise.all([sleep(highlightHoldMs(point.text, 5200)), narrate(point.text, point.id)])
+            await narrate(point.text, point.id)
+            if (isCancelled()) return
+            await sleep(SCENE_TRANSITION_MS)
           }
         } else {
           // Rare fallback — the reply didn't come back in the usual
           // **Section Header** shape recognizable enough to point at.
           setCaption(FALLBACK_PLAN_LINE)
-          await Promise.all([sleep(highlightHoldMs(FALLBACK_PLAN_LINE, 4000)), speak(FALLBACK_PLAN_LINE)])
+          await speak(FALLBACK_PLAN_LINE)
+          if (isCancelled()) return
+          await sleep(SCENE_TRANSITION_MS)
         }
         if (isCancelled()) return
+        setSpotlightSection(null)
         setSpotlightChat(false)
 
         // ── 2. Revise it — narrate the change being asked for BEFORE it's
@@ -593,18 +698,34 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Revising the plan…')
         setLogNow('Tightening the price ceiling and shortening the deadline.')
         setLogNext('Wait for a go-ahead before submitting anything.')
-        await Promise.all([sleep(2600), narrate(reviseIntro, 'scene6-revise-intro')])
+        await narrate(reviseIntro, 'scene6-revise-intro')
         if (isCancelled()) return
-        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise')
+        await sleep(SCENE_TRANSITION_MS)
+        if (isCancelled()) return
+        // Cache label bumped to -v2: the OLD 'demo-revise' cache entry was
+        // captured against an earlier version of this script where the
+        // revise step's own message asked Claude to submit an offer
+        // outright — its cached reply (and tool call) genuinely did submit
+        // one. REVISE_MESSAGE no longer asks for that (just a plan change,
+        // talk only), but since the cache is keyed by label, not by the
+        // message text, replaying the OLD label kept serving that
+        // now-mismatched "I've submitted the offer" reply forever, which is
+        // exactly what made the EXECUTE step's reply insist "already
+        // submitted" and create no new task to negotiate. A fresh label
+        // forces a real, correctly-matched capture on the next run.
+        await bridge?.getChatApi()?.sendMessage(REVISE_MESSAGE, 'demo-revise-v2')
         if (isCancelled()) return
 
         // ── 2b. Same treatment as the plan walkthrough — a short, simplified
         //     callout instead of reading the revised reply's prose, with the
         //     spotlight on the real chat bubble showing what changed.
         setSpotlightChat(true)
+        setSpotlightSection(null)
         setCaption(REVISE_UPDATE_LINE)
         setLogNow('Revision received — ready for a go-ahead.')
-        await Promise.all([sleep(highlightHoldMs(REVISE_UPDATE_LINE, 5200)), narrate(REVISE_UPDATE_LINE, 'scene6-revise-reply')])
+        await narrate(REVISE_UPDATE_LINE, 'scene6-revise-reply')
+        if (isCancelled()) return
+        await sleep(SCENE_TRANSITION_MS)
         if (isCancelled()) return
         setSpotlightChat(false)
 
@@ -615,10 +736,13 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Submitting the offer…')
         setLogNow('Opening a real offer on the listing, on your behalf.')
         setLogNext(null)
-        await Promise.all([sleep(400), narrate(executeLine, 'scene6-execute')])
+        await narrate(executeLine, 'scene6-execute')
         if (isCancelled()) return
         const before = await fetchTaskIds()
-        await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute')
+        // Cache label bumped to -v2 alongside 'demo-revise-v2' above — this
+        // is the FIRST and only message that should ever call
+        // submit_marketplace_offer; see the doc comment on the revise step.
+        await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute-v2')
         if (isCancelled()) return
 
         const rootId = await pollForNewTask(before, isCancelled)
@@ -627,7 +751,8 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
           const timeoutLine = 'The offer is taking longer than usual to appear this run.'
           setCaption(timeoutLine)
           setPhase('error')
-          await Promise.all([sleep(2200), speak(timeoutLine)])
+          await speak(timeoutLine)
+          if (!isCancelled()) await sleep(SCENE_TRANSITION_MS)
           if (!isCancelled()) onDoneRef.current()
           return
         }
@@ -666,6 +791,8 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
             if (isCancelled()) return
             setFeed(msgs.slice(-6))
             setRoundsShown(r => r + 1)
+            const latestSystem = [...msgs].reverse().find(m => m.role === 'system') ?? null
+            setTickerLines(framesFrozen ? [] : tickerLinesFor(latestSystem))
             if (framesFrozen) return
             // Surface each new real round straight into the visible chat —
             // not just the small Agent Log — so the negotiation is actually
@@ -684,6 +811,7 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
           }
         )
         if (isCancelled()) return
+        setTickerLines([])
 
         if (!dealId) {
           setPhase('done')
@@ -711,7 +839,9 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setLogStatus('Deal finalized ✓')
         setLogNow('Terms agreed. Now in the contract period.')
         setLogNext(null)
-        await Promise.all([sleep(900), narrate(closedLine, 'scene6-deal-closed')])
+        await narrate(closedLine, 'scene6-deal-closed')
+        if (isCancelled()) return
+        await sleep(SCENE_TRANSITION_MS)
         if (isCancelled()) return
         const summary = await submitFinancing(dealId)
         if (isCancelled()) return
@@ -722,15 +852,19 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setCaption(finalLine)
         // Only the "with financing" happy-path variant has a recorded clip —
         // the no-financing fallback is an edge case, same as timeout/error.
-        await Promise.all([sleep(2600), narrate(finalLine, summary ? 'scene6-final-with-financing' : undefined)])
+        await narrate(finalLine, summary ? 'scene6-final-with-financing' : undefined)
+        if (!isCancelled()) await sleep(SCENE_TRANSITION_MS)
         if (!isCancelled()) onDoneRef.current()
       } catch {
         if (isCancelled()) return
         setSpotlightChat(false)
+        setSpotlightSection(null)
+        setTickerLines([])
         const errorLine = 'Something interrupted this live run.'
         setCaption(errorLine)
         setPhase('error')
-        await Promise.all([sleep(2000), speak(errorLine)])
+        await speak(errorLine)
+        if (!isCancelled()) await sleep(SCENE_TRANSITION_MS)
         if (!isCancelled()) onDoneRef.current()
       } finally {
         // Whatever happened — success, timeout, or error — a real
@@ -756,7 +890,14 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
 
   return (
     <>
-      {spotlightChat && <SpotlightOverlay targetSelector="chat-last-assistant" />}
+      {spotlightChat && (
+        <SpotlightOverlay
+          targetSelector="chat-last-assistant"
+          sectionHeading={spotlightSection?.heading}
+          nextSectionHeading={spotlightSection?.next}
+        />
+      )}
+      {(phase === 'negotiating' || phase === 'wrapping') && <NegotiationTicker lines={tickerLines} />}
       <TopCaption line={caption} onSkip={onSkip} />
       <AgentLogPanel
         expanded={expanded}

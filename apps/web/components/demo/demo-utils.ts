@@ -1,6 +1,14 @@
 // Shared low-level helpers used by DemoConductor and DemoAgentActivityFeed.
 // Kept dependency-free (no React) so either can import without cycles.
 
+// Brief breathing room AFTER a beat's narration actually finishes, before
+// advancing to the next one — not a reading-time estimate. Scene pacing is
+// driven by real narration length (recorded clip duration or live speech
+// completion, via narrate()'s own Promise), so a beat with a short line
+// advances soon after it's spoken instead of sitting idle until some
+// precomputed "time to read this" floor catches up.
+export const SCENE_TRANSITION_MS = 450
+
 // Polls for a `data-demo-target` element to actually mount (real navigation +
 // render, not a fixed guess) before revealing/acting on it. Resolves early
 // once found; otherwise gives up after `timeoutMs` so a missing/renamed

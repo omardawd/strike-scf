@@ -9,7 +9,7 @@ import { DemoNarrator } from './DemoNarrator'
 import { DemoAgentActivityFeed } from './DemoAgentActivityFeed'
 import { DemoCursor, type DemoCursorHandle } from './DemoCursor'
 import { DemoFormBridgeProvider, useDemoFormBridge } from './DemoFormBridge'
-import { waitForTarget, waitForRoute, sleep } from './demo-utils'
+import { waitForTarget, waitForRoute, sleep, SCENE_TRANSITION_MS } from './demo-utils'
 import { narrate, stopSpeaking } from './demo-speech'
 
 type RunnerStatus = 'checking' | 'idle' | 'resetting' | 'running' | 'done'
@@ -198,7 +198,7 @@ function DemoRunner() {
       // fixed hold timer — its actual duration depends on a real negotiation.
       if (beat.kind === 'agent-demo') return
 
-      const hold = reducedMotionRef.current ? Math.min(beat.holdMs, 900) : beat.holdMs
+      const reducedHold = Math.min(beat.holdMs, 900)
 
       // 5. submitForm beats: fire the real submit FIRST — after a brief pause
       //    so the viewer actually sees the filled form before it goes — and
@@ -209,37 +209,39 @@ function DemoRunner() {
       //    "Submitted!" was heard well before the button was actually
       //    pressed.
       if (beat.submitForm && bridge) {
-        const preSubmitMs = Math.min(700, hold)
+        const preSubmitMs = reducedMotionRef.current ? Math.min(300, reducedHold) : 700
         await sleep(preSubmitMs)
         if (cancelled) return
         bridge.getFinancingForm()?.submit()
-        const remaining = Math.max(hold - preSubmitMs, 300)
         if (reducedMotionRef.current) {
-          await sleep(remaining)
+          await sleep(Math.max(reducedHold - preSubmitMs, 300))
         } else {
-          await Promise.all([sleep(remaining), narrate(beat.narration, beat.id)])
+          await narrate(beat.narration, beat.id)
+          if (!cancelled) await sleep(SCENE_TRANSITION_MS)
         }
         if (!cancelled) setBeatIndex(i => i + 1)
         return
       }
 
-      // 6. Narration is awaited ALONGSIDE the hold timer (Promise.all, not a
-      //    race) — this is what actually fixes beats cutting themselves off
-      //    mid-sentence: previously the caption components spoke on their
-      //    own, decoupled from this timer, so a scene routinely advanced
-      //    (cancelling the clip/utterance) before it had actually finished.
-      //    `hold` still sets a sensible floor for short lines or when
-      //    narration is unsupported/disabled/reduced-motion. `narrate()`
-      //    plays the real recorded clip at public/audio/demo/{beat.id}.mp3
-      //    when one exists, falling back to live Web Speech otherwise. A
-      //    beat with no narration at all (the closing scene) stays silent —
-      //    just the hold timer, no speech engine touched.
+      // 6. Scene pacing is driven by the narration actually FINISHING —
+      //    recorded-clip playback or live-speech completion, whichever
+      //    `narrate()` is using — plus a brief fixed transition buffer, not
+      //    a precomputed reading-time floor. This is what actually fixes
+      //    beats cutting themselves off mid-sentence (narration is awaited,
+      //    never raced against a timer that could win first) while ALSO
+      //    fixing the opposite problem: a short line no longer sits on
+      //    screen in silence waiting for a generous reading-pace estimate to
+      //    catch up. That reading-time floor (`beat.holdMs`, computed in
+      //    demo-script.ts) still applies for reduced-motion (narration is
+      //    skipped outright there) and for a beat with no narration at all
+      //    (the closing scene, which just holds in silence).
       if (reducedMotionRef.current) {
-        await sleep(hold)
+        await sleep(reducedHold)
       } else if (beat.narration) {
-        await Promise.all([sleep(hold), narrate(beat.narration, beat.id)])
+        await narrate(beat.narration, beat.id)
+        if (!cancelled) await sleep(SCENE_TRANSITION_MS)
       } else {
-        await sleep(hold)
+        await sleep(beat.holdMs)
       }
       if (!cancelled) setBeatIndex(i => i + 1)
     })()
