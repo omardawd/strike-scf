@@ -236,17 +236,16 @@ function InviteModal({
   )
 }
 
-// ── Analytics ─────────────────────────────────────────────────
+// ── Analytics section ────────────────────────────────────────
 
 interface NetworkAnalytics {
-  member_counts: Record<string, number>
-  avg_passport_score: number | null
-  score_distribution: Record<string, number>
+  active_members: number
   active_listings: number
   active_listings_value: number
   deal_count: number
   deal_volume: number
-  member_growth: { label: string; count: number }[]
+  spend_by_month: { label: string; amount: number }[]
+  top_counterparties: { org_id: string; name: string; deal_count: number; deal_volume: number }[]
 }
 
 function fmtCurrency(n: number): string {
@@ -255,7 +254,9 @@ function fmtCurrency(n: number): string {
   return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
 }
 
-function AnalyticsTab({ networkId }: { networkId: string }) {
+function NetworkAnalyticsSection({ networkId }: { networkId: string }) {
+  const t = useT()
+  const router = useRouter()
   const [data, setData] = useState<NetworkAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -269,30 +270,21 @@ function AnalyticsTab({ networkId }: { networkId: string }) {
   }, [networkId])
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>Loading analytics…</div>
+    return <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
   }
   if (!data) {
     return <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>Analytics unavailable.</div>
   }
 
-  const maxGrowth = Math.max(1, ...data.member_growth.map(b => b.count))
-  const scoreBuckets = [
-    { key: '70-100', label: 'Strong (70–100)', color: '#10B981' },
-    { key: '45-69', label: 'Fair (45–69)', color: '#F59E0B' },
-    { key: '0-44', label: 'Weak (0–44)', color: '#EF4444' },
-  ]
-  const totalScored = Object.values(data.score_distribution).reduce((s, n) => s + n, 0)
+  const maxSpend = Math.max(1, ...data.spend_by_month.map(b => b.amount))
+  const maxCounterparty = Math.max(1, ...data.top_counterparties.map(c => c.deal_volume))
 
   return (
-    <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 16 }}>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Active members</div>
-          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.member_counts.active ?? 0}</div>
-        </div>
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Avg. PassportScore</div>
-          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.avg_passport_score ?? '—'}</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.active_members}</div>
         </div>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Active listings</div>
@@ -308,14 +300,14 @@ function AnalyticsTab({ networkId }: { networkId: string }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Member growth (last 6 months)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Spend across the network (last 6 months)</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 110 }}>
-            {data.member_growth.map(b => (
+            {data.spend_by_month.map(b => (
               <div key={b.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div style={{ fontSize: 11, color: 'var(--gray)' }}>{b.count > 0 ? b.count : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)' }}>{b.amount > 0 ? fmtCurrency(b.amount) : ''}</div>
                 <div style={{
                   width: '100%', maxWidth: 28,
-                  height: Math.max(4, (b.count / maxGrowth) * 70),
+                  height: Math.max(4, (b.amount / maxSpend) * 70),
                   background: 'var(--blue)', borderRadius: 4,
                 }} />
                 <div style={{ fontSize: 10, color: 'var(--gray-soft)' }}>{b.label}</div>
@@ -325,26 +317,26 @@ function AnalyticsTab({ networkId }: { networkId: string }) {
         </div>
 
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>PassportScore distribution</div>
-          {totalScored === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--gray)' }}>No scored members yet.</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Top counterparties by volume</div>
+          {data.top_counterparties.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--gray)' }}>No deals between network members yet.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {scoreBuckets.map(b => {
-                const count = data.score_distribution[b.key] ?? 0
-                const pct = totalScored > 0 ? Math.round((count / totalScored) * 100) : 0
-                return (
-                  <div key={b.key}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                      <span style={{ color: 'var(--gray)' }}>{b.label}</span>
-                      <span style={{ fontWeight: 600 }}>{count}</span>
-                    </div>
-                    <div style={{ height: 6, background: 'var(--offwhite)', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: b.color, borderRadius: 3 }} />
-                    </div>
+              {data.top_counterparties.map(c => (
+                <div
+                  key={c.org_id}
+                  onClick={() => router.push(`/passport/${c.org_id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ink)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>{c.name}</span>
+                    <span style={{ fontWeight: 600 }}>{fmtCurrency(c.deal_volume)}</span>
                   </div>
-                )
-              })}
+                  <div style={{ height: 6, background: 'var(--offwhite)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${(c.deal_volume / maxCounterparty) * 100}%`, background: 'var(--blue)', borderRadius: 3 }} />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -353,7 +345,7 @@ function AnalyticsTab({ networkId }: { networkId: string }) {
   )
 }
 
-// ── Recent Listings ────────────────────────────────────────────
+// ── Listings snippet ──────────────────────────────────────────
 
 interface NetworkListingRow {
   id: string
@@ -365,7 +357,7 @@ interface NetworkListingRow {
   created_at: string
 }
 
-function ListingsTab({ networkId, isOwner }: { networkId: string; isOwner: boolean }) {
+function NetworkListingsSnippet({ networkId, isOwner }: { networkId: string; isOwner: boolean }) {
   const t = useT()
   const router = useRouter()
   const [listings, setListings] = useState<NetworkListingRow[]>([])
@@ -373,7 +365,7 @@ function ListingsTab({ networkId, isOwner }: { networkId: string; isOwner: boole
 
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/networks/${networkId}/listings`)
+    fetch(`/api/networks/${networkId}/listings?limit=6`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setListings(d.listings ?? []) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -381,22 +373,22 @@ function ListingsTab({ networkId, isOwner }: { networkId: string; isOwner: boole
   }, [networkId])
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <p style={{ color: 'var(--gray)', fontSize: 14 }}>{t('networksDetail.networkOnlyListings')}</p>
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('networksDetail.tab.listings')}</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <a href={`/marketplace?network_id=${networkId}`} style={{
             background: 'none', color: 'var(--blue)', textDecoration: 'none',
-            border: '1.5px solid var(--blue)', borderRadius: 'var(--radius-button)', padding: '9px 18px',
-            fontSize: 14, fontWeight: 600,
+            border: '1.5px solid var(--blue)', borderRadius: 'var(--radius-button)', padding: '8px 16px',
+            fontSize: 13, fontWeight: 600,
           }}>
             View in Strike Place →
           </a>
           {isOwner && (
             <a href={`/marketplace/listings/new?network_id=${networkId}&visibility=network_only`} style={{
               background: 'var(--blue)', color: '#fff', textDecoration: 'none',
-              borderRadius: 'var(--radius-button)', padding: '9px 18px',
-              fontSize: 14, fontWeight: 600,
+              borderRadius: 'var(--radius-button)', padding: '8px 16px',
+              fontSize: 13, fontWeight: 600,
             }}>
               {t('networksDetail.postNewListing')}
             </a>
@@ -405,13 +397,13 @@ function ListingsTab({ networkId, isOwner }: { networkId: string; isOwner: boole
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
+        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
       ) : listings.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
+        <div className="card" style={{ padding: '32px 0', textAlign: 'center', color: 'var(--gray)', fontSize: 14 }}>
           No listings on this network yet.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
           {listings.map(l => (
             <div
               key={l.id}
@@ -444,19 +436,11 @@ export default function NetworkDetailPage() {
   const [network, setNetwork]   = useState<AnchorNetwork | null>(null)
   const [isOwner, setIsOwner]   = useState(false)
   const [members, setMembers]   = useState<NetworkMemberRow[]>([])
-  const [tab, setTab]           = useState<'members' | 'analytics' | 'listings' | 'settings'>('members')
   const [loading, setLoading]   = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [actionError, setAE]    = useState('')
   const [joiningRoom, setJoiningRoom] = useState(false)
-
-  // Settings edit
-  const [editName, setEditName]   = useState('')
-  const [editDesc, setEditDesc]   = useState('')
-  const [editVis, setEditVis]     = useState<'public' | 'network_only'>('public')
-  const [saving, setSaving]       = useState(false)
-  const [saveSuccess, setSS]      = useState(false)
 
   const loadNetwork = useCallback(async () => {
     if (!id) return
@@ -475,9 +459,6 @@ export default function NetworkDetailPage() {
       if (netData.network) {
         setNetwork(netData.network)
         setIsOwner(!!netData.is_owner)
-        setEditName(netData.network.name)
-        setEditDesc(netData.network.description ?? '')
-        setEditVis(netData.network.visibility_default)
       }
       setMembers(memData.members ?? [])
     } finally {
@@ -515,41 +496,6 @@ export default function NetworkDetailPage() {
     }
   }
 
-  async function handleSaveSettings(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setSS(false)
-    setAE('')
-    try {
-      const res = await fetch(`/api/networks/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, description: editDesc || null, visibility_default: editVis }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
-      setNetwork(data.network)
-      setSS(true)
-    } catch (err: any) {
-      setAE(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDeleteNetwork() {
-    if (!window.confirm(t('networksDetail.deleteConfirm', { network: network?.name ?? '' }))) return
-    setAE('')
-    try {
-      const res = await fetch(`/api/networks/${id}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
-      router.push('/networks')
-    } catch (err: any) {
-      setAE(err.message)
-    }
-  }
-
   async function handleOpenRoom() {
     setJoiningRoom(true)
     setAE('')
@@ -572,16 +518,9 @@ export default function NetworkDetailPage() {
     return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>{t('networksDetail.notFound')}</div>
   }
 
-  const tabs: { key: typeof tab; label: string }[] = [
-    { key: 'members', label: `${t('networksDetail.tab.members')} (${members.length})` },
-    { key: 'analytics', label: 'Analytics' },
-    { key: 'listings', label: t('networksDetail.tab.listings') },
-    ...(isOwner ? [{ key: 'settings' as const, label: t('networksDetail.tab.settings') }] : []),
-  ]
-
   return (
     <>
-      <div style={{ padding: '32px 32px 0' }} data-page-name="Network Detail" data-ai-context={JSON.stringify({ is_owner: isOwner, network_name: network.name, network_id: network.id, member_count: members.length, active_tab: tab })}>
+      <div style={{ padding: '32px 32px 24px' }} data-page-name="Network Detail" data-ai-context={JSON.stringify({ is_owner: isOwner, network_name: network.name, network_id: network.id, member_count: members.length })}>
         <button onClick={() => router.push('/networks')} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16,
@@ -590,7 +529,7 @@ export default function NetworkDetailPage() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 12 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800 }}>{network.name}</h1>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button onClick={handleOpenRoom} disabled={joiningRoom} style={{
               background: 'none', color: 'var(--blue)', border: '1.5px solid var(--blue)',
               borderRadius: 'var(--radius-button)', padding: '10px 18px',
@@ -608,133 +547,65 @@ export default function NetworkDetailPage() {
                 {t('networksDetail.inviteSupplierPlus')}
               </button>
             )}
+            {isOwner && (
+              <button
+                onClick={() => router.push(`/networks/${id}/settings`)}
+                title={t('networksDetail.tab.settings')}
+                aria-label={t('networksDetail.tab.settings')}
+                style={{
+                  background: 'none', color: 'var(--gray)', border: '1.5px solid var(--border)',
+                  borderRadius: 'var(--radius-button)', width: 40, height: 40,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M16.2 12.4a1.4 1.4 0 00.28 1.54l.05.05a1.7 1.7 0 11-2.4 2.4l-.05-.05a1.4 1.4 0 00-1.54-.28 1.4 1.4 0 00-.85 1.28v.14a1.7 1.7 0 01-3.4 0v-.08a1.4 1.4 0 00-.91-1.28 1.4 1.4 0 00-1.54.28l-.05.05a1.7 1.7 0 11-2.4-2.4l.05-.05a1.4 1.4 0 00.28-1.54 1.4 1.4 0 00-1.28-.85h-.14a1.7 1.7 0 010-3.4h.08a1.4 1.4 0 001.28-.91 1.4 1.4 0 00-.28-1.54l-.05-.05a1.7 1.7 0 112.4-2.4l.05.05a1.4 1.4 0 001.54.28h.06a1.4 1.4 0 00.85-1.28v-.14a1.7 1.7 0 013.4 0v.08a1.4 1.4 0 00.85 1.28h.06a1.4 1.4 0 001.54-.28l.05-.05a1.7 1.7 0 112.4 2.4l-.05.05a1.4 1.4 0 00-.28 1.54v.06a1.4 1.4 0 001.28.85h.14a1.7 1.7 0 010 3.4h-.08a1.4 1.4 0 00-1.28.85z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
         {network.description && (
-          <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 16 }}>{network.description}</p>
+          <p style={{ color: 'var(--gray)', fontSize: 14 }}>{network.description}</p>
         )}
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1.5px solid var(--border)', marginTop: 8 }}>
-          {tabs.map(({ key, label }) => (
-            <button key={key} onClick={() => setTab(key)} style={{
-              padding: '10px 18px', background: 'none', border: 'none',
-              borderBottom: tab === key ? '2.5px solid var(--blue)' : '2.5px solid transparent',
-              color: tab === key ? 'var(--blue)' : 'var(--gray)',
-              fontWeight: tab === key ? 700 : 500, fontSize: 14, cursor: 'pointer',
-              marginBottom: -1.5,
-            }}>
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      <div style={{ padding: '24px 32px 40px' }}>
+      <div style={{ padding: '0 32px 40px' }}>
         {actionError && (
           <div style={{ background: '#fee2e2', border: '1.5px solid #fecaca', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 16, fontSize: 14, color: '#dc2626' }}>
             {actionError}
           </div>
         )}
 
-        {/* Members Tab — grid of boxes */}
-        {tab === 'members' && (
-          <div>
-            {members.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
-                {t('networksDetail.noMembersYet')}
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                {members.map(m => (
-                  <MemberCard
-                    key={m.id}
-                    member={m}
-                    isOwner={isOwner}
-                    onSuspend={orgId => handleUpdateMemberStatus(orgId, 'suspended')}
-                    onReactivate={orgId => handleUpdateMemberStatus(orgId, 'active')}
-                    onRemove={handleRemoveMember}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <NetworkAnalyticsSection networkId={id} />
 
-        {/* Analytics Tab */}
-        {tab === 'analytics' && <AnalyticsTab networkId={id} />}
+        <NetworkListingsSnippet networkId={id} isOwner={isOwner} />
 
-        {/* Listings Tab */}
-        {tab === 'listings' && <ListingsTab networkId={id} isOwner={isOwner} />}
-
-        {/* Settings Tab — owner only */}
-        {tab === 'settings' && isOwner && (
-          <div style={{ maxWidth: 500 }}>
-            <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 40 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('networksDetail.networkSettings')}</h3>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.name')}</label>
-                <input value={editName} onChange={e => setEditName(e.target.value)} maxLength={60}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networks.description')}</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={3} maxLength={200}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 10, color: 'var(--ink-soft)' }}>{t('networks.defaultVisibility')}</label>
-                {(['public', 'network_only'] as const).map(v => (
-                  <label key={v} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
-                    <input type="radio" name="editVis" checked={editVis === v} onChange={() => setEditVis(v)} style={{ marginTop: 2 }} />
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{v === 'public' ? t('networks.public') : t('networks.networkOnly')}</div>
-                      <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                        {v === 'public' ? t('networksDetail.newListingsPublic') : t('networksDetail.newListingsPrivate')}
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              {saveSuccess && <p style={{ color: 'var(--color-green)', fontSize: 13 }}>{t('networksDetail.settingsSaved')}</p>}
-
-              <button type="submit" disabled={saving} style={{
-                padding: '11px 24px', background: 'var(--blue)', color: '#fff', border: 'none',
-                borderRadius: 'var(--radius-button)', fontWeight: 600, fontSize: 14, cursor: saving ? 'default' : 'pointer',
-                alignSelf: 'flex-start', opacity: saving ? 0.6 : 1,
-              }}>
-                {saving ? t('networksDetail.savingBtn') : t('networksDetail.saveChanges')}
-              </button>
-            </form>
-
-            <hr style={{ border: 'none', borderTop: '1.5px solid var(--border)', marginBottom: 24 }} />
-
-            <div>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>{t('networksDetail.dangerZone')}</h3>
-              <button
-                onClick={handleDeleteNetwork}
-                disabled={network.member_count > 0}
-                title={network.member_count > 0 ? t('networksDetail.removeMembersFirst') : ''}
-                style={{
-                  padding: '10px 20px', background: network.member_count > 0 ? '#f3f4f6' : '#fee2e2',
-                  color: network.member_count > 0 ? '#9ca3af' : '#dc2626',
-                  border: '1.5px solid', borderColor: network.member_count > 0 ? 'var(--border)' : '#fecaca',
-                  borderRadius: 'var(--radius-button)', fontSize: 14, fontWeight: 600,
-                  cursor: network.member_count > 0 ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {t('networksDetail.deleteNetwork')}
-              </button>
-              {network.member_count > 0 && (
-                <p style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6 }}>{t('networksDetail.removeMembersFirst')}</p>
-              )}
+        <div>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
+            {t('networksDetail.tab.members')} ({members.length})
+          </h2>
+          {members.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
+              {t('networksDetail.noMembersYet')}
             </div>
-          </div>
-        )}
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+              {members.map(m => (
+                <MemberCard
+                  key={m.id}
+                  member={m}
+                  isOwner={isOwner}
+                  onSuspend={orgId => handleUpdateMemberStatus(orgId, 'suspended')}
+                  onReactivate={orgId => handleUpdateMemberStatus(orgId, 'active')}
+                  onRemove={handleRemoveMember}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {showInvite && (
