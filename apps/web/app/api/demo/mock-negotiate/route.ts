@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isDemoAccount } from '@/lib/demo'
-import { DEMO_ORG_ID } from '@/lib/demo-entities'
+import { DEMO_ORG_ID, DEMO_ALL_ORG_IDS } from '@/lib/demo-entities'
 import { counterOffer, acceptOffer } from '@/lib/marketplace/offer-actions'
 import { postSystemMessage } from '@/lib/ai/agent-task-chat'
 
@@ -84,6 +84,21 @@ export async function POST() {
     return NextResponse.json({ error: 'Negotiation already claimed by another request' }, { status: 409 })
   }
 
+  // Silence every demo org's autonomous agent for the duration of this
+  // deterministic run. Concretely observed without this: the real, live
+  // pg_cron tick (every 60s against this same tenant, since org_agents.
+  // is_active is deliberately kept true for the demo — see /api/demo/reset)
+  // fired mid-negotiation and had Ironbridge's own agent genuinely counter
+  // the just-submitted offer for real, via runListingDefenseTick — which
+  // reacts directly off marketplace_offers turn state, not agent_negotiations,
+  // so the claim above doesn't cover it. That real counter landed as round 2
+  // a couple seconds before this route's own first counterOffer call, which
+  // then hit TurnOrderError trying to make the same move a second time,
+  // leaving the offer stuck at round 2 with no deal. Reactivated in the
+  // `finally` below unconditionally, so a demo org is never left inert if
+  // this route throws.
+  await adminClient.from('org_agents').update({ is_active: false }).in('org_id', DEMO_ALL_ORG_IDS)
+
   const offerId = negotiation.offer_id as string
   const { data: offer } = await adminClient
     .from('marketplace_offers')
@@ -160,5 +175,7 @@ export async function POST() {
   } catch (err) {
     console.error('[demo/mock-negotiate] failed:', err)
     return NextResponse.json({ error: 'Negotiation failed' }, { status: 500 })
+  } finally {
+    await adminClient.from('org_agents').update({ is_active: true }).in('org_id', DEMO_ALL_ORG_IDS)
   }
 }

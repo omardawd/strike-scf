@@ -591,6 +591,16 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         // no separate poll-for-a-new-task step needed before moving on.
         await bridge?.getChatApi()?.sendMessage(EXECUTE_MESSAGE, 'demo-execute-v3')
         if (isCancelled()) return
+        // Silence the real pg_cron tick loop immediately — awaited, not
+        // fire-and-forget, so the window before it takes effect is just this
+        // one round-trip rather than the several seconds of narration/pause
+        // still ahead before runMockNegotiation itself gets a chance to do
+        // the same (see /api/demo/pause-agents' own doc comment for why this
+        // was worth closing this early: a real round from the counterparty's
+        // agent landed mid-scene here and collided with the deterministic
+        // negotiation's own first move).
+        await fetch('/api/demo/pause-agents', { method: 'POST' }).catch(() => {})
+        if (isCancelled()) return
 
         // ── 4. Negotiate — deterministic, real writes, no live-timing risk ──
         negotiationStarted = true
