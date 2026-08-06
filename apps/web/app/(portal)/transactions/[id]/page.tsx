@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
+import { useUser } from '@/lib/user-context'
 import { TRANSACTION_REFERRER_KEY } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon } from '@/components/portal-shell'
 import { AIInsight } from '@/components/ai-insight'
@@ -2225,6 +2226,7 @@ function SupplierCollateralSubmitForm({
 
 export default function TransactionDetailPage() {
   const portal = usePortal()
+  const user = useUser()
   const router = useRouter()
   const params = useParams()
   const id = params.id as string
@@ -2381,6 +2383,13 @@ export default function TransactionDetailPage() {
 
   const txn = transaction
 
+  // Which side of THIS transaction the caller's org sits on — an org can be the
+  // anchor on one transaction and the supplier on another, so this is derived
+  // per-transaction, never from portal type. See lib/deals/roles.ts for the
+  // equivalent pattern on deals.
+  const isSupplierSide = !!txn && txn.supplier_id === user?.org_id
+  const isAnchorSide   = !!txn && txn.anchor_id === user?.org_id
+
   const isPOFinancing        = txn?.type === 'po_financing'        || txn?.financing_type === 'po_financing'
   const isInvoiceFactoring   = txn?.type === 'invoice_factoring'   || txn?.financing_type === 'invoice_factoring'
   const isDynamicDiscounting = txn?.type === 'dynamic_discounting' || txn?.financing_type === 'dynamic_discounting'
@@ -2533,7 +2542,7 @@ export default function TransactionDetailPage() {
                       <span className="v plain">{fmtDate(txn.invoice_date)}</span>
                     </div>
                     {/* Wire info in summary — only for supplier and bank */}
-                  {(portal === 'supplier' || portal === 'bank') && wireInfoForSummary?.reference && (
+                  {(isSupplierSide || portal === 'bank') && wireInfoForSummary?.reference && (
                     <div className="kv-row">
                       <span className="k">{t('txnDetail.wireReference')}</span>
                       <span className="v plain">{wireInfoForSummary.reference}</span>
@@ -2585,7 +2594,7 @@ export default function TransactionDetailPage() {
                         <span className="v plain">{fmtDate(txn.repaid_at)}</span>
                       </div>
                     )}
-                    {repaymentInstructionsText && (portal === 'bank' || portal === 'anchor') && (
+                    {repaymentInstructionsText && (portal === 'bank' || isAnchorSide) && (
                       <div className="kv-row">
                         <span className="k">{t('txnDetail.repaymentInstructions')}</span>
                         <span className="v plain" style={{ fontSize: 12, lineHeight: 1.5 }}>
@@ -2593,13 +2602,13 @@ export default function TransactionDetailPage() {
                         </span>
                       </div>
                     )}
-                    {txn.repayment_due_date && (portal === 'bank' || portal === 'anchor') && (
+                    {txn.repayment_due_date && (portal === 'bank' || isAnchorSide) && (
                       <div className="kv-row">
                         <span className="k">{t('txnDetail.repaymentDue')}</span>
                         <span className="v plain">{fmtDate(txn.repayment_due_date)}</span>
                       </div>
                     )}
-                    {repaymentRequest?.status === 'approved' && (portal === 'bank' || portal === 'anchor') && (
+                    {repaymentRequest?.status === 'approved' && (portal === 'bank' || isAnchorSide) && (
                       <>
                         <div className="kv-row">
                           <span className="k">{t('txnDetail.repaymentArrangement')}</span>
@@ -2669,7 +2678,7 @@ export default function TransactionDetailPage() {
                               <span className={`badge ${collateralStatusBadge(item.status)}`}>
                                 {t(`collateral.status.${item.status}`)}
                               </span>
-                              {portal === 'supplier' && item.status === 'pending' && (
+                              {isSupplierSide && item.status === 'pending' && (
                                 submittingCollateral?.id === item.id ? null : (
                                   <button
                                     className="btn btn-ghost btn-sm"
@@ -2700,7 +2709,7 @@ export default function TransactionDetailPage() {
                               )}
                             </div>
                             {/* Supplier submission form */}
-                            {portal === 'supplier' && submittingCollateral?.id === item.id && (
+                            {isSupplierSide && submittingCollateral?.id === item.id && (
                               <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
                                 <SupplierCollateralSubmitForm
                                   item={item}
@@ -3072,7 +3081,7 @@ export default function TransactionDetailPage() {
                       {t('txnDetail.ddNoBankInvolvement')}
                     </div>
                   )}
-                  {portal === 'anchor' && (
+                  {isAnchorSide && (
                     <AnchorActionPanel
                       transaction={txn}
                       onAction={handleAction}
@@ -3083,7 +3092,7 @@ export default function TransactionDetailPage() {
                       isDynamicDiscounting={isDynamicDiscounting}
                     />
                   )}
-                  {portal === 'supplier' && (
+                  {isSupplierSide && (
                     <SupplierActionPanel
                       transaction={txn}
                       onAction={handleAction}
@@ -3096,7 +3105,7 @@ export default function TransactionDetailPage() {
                     />
                   )}
                 </div>
-                {portal === 'anchor' && !isInvoiceFactoring && !isPOFinancing && !isDynamicDiscounting &&
+                {isAnchorSide && !isInvoiceFactoring && !isPOFinancing && !isDynamicDiscounting &&
                   !['draft', 'rejected', 'cancelled', 'completed'].includes(txn.status) && (
                   <div className="card" style={{ width: '100%', marginTop: 12 }}>
                     <div className="card-head">

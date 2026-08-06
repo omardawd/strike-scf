@@ -46,11 +46,9 @@ export async function GET(
     }
   } else {
     // Allow active enrollments OR pending/accepted invitations (invited user viewing before approval).
-    // Anchors: match by anchor_org_id (covers both their own row and supplier rows under them).
-    // Suppliers: match by org_id.
-    // Determine if caller is an anchor org
-    const { data: callerOrgType } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    const isAnchor = callerOrgType?.type === 'anchor'
+    // Any org can be enrolled as the anchor side on one program_enrollments row
+    // and the supplier side on another — check both FK columns rather than
+    // picking one via org-level type.
 
     // public.users.email may be null for older invited users — fall back to auth.users
     let userEmail = userData.email as string | null
@@ -60,23 +58,14 @@ export async function GET(
     }
 
     const [enrollResult, inviteResult] = await Promise.all([
-      isAnchor
-        ? adminClient
-            .from('program_enrollments')
-            .select('id')
-            .eq('program_id', id)
-            .eq('anchor_org_id', userData.org_id)
-            .eq('status', 'active')
-            .limit(1)
-            .maybeSingle()
-        : adminClient
-            .from('program_enrollments')
-            .select('id')
-            .eq('program_id', id)
-            .eq('org_id', userData.org_id)
-            .eq('status', 'active')
-            .limit(1)
-            .maybeSingle(),
+      adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('program_id', id)
+        .or(`anchor_org_id.eq.${userData.org_id},org_id.eq.${userData.org_id}`)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle(),
       userEmail
         ? adminClient
             .from('invitations')

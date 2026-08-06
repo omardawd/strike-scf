@@ -279,6 +279,10 @@ export default function ProgramDetailPage() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [isIFOnly, setIsIFOnly]       = useState(false)
+  // This org's standing on THIS specific program — an org can be the anchor on
+  // one program and an enrolled supplier on another, so it's derived per-program
+  // from /api/programs/[id]/network's viewer_role, never from portal type.
+  const [viewerRole, setViewerRole]   = useState<'anchor' | 'supplier' | null>(null)
   const [networkVersion, setNetworkVersion] = useState(0)
   const [volPeriod, setVolPeriod] = useState<Period>('monthly')
 
@@ -362,6 +366,7 @@ export default function ProgramDetailPage() {
         setSignedUpAnchors(netData.signed_up_anchors ?? [])
         setSignedUpSuppliers(netData.signed_up_suppliers ?? [])
         setPendingAnchorRequests(netData.pending_anchor_requests ?? [])
+        setViewerRole(netData.viewer_role ?? null)
       }
 
       if (portal === 'bank' && results[2]?.ok) {
@@ -591,7 +596,7 @@ export default function ProgramDetailPage() {
                 {t('programDetail.sourceDealsOnStrikePlace')}
               </button>
             )}
-            {portal === 'anchor' && (
+            {viewerRole === 'anchor' && (
               <button className="btn btn-primary btn-sm" type="button" onClick={() => openInviteModal('supplier')}>
                 <Icon name="plus" size={14} /> {t('programDetail.inviteSupplier')}
               </button>
@@ -1248,7 +1253,7 @@ export default function ProgramDetailPage() {
             )}
 
             {/* ── ANCHOR: My Suppliers ── */}
-            {portal === 'anchor' && (
+            {viewerRole === 'anchor' && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div className="section-title">{t('programDetail.mySuppliers')}</div>
@@ -1407,7 +1412,7 @@ export default function ProgramDetailPage() {
             )}
 
             {/* ── SUPPLIER + IF: Anchor cards ── */}
-            {portal === 'supplier' && isIFOnly && (
+            {viewerRole === 'supplier' && isIFOnly && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>{t('programDetail.myAnchor')}</div>
                 {anchorList.length === 0 ? (
@@ -1437,7 +1442,7 @@ export default function ProgramDetailPage() {
             )}
 
             {/* ── SUPPLIER: My Anchor ── */}
-            {portal === 'supplier' && !isIFOnly && (
+            {viewerRole === 'supplier' && !isIFOnly && (
               <div>
                 <div className="section-title" style={{ marginBottom: 12 }}>{t('programDetail.myAnchor')}</div>
                 {anchorList.length === 0 ? (

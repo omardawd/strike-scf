@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/portal-shell'
 import { useUser } from '@/lib/user-context'
 import { createClient } from '@/lib/supabase/client'
@@ -17,7 +17,6 @@ interface OwnPassport {
   network_visible: boolean
   legal_name: string | null
   doing_business_as: string | null
-  type: string
   trade_count_total: number | null
   trade_volume_total: number | null
 }
@@ -107,7 +106,7 @@ function PosterOrg({ org, bordered = true }: { org: NonNullable<ListingWithPassp
           color: 'var(--gray)',
           marginTop: 1,
         }}>
-          {org.type} · {t('marketplace.tradeCount', { count: org.trade_count_total ?? 0 })} · {formatVolume(org.trade_volume_total)}
+          {t('marketplace.tradeCount', { count: org.trade_count_total ?? 0 })} · {formatVolume(org.trade_volume_total)}
         </div>
       </div>
     </div>
@@ -259,6 +258,7 @@ type TypeFilter = 'all' | 'po' | 'product'
 
 export default function MarketplacePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const user = useUser()
   const t = useT()
   const { isGhost } = useGhost()
@@ -269,6 +269,13 @@ export default function MarketplacePage() {
   const [sort, setSort] = useState('newest')
   const [searchInput, setSearchInput] = useState('')
   const [committedSearch, setCommittedSearch] = useState('')
+
+  // Network filter — either arrived via an inbound link (e.g. from the
+  // Networks detail page's "View in Strike Place" button) or picked from the
+  // selector below. Kept in the URL so the inbound-link case actually works.
+  const [networkId, setNetworkId] = useState<string | null>(() => searchParams.get('network_id'))
+  const [networkName, setNetworkName] = useState<string | null>(null)
+  const [myNetworkOptions, setMyNetworkOptions] = useState<{ id: string; name: string }[]>([])
 
   const [listings, setListings] = useState<ListingWithPassport[]>([])
   const [total, setTotal] = useState(0)
@@ -303,7 +310,6 @@ export default function MarketplacePage() {
             network_visible: !!org.network_visible,
             legal_name: org.legal_name ?? null,
             doing_business_as: org.doing_business_as ?? null,
-            type: org.type ?? '',
             trade_count_total: org.trade_count_total ?? null,
             trade_volume_total: org.trade_volume_total ?? null,
           })
@@ -321,6 +327,7 @@ export default function MarketplacePage() {
       if (category) qs.set('category', category)
       if (typeFilter === 'po') qs.set('listing_type', 'po_request')
       if (typeFilter === 'product') qs.set('listing_type', 'product_service')
+      if (networkId) qs.set('network_id', networkId)
       qs.set('sort', sort)
 
       const res = await fetch(`/api/marketplace/listings?${qs}`)
@@ -334,7 +341,51 @@ export default function MarketplacePage() {
     } finally {
       setLoading(false)
     }
-  }, [committedSearch, category, typeFilter, sort])
+  }, [committedSearch, category, typeFilter, sort, networkId])
+
+  // Resolve the filtered network's name for the chip label.
+  useEffect(() => {
+    if (!networkId) { setNetworkName(null); return }
+    let cancelled = false
+    fetch(`/api/networks/${networkId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d?.network) setNetworkName(d.network.name) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [networkId])
+
+  // Populate the network selector from the org's own owned + active-member
+  // networks — the explicit UI control, not just the inbound-link case.
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/networks').then(r => r.ok ? r.json() : { networks: [] }).catch(() => ({ networks: [] })),
+      fetch('/api/networks/supplier').then(r => r.ok ? r.json() : { networks: [] }).catch(() => ({ networks: [] })),
+    ]).then(([owned, memberships]) => {
+      const ownedOpts = (owned.networks ?? []).map((n: any) => ({ id: n.id, name: n.name }))
+      const memberOpts = (memberships.networks ?? [])
+        .filter((m: any) => m.membership?.status === 'active')
+        .map((m: any) => ({ id: m.network?.id, name: m.network?.name }))
+        .filter((n: any) => n.id)
+      const seen = new Set<string>()
+      const merged = [...ownedOpts, ...memberOpts].filter(n => (seen.has(n.id) ? false : (seen.add(n.id), true)))
+      setMyNetworkOptions(merged)
+    }).catch(() => {})
+  }, [])
+
+  function clearNetworkFilter() {
+    setNetworkId(null)
+    const params = new URLSearchParams(Array.from(searchParams.entries()))
+    params.delete('network_id')
+    router.replace(params.toString() ? `/marketplace?${params}` : '/marketplace')
+  }
+
+  function selectNetworkFilter(id: string) {
+    setNetworkId(id || null)
+    const params = new URLSearchParams(Array.from(searchParams.entries()))
+    if (id) params.set('network_id', id)
+    else params.delete('network_id')
+    router.replace(params.toString() ? `/marketplace?${params}` : '/marketplace')
+  }
 
   useEffect(() => {
     if (mainTab === 'marketplace') {
@@ -432,7 +483,6 @@ export default function MarketplacePage() {
             ai_summary: item.listing.ai_summary ?? null,
             poster: item.poster_org ? {
               name: item.poster_org.doing_business_as ?? item.poster_org.legal_name,
-              type: item.poster_org.type,
               passport_score: item.poster_org.passport_score,
               risk_tier: item.poster_org.risk_tier,
               trade_count: item.poster_org.trade_count_total,
@@ -501,6 +551,19 @@ export default function MarketplacePage() {
                   ))}
                 </div>
 
+                {myNetworkOptions.length > 0 && (
+                  <select
+                    className="mp-filter-select"
+                    value={networkId ?? ''}
+                    onChange={(e) => selectNetworkFilter(e.target.value)}
+                  >
+                    <option value="">All networks</option>
+                    {myNetworkOptions.map(n => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
+                )}
+
                 <div className="mp-filter-spacer" />
 
                 <select
@@ -513,6 +576,24 @@ export default function MarketplacePage() {
                   <option value="price_desc">{t('marketplace.sortPriceDesc')}</option>
                 </select>
               </div>
+
+              {networkId && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+                  padding: '8px 14px', borderRadius: 'var(--radius-badge)',
+                  background: 'var(--blue-light)', color: 'var(--blue)',
+                  fontSize: 13, fontWeight: 600, width: 'fit-content',
+                }}>
+                  Filtered to network: {networkName ?? '…'}
+                  <button
+                    onClick={clearNetworkFilter}
+                    aria-label="Clear network filter"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue)', fontSize: 15, lineHeight: 1, padding: 0 }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
 
               {/* Ghost browse-only notice — listings stay visible; actions gated. */}
               {isGhost && (
@@ -628,9 +709,6 @@ export default function MarketplacePage() {
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
                           {ownPassport.doing_business_as ?? ownPassport.legal_name ?? t('marketplace.yourOrganization')}
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
-                          {ownPassport.type}
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 20, width: '100%', justifyContent: 'center' }}>

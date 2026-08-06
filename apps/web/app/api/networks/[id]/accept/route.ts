@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, networkSupplierJoinedEmailHtml } from '@/lib/email'
+import { syncNetworkRoomParticipants } from '@/lib/networks/room-sync'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -51,6 +52,9 @@ export async function POST(
     .single()
 
   if (updateErr) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+
+  // No-op if the network has no room yet (only created lazily on first click).
+  await syncNetworkRoomParticipants(adminClient, id)
 
   // Increment member_count
   const { data: currentNet } = await adminClient

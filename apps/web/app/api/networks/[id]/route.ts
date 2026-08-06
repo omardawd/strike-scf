@@ -1,11 +1,39 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { getNetworkAccess } from '@/lib/networks/access'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// GET /api/networks/[id] — owner or active member can view. Used by the
+// network detail page and by the marketplace network-filter chip (any linked
+// org needs to resolve a network's name, not just its owner).
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: me } = await adminClient
+    .from('users')
+    .select('id, role, org_id')
+    .eq('id', user.id)
+    .single()
+  if (!me) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+  if (!me.org_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { network, isOwner, hasAccess } = await getNetworkAccess(adminClient, id, me.org_id)
+  if (!network) return NextResponse.json({ error: 'Network not found' }, { status: 404 })
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  return NextResponse.json({ network, is_owner: isOwner })
+}
 
 // G3.3 — PATCH /api/networks/[id]
 export async function PATCH(

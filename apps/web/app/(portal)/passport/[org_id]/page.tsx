@@ -154,23 +154,6 @@ function OrgAvatar({ name, logoUrl }: { name: string | null; logoUrl?: string | 
   )
 }
 
-function TypeBadge({ type }: { type: string | null }) {
-  const t = useT()
-  const isBuyer = type === 'anchor'
-  return (
-    <span
-      className="badge"
-      style={{
-        background: isBuyer ? 'var(--color-accent-light)' : 'var(--color-green-bg)',
-        color: isBuyer ? 'var(--blue)' : 'var(--color-green)',
-        borderColor: isBuyer ? 'var(--blue)' : 'var(--color-green)',
-      }}
-    >
-      {isBuyer ? t('passport.buyer') : t('passport.supplier')}
-    </span>
-  )
-}
-
 function AiAssessmentPanel({
   narrative,
   assessment,
@@ -466,7 +449,6 @@ export default function PublicPassportPage() {
                       >
                         {org.legal_name ?? t('passportPublic.unknownOrganization')}
                       </span>
-                      <TypeBadge type={org.type} />
                     </div>
                     {dba && (
                       <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>
@@ -561,7 +543,7 @@ export default function PublicPassportPage() {
                           </strong>{' '}
                           {t('passportPublic.acrossVerified', {
                             count: narrativeData.medians.peer_count,
-                            type: org.type === 'anchor' ? t('passportPublic.buyers') : t('passportPublic.suppliers'),
+                            type: t('passportPublic.organizations'),
                           })}
                         </div>
                       </>

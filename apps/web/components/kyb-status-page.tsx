@@ -169,7 +169,6 @@ function ProfileSummary({ org, t }: { org: StatusOrg; t: TFn }) {
       <div className="card-head">{t('kybStatus.yourSubmission')}</div>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div className="kv-row"><span className="k">{t('kybStatus.organization')}</span><span className="v plain">{name}</span></div>
-        <div className="kv-row"><span className="k">{t('kybStatus.type')}</span><span className="v plain" style={{ textTransform: 'capitalize' }}>{org.type}</span></div>
         <div className="kv-row"><span className="k">{t('onboarding.field.businessType')}</span><span className="v plain">{org.business_type ?? '—'}</span></div>
         <div className="kv-row"><span className="k">{t('onboarding.field.countryIncorp')}</span><span className="v plain">{org.country_of_incorporation ?? '—'}</span></div>
         <div className="kv-row"><span className="k">{t('onboarding.field.industry')}</span><span className="v plain">{org.industry_naics ?? '—'}</span></div>

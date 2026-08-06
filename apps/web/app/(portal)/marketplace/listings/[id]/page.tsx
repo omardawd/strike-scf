@@ -670,9 +670,6 @@ function OfferCard({
                 <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {(offeror_org.doing_business_as as string | null) || (offeror_org.legal_name as string | null) || t('listingDetail.unknown')}
                 </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', border: '1px solid var(--border-strong)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
-                  {offeror_org.type as string}
-                </span>
               </div>
 
               <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
@@ -1747,9 +1744,6 @@ export default function ListingDetailPage() {
                   <div style={{ marginTop: 12, textAlign: 'center' }}>
                     <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
                       {(poster_org.doing_business_as as string | null) || (poster_org.legal_name as string | null) || t('listingDetail.unknown')}
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--gray)', marginTop: 2 }}>
-                      {poster_org.type as string}
                     </div>
                   </div>
                 </div>

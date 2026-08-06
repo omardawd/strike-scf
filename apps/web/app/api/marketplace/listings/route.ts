@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateListingPayload } from '@strike-scf/types'
 import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
+import { getNetworkAccess } from '@/lib/networks/access'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { sanitizeSearchTerm } from '@/lib/search'
 import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
@@ -57,7 +58,12 @@ export async function GET(request: Request) {
     // Return only the caller's own org's listings (all statuses)
     query = query.eq('org_id', me.org_id)
   } else if (networkId) {
-    // Network-specific browse: only listings in this network
+    // Network-specific browse: only listings in this network, and only for
+    // the network's owner or an active member — this param was previously
+    // trusted unconditionally, letting any org view any network's listings
+    // by guessing/sharing its id.
+    const { hasAccess } = await getNetworkAccess(adminClient, networkId, me.org_id)
+    if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     query = query.eq('network_id', networkId).eq('status', 'active')
   } else {
     // Marketplace browse: apply visibility filter

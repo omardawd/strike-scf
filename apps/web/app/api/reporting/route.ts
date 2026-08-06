@@ -65,19 +65,14 @@ export async function GET(request: Request) {
 
   if (!profile) return NextResponse.json({ error: 'User not found' }, { status: 401 })
 
-  // Normalize org_admin / org_member → anchor_admin / supplier_admin based on org type
+  // Normalize org_admin / org_member → 'org' — any org can both buy and sell,
+  // so there's no anchor/supplier split to derive from org type anymore.
   let effectiveRole = profile.role
   if (profile.role === 'org_admin' || profile.role === 'org_member') {
-    if (profile.org_id) {
-      const { data: orgData } = await adminClient
-        .from('organizations')
-        .select('type')
-        .eq('id', profile.org_id)
-        .single()
-      effectiveRole = orgData?.type === 'anchor' ? 'anchor_admin' : 'supplier_admin'
-    } else {
+    if (!profile.org_id) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
     }
+    effectiveRole = 'org'
   }
 
   // ── BANK ──────────────────────────────────────────────────────────────────
@@ -211,10 +206,9 @@ export async function GET(request: Request) {
   // (those are the old direct-SCF-program flow and are near-empty for orgs
   // that transact through the marketplace). Source from deals so every KPI
   // here matches what the org actually sees on their Dashboard/My Deals.
-  if (effectiveRole.startsWith('anchor') || effectiveRole.startsWith('supplier')) {
+  if (effectiveRole === 'org') {
     const orgId = profile.org_id
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
-    const isAnchor = effectiveRole.startsWith('anchor')
 
     // Deal role is per-deal (buyer_org_id/supplier_org_id), never derived from
     // organizations.type — an anchor org can still be the supplier on a given
@@ -369,7 +363,7 @@ export async function GET(request: Request) {
     }))
 
     return NextResponse.json({
-      role: isAnchor ? 'anchor' : 'supplier',
+      role: 'org',
       kpis: {
         total_deals:                deals.length,
         active_deals:               activeDeals.length,

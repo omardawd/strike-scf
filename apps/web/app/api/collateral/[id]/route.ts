@@ -35,32 +35,17 @@ async function verifyAccess(
   }
 
   if (ORG_ROLES.includes(userData.role)) {
-    const { data: orgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    const orgType = orgRow?.type  // 'anchor' | 'supplier'
-
-    if (orgType === 'supplier') {
-      if (item.org_id === userData.org_id) return true
-      if (item.transaction_id) {
-        const { data: txn } = await adminClient
-          .from('transactions')
-          .select('supplier_id')
-          .eq('id', item.transaction_id as string)
-          .single()
-        return txn?.supplier_id === userData.org_id
-      }
-      return false
-    }
-
-    if (orgType === 'anchor') {
-      if (!item.transaction_id) return false
+    if (item.org_id === userData.org_id) return true
+    if (item.transaction_id) {
+      // Any org can sit on either side of a transaction — check both FK
+      // columns rather than picking one via org-level type.
       const { data: txn } = await adminClient
         .from('transactions')
-        .select('anchor_id')
+        .select('supplier_id, anchor_id')
         .eq('id', item.transaction_id as string)
         .single()
-      return txn?.anchor_id === userData.org_id
+      return txn?.supplier_id === userData.org_id || txn?.anchor_id === userData.org_id
     }
-
     return false
   }
 

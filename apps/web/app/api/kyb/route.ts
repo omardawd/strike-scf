@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   let query = adminClient
     .from('organizations')
     .select(`
-      id, legal_name, type, kyb_status, status,
+      id, legal_name, kyb_status, status,
       kyb_submitted_at, created_at, risk_tier,
       credit_score, ein, city, state,
       users(full_name, email)
@@ -51,7 +51,6 @@ export async function GET(request: Request) {
     return {
       id: org.id,
       legal_name: org.legal_name,
-      type: org.type,
       kyb_status: org.kyb_status,
       status: org.status,
       kyb_submitted_at: org.kyb_submitted_at,

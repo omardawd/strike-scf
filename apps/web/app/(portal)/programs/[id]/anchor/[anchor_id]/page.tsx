@@ -350,7 +350,10 @@ export default function AnchorDetailPage() {
           setAnalytics(await analyticsRes.json())
         }
       } else {
-        const analyticsUrl = portal === 'supplier' && user?.org_id
+        // Only banks reach the branch above — every org viewer here is looking at
+        // an anchor that isn't their own org (see the "My Anchor" card in
+        // programs/[id]/page.tsx), so this is always the supplier side.
+        const analyticsUrl = user?.org_id
           ? `/api/programs/${programId}/analytics?anchor_id=${anchorId}&supplier_id=${user.org_id}&period=${volPeriod}`
           : `/api/programs/${programId}/analytics?anchor_id=${anchorId}&period=${volPeriod}`
         const [netRes, txRes, analyticsRes, kybRes] = await Promise.all([
@@ -375,7 +378,7 @@ export default function AnchorDetailPage() {
           const txData = await txRes.json()
           const all: TxRow[] = txData.transactions ?? txData.data ?? []
           const filtered = all.filter(t => t.anchor_id === anchorId && t.program_id === programId)
-          setTransactions(portal === 'supplier' && user?.org_id
+          setTransactions(user?.org_id
             ? filtered.filter(t => t.supplier_id === user.org_id)
             : filtered)
         }

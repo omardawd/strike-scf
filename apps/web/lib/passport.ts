@@ -268,7 +268,6 @@ export async function runExpertPassportScoring(
 ${JSON.stringify({
   legal_name: org.legal_name,
   doing_business_as: org.doing_business_as,
-  org_type: org.type,
   business_type: org.business_type,
   state_of_incorporation: org.state_of_incorporation,
   country_of_incorporation: org.country_of_incorporation,
@@ -563,7 +562,6 @@ export async function runPassportRecalculate(orgId: string, locale?: string): Pr
         role: 'user',
         content: JSON.stringify({
           legal_name: org.legal_name,
-          type: org.type,
           kyb_status: org.kyb_status,
           years_in_operation: org.years_in_operation,
           annual_revenue_range: org.annual_revenue_range,

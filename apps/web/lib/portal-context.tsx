@@ -1,13 +1,11 @@
 'use client'
 import { createContext, useContext } from 'react'
 
-// Portal is derived at the (portal) layout from the user's role + org type:
+// Portal is derived at the (portal) layout from the user's role:
 //   bank_admin / bank_credit_officer → 'bank'
-//   org_admin / org_member           → org.type ('anchor' | 'supplier')  ← sub-portal
+//   org_admin / org_member           → 'org'   (any org — no more anchor/supplier sub-portal)
 //   strike_admin                     → 'admin'
-// 'anchor' and 'supplier' are kept as first-class values so the existing
-// design-system accents ([data-portal]) and dashboards keep working.
-export type PortalType = 'bank' | 'anchor' | 'supplier' | 'admin'
+export type PortalType = 'bank' | 'org' | 'admin'
 
 export const PortalContext = createContext<PortalType>('bank')
 

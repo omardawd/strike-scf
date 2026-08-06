@@ -16,9 +16,8 @@ function tierFromScore(score: number): 'green' | 'amber' | 'red' {
 
 function fallbackNarrative(org: Record<string, unknown>): string {
   const name = (org.doing_business_as || org.legal_name || 'This organization') as string
-  const kind = org.type === 'anchor' ? 'buyer' : 'supplier'
   const years = org.years_in_operation ? `${org.years_in_operation} years in operation` : 'an emerging operating history'
-  return `${name} is a ${kind} with ${years}. Its Strike Passport reflects the data verified during KYB; performance metrics will deepen as trade history accumulates on the network.`
+  return `${name} is an organization with ${years}. Its Strike Passport reflects the data verified during KYB; performance metrics will deepen as trade history accumulates on the network.`
 }
 
 export interface KybReviewResult {

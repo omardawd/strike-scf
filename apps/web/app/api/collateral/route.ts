@@ -60,41 +60,21 @@ export async function GET(request: Request) {
       .or(orParts.join(','))
 
   } else if (ORG_ROLES.includes(userData.role)) {
-    // Look up org type to determine anchor vs supplier path
-    const { data: orgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    const orgType = orgRow?.type  // 'anchor' | 'supplier'
+    // Any org can sit on either side of a transaction — collect transactions
+    // where this org is supplier OR anchor, rather than picking one path via
+    // org-level type.
+    const { data: txns } = await adminClient
+      .from('transactions')
+      .select('id')
+      .or(`supplier_id.eq.${userData.org_id},anchor_id.eq.${userData.org_id}`)
 
-    if (orgType === 'supplier') {
-      // Supplier sees collateral for their org or their transactions
-      const { data: txns } = await adminClient
-        .from('transactions')
-        .select('id')
-        .eq('supplier_id', userData.org_id)
+    const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
 
-      const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
-
-      query = adminClient.from('collateral_requirements').select('*')
-      if (txnIds.length > 0) {
-        query = query.or(`org_id.eq.${userData.org_id},transaction_id.in.(${txnIds.join(',')})`)
-      } else {
-        query = query.eq('org_id', userData.org_id)
-      }
-    } else if (orgType === 'anchor') {
-      // Anchor sees collateral for transactions they're on
-      const { data: txns } = await adminClient
-        .from('transactions')
-        .select('id')
-        .eq('anchor_id', userData.org_id)
-
-      const txnIds = (txns ?? []).map((t: { id: string }) => t.id)
-      if (txnIds.length === 0) return NextResponse.json({ collateral: [] })
-
-      query = adminClient
-        .from('collateral_requirements')
-        .select('*')
-        .in('transaction_id', txnIds)
+    query = adminClient.from('collateral_requirements').select('*')
+    if (txnIds.length > 0) {
+      query = query.or(`org_id.eq.${userData.org_id},transaction_id.in.(${txnIds.join(',')})`)
     } else {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      query = query.eq('org_id', userData.org_id)
     }
 
   } else {
@@ -130,9 +110,28 @@ export async function GET(request: Request) {
     }
   }
 
+  // Requirements tied to a transaction target the transaction's supplier side
+  // (see POST below) — surface that so the frontend can tell whether the
+  // current org is the one expected to respond, without needing org-level type.
+  const rawTxnIds = [...new Set(
+    items.map((c: { transaction_id: string | null }) => c.transaction_id).filter((id: string | null): id is string => id != null)
+  )]
+  const txnSupplierMap: Record<string, string | null> = {}
+  if (rawTxnIds.length > 0) {
+    const { data: txns } = await adminClient
+      .from('transactions')
+      .select('id, supplier_id')
+      .in('id', rawTxnIds)
+    for (const txn of txns ?? []) {
+      const tx = txn as { id: string; supplier_id: string | null }
+      txnSupplierMap[tx.id] = tx.supplier_id
+    }
+  }
+
   const enriched = items.map((c: Record<string, unknown>) => ({
     ...c,
     org_name: c.org_id ? (orgNameMap[c.org_id as string] ?? null) : null,
+    responding_org_id: (c.org_id as string | null) ?? (c.transaction_id ? txnSupplierMap[c.transaction_id as string] ?? null : null),
   }))
 
   return NextResponse.json({ collateral: enriched })

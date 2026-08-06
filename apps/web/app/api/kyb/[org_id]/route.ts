@@ -40,47 +40,50 @@ export async function GET(
     if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   } else if (ORG_ROLES.includes(me.role)) {
     if (me.org_id !== org_id) {
-      // Look up caller org type to determine anchor vs supplier path
-      const { data: callerOrgRow } = await adminClient.from('organizations').select('type').eq('id', me.org_id).single()
-      const callerOrgType = callerOrgRow?.type  // 'anchor' | 'supplier'
+      // Any org can be enrolled as the anchor over another org on one program
+      // and as a member under a different anchor on another — check both
+      // directions of the relationship rather than picking one via org-level
+      // type, and preserve the original asymmetric response shape (an anchor
+      // viewing its supplier gets the full downstream view below; a member
+      // viewing its anchor gets a restricted summary with no documents/credit
+      // score).
 
-      if (callerOrgType === 'anchor') {
-        // Anchors may view KYB for suppliers linked to them
-        const { data: enrollment } = await adminClient
-          .from('program_enrollments')
-          .select('id')
-          .eq('anchor_org_id', me.org_id)
+      // Direction A: target org is enrolled under the caller as anchor —
+      // caller is viewing "their" supplier's KYB.
+      const { data: enrollmentAsAnchor } = await adminClient
+        .from('program_enrollments')
+        .select('id')
+        .eq('anchor_org_id', me.org_id)
+        .eq('org_id', org_id)
+        .limit(1)
+        .maybeSingle()
+
+      let callerIsAnchorOfTarget = !!enrollmentAsAnchor
+      if (!callerIsAnchorOfTarget) {
+        // Fall back to invitation link (supplier accepted but enrollment not yet created)
+        const { data: orgUsers } = await adminClient
+          .from('users')
+          .select('email')
           .eq('org_id', org_id)
-          .limit(1)
-          .maybeSingle()
 
-        if (!enrollment) {
-          // Fall back to invitation link (supplier accepted but enrollment not yet created)
-          const { data: orgUsers } = await adminClient
-            .from('users')
-            .select('email')
-            .eq('org_id', org_id)
+        const emails = (orgUsers ?? []).map((u: { email: string | null }) => u.email).filter(Boolean) as string[]
+        if (emails.length > 0) {
+          const { data: inv } = await adminClient
+            .from('invitations')
+            .select('id')
+            .eq('anchor_org_id', me.org_id)
+            .in('email', emails)
+            .in('status', ['pending', 'accepted'])
+            .limit(1)
+            .maybeSingle()
+          callerIsAnchorOfTarget = !!inv
+        }
+      }
 
-          const emails = (orgUsers ?? []).map((u: { email: string | null }) => u.email).filter(Boolean) as string[]
-          let linked = false
-          if (emails.length > 0) {
-            const { data: inv } = await adminClient
-              .from('invitations')
-              .select('id')
-              .eq('anchor_org_id', me.org_id)
-              .in('email', emails)
-              .in('status', ['pending', 'accepted'])
-              .limit(1)
-              .maybeSingle()
-            linked = !!inv
-          }
-          if (!linked) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-        }
-      } else if (callerOrgType === 'supplier') {
-        if (org.type !== 'anchor') {
-          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-        }
-        const { data: enrollment } = await adminClient
+      if (!callerIsAnchorOfTarget) {
+        // Direction B: caller is enrolled under the target org as anchor —
+        // caller is viewing "their" anchor's KYB (restricted view).
+        const { data: enrollmentAsMember } = await adminClient
           .from('program_enrollments')
           .select('id')
           .eq('anchor_org_id', org_id)
@@ -88,14 +91,15 @@ export async function GET(
           .eq('status', 'active')
           .limit(1)
           .maybeSingle()
-        if (!enrollment) {
+
+        if (!enrollmentAsMember) {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
+
         return NextResponse.json({
           organization: {
             id:                    org.id,
             legal_name:            org.legal_name,
-            type:                  org.type,
             city:                  org.city ?? null,
             state:                 org.state ?? null,
             primary_contact_name:  org.primary_contact_name ?? null,
@@ -108,9 +112,8 @@ export async function GET(
           documents:    [],
           credit_score: null,
         })
-      } else {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
+      // else: callerIsAnchorOfTarget — fall through to the shared full-view logic below.
     }
   } else {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

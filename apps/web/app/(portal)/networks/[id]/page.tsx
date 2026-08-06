@@ -2,56 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { usePortal } from '@/lib/portal-context'
-import type { AnchorNetwork, AnchorNetworkMember } from '@strike-scf/types'
+import type { AnchorNetwork } from '@strike-scf/types'
 import { useT } from '@/lib/i18n/locale-context'
-
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    active:    { bg: '#edfaf4', text: '#10B981' },
-    invited:   { bg: '#fffbeb', text: '#F59E0B' },
-    suspended: { bg: '#fee2e2', text: '#EF4444' },
-    declined:  { bg: '#f3f4f6', text: '#6B7280' },
-    removed:   { bg: '#f3f4f6', text: '#9CA3AF' },
-  }
-  const c = colors[status] ?? { bg: '#f3f4f6', text: '#6B7280' }
-  return (
-    <span style={{
-      display: 'inline-block', borderRadius: 'var(--radius-badge)',
-      padding: '3px 10px', fontSize: 11, fontWeight: 600,
-      background: c.bg, color: c.text,
-    }}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  )
-}
+import { PassportScoreRing } from '@/components/passport-score-ring'
+import { MemberCard, type NetworkMemberRow } from '@/components/networks/MemberCard'
 
 function PassportRing({ score }: { score?: number | null }) {
-  const s = score ?? 0
-  const color = s >= 70 ? '#10B981' : s >= 45 ? '#F59E0B' : '#EF4444'
-  const c = 2 * Math.PI * 14
-  return (
-    <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
-      <svg width="36" height="36" viewBox="0 0 36 36">
-        <circle cx="18" cy="18" r="14" fill="none" stroke="var(--border)" strokeWidth="3" />
-        <circle
-          cx="18" cy="18" r="14" fill="none" stroke={color} strokeWidth="3"
-          strokeDasharray={c} strokeDashoffset={c - (s / 100) * c}
-          strokeLinecap="round" transform="rotate(-90 18 18)"
-        />
-      </svg>
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, fontWeight: 700, color: 'var(--ink)',
-      }}>
-        {score != null ? score : '—'}
-      </div>
-    </div>
-  )
+  return <PassportScoreRing score={score} size="sm" />
 }
 
-// ── Invite Supplier Modal ────────────────────────────────────
+// ── Invite Modal ─────────────────────────────────────────────
 
 function InviteModal({
   networkId,
@@ -82,7 +42,8 @@ function InviteModal({
     if (!q.trim()) { setResults([]); return }
     setSearching(true)
     try {
-      const res = await fetch(`/api/organizations/search?q=${encodeURIComponent(q)}&type=supplier`)
+      // No `type=supplier` filter — any org can be invited now.
+      const res = await fetch(`/api/organizations/search?q=${encodeURIComponent(q)}`)
       const data = await res.json()
       setResults(data.organizations ?? [])
     } finally {
@@ -193,7 +154,7 @@ function InviteModal({
               <form onSubmit={handleEmailInvite} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--ink-soft)' }}>{t('networksDetail.emailStar')}</label>
-                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="supplier@company.com"
+                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="contact@company.com"
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
                 </div>
                 <div>
@@ -275,20 +236,220 @@ function InviteModal({
   )
 }
 
+// ── Analytics ─────────────────────────────────────────────────
+
+interface NetworkAnalytics {
+  member_counts: Record<string, number>
+  avg_passport_score: number | null
+  score_distribution: Record<string, number>
+  active_listings: number
+  active_listings_value: number
+  deal_count: number
+  deal_volume: number
+  member_growth: { label: string; count: number }[]
+}
+
+function fmtCurrency(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+}
+
+function AnalyticsTab({ networkId }: { networkId: string }) {
+  const [data, setData] = useState<NetworkAnalytics | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/networks/${networkId}/analytics`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setData(d) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [networkId])
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>Loading analytics…</div>
+  }
+  if (!data) {
+    return <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>Analytics unavailable.</div>
+  }
+
+  const maxGrowth = Math.max(1, ...data.member_growth.map(b => b.count))
+  const scoreBuckets = [
+    { key: '70-100', label: 'Strong (70–100)', color: '#10B981' },
+    { key: '45-69', label: 'Fair (45–69)', color: '#F59E0B' },
+    { key: '0-44', label: 'Weak (0–44)', color: '#EF4444' },
+  ]
+  const totalScored = Object.values(data.score_distribution).reduce((s, n) => s + n, 0)
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Active members</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.member_counts.active ?? 0}</div>
+        </div>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Avg. PassportScore</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.avg_passport_score ?? '—'}</div>
+        </div>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Active listings</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{data.active_listings}</div>
+          <div style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{fmtCurrency(data.active_listings_value)} total</div>
+        </div>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Deal volume</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtCurrency(data.deal_volume)}</div>
+          <div style={{ fontSize: 11, color: 'var(--gray-soft)' }}>{data.deal_count} deal{data.deal_count === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+        <div className="card" style={{ padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Member growth (last 6 months)</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 110 }}>
+            {data.member_growth.map(b => (
+              <div key={b.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--gray)' }}>{b.count > 0 ? b.count : ''}</div>
+                <div style={{
+                  width: '100%', maxWidth: 28,
+                  height: Math.max(4, (b.count / maxGrowth) * 70),
+                  background: 'var(--blue)', borderRadius: 4,
+                }} />
+                <div style={{ fontSize: 10, color: 'var(--gray-soft)' }}>{b.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>PassportScore distribution</div>
+          {totalScored === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--gray)' }}>No scored members yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {scoreBuckets.map(b => {
+                const count = data.score_distribution[b.key] ?? 0
+                const pct = totalScored > 0 ? Math.round((count / totalScored) * 100) : 0
+                return (
+                  <div key={b.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                      <span style={{ color: 'var(--gray)' }}>{b.label}</span>
+                      <span style={{ fontWeight: 600 }}>{count}</span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--offwhite)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: b.color, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Recent Listings ────────────────────────────────────────────
+
+interface NetworkListingRow {
+  id: string
+  title: string
+  listing_type: string
+  target_price: number | null
+  currency: string | null
+  poster_name: string | null
+  created_at: string
+}
+
+function ListingsTab({ networkId, isOwner }: { networkId: string; isOwner: boolean }) {
+  const t = useT()
+  const router = useRouter()
+  const [listings, setListings] = useState<NetworkListingRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/networks/${networkId}/listings`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setListings(d.listings ?? []) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [networkId])
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <p style={{ color: 'var(--gray)', fontSize: 14 }}>{t('networksDetail.networkOnlyListings')}</p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <a href={`/marketplace?network_id=${networkId}`} style={{
+            background: 'none', color: 'var(--blue)', textDecoration: 'none',
+            border: '1.5px solid var(--blue)', borderRadius: 'var(--radius-button)', padding: '9px 18px',
+            fontSize: 14, fontWeight: 600,
+          }}>
+            View in Strike Place →
+          </a>
+          {isOwner && (
+            <a href={`/marketplace/listings/new?network_id=${networkId}&visibility=network_only`} style={{
+              background: 'var(--blue)', color: '#fff', textDecoration: 'none',
+              borderRadius: 'var(--radius-button)', padding: '9px 18px',
+              fontSize: 14, fontWeight: 600,
+            }}>
+              {t('networksDetail.postNewListing')}
+            </a>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
+      ) : listings.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
+          No listings on this network yet.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          {listings.map(l => (
+            <div
+              key={l.id}
+              className="card card-interactive"
+              style={{ padding: 16, cursor: 'pointer' }}
+              onClick={() => router.push(`/marketplace/listings/${l.id}`)}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{l.title}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>
+                {l.listing_type === 'po_request' ? 'PO Request' : 'Product / Service'} · {l.poster_name ?? 'Unknown'}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--blue)' }}>
+                {l.target_price != null ? `${l.currency ?? 'USD'} ${l.target_price.toLocaleString()}` : '—'}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Network Detail Page ──────────────────────────────────────
 
 export default function NetworkDetailPage() {
   const t = useT()
-  const portal = usePortal()
   const { id } = useParams<{ id: string }>()
   const router  = useRouter()
 
   const [network, setNetwork]   = useState<AnchorNetwork | null>(null)
-  const [members, setMembers]   = useState<(AnchorNetworkMember & { organization: any })[]>([])
-  const [tab, setTab]           = useState<'members' | 'listings' | 'settings'>('members')
+  const [isOwner, setIsOwner]   = useState(false)
+  const [members, setMembers]   = useState<NetworkMemberRow[]>([])
+  const [tab, setTab]           = useState<'members' | 'analytics' | 'listings' | 'settings'>('members')
   const [loading, setLoading]   = useState(true)
+  const [notFound, setNotFound] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [actionError, setAE]    = useState('')
+  const [joiningRoom, setJoiningRoom] = useState(false)
 
   // Settings edit
   const [editName, setEditName]   = useState('')
@@ -302,17 +463,21 @@ export default function NetworkDetailPage() {
     setLoading(true)
     try {
       const [netRes, memRes] = await Promise.all([
-        fetch('/api/networks'),
+        fetch(`/api/networks/${id}`),
         fetch(`/api/networks/${id}/members`),
       ])
+      if (netRes.status === 404 || netRes.status === 403) {
+        setNotFound(true)
+        return
+      }
       const netData = await netRes.json()
       const memData = await memRes.json()
-      const found = (netData.networks ?? []).find((n: AnchorNetwork) => n.id === id)
-      if (found) {
-        setNetwork(found)
-        setEditName(found.name)
-        setEditDesc(found.description ?? '')
-        setEditVis(found.visibility_default)
+      if (netData.network) {
+        setNetwork(netData.network)
+        setIsOwner(!!netData.is_owner)
+        setEditName(netData.network.name)
+        setEditDesc(netData.network.description ?? '')
+        setEditVis(netData.network.visibility_default)
       }
       setMembers(memData.members ?? [])
     } finally {
@@ -321,12 +486,6 @@ export default function NetworkDetailPage() {
   }, [id])
 
   useEffect(() => { loadNetwork() }, [loadNetwork])
-
-  // Redirect non-anchors
-  if (portal !== 'anchor') {
-    router.replace('/networks')
-    return null
-  }
 
   async function handleRemoveMember(orgId: string) {
     setAE('')
@@ -391,32 +550,65 @@ export default function NetworkDetailPage() {
     }
   }
 
+  async function handleOpenRoom() {
+    setJoiningRoom(true)
+    setAE('')
+    try {
+      const res = await fetch(`/api/networks/${id}/room`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? t('networks.failed'))
+      router.push(`/rooms/${data.room_id}`)
+    } catch (err: any) {
+      setAE(err.message)
+      setJoiningRoom(false)
+    }
+  }
+
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
   }
 
-  if (!network) {
+  if (notFound || !network) {
     return <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--gray)' }}>{t('networksDetail.notFound')}</div>
   }
 
+  const tabs: { key: typeof tab; label: string }[] = [
+    { key: 'members', label: `${t('networksDetail.tab.members')} (${members.length})` },
+    { key: 'analytics', label: 'Analytics' },
+    { key: 'listings', label: t('networksDetail.tab.listings') },
+    ...(isOwner ? [{ key: 'settings' as const, label: t('networksDetail.tab.settings') }] : []),
+  ]
+
   return (
     <>
-      <div style={{ padding: '32px 32px 0' }} data-page-name="Network Detail" data-ai-context={JSON.stringify({ role: 'anchor', network_name: network.name, network_id: network.id, member_count: members.length, active_tab: tab, visibility: (network as any).default_visibility })}>
+      <div style={{ padding: '32px 32px 0' }} data-page-name="Network Detail" data-ai-context={JSON.stringify({ is_owner: isOwner, network_name: network.name, network_id: network.id, member_count: members.length, active_tab: tab })}>
         <button onClick={() => router.push('/networks')} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 16,
         }}>
           ← {t('networksDetail.backToNetworks')}
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 12 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800 }}>{network.name}</h1>
-          <button onClick={() => setShowInvite(true)} style={{
-            background: 'var(--blue)', color: '#fff', border: 'none',
-            borderRadius: 'var(--radius-button)', padding: '10px 20px',
-            fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>
-            {t('networksDetail.inviteSupplierPlus')}
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={handleOpenRoom} disabled={joiningRoom} style={{
+              background: 'none', color: 'var(--blue)', border: '1.5px solid var(--blue)',
+              borderRadius: 'var(--radius-button)', padding: '10px 18px',
+              fontSize: 14, fontWeight: 600, cursor: joiningRoom ? 'default' : 'pointer',
+              opacity: joiningRoom ? 0.6 : 1,
+            }}>
+              {joiningRoom ? '…' : 'Network Room'}
+            </button>
+            {isOwner && (
+              <button onClick={() => setShowInvite(true)} style={{
+                background: 'var(--blue)', color: '#fff', border: 'none',
+                borderRadius: 'var(--radius-button)', padding: '10px 20px',
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>
+                {t('networksDetail.inviteSupplierPlus')}
+              </button>
+            )}
+          </div>
         </div>
         {network.description && (
           <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 16 }}>{network.description}</p>
@@ -424,16 +616,15 @@ export default function NetworkDetailPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1.5px solid var(--border)', marginTop: 8 }}>
-          {(['members', 'listings', 'settings'] as const).map(tabKey => (
-            <button key={tabKey} onClick={() => setTab(tabKey)} style={{
+          {tabs.map(({ key, label }) => (
+            <button key={key} onClick={() => setTab(key)} style={{
               padding: '10px 18px', background: 'none', border: 'none',
-              borderBottom: tab === tabKey ? '2.5px solid var(--blue)' : '2.5px solid transparent',
-              color: tab === tabKey ? 'var(--blue)' : 'var(--gray)',
-              fontWeight: tab === tabKey ? 700 : 500, fontSize: 14, cursor: 'pointer',
-              marginBottom: -1.5, textTransform: 'capitalize',
+              borderBottom: tab === key ? '2.5px solid var(--blue)' : '2.5px solid transparent',
+              color: tab === key ? 'var(--blue)' : 'var(--gray)',
+              fontWeight: tab === key ? 700 : 500, fontSize: 14, cursor: 'pointer',
+              marginBottom: -1.5,
             }}>
-              {tabKey === 'members' ? t('networksDetail.tab.members') : tabKey === 'listings' ? t('networksDetail.tab.listings') : t('networksDetail.tab.settings')}
-              {tabKey === 'members' && ` (${members.length})`}
+              {label}
             </button>
           ))}
         </div>
@@ -446,7 +637,7 @@ export default function NetworkDetailPage() {
           </div>
         )}
 
-        {/* Members Tab */}
+        {/* Members Tab — grid of boxes */}
         {tab === 'members' && (
           <div>
             {members.length === 0 ? (
@@ -454,91 +645,30 @@ export default function NetworkDetailPage() {
                 {t('networksDetail.noMembersYet')}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1.5px solid var(--border)', textAlign: 'left' }}>
-                      {[t('networksDetail.col.supplier'), t('networksDetail.col.score'), t('networksDetail.col.kyb'), t('networksDetail.col.memberSince'), t('collateral.col.status'), t('networksDetail.col.notes'), t('bankKyb.col.action')].map(h => (
-                        <th key={h} style={{ padding: '10px 12px', fontWeight: 600, fontSize: 12, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {members.map((m: any) => (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '12px 12px', fontWeight: 600 }}>{m.organization?.legal_name ?? '—'}</td>
-                        <td style={{ padding: '12px 12px' }}>
-                          <PassportRing score={m.organization?.passport_score} />
-                        </td>
-                        <td style={{ padding: '12px 12px' }}>
-                          <StatusBadge status={m.organization?.kyb_status ?? '—'} />
-                        </td>
-                        <td style={{ padding: '12px 12px', color: 'var(--gray)', fontSize: 13 }}>
-                          {m.joined_at ? new Date(m.joined_at).toLocaleDateString() : '—'}
-                        </td>
-                        <td style={{ padding: '12px 12px' }}>
-                          <StatusBadge status={m.status} />
-                        </td>
-                        <td style={{ padding: '12px 12px', color: 'var(--gray)', fontSize: 12, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {m.buyer_notes ?? '—'}
-                        </td>
-                        <td style={{ padding: '12px 12px' }}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            {m.status === 'active' && (
-                              <button onClick={() => handleUpdateMemberStatus(m.supplier_org_id, 'suspended')} style={{
-                                padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
-                                border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer',
-                              }}>
-                                {t('networksDetail.suspend')}
-                              </button>
-                            )}
-                            {m.status === 'suspended' && (
-                              <button onClick={() => handleUpdateMemberStatus(m.supplier_org_id, 'active')} style={{
-                                padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
-                                border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer',
-                              }}>
-                                {t('networksDetail.reactivate')}
-                              </button>
-                            )}
-                            <button onClick={() => handleRemoveMember(m.supplier_org_id)} style={{
-                              padding: '5px 10px', fontSize: 12, borderRadius: 'var(--radius-button)',
-                              border: '1.5px solid #fecaca', background: '#fee2e2', color: '#dc2626', cursor: 'pointer',
-                            }}>
-                              {t('networksDetail.remove')}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+                {members.map(m => (
+                  <MemberCard
+                    key={m.id}
+                    member={m}
+                    isOwner={isOwner}
+                    onSuspend={orgId => handleUpdateMemberStatus(orgId, 'suspended')}
+                    onReactivate={orgId => handleUpdateMemberStatus(orgId, 'active')}
+                    onRemove={handleRemoveMember}
+                  />
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Listings Tab */}
-        {tab === 'listings' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <p style={{ color: 'var(--gray)', fontSize: 14 }}>{t('networksDetail.networkOnlyListings')}</p>
-              <a href={`/marketplace/listings/new?network_id=${id}&visibility=network_only`} style={{
-                background: 'var(--blue)', color: '#fff', textDecoration: 'none',
-                borderRadius: 'var(--radius-button)', padding: '9px 18px',
-                fontSize: 14, fontWeight: 600,
-              }}>
-                {t('networksDetail.postNewListing')}
-              </a>
-            </div>
-            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray)', fontSize: 14 }}>
-              {t('networksDetail.viewManageOn')}{' '}
-              <a href={`/marketplace?network_id=${id}`} style={{ color: 'var(--blue)', fontWeight: 600 }}>{t('networksDetail.strikePlace')}</a>
-            </div>
-          </div>
-        )}
+        {/* Analytics Tab */}
+        {tab === 'analytics' && <AnalyticsTab networkId={id} />}
 
-        {/* Settings Tab */}
-        {tab === 'settings' && (
+        {/* Listings Tab */}
+        {tab === 'listings' && <ListingsTab networkId={id} isOwner={isOwner} />}
+
+        {/* Settings Tab — owner only */}
+        {tab === 'settings' && isOwner && (
           <div style={{ maxWidth: 500 }}>
             <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 40 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('networksDetail.networkSettings')}</h3>

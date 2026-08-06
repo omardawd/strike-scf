@@ -171,16 +171,6 @@ function OrgCatalog({ listings, orgName, onManage }: { listings: CatalogListing[
   )
 }
 
-function TypeBadge({ type }: { type: string | null }) {
-  const t = useT()
-  const isBuyer = type === 'anchor'
-  return (
-    <span className="badge" style={{ background: isBuyer ? 'var(--color-accent-light)' : 'var(--color-green-bg)', color: isBuyer ? 'var(--blue)' : 'var(--color-green)', borderColor: isBuyer ? 'var(--blue)' : 'var(--color-green)' }}>
-      {isBuyer ? t('passport.buyer') : t('passport.supplier')}
-    </span>
-  )
-}
-
 // ── Score Breakdown ───────────────────────────────────────────────────────────
 
 function dims(t: TFn): { key: keyof ExpertAnalysis['scores']; label: string }[] {
@@ -726,7 +716,6 @@ export default function MyPassportPage() {
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
                         {org.legal_name ?? t('onboarding.review.yourOrganization')}
                       </span>
-                      <TypeBadge type={org.type} />
                     </div>
                     {dba && <div style={{ fontSize: 13, color: 'var(--gray)', marginTop: 2 }}>{t('passport.doingBusinessAs')} {dba}</div>}
                   </div>

@@ -132,9 +132,8 @@
 }
 
 /* Portal accent swap */
-[data-portal="bank"]     { --portal-accent: var(--color-accent);  --portal-accent-light: var(--color-accent-light); }
-[data-portal="anchor"]   { --portal-accent: var(--color-anchor);  --portal-accent-light: var(--color-anchor-bg); }
-[data-portal="supplier"] { --portal-accent: var(--color-green);   --portal-accent-light: var(--color-green-bg); }
+[data-portal="bank"] { --portal-accent: var(--color-accent);  --portal-accent-light: var(--color-accent-light); }
+[data-portal="org"]  { --portal-accent: var(--color-anchor);  --portal-accent-light: var(--color-anchor-bg); }
 
 * {
   box-sizing: border-box;

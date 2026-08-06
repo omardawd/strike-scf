@@ -232,7 +232,6 @@ async function buildPassportScoreReport(input: GenerateDocumentInput) {
     doc.font('Helvetica').fontSize(10).fillColor(GRAY).text('PassportScore', 50, y + 46)
     doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK).text(`Risk tier: ${org.risk_tier ?? 'Unrated'}`, 200, y + 6)
     doc.font('Helvetica').fontSize(10).fillColor(GRAY).text(`KYB status: ${org.kyb_status}`, 200, y + 22)
-    doc.font('Helvetica').fontSize(10).fillColor(GRAY).text(`Type: ${org.type}`, 200, y + 38)
 
     y += 90
     doc.font('Helvetica-Bold').fontSize(12).fillColor(DARK).text('Trade History', 50, y)

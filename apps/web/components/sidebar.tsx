@@ -37,29 +37,12 @@ interface NavSection {
   items: NavItem[]
 }
 
-// Anchor (buyer) + Supplier share the same unified nav.
+// Unified nav for every organization (no more anchor/buyer vs supplier split —
+// any org can both buy and sell).
 // TA.4: "Settings" and "AI Agent" removed (pages stay; reachable via user button).
 // TB.1/TB.2: "My Programs" + "Transactions" removed and the now-empty "Programs"
 //            group dropped (pages stay; surfaced via /deals — TB.3).
-const ANCHOR_NAV: NavSection[] = [
-  {
-    items: [
-      // Dashboard (v1) hidden from nav per product decision — page + route kept
-      // alive for now, just not linked. Do not delete this line.
-      // { label: 'Dashboard',    labelKey: 'nav.dashboard',     href: '/dashboard',             icon: 'dashboard' },
-      { label: 'Home',            labelKey: 'nav.home',          href: '/home',            icon: 'dashboard' },
-      { label: 'Strike Place',    labelKey: 'nav.strikePlace',   href: '/marketplace',           icon: 'marketplace' },
-      { label: 'My Deals',        labelKey: 'nav.myDeals',       href: '/deals',                 icon: 'deals' },
-      { label: 'Financing',       labelKey: 'nav.financing',     href: '/marketplace/financing', icon: 'financing' },
-      { label: 'Networks',        labelKey: 'nav.networks',      href: '/networks',              icon: 'networks' },
-      { label: 'Strike Rooms',    labelKey: 'nav.strikeRooms',   href: '/rooms',                 icon: 'rooms' },
-      { label: 'Strike Passport', labelKey: 'nav.strikePassport',href: '/passport',              icon: 'passport' },
-      { label: 'Analytics',       labelKey: 'nav.analytics',     href: '/reporting',             icon: 'analytics' },
-    ],
-  },
-]
-
-const SUPPLIER_NAV: NavSection[] = [
+const ORG_NAV: NavSection[] = [
   {
     items: [
       // Dashboard (v1) hidden from nav per product decision — page + route kept
@@ -113,8 +96,7 @@ const ADMIN_NAV: NavSection[] = [
 function navFor(portal: PortalType, role?: string): NavSection[] {
   if (role === 'strike_admin' || portal === 'admin') return ADMIN_NAV
   if (portal === 'bank')     return BANK_NAV
-  if (portal === 'supplier') return SUPPLIER_NAV
-  return ANCHOR_NAV
+  return ORG_NAV
 }
 
 // Returns the match length of an item's href against the current path, or -1 for

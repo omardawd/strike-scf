@@ -7,8 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/locale-context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 
-type RoleChoice = 'anchor' | 'supplier'
-
 const COUNTRIES: { code: string; name: string }[] = [
   { code: 'US', name: 'United States' },
   { code: 'CA', name: 'Canada' },
@@ -50,32 +48,6 @@ function EyeIcon({ off }: { off?: boolean }) {
   )
 }
 
-const ROLE_CHOICES: { id: RoleChoice; titleKey: string; descKey: string; icon: React.ReactNode }[] = [
-  {
-    id: 'anchor',
-    titleKey: 'signup.roleBuyer',
-    descKey: 'signup.roleBuyerDesc',
-    icon: (
-      <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="6" width="14" height="10" rx="1.5" />
-        <path d="M3 6l7-3.5 7 3.5" />
-        <path d="M8 16v-4h4v4" />
-      </svg>
-    ),
-  },
-  {
-    id: 'supplier',
-    titleKey: 'signup.roleSupplier',
-    descKey: 'signup.roleSupplierDesc',
-    icon: (
-      <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-        <rect x="5" y="3" width="10" height="14" rx="1.5" />
-        <path d="M7.5 7h5M7.5 10h5M7.5 13h3" />
-      </svg>
-    ),
-  },
-]
-
 function SignupPageInner() {
   const router = useRouter()
   const t = useT()
@@ -85,7 +57,6 @@ function SignupPageInner() {
   const prefillCompany = searchParams.get('company') ?? ''
   const prefillCountry = searchParams.get('country') ?? ''
 
-  const [role, setRole]               = useState<RoleChoice>('supplier')
   const [fullName, setFullName]       = useState('')
   const [email, setEmail]             = useState(prefillEmail)
   const [password, setPassword]       = useState('')
@@ -134,7 +105,6 @@ function SignupPageInner() {
           full_name:    fullName.trim(),
           email:        email.trim(),
           password,
-          org_type:     role,
           company_name: companyName.trim(),
           country,
         }),
@@ -261,29 +231,6 @@ function SignupPageInner() {
           50%  { transform: translateX(120%); }
           100% { transform: translateX(120%); }
         }
-        .su-role-card {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 14px 16px;
-          border-radius: 14px;
-          border: 1.5px solid var(--border);
-          background: var(--white);
-          cursor: pointer;
-          text-align: left;
-          width: 100%;
-          font-family: inherit;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-        }
-        .su-role-card:hover {
-          border-color: rgba(20,40,204,0.35);
-          box-shadow: 0 2px 12px rgba(20,40,204,0.08);
-        }
-        .su-role-card.selected {
-          border-color: var(--blue);
-          background: var(--blue-light);
-          box-shadow: 0 2px 16px rgba(20,40,204,0.12);
-        }
         .su-input {
           height: 44px;
           width: 100%;
@@ -365,41 +312,6 @@ function SignupPageInner() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Role */}
-          <div>
-            <span className="su-label">{t('signup.roleLabel')}</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {ROLE_CHOICES.map(choice => {
-                const sel = role === choice.id
-                return (
-                  <button
-                    key={choice.id}
-                    type="button"
-                    onClick={() => setRole(choice.id)}
-                    className={`su-role-card${sel ? ' selected' : ''}`}
-                  >
-                    <div style={{
-                      width: 38, height: 38, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: 10,
-                      background: sel
-                        ? 'linear-gradient(135deg, #1428CC 0%, #7C3AED 100%)'
-                        : 'var(--offwhite)',
-                      color:      sel ? '#fff' : 'var(--gray)',
-                      transition: 'background 0.15s, color 0.15s',
-                    }}>
-                      {choice.icon}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>{t(choice.titleKey)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, lineHeight: 1.4 }}>{t(choice.descKey)}</div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
           {/* Full name */}
           <div>
             <label className="su-label">{t('signup.fullNameLabel')}</label>

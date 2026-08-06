@@ -184,9 +184,23 @@ export async function GET() {
     })
   }
 
+  // Network rooms have no deal_id — they're dealless, N-party rooms scoped to
+  // an anchor_networks row instead. Surface the network name so the Rooms
+  // list has something to label them with (rather than blank "Untitled").
+  const networkIds = privateRooms.filter((r: any) => r.network_id).map((r: any) => r.network_id)
+  let networkMap: Record<string, { id: string; name: string }> = {}
+  if (networkIds.length > 0) {
+    const { data: networks } = await adminClient
+      .from('anchor_networks')
+      .select('id, name')
+      .in('id', networkIds)
+    ;(networks ?? []).forEach((n: any) => { networkMap[n.id] = { id: n.id, name: n.name } })
+  }
+
   const enrichedPrivate = privateRooms.map((r: any) => ({
     ...r,
     deal: r.deal_id ? (dealMap[r.deal_id] ?? null) : null,
+    network: r.network_id ? (networkMap[r.network_id] ?? null) : null,
   }))
 
   return NextResponse.json({ private: enrichedPrivate, public: publicRooms })

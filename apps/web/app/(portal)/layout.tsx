@@ -13,11 +13,11 @@ const adminClient = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function derivePortal(role: string, orgType?: string | null): PortalType {
+function derivePortal(role: string): PortalType {
   if (role === 'bank_admin' || role === 'bank_credit_officer') return 'bank'
   if (role === 'strike_admin') return 'admin'
-  // org_admin / org_member — sub-portal comes from the organization's type
-  return orgType === 'anchor' ? 'anchor' : 'supplier'
+  // org_admin / org_member — any org, no more anchor/supplier sub-portal
+  return 'org'
 }
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -53,7 +53,7 @@ export default async function PortalLayout({ children }: { children: React.React
     }
   }
 
-  const portal = derivePortal(userData.role ?? '', org?.type)
+  const portal = derivePortal(userData.role ?? '')
 
   // Central platform-access gate: an org must be KYB-approved to use the
   // platform at all. Bank/admin users have no org and always pass through.

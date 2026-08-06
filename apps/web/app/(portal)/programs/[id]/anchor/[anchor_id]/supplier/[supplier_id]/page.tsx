@@ -443,7 +443,9 @@ export default function SupplierDetailPage() {
   }
 
   // ── ANCHOR VIEW ─────────────────────────────────────────────────────────────
-  if (portal === 'anchor') {
+  // Reached only from the anchor's own "My Suppliers" list (see programs/[id]/page.tsx),
+  // so any non-bank org viewer here is, structurally, the anchor of this relationship.
+  if (portal === 'org') {
     return (
       <PortalShell activeSection="programs">
         <Topbar

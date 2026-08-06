@@ -9,7 +9,7 @@ const adminClient = createAdmin(
 
 const ORG_ROLES = ['org_admin', 'org_member']
 
-// G3.1 — GET /api/networks — returns anchor's own networks
+// G3.1 — GET /api/networks — returns the caller org's own (owned) networks
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,16 +26,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: org } = await adminClient
-    .from('organizations')
-    .select('id, type')
-    .eq('id', me.org_id)
-    .single()
-
-  if (!org || (org.type !== 'anchor' && org.type !== 'both')) {
-    return NextResponse.json({ error: 'Only anchor organizations can manage networks' }, { status: 403 })
-  }
-
+  // Any org can own networks — no more anchor-only restriction.
   const { data: networks, error } = await adminClient
     .from('anchor_networks')
     .select('*')
@@ -62,16 +53,6 @@ export async function POST(request: Request) {
 
   if (me.role !== 'org_admin' || !me.org_id) {
     return NextResponse.json({ error: 'Only org admins can create networks' }, { status: 403 })
-  }
-
-  const { data: org } = await adminClient
-    .from('organizations')
-    .select('id, type')
-    .eq('id', me.org_id)
-    .single()
-
-  if (!org || (org.type !== 'anchor' && org.type !== 'both')) {
-    return NextResponse.json({ error: 'Only anchor organizations can create networks' }, { status: 403 })
   }
 
   let body: { name?: string; description?: string; visibility_default?: string }

@@ -207,72 +207,8 @@ export async function GET() {
     .map((e: Record<string, unknown>) => e.programs)
     .filter(Boolean)
 
-  // ── ANCHOR / SUPPLIER ────────────────────────────────────────────────────
-  const { data: orgData } = await adminClient
-    .from('organizations')
-    .select('type')
-    .eq('id', userData.org_id)
-    .single()
-  const orgType = orgData?.type  // 'anchor' | 'supplier'
-
-  if (orgType === 'anchor') {
-    const programIds = (programs as Array<{ id: string }>).map((p) => p.id)
-    let enrolled_supplier_count = 0
-
-    const [{ count: pendingCount }, { data: ddSavingsRows }] = await Promise.all([
-      adminClient
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-        .eq('anchor_id', userData.org_id)
-        .eq('status', 'pending_anchor_approval'),
-      adminClient
-        .from('transactions')
-        .select('discount_amount')
-        .eq('anchor_id', userData.org_id)
-        .eq('type', 'dynamic_discounting')
-        .eq('status', 'completed'),
-    ])
-
-    const pending_approval = pendingCount ?? 0
-    const dd_savings = (ddSavingsRows ?? []).reduce(
-      (sum: number, t: { discount_amount: number | null }) => sum + (t.discount_amount ?? 0), 0
-    )
-
-    if (programIds.length > 0) {
-      const { count: supCount } = await adminClient
-        .from('program_enrollments')
-        .select('org_id', { count: 'exact', head: true })
-        .in('program_id', programIds)
-        .eq('status', 'active')
-        .neq('org_id', userData.org_id)
-      enrolled_supplier_count = supCount ?? 0
-    }
-
-    return NextResponse.json({ portal: 'anchor', org_name, programs, enrolled_supplier_count, pending_approval, dd_savings })
-  }
-
-  // ── SUPPLIER (default for org users) ──────────────────────────────────────
-  const [{ count: active_transactions }, { data: perfData }] = await Promise.all([
-    adminClient
-      .from('transactions')
-      .select('*', { count: 'exact', head: true })
-      .eq('supplier_id', userData.org_id)
-      .not('status', 'in', '("completed","rejected","cancelled")'),
-    adminClient
-      .from('supplier_performance')
-      .select('*')
-      .eq('org_id', userData.org_id)
-      .maybeSingle(),
-  ])
-
-  return NextResponse.json({
-    portal: 'supplier',
-    org_name,
-    programs,
-    active_transactions: active_transactions ?? 0,
-    performance_tier: perfData?.performance_tier ?? 'standard',
-    performance_score: perfData?.performance_score ?? null,
-    on_time_rate: perfData?.on_time_payment_rate ?? null,
-    total_financed: perfData?.total_financed ?? 0,
-  })
+  // ── ORG (any org — no more anchor/supplier split; the live /home page only
+  // ever reads org_name from this branch, everything else it computes itself
+  // from /api/deals and /api/marketplace/financing) ─────────────────────────
+  return NextResponse.json({ portal: 'org', org_name, programs })
 }

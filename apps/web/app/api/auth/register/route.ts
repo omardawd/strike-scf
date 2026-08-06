@@ -7,17 +7,21 @@ const adminClient = createAdmin(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Self-registration. No invitation tokens, no bank gate. Every organization
-// registers itself: org_type 'anchor'/'supplier' creates an org_admin + a
-// pending-KYB organization; 'bank' creates a bank_admin lead (Strike sets up
-// the bank account manually — there is no organization for banks).
-type SignupOrgType = 'anchor' | 'supplier' | 'bank'
+// Self-registration. No invitation tokens, no bank gate. Any org registering
+// itself gets an org_admin + a pending-KYB organization — there's no more
+// anchor/supplier choice, any org can both buy and sell. `org_type` on the
+// `organizations` row stays a fixed 'supplier' placeholder to satisfy the
+// (still NOT NULL) legacy enum column; it no longer drives any behavior.
+// 'bank' is kept as a distinct, still-meaningful path (creates a bank_admin
+// lead instead of an org) for any future non-self-serve caller — the real
+// signup page never offers it (banks are provisioned manually by Strike).
+type SignupOrgType = 'supplier' | 'bank'
 
 interface RegisterBody {
   full_name?: string
   email?: string
   password?: string
-  org_type?: SignupOrgType
+  org_type?: 'bank'
   company_name?: string
   country?: string
 }
@@ -33,15 +37,12 @@ export async function POST(request: Request) {
   const fullName = body.full_name?.trim()
   const email = body.email?.trim().toLowerCase()
   const password = body.password
-  const orgType = body.org_type
+  const orgType: SignupOrgType = body.org_type === 'bank' ? 'bank' : 'supplier'
   const companyName = body.company_name?.trim()
   const country = body.country?.trim() || null
 
-  if (!fullName || !email || !password || !orgType) {
+  if (!fullName || !email || !password) {
     return NextResponse.json({ error: 'All fields are required.' }, { status: 400 })
-  }
-  if (!['anchor', 'supplier', 'bank'].includes(orgType)) {
-    return NextResponse.json({ error: 'Invalid account type.' }, { status: 400 })
   }
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })

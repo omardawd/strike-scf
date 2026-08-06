@@ -48,28 +48,22 @@ export async function GET(
   const isOrgUser = userRow.role === 'org_admin' || userRow.role === 'org_member'
   const isOwnOrg = isOrgUser && userRow.org_id === org_id
 
-  let isAnchor = false
+  // Any org can view another org's performance if that org is enrolled under
+  // one of its programs — a direct program_enrollments link, not an org-level
+  // "is this caller an anchor" check (any org can originate a program).
+  let hasEnrollmentLink = false
   if (isOrgUser && !isOwnOrg) {
-    // Determine if the caller is an anchor org
-    const { data: callerOrgRow } = await adminClient.from('organizations').select('type').eq('id', userRow.org_id).single()
-    isAnchor = callerOrgRow?.type === 'anchor'
-  }
-
-  if (!isBank && !isOwnOrg && !isAnchor) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  // Anchor must have this supplier enrolled in one of their programs
-  if (isAnchor) {
     const { data: enrollment } = await adminClient
       .from('program_enrollments')
       .select('id')
       .eq('anchor_org_id', userRow.org_id)
       .eq('org_id', org_id)
       .maybeSingle()
-    if (!enrollment) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    hasEnrollmentLink = !!enrollment
+  }
+
+  if (!isBank && !isOwnOrg && !hasEnrollmentLink) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { data: txns } = await adminClient

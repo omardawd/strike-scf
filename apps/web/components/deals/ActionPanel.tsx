@@ -196,10 +196,23 @@ transferred to ${fc.paymentRecipientName}.`}
   )
 }
 
-// ── DD Respond Form ───────────────────────────────────────────────────────────
+// ── DD Pending Offer ────────────────────────────────────────────────────────
+// Terms of a DD offer that has been presented but not yet accepted/declined.
+// Sourced directly from the pending (status='draft') dynamic_discounting
+// transaction — NOT from FinancingContext, whose dd* fields are only ever
+// populated once financing is actually active (i.e. after acceptance).
 
-function DDRespondForm({ fc, onAccept, onDecline, loading }: {
-  fc: FinancingContext
+export interface PendingDDOffer {
+  invoiceAmount: number
+  currency: string
+  discountRate: number | null
+  discountAmount: number | null
+  earlyPaymentDate: string | null
+  paymentAmount: number
+}
+
+function DDRespondForm({ offer, onAccept, onDecline, loading }: {
+  offer: PendingDDOffer
   onAccept: () => Promise<void>
   onDecline: () => Promise<void>
   loading: boolean
@@ -211,27 +224,27 @@ function DDRespondForm({ fc, onAccept, onDecline, loading }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--gray)' }}>Invoice amount</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(fc.ddFullAmount, fc.paymentCurrency)}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(offer.invoiceAmount, offer.currency)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--gray)' }}>Early payment date</span>
-            <span>{fmtDate(fc.ddEarlyPaymentDate)}</span>
+            <span>{fmtDate(offer.earlyPaymentDate)}</span>
           </div>
-          {fc.ddDiscountRate != null && (
+          {offer.discountRate != null && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--gray)' }}>Discount rate</span>
-              <span>{fc.ddDiscountRate}% annualized</span>
+              <span>{offer.discountRate}% annualized</span>
             </div>
           )}
-          {fc.ddDiscountAmount != null && (
+          {offer.discountAmount != null && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--gray)' }}>Discount amount</span>
-              <span style={{ color: 'var(--color-red)' }}>-{fmt(fc.ddDiscountAmount, fc.paymentCurrency)}</span>
+              <span style={{ color: 'var(--color-red)' }}>-{fmt(offer.discountAmount, offer.currency)}</span>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(16,185,129,0.2)', paddingTop: 6, marginTop: 2 }}>
             <span style={{ fontWeight: 600 }}>You receive</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-green)' }}>{fmt(fc.paymentAmount, fc.paymentCurrency)}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-green)' }}>{fmt(offer.paymentAmount, offer.currency)}</span>
           </div>
         </div>
       </div>
@@ -242,6 +255,36 @@ function DDRespondForm({ fc, onAccept, onDecline, loading }: {
         <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} disabled={loading} onClick={onDecline}>
           Decline
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Read-only mirror of the same terms, shown to the buyer while the offer they
+// presented is still awaiting the supplier's response — so refreshing the page
+// (or reopening the deal later) shows the offer is on record, not a blank form.
+function DDPendingBanner({ offer }: { offer: PendingDDOffer }) {
+  return (
+    <div style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.06)', border: '1.5px solid rgba(245,158,11,0.2)', borderRadius: 10, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-amber)', flexShrink: 0, animation: 'pulse-dot 2s ease infinite' }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Early Payment Offer Sent — Awaiting Supplier Response</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--gray)' }}>Early payment date</span>
+          <span>{fmtDate(offer.earlyPaymentDate)}</span>
+        </div>
+        {offer.discountRate != null && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--gray)' }}>Discount rate</span>
+            <span>{offer.discountRate}% annualized</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--gray)' }}>Amount offered</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(offer.paymentAmount, offer.currency)}</span>
+        </div>
       </div>
     </div>
   )
@@ -627,7 +670,7 @@ export interface ActionPanelProps {
   availableActions: AvailableAction[]
   financingContext: FinancingContext
   currentUserRole: 'buyer' | 'supplier' | 'bank'
-  hasDDOffer?: boolean
+  pendingDDOffer?: PendingDDOffer | null
   onActionSubmit: (action: string, payload: Record<string, unknown>) => Promise<void>
   onRefresh: () => void
 }
@@ -637,7 +680,7 @@ export function ActionPanel({
   availableActions,
   financingContext: fc,
   currentUserRole: userRole,
-  hasDDOffer,
+  pendingDDOffer,
   onActionSubmit,
 }: ActionPanelProps) {
   const [loading, setLoading] = useState(false)
@@ -657,13 +700,16 @@ export function ActionPanel({
     }
   }
 
-  // Special: DD respond (supplier side, active DD offer)
-  if (hasDDOffer && fc.structure === 'dynamic_discounting' && !fc.isActive && userRole === 'supplier') {
+  // Special: DD respond (supplier side, pending DD offer awaiting response).
+  // Uses the pending offer's own terms, not FinancingContext — fc.structure is
+  // only ever 'dynamic_discounting' once financing is active, i.e. after the
+  // supplier has already accepted, so it can never describe a still-pending offer.
+  if (pendingDDOffer && userRole === 'supplier') {
     return (
       <div>
         <FinancingActiveBanner fc={fc} />
         <DDRespondForm
-          fc={fc}
+          offer={pendingDDOffer}
           loading={loading}
           onAccept={() => handleSubmit('dd_accept', {})}
           onDecline={() => handleSubmit('dd_decline', {})}
@@ -678,9 +724,12 @@ export function ActionPanel({
 
   if (availableOnes.length === 0 && blockedOnes.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--color-amber)', flexShrink: 0, animation: 'pulse-dot 2s ease infinite' }} />
-        <span style={{ fontSize: 13, color: 'var(--gray)' }}>Waiting for counterparty action.</span>
+      <div>
+        {pendingDDOffer && userRole === 'buyer' && <DDPendingBanner offer={pendingDDOffer} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--color-amber)', flexShrink: 0, animation: 'pulse-dot 2s ease infinite' }} />
+          <span style={{ fontSize: 13, color: 'var(--gray)' }}>Waiting for counterparty action.</span>
+        </div>
       </div>
     )
   }
@@ -688,6 +737,7 @@ export function ActionPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <FinancingActiveBanner fc={fc} />
+      {pendingDDOffer && userRole === 'buyer' && <DDPendingBanner offer={pendingDDOffer} />}
 
       {availableOnes.map(action => {
         const isExpanded = expandedAction === action.action

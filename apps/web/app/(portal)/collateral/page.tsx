@@ -68,6 +68,9 @@ interface CollateralItem {
   deadline: string | null
   status: string
   created_at: string
+  // The org expected to respond/submit — either the requirement's own org_id,
+  // or (transaction-level) the linked transaction's supplier side.
+  responding_org_id: string | null
 }
 
 const FILTER_TAB_VALUES = ['All', 'Pending', 'Submitted', 'Accepted', 'Rejected', 'Waived', 'Released']
@@ -131,8 +134,8 @@ export default function CollateralPage() {
     ? collateral
     : collateral.filter(c => c.status === filter.toLowerCase())
 
-  const isBank     = BANK_ROLES.includes(user?.role ?? '')
-  const isSupplier = ORG_ROLES.includes(user?.role ?? '') && user?.org?.type === 'supplier'
+  const isBank    = BANK_ROLES.includes(user?.role ?? '')
+  const isOrgUser = ORG_ROLES.includes(user?.role ?? '')
 
   async function handleAction(id: string, action: string) {
     try {
@@ -420,7 +423,7 @@ export default function CollateralPage() {
                         </span>
                       </td>
                       <td>
-                        {isSupplier && item.status === 'pending' && (
+                        {isOrgUser && item.responding_org_id === user?.org_id && item.status === 'pending' && (
                           <button className="btn btn-sm btn-primary" type="button" onClick={() => handleAction(item.id, 'submit')}>
                             {t('collateral.acknowledge')}
                           </button>

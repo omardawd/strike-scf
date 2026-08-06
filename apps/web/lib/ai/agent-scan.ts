@@ -106,15 +106,14 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
   // ── 6b. Load OTHER orgs' marketplace listings this org could bid on ────────
   // Without this, Claude has no real listing to ground a submit_marketplace_offer
   // proposal in — it can only ever propose creating this org's own listing.
-  // Direction mirrors lib/deals/roles.ts's getRolesFromListingType: a buyer
-  // (anchor) submits offers on suppliers' `product_service` listings; a
-  // supplier submits offers on buyers' `po_request` listings.
-  const opportunityListingType = org?.type === 'anchor' ? 'product_service' : 'po_request'
+  // Any org can act as buyer or supplier per deal (see lib/deals/roles.ts's
+  // getRolesFromListingType), so scan opportunities in both directions rather
+  // than picking one via org-level type.
   const visibilityFilter = await getVisibilityFilter(adminClient, orgId)
   const { data: opportunities } = await adminClient
     .from('marketplace_listings')
-    .select('id, title, description, target_price, currency, delivery_location, org_id, organizations!marketplace_listings_org_id_fkey(legal_name, doing_business_as, passport_score)')
-    .eq('listing_type', opportunityListingType)
+    .select('id, listing_type, title, description, target_price, currency, delivery_location, org_id, organizations!marketplace_listings_org_id_fkey(legal_name, doing_business_as, passport_score)')
+    .in('listing_type', ['product_service', 'po_request'])
     .eq('status', 'active')
     .neq('org_id', orgId)
     .or(buildListingVisibilityOr(visibilityFilter, orgId))
@@ -127,10 +126,9 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
 
   // ── 7. Build context for Claude ──────────────────────────────────────────
   const orgName = org?.doing_business_as ?? org?.legal_name ?? orgId
-  const portal  = org?.type === 'anchor' ? 'anchor (buyer)' : 'supplier'
 
   const contextSections = [
-    `Org: ${orgName} (${portal}, org_id: ${orgId})`,
+    `Org: ${orgName} (org_id: ${orgId})`,
     `Agent name: ${agent.name}`,
     agent.persona ? `Agent focus: ${agent.persona}` : '',
     agent.goals.length ? `Agent goals: ${agent.goals.join('; ')}` : '',
@@ -164,11 +162,12 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
       ? listings.map((l) => `${l.listing_type} — ${l.title}`).join('\n')
       : 'No active listings.',
     '',
-    `Marketplace opportunities you could submit an offer on (other orgs' ${opportunityListingType} listings — use the exact listing_id when proposing submit_marketplace_offer):`,
+    `Marketplace opportunities you could submit an offer on (other orgs' listings — use the exact listing_id when proposing submit_marketplace_offer):`,
     opportunities?.length
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? JSON.stringify(opportunities.map((o: any) => ({
           listing_id: o.id,
+          listing_type: o.listing_type,
           title: o.title,
           description: o.description?.slice(0, 120),
           target_price: o.target_price,
@@ -177,7 +176,7 @@ export async function runAgentScan(orgId: string): Promise<{ inserted: number; p
           posted_by: o.organizations?.doing_business_as ?? o.organizations?.legal_name ?? 'Unknown',
           poster_passport_score: o.organizations?.passport_score,
         })), null, 2)
-      : `No open ${opportunityListingType} listings from other orgs right now.`,
+      : 'No open listings from other orgs right now.',
     '',
     'Agent guardrails configured for this org (only relevant to create_marketplace_listing / submit_marketplace_offer proposals — these are the ones that can lead to an autonomous negotiation):',
     prefs.hasPriceGuardrails

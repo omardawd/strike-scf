@@ -30,11 +30,10 @@ function median(nums: number[]): number | null {
 
 function fallbackNarrative(org: Record<string, unknown>): string {
   const name = (org.doing_business_as || org.legal_name || 'This organization') as string
-  const kind = org.type === 'anchor' ? 'buyer' : 'supplier'
   const years = org.years_in_operation ? `${org.years_in_operation} years in operation` : 'an emerging operating history'
   const trades = Number(org.trade_count_total ?? 0)
   const tradeStr = trades > 0 ? `${trades} completed trade${trades === 1 ? '' : 's'} on the network` : 'no completed trades on the network yet'
-  return `${name} is a ${kind} with ${years} and ${tradeStr}. Its Strike Passport reflects the data verified during KYB; performance metrics will deepen as trade history accumulates.`
+  return `${name} is an organization with ${years} and ${tradeStr}. Its Strike Passport reflects the data verified during KYB; performance metrics will deepen as trade history accumulates.`
 }
 
 async function logUsage(usage: { input_tokens?: number; output_tokens?: number }, userId: string, orgId: string | null) {
@@ -102,7 +101,6 @@ export async function GET(
     adminClient
       .from('organizations')
       .select('passport_score, avg_payment_days, dispute_rate_network, trade_count_total')
-      .eq('type', org.type)
       .eq('network_visible', true)
       .limit(1000),
   ])
@@ -118,7 +116,6 @@ export async function GET(
   const context = {
     legal_name: org.legal_name,
     doing_business_as: org.doing_business_as,
-    type: org.type,
     business_type: org.business_type,
     industry_naics: org.industry_naics,
     years_in_operation: org.years_in_operation,
@@ -195,7 +192,7 @@ export async function GET(
       system: ASSESSMENT_SYSTEM,
       messages: [{
         role: 'user',
-        content: `This organization:\n${JSON.stringify(context, null, 2)}\n\nNetwork medians (same org type):\n${JSON.stringify(medians, null, 2)}`,
+        content: `This organization:\n${JSON.stringify(context, null, 2)}\n\nNetwork medians (across all verified organizations):\n${JSON.stringify(medians, null, 2)}`,
       }],
       max_tokens: 256,
     })

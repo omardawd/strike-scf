@@ -12,7 +12,6 @@ interface OrgMini {
   id: string
   legal_name: string | null
   doing_business_as: string | null
-  type: string | null
   passport_score: number | null
   risk_tier: string | null
   country_of_origin: string | null
@@ -98,9 +97,8 @@ function StarRow({
   )
 }
 
-function PassportMini({ org }: { org: OrgMini }) {
+function PassportMini({ org, isBuyer }: { org: OrgMini; isBuyer: boolean }) {
   const t = useT()
-  const isBuyer = org.type === 'anchor'
   return (
     <div
       className="card"
@@ -209,7 +207,6 @@ export default function ReviewFormPage() {
         id:              o.id,
         legal_name:      o.legal_name,
         doing_business_as: o.doing_business_as,
-        type:            o.type,
         passport_score:  o.passport_score,
         risk_tier:       o.risk_tier,
         country_of_origin: o.country_of_origin,
@@ -334,7 +331,7 @@ export default function ReviewFormPage() {
         ) : reviewedOrg && deal ? (
           <div style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Target org passport mini */}
-            <PassportMini org={reviewedOrg} />
+            <PassportMini org={reviewedOrg} isBuyer={deal.buyer_org_id === reviewedOrgId} />
 
             {/* Deal context */}
             <div className="card">

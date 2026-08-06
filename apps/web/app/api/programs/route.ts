@@ -40,74 +40,46 @@ export async function GET() {
     return NextResponse.json({ programs: [] })
   }
 
-  // Determine org type to differentiate anchor vs supplier paths
-  const { data: orgTypeRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-  const isAnchor = orgTypeRow?.type === 'anchor'
-
-  // Anchors: check enrollments and invitations to catch all access patterns
-  if (isAnchor) {
-    const [byAnchorId, byOrgId, byInvite] = await Promise.all([
-      adminClient
-        .from('program_enrollments')
-        .select('program_id')
-        .eq('anchor_org_id', userData.org_id)
-        .in('status', ['active', 'invited', 'onboarding']),
-      adminClient
-        .from('program_enrollments')
-        .select('program_id')
-        .eq('org_id', userData.org_id)
-        .in('status', ['active', 'invited', 'onboarding']),
-      userData.email
-        ? adminClient
-            .from('invitations')
-            .select('program_id')
-            .eq('email', userData.email as string)
-            .eq('role', 'anchor')
-            .in('status', ['pending', 'accepted'])
-            .not('program_id', 'is', null)
-        : Promise.resolve({ data: [] as Array<{ program_id: string | null }>, error: null }),
-    ])
-
-    const allIds = [
-      ...(byAnchorId.data ?? []),
-      ...(byOrgId.data ?? []),
-      ...((byInvite as { data: Array<{ program_id: string | null }> | null }).data ?? []),
-    ].map((e: any) => e.program_id).filter(Boolean)
-    const programIds = [...new Set(allIds)]
-
-    if (programIds.length === 0) return NextResponse.json({ programs: [] })
-
-    const { data: programs, error: progError } = await adminClient
-      .from('programs')
-      .select('*')
-      .in('id', programIds)
-      .order('created_at', { ascending: false })
-
-    if (progError) return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
-    return NextResponse.json({ programs: programs ?? [] })
-  }
-
-  // Suppliers: query by org_id + email invitations
-  const [enrollResult, inviteResult] = await Promise.all([
+  // Any org can be enrolled as the anchor side on one program and the org_id
+  // side on another (and can hold either-role invitations) — check every
+  // access pattern rather than picking one path via org-level type.
+  const [byAnchorId, byOrgId, byAnchorInvite, byOtherInvite] = await Promise.all([
+    adminClient
+      .from('program_enrollments')
+      .select('program_id')
+      .eq('anchor_org_id', userData.org_id)
+      .in('status', ['active', 'invited', 'onboarding']),
     adminClient
       .from('program_enrollments')
       .select('program_id')
       .eq('org_id', userData.org_id)
-      .eq('status', 'active'),
+      .in('status', ['active', 'invited', 'onboarding']),
+    userData.email
+      ? adminClient
+          .from('invitations')
+          .select('program_id')
+          .eq('email', userData.email as string)
+          .eq('role', 'anchor')
+          .in('status', ['pending', 'accepted'])
+          .not('program_id', 'is', null)
+      : Promise.resolve({ data: [] as Array<{ program_id: string | null }>, error: null }),
     userData.email
       ? adminClient
           .from('invitations')
           .select('program_id')
           .eq('email', userData.email as string)
           .in('status', ['pending', 'accepted'])
+          .not('program_id', 'is', null)
       : Promise.resolve({ data: [] as Array<{ program_id: string | null }>, error: null }),
   ])
 
-  if (enrollResult.error) return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 })
-
-  const enrolledIds = (enrollResult.data ?? []).map((e: { program_id: string }) => e.program_id).filter(Boolean)
-  const invitedIds  = (inviteResult.data ?? []).map((e: { program_id: string | null }) => e.program_id).filter(Boolean) as string[]
-  const programIds  = [...new Set([...enrolledIds, ...invitedIds])]
+  const allIds = [
+    ...(byAnchorId.data ?? []),
+    ...(byOrgId.data ?? []),
+    ...((byAnchorInvite as { data: Array<{ program_id: string | null }> | null }).data ?? []),
+    ...((byOtherInvite as { data: Array<{ program_id: string | null }> | null }).data ?? []),
+  ].map((e: any) => e.program_id).filter(Boolean)
+  const programIds = [...new Set(allIds)]
 
   if (programIds.length === 0) return NextResponse.json({ programs: [] })
 
@@ -137,18 +109,15 @@ export async function POST(request: Request) {
   }
 
   // Both bank roles can create programs (credit officers source deals on Strike Place — TC.5).
+  // Any org admin can also create a program (self-funded Dynamic Discounting
+  // only — see the financing_types check below) — no longer restricted to
+  // anchor-type orgs.
   const isBank = userData.role === 'bank_admin' || userData.role === 'bank_credit_officer'
-  // For org users, look up org type to determine anchor vs other
-  let isAnchorAdmin = false
-  if (userData.role === 'org_admin' && userData.org_id) {
-    const { data: orgTypeRowPost } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    isAnchorAdmin = orgTypeRowPost?.type === 'anchor'
-  }
+  const isOrgCreator = userData.role === 'org_admin' && !!userData.org_id
 
-  if (!isBank && !isAnchorAdmin) {
+  if (!isBank && !isOrgCreator) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  const isAnchor = isAnchorAdmin
 
   let body: Record<string, unknown>
   try {
@@ -170,17 +139,17 @@ export async function POST(request: Request) {
     const types = financing_types as string[]
     if (types.includes('dynamic_discounting')) {
       return NextResponse.json(
-        { error: 'Banks cannot create dynamic discounting programs. This program type is anchor-initiated.' },
+        { error: 'Banks cannot create dynamic discounting programs. This program type is self-initiated by the organization offering it.' },
         { status: 403 }
       )
     }
   }
 
-  if (isAnchor) {
+  if (isOrgCreator) {
     const types = financing_types as string[]
     if (!types.every((t: string) => t === 'dynamic_discounting')) {
       return NextResponse.json(
-        { error: 'Anchors can only create dynamic discounting programs' },
+        { error: 'Organizations can only self-create dynamic discounting programs — other financing types require a bank.' },
         { status: 403 }
       )
     }
@@ -192,13 +161,13 @@ export async function POST(request: Request) {
   }
 
   let effectiveBankId = userData.bank_id
-  if (isAnchor) {
-    const { data: anchorOrg } = await adminClient
+  if (isOrgCreator) {
+    const { data: creatorOrg } = await adminClient
       .from('organizations')
       .select('bank_id')
       .eq('id', userData.org_id)
       .single()
-    effectiveBankId = anchorOrg?.bank_id ?? userData.bank_id
+    effectiveBankId = creatorOrg?.bank_id ?? userData.bank_id
   }
 
   const { data: program, error } = await adminClient
@@ -225,7 +194,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create program' }, { status: 500 })
   }
 
-  if (isAnchor && program) {
+  if (isOrgCreator && program) {
     try {
       await adminClient.from('program_enrollments').insert({
         program_id:          program.id,

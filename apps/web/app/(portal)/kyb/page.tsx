@@ -165,7 +165,6 @@ export default function KYBQueuePage() {
             <thead>
               <tr>
                 <th>{t('bankKyb.col.applicant')}</th>
-                <th>{t('bankKyb.col.type')}</th>
                 <th>{t('bankKyb.col.submitted')}</th>
                 <th>{t('bankKyb.col.daysWaiting')}</th>
                 <th>{t('bankKyb.col.kybStatus')}</th>
@@ -181,7 +180,6 @@ export default function KYBQueuePage() {
                       <div style={{ fontSize: 12, color: 'var(--gray)' }}>{org.primary_contact_name}</div>
                     )}
                   </td>
-                  <td style={{ color: 'var(--ink)', textTransform: 'capitalize' }}>{org.type}</td>
                   <td className="mono">{formatDate(org.kyb_submitted_at ?? org.created_at)}</td>
                   <td className="mono">{daysWaiting(org.kyb_submitted_at ?? org.created_at, t)}</td>
                   <td><span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status, t)}</span></td>

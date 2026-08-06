@@ -75,7 +75,6 @@ export async function evaluateSupplierPassport(input: EvaluateSupplierPassportIn
     org_id: orgId,
     legal_name: org.legal_name,
     doing_business_as: org.doing_business_as,
-    org_type: org.type,
     evaluation_purpose: input.evaluation_purpose,
     sections_evaluated: sections,
   }

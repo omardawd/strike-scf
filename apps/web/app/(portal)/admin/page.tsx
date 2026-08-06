@@ -216,7 +216,6 @@ export default function AdminPage() {
                 <thead>
                   <tr>
                     <th>{t('bankKyb.col.applicant')}</th>
-                    <th>{t('bankKyb.col.type')}</th>
                     <th>{t('bankKyb.col.submitted')}</th>
                     <th>{t('admin.riskScore')}</th>
                     <th>{t('admin.riskFlags')}</th>
@@ -242,11 +241,6 @@ export default function AdminPage() {
                             {org.primary_contact_email && (
                               <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{org.primary_contact_email}</div>
                             )}
-                          </td>
-                          <td>
-                            <span className="badge badge-draft" style={{ textTransform: 'capitalize' }}>
-                              {org.type}
-                            </span>
                           </td>
                           <td style={{ fontFamily: 'var(--font-body)', fontSize: 12 }}>
                             {fmtDate(org.kyb_submitted_at)}

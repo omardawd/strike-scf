@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   // Look up org + a representative user for context
   const { data: org } = await adminClient
     .from('organizations')
-    .select('id, type, legal_name, doing_business_as')
+    .select('id, legal_name, doing_business_as')
     .eq('id', orgId)
     .single()
 
@@ -77,12 +77,11 @@ export async function POST(req: NextRequest) {
   const source: string = body.source ?? 'api'
   const history: Array<{ role: string; content: string }> = body.history ?? []
 
-  const portal = org?.type === 'anchor' ? 'anchor' : 'supplier'
-  const portalTools = getToolsForPortal(portal)
+  const portalTools = getToolsForPortal('org')
 
   // Inject ERP + org context as a system message
   const contextNote =
-    `Org context: ${org?.doing_business_as ?? org?.legal_name ?? orgId} (${portal} portal, org_id: ${orgId}). ` +
+    `Org context: ${org?.doing_business_as ?? org?.legal_name ?? orgId} (org_id: ${orgId}). ` +
     `Message source: ${source}.`
 
   // Build messages: prior conversation history + current message

@@ -98,7 +98,6 @@ export async function GET(
     adminClient
       .from('organizations')
       .select('passport_score')
-      .eq('type', org.type)
       .eq('network_visible', true)
       .not('passport_score', 'is', null)
       .limit(1000),

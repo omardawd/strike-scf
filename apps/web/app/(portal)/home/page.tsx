@@ -190,9 +190,7 @@ export default function Dashboard2Page() {
           } : null)
           setKpis([
             { label: t('marketplace.activeDeals'), value: activeDeals.length, icon: 'deals', tint: 'var(--blue)' },
-            portal === 'supplier'
-              ? { label: t('anchorDetail.totalFinanced'), value: financingActive, format: fmtCurrency, icon: 'financing', tint: 'var(--color-green)' }
-              : { label: t('dashboardPage.tradeVolume'), value: tradeVolume, format: fmtCurrency, icon: 'volume', tint: 'var(--color-green)' },
+            { label: t('dashboardPage.tradeVolume'), value: tradeVolume, format: fmtCurrency, icon: 'volume', tint: 'var(--color-green)' },
           ])
           setAiContext({
             portal, org_name: dashRes?.org_name ?? null,
@@ -201,8 +199,11 @@ export default function Dashboard2Page() {
             active_deals: activeDeals.length,
             trade_volume: tradeVolume,
             financing_active: financingActive,
+            // Per-deal, not org-level — an org can be buyer on one deal and
+            // supplier on another at the same time, which a single org-wide
+            // branch could never express.
             deals_needing_action: deals.filter(d =>
-              (d.status === 'negotiating') || (portal === 'anchor' ? false : d.status === 'agreed')
+              d.status === 'negotiating' || (d.user_role === 'supplier' && d.status === 'agreed')
             ).length,
           })
         }

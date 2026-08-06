@@ -860,6 +860,25 @@ export default function DealDetailPage() {
 
   const hasDDOffer = !!(deal.dd_offer_presented_at && !deal.dd_offer_accepted_at && !deal.dd_offer_declined_at)
 
+  // Terms of the pending DD offer, sourced from the draft dynamic_discounting
+  // transaction the deal GET route already fetches whenever dd_offer_presented_at
+  // is set (see app/api/deals/[id]/route.ts's `needsTxn`). Recomputed with the
+  // same formula the dd-offer/dd-respond API routes use rather than trusting
+  // FinancingContext, whose dd* fields stay null until financing is active.
+  const pendingDDOffer = hasDDOffer && txn && txn.type === 'dynamic_discounting' && dealValue != null
+    ? (() => {
+        const discountAmount = txn.discount_amount ?? 0
+        return {
+          invoiceAmount: dealValue,
+          currency,
+          discountRate: txn.discount_rate ?? null,
+          discountAmount: txn.discount_amount ?? null,
+          earlyPaymentDate: txn.early_payment_date ?? null,
+          paymentAmount: dealValue - discountAmount,
+        }
+      })()
+    : null
+
   // G5.1 — AI context summary for the overlay
   const recentActions = availableActions.filter(a => a.available).slice(0, 3).map(a => `- ${a.action}: ${a.description}`).join('\n')
   const aiContext = JSON.stringify({
@@ -993,7 +1012,7 @@ export default function DealDetailPage() {
                         availableActions={availableActions}
                         financingContext={financingContext}
                         currentUserRole={user_role}
-                        hasDDOffer={hasDDOffer}
+                        pendingDDOffer={pendingDDOffer}
                         onActionSubmit={handleTransition}
                         onRefresh={load}
                       />
@@ -1412,8 +1431,7 @@ export default function DealDetailPage() {
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, paddingBottom: 20 }}>
                   <PassportScoreRing score={counterparty.passport_score} size="md" showLabel />
                   <div style={{ width: '100%' }}>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 4, textAlign: 'center' }}>{counterparty.legal_name}</div>
-                    <div style={{ textAlign: 'center', marginBottom: 12 }}><span className="badge badge-draft" style={{ fontSize: 9 }}>{counterparty.type}</span></div>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 12, textAlign: 'center' }}>{counterparty.legal_name}</div>
                     <div className="kv-list">
                       {counterparty.avg_payment_days != null && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('dealDetail.avgPaymentDays')}</span><span className="v">{counterparty.avg_payment_days}d</span></div>}
                       {counterparty.trade_count_total > 0 && <div className="kv-row" style={{ padding: '8px 16px' }}><span className="k" style={{ fontSize: 10 }}>{t('dealDetail.totalTrades')}</span><span className="v">{counterparty.trade_count_total}</span></div>}

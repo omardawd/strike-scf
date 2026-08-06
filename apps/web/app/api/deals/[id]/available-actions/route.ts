@@ -110,13 +110,8 @@ export async function GET(
 
   const { data: supplierOrgData } = await adminClient
     .from('organizations')
-    .select('legal_name, type')
+    .select('legal_name')
     .eq('id', deal.supplier_org_id)
-    .single()
-  const { data: buyerOrgData } = await adminClient
-    .from('organizations')
-    .select('legal_name, type')
-    .eq('id', deal.buyer_org_id)
     .single()
 
   const supplierOrg: OrgForContext = supplierOrgData ?? { legal_name: 'Supplier' }
@@ -131,6 +126,19 @@ export async function GET(
 
   const bankName = fc.paymentRecipientName
   const status = deal.status
+
+  // A DD offer is "pending" from presentation until the supplier accepts or declines it.
+  const ddOfferPending = !!deal.dd_offer_presented_at && !deal.dd_offer_accepted_at && !deal.dd_offer_declined_at
+
+  // Whether we already know where the buyer's payment should go — either the
+  // supplier's own bank account (set at contract signing in the v2 flow, or via
+  // the legacy submit_payment_info step) or, for an accepted DD offer, direct to
+  // the supplier at the agreed early-payment terms. Checked directly against the
+  // deal row's own columns rather than fc.paymentInstructions — this route only
+  // ever selects deals.receiving_bank_account_id, never the joined bank_accounts
+  // row buildPaymentInstructions() actually needs, so fc.paymentInstructions is
+  // always null here even when a receiving account has been set.
+  const hasKnownPaymentDestination = !!deal.receiving_bank_account_id || !!deal.payment_bank_name || (fc.isActive && fc.structure === 'dynamic_discounting')
 
   const actions: AvailableAction[] = []
 
@@ -425,9 +433,15 @@ export async function GET(
       })
     }
 
-    // LEGACY: Confirm payment sent (delivery_confirmed without new flow, payment_due, payment_overdue)
-    // Only show for old-flow deals (goods_confirmed_at is null = delivery not confirmed via new path)
-    if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status) && !deal.goods_confirmed_at) {
+    // Confirm payment sent (delivery_confirmed, payment_due, payment_overdue).
+    // Old-flow deals (goods_confirmed_at is null) always land here. V2-flow deals
+    // (goods_confirmed_at set) only land here once we actually know where to send
+    // the money — otherwise the buyer would be stuck with no action at all once
+    // delivery is confirmed, since the v2 flow already captures the supplier's
+    // bank account at contract signing and never visits payment_info_sent. This
+    // also covers an accepted DD offer, which routes payment straight to the
+    // supplier at the discounted amount/date rather than through payment_info_sent.
+    if (['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(status) && (!deal.goods_confirmed_at || hasKnownPaymentDestination)) {
       const noaBlocked = fc.structure === 'invoice_factoring' && fc.noaRequired && !fc.noaAcknowledged
       const payLabel = fc.isActive && fc.structure !== 'dynamic_discounting'
         ? `Confirm Repayment Sent to ${bankName}`
@@ -449,14 +463,19 @@ export async function GET(
       })
     }
 
-    // DD offer (anchor can present DD offer when delivery_confirmed and DD program exists)
-    if (['delivery_confirmed', 'payment_info_sent'].includes(status) && buyerOrgData?.type === 'anchor') {
+    // DD offer — any org can present one when it's the buyer on this deal
+    // (already established by being inside the userRole === 'buyer' branch).
+    if (['delivery_confirmed', 'payment_info_sent'].includes(status)) {
       actions.push({
         action: 'present_dd_offer',
         label: 'Offer Early Payment (Dynamic Discounting)',
         description: 'Offer the supplier an early payment at a discount. No bank involvement — you pay directly.',
-        available: !fc.isActive,
-        unavailableReason: fc.isActive ? 'Financing is already active on this deal.' : undefined,
+        available: !fc.isActive && !ddOfferPending,
+        unavailableReason: fc.isActive
+          ? 'Financing is already active on this deal.'
+          : ddOfferPending
+            ? 'An early payment offer is already pending supplier response.'
+            : undefined,
         requiredFields: [
           { name: 'discount_rate', type: 'number', label: 'Discount Rate (% annualized)', required: true },
           { name: 'early_payment_date', type: 'date', label: 'Proposed Payment Date', required: true },

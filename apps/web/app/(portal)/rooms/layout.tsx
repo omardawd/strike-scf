@@ -12,6 +12,11 @@ interface DealSummary {
   counterparty_name: string
 }
 
+interface NetworkSummary {
+  id: string
+  name: string
+}
+
 interface PanelRoom {
   id: string
   name: string
@@ -21,6 +26,7 @@ interface PanelRoom {
   last_message_preview: string | null
   unread_count: number
   deal?: DealSummary | null
+  network?: NetworkSummary | null
 }
 
 const CATEGORIES = [
@@ -103,7 +109,9 @@ function ConversationPanel({
     const isActive = room.id === activeId
     const title = room.deal?.counterparty_name
       ? `${room.name} · ${room.deal.counterparty_name}`
-      : room.name
+      : room.network
+        ? `${room.name} (network room)`
+        : room.name
     return (
       <button
         key={room.id}
@@ -113,7 +121,14 @@ function ConversationPanel({
         data-demo-target={`room-item-${room.id}`}
       >
         <div className="rooms-nav-item-top">
-          <span className="rooms-nav-item-name">{room.name}</span>
+          <span className="rooms-nav-item-name">
+            {room.name}
+            {room.network && (
+              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: 'var(--gray-soft)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                · Network
+              </span>
+            )}
+          </span>
           <span className="rooms-nav-item-time">{fmtRelative(room.last_message_at)}</span>
         </div>
         <div className="rooms-nav-item-bottom">

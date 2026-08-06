@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { usePortal } from '@/lib/portal-context'
-import { useUser } from '@/lib/user-context'
 import { useRouter } from 'next/navigation'
 import type { AnchorNetwork } from '@strike-scf/types'
 import { useT } from '@/lib/i18n/locale-context'
 
-// ── Anchor Networks List ─────────────────────────────────────
+// Any org can own networks (shown under "My Networks") and be invited into
+// other orgs' networks (shown under "My Memberships") — no more anchor-owns /
+// supplier-joins asymmetry.
 
 function CreateNetworkModal({ onClose, onCreated }: { onClose: () => void; onCreated: (n: AnchorNetwork) => void }) {
   const t = useT()
@@ -144,12 +144,13 @@ function VisibilityBadge({ v }: { v: string }) {
   )
 }
 
-function AnchorNetworksPage() {
+// ── My Networks (owned) ──────────────────────────────────────
+
+function MyNetworksSection({ onCreateClick }: { onCreateClick: () => void }) {
   const t = useT()
   const router = useRouter()
   const [networks, setNetworks] = useState<AnchorNetwork[]>([])
   const [loading, setLoading]   = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -165,91 +166,79 @@ function AnchorNetworksPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <>
-      <div style={{ padding: '32px 32px 0' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'anchor', total_networks: networks.length, loading })}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>{t('networks.myNetworks')}</h1>
-          <button onClick={() => setShowCreate(true)} style={{
+    <div style={{ marginBottom: 40 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700 }}>{t('networks.myNetworks')}</h2>
+        <button onClick={onCreateClick} style={{
+          background: 'var(--blue)', color: '#fff', border: 'none',
+          borderRadius: 'var(--radius-button)', padding: '10px 20px',
+          fontSize: 14, fontWeight: 600, cursor: 'pointer',
+        }}>
+          {t('networks.createNetworkPlus')}
+        </button>
+      </div>
+      <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 20 }}>
+        {t('networks.anchorSubtitle')}
+      </p>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--gray)' }}>{t('networks.loadingNetworks')}</div>
+      ) : networks.length === 0 ? (
+        <div style={{
+          border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)',
+          padding: '48px 32px', textAlign: 'center',
+        }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('networks.noneYet')}</h3>
+          <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto 20px' }}>
+            {t('networks.noneYetHint')}
+          </p>
+          <button onClick={onCreateClick} style={{
             background: 'var(--blue)', color: '#fff', border: 'none',
-            borderRadius: 'var(--radius-button)', padding: '10px 20px',
+            borderRadius: 'var(--radius-button)', padding: '10px 24px',
             fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>
-            {t('networks.createNetworkPlus')}
+            {t('networks.createFirst')}
           </button>
         </div>
-        <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 32 }}>
-          {t('networks.anchorSubtitle')}
-        </p>
-      </div>
-
-      <div style={{ padding: '0 32px 40px' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('networks.loadingNetworks')}</div>
-        ) : networks.length === 0 ? (
-          <div style={{
-            border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)',
-            padding: '64px 32px', textAlign: 'center',
-          }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{t('networks.noneYet')}</h3>
-            <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto 24px' }}>
-              {t('networks.noneYetHint')}
-            </p>
-            <button onClick={() => setShowCreate(true)} style={{
-              background: 'var(--blue)', color: '#fff', border: 'none',
-              borderRadius: 'var(--radius-button)', padding: '10px 24px',
-              fontSize: 14, fontWeight: 600, cursor: 'pointer',
-            }}>
-              {t('networks.createFirst')}
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-            {networks.map(net => (
-              <div key={net.id} style={{
-                background: 'var(--white)', borderRadius: 'var(--radius-card)',
-                padding: 20, boxShadow: 'var(--shadow-card)', cursor: 'pointer',
-                border: '1.5px solid var(--border)',
-                transition: 'box-shadow 0.15s',
-              }} onClick={() => router.push(`/networks/${net.id}`)}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{net.name}</div>
-                  <VisibilityBadge v={net.visibility_default} />
-                </div>
-                {net.description && (
-                  <p style={{
-                    fontSize: 13, color: 'var(--gray)', marginBottom: 16,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {net.description}
-                  </p>
-                )}
-                <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-                  <span style={{ fontSize: 13, color: 'var(--ink)' }}>
-                    <strong>{net.member_count}</strong> <span style={{ color: 'var(--gray)' }}>{t('networks.active')}</span>
-                  </span>
-                </div>
-                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <span style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600 }}>{t('networks.manage')}</span>
-                </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          {networks.map(net => (
+            <div key={net.id} className="card-interactive" style={{
+              background: 'var(--white)', borderRadius: 'var(--radius-card)',
+              padding: 20, boxShadow: 'var(--shadow-card)', cursor: 'pointer',
+              border: '1.5px solid var(--border)',
+            }} onClick={() => router.push(`/networks/${net.id}`)}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{net.name}</div>
+                <VisibilityBadge v={net.visibility_default} />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {showCreate && (
-        <CreateNetworkModal
-          onClose={() => setShowCreate(false)}
-          onCreated={net => { setNetworks(prev => [net, ...prev]); setShowCreate(false) }}
-        />
+              {net.description && (
+                <p style={{
+                  fontSize: 13, color: 'var(--gray)', marginBottom: 16,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {net.description}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
+                <span style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  <strong>{net.member_count}</strong> <span style={{ color: 'var(--gray)' }}>{t('networks.active')}</span>
+                </span>
+              </div>
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600 }}>{t('networks.manage')}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
-// ── Supplier Networks Page ────────────────────────────────────
+// ── My Memberships (networks this org has been invited into) ───
 
-function SupplierNetworksPage() {
+function MyMembershipsSection() {
   const t = useT()
   const [data, setData]         = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
@@ -259,6 +248,8 @@ function SupplierNetworksPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      // Route path kept as /api/networks/supplier for a minimal diff — it now
+      // means "my memberships" for any org, not specifically a supplier's.
       const res = await fetch('/api/networks/supplier')
       const json = await res.json()
       setData(json.networks ?? [])
@@ -303,14 +294,14 @@ function SupplierNetworksPage() {
   const active  = data.filter(d => d.membership?.status === 'active')
   const others  = data.filter(d => !['invited', 'active'].includes(d.membership?.status))
 
+  if (!loading && data.length === 0) return null
+
   return (
-    <div style={{ padding: '32px' }} data-page-name="Networks" data-ai-context={JSON.stringify({ role: 'supplier', total: data.length, pending: pending.length, active: active.length, others: others.length })}>
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>{t('networks.myNetworks')}</h1>
-        <p style={{ color: 'var(--gray)', fontSize: 14 }}>
-          {t('networks.supplierSubtitle')}
-        </p>
-      </div>
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{t('networks.myMemberships')}</h2>
+      <p style={{ color: 'var(--gray)', fontSize: 14, marginBottom: 20 }}>
+        {t('networks.supplierSubtitle')}
+      </p>
 
       {error && (
         <div style={{ background: '#fee2e2', border: '1.5px solid #fecaca', borderRadius: 'var(--radius-card)', padding: '12px 16px', marginBottom: 20, fontSize: 14, color: '#dc2626' }}>
@@ -319,14 +310,7 @@ function SupplierNetworksPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
-      ) : data.length === 0 ? (
-        <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-card)', padding: '64px 32px', textAlign: 'center' }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{t('networks.noInvitationsYet')}</h3>
-          <p style={{ color: 'var(--gray)', fontSize: 14, maxWidth: 360, margin: '0 auto' }}>
-            {t('networks.noInvitationsHint')}
-          </p>
-        </div>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
       ) : (
         <>
           {/* Pending invitations */}
@@ -393,7 +377,7 @@ function SupplierNetworksPage() {
           {/* Active networks */}
           {active.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{t('networks.activeNetworks')}</h2>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{t('networks.activeNetworks')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
                 {active.map(({ membership, network, anchor, pending_listings_count }) => (
                   <div key={membership.id} style={{
@@ -426,7 +410,7 @@ function SupplierNetworksPage() {
 
           {others.length > 0 && (
             <div style={{ marginTop: 24 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray)', marginBottom: 10 }}>{t('networks.other')}</h2>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--gray)', marginBottom: 10 }}>{t('networks.other')}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {others.map(({ membership, network, anchor }) => (
                   <div key={membership.id} style={{
@@ -458,8 +442,20 @@ function SupplierNetworksPage() {
 // ── Route entry ─────────────────────────────────────────────
 
 export default function NetworksPage() {
-  const portal = usePortal()
+  const [showCreate, setShowCreate] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  if (portal === 'anchor') return <AnchorNetworksPage />
-  return <SupplierNetworksPage />
+  return (
+    <div style={{ padding: 32 }} data-page-name="Networks" data-ai-context={JSON.stringify({})}>
+      <MyNetworksSection key={refreshKey} onCreateClick={() => setShowCreate(true)} />
+      <MyMembershipsSection />
+
+      {showCreate && (
+        <CreateNetworkModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); setRefreshKey(k => k + 1) }}
+        />
+      )}
+    </div>
+  )
 }

@@ -1,13 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { getNetworkAccess } from '@/lib/networks/access'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// G3.5 — GET /api/networks/[id]/members — anchor-only
+// G3.5 — GET /api/networks/[id]/members — owner or active member
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -28,18 +29,12 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: network } = await adminClient
-    .from('anchor_networks')
-    .select('id, anchor_org_id')
-    .eq('id', id)
-    .single()
-
+  // Owner sees the roster; any active member does too — they already share a
+  // private network room together, so gating the read-only roster more
+  // strictly than that room would be inconsistent.
+  const { network, hasAccess } = await getNetworkAccess(adminClient, id, me.org_id)
   if (!network) return NextResponse.json({ error: 'Network not found' }, { status: 404 })
-
-  // Suppliers cannot see members — anchor-only
-  if (network.anchor_org_id !== me.org_id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: members, error } = await adminClient
     .from('anchor_network_members')
@@ -57,7 +52,7 @@ export async function GET(
   if (orgIds.length > 0) {
     const { data: orgs } = await adminClient
       .from('organizations')
-      .select('id, legal_name, passport_score, kyb_status, country')
+      .select('id, legal_name, passport_score, kyb_status, country, logo_url')
       .in('id', orgIds)
     for (const o of orgs ?? []) orgsMap[o.id] = o
   }

@@ -29,7 +29,7 @@ interface BankReportingData {
   portfolio: Portfolio
 }
 
-// ── Anchor / Supplier types (Strike Place v2 — deals-based) ───────────────────
+// ── Org types (Strike Place v2 — deals-based) ─────────────────────────────────
 interface DealMonthlyBucket { label: string; count: number; volume: number }
 interface DealStatusBreakdown { status: string; count: number }
 interface CounterpartyRow { id: string; name: string; deal_count: number; total_volume: number }
@@ -69,7 +69,7 @@ interface DealKpis {
   contract_completion_rate: number | null
 }
 interface DealsReportingData {
-  role: 'anchor' | 'supplier'
+  role: 'org'
   kpis: DealKpis
   monthly_volume: DealMonthlyBucket[]
   status_breakdown: DealStatusBreakdown[]
@@ -512,11 +512,11 @@ export default function ReportingPage() {
             </div>
           </>
 
-        ) : (data?.role === 'anchor' || data?.role === 'supplier') ? (
+        ) : data?.role === 'org' ? (
           <>
             {/* ── Hero band ── */}
             <HeroBand
-              primaryLabel={data.role === 'anchor' ? t('reportingPage.totalTradeVolume') : t('reportingPage.totalVolumeSold')}
+              primaryLabel={t('reportingPage.totalTradeVolume')}
               primaryValue={<CountUp value={data.kpis.total_trade_volume} format={fmtCurrency} />}
               stats={[
                 { label: t('reportingPage.activeValue'), value: <CountUp value={data.kpis.active_volume} format={fmtCurrency} /> },
@@ -529,11 +529,9 @@ export default function ReportingPage() {
             />
 
             <AIInsight
-              title={data.role === 'anchor' ? t('reportingPage.payablesAnalytics') : t('reportingPage.receivablesAnalytics')}
+              title={t('reportingPage.volumeAnalytics')}
               collapsed={false}
-              prompt={data.role === 'anchor'
-                ? "Analyze this buyer's Strike Place deal activity. Based on deal volumes, supplier concentration, and financing usage, identify trends, flag concerns, and suggest one action to improve program efficiency."
-                : "Analyze this supplier's Strike Place deal and financing activity. Based on trade volume, buyer concentration, and financing rates, suggest one action to improve cash flow or grow trade volume."}
+              prompt="Analyze this organization's Strike Place deal and financing activity across both its buying and selling deals. Based on trade volume, counterparty concentration, and financing usage, identify trends, flag concerns, and suggest one action to improve cash flow or program efficiency."
               context={{
                 kpis: data.kpis,
                 monthly_volume: data.monthly_volume.slice(-3),
@@ -553,7 +551,7 @@ export default function ReportingPage() {
                   <LineChart
                     data={(data.monthly_volume ?? []).map(m => ({ label: m.label, value: m.volume, count: m.count }))}
                     height={200}
-                    color={data.role === 'anchor' ? 'var(--color-anchor)' : 'var(--color-green)'}
+                    color="var(--color-anchor)"
                   />
                 </div>
               </div>
@@ -572,7 +570,7 @@ export default function ReportingPage() {
             <div className="reveal-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="card">
                 <div className="card-head">
-                  <h3 className="t-card-head">{data.role === 'anchor' ? t('reportingPage.topSuppliersByVolume') : t('reportingPage.topBuyersByVolume')}</h3>
+                  <h3 className="t-card-head">{t('reportingPage.topCounterpartiesByVolume')}</h3>
                 </div>
                 <RankBars rows={data.top_counterparties} emptyLabel={t('reportingPage.noCounterpartyData')} />
               </div>
@@ -592,7 +590,7 @@ export default function ReportingPage() {
                       <div className="fs-value"><CountUp value={data.kpis.total_financing_requested} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
-                      <div className="fs-label">{data.role === 'anchor' ? t('reportingPage.financed') : t('reportingPage.secured')}</div>
+                      <div className="fs-label">{t('reportingPage.financed')}</div>
                       <div className="fs-value"><CountUp value={data.kpis.total_financed} format={fmtCurrency} /></div>
                     </div>
                     <div className="fs-cell">
@@ -658,7 +656,7 @@ export default function ReportingPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>{data.role === 'anchor' ? t('passport.supplier') : t('passport.buyer')}</th>
+                      <th>{t('deals.col.counterparty')}</th>
                       <th>{t('financing.status')}</th>
                       <th style={{ textAlign: 'right' }}>{t('reportingPage.daysStale')}</th>
                     </tr>
@@ -702,7 +700,7 @@ export default function ReportingPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>{data.role === 'anchor' ? t('passport.supplier') : t('passport.buyer')}</th>
+                      <th>{t('deals.col.counterparty')}</th>
                       <th style={{ textAlign: 'right' }}>{t('dealImport.value')}</th>
                       <th>{t('financing.status')}</th>
                       <th>{t('reportingPage.date')}</th>

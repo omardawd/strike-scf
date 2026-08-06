@@ -30,13 +30,9 @@ export async function GET() {
 
   if (ORG_ROLES.includes(userData.role)) {
     if (!userData.org_id) return NextResponse.json({ transactions: [] })
-    // Look up org type to scope transactions correctly
-    const { data: txnOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    if (txnOrgRow?.type === 'anchor') {
-      query = query.eq('anchor_id', userData.org_id)
-    } else {
-      query = query.eq('supplier_id', userData.org_id)
-    }
+    // Any org can be the anchor side on some transactions and the supplier
+    // side on others — scope to both rather than picking one via org type.
+    query = query.or(`anchor_id.eq.${userData.org_id},supplier_id.eq.${userData.org_id}`)
   } else if (BANK_ROLES.includes(userData.role)) {
     if (!userData.bank_id) return NextResponse.json({ transactions: [] })
     query = query.eq('bank_id', userData.bank_id)

@@ -63,21 +63,16 @@ export async function GET(
     return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
   }
 
-  const isBank     = BANK_ROLES.includes(userData.role)
-  const isOrgUser  = ORG_ROLES.includes(userData.role)
-  // For org users, determine anchor vs supplier via org type
-  let isSupplier = false
-  let isAnchor   = false
-  if (isOrgUser && userData.org_id) {
-    const { data: txnGetOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    isAnchor   = txnGetOrgRow?.type === 'anchor'
-    isSupplier = txnGetOrgRow?.type === 'supplier'
-  }
+  const isBank    = BANK_ROLES.includes(userData.role)
+  const isOrgUser = ORG_ROLES.includes(userData.role)
+  // Any org can sit in either FK column across different transactions — derive
+  // this transaction's role from the row itself, not from org-level type.
+  const isSupplier = isOrgUser && transaction.supplier_id === userData.org_id
+  const isAnchor   = isOrgUser && transaction.anchor_id   === userData.org_id
 
   const hasAccess =
-    (isSupplier && transaction.supplier_id === userData.org_id) ||
-    (isAnchor   && transaction.anchor_id   === userData.org_id) ||
-    (isBank     && transaction.bank_id     === userData.bank_id)
+    (isSupplier || isAnchor) ||
+    (isBank && transaction.bank_id === userData.bank_id)
 
   if (!hasAccess) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -212,16 +207,13 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   }
 
-  // Determine isAnchor / isSupplier for PATCH routing based on org type
+  // Determine isAnchor / isSupplier for PATCH routing from this transaction's
+  // own FK columns — any org can be anchor on one transaction and supplier on
+  // another, so org-level type can't answer this.
   const patchIsBank    = BANK_ROLES.includes(userData.role)
   const patchIsOrgUser = ORG_ROLES.includes(userData.role)
-  let patchIsAnchor   = false
-  let patchIsSupplier = false
-  if (patchIsOrgUser && userData.org_id) {
-    const { data: patchOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-    patchIsAnchor   = patchOrgRow?.type === 'anchor'
-    patchIsSupplier = patchOrgRow?.type === 'supplier'
-  }
+  const patchIsAnchor   = patchIsOrgUser && transaction.anchor_id   === userData.org_id
+  const patchIsSupplier = patchIsOrgUser && transaction.supplier_id === userData.org_id
 
   // ── Anchor approval ────────────────────────────────────────────
   if (patchIsAnchor) {

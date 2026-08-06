@@ -154,7 +154,6 @@ export default function AdminKybDetailPage() {
 
   const org = data?.organization
   const name = org?.doing_business_as || org?.legal_name || org_id
-  const isSupplier = org?.type === 'supplier'
 
   return (
     <>
@@ -185,7 +184,6 @@ export default function AdminKybDetailPage() {
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
                       {name}
                     </span>
-                    <span className="badge badge-draft" style={{ textTransform: 'capitalize' }}>{org.type}</span>
                     <span className="badge badge-pending" style={{ textTransform: 'capitalize' }}>{(org.kyb_status ?? '').replace(/_/g, ' ')}</span>
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 4 }}>
@@ -367,19 +365,12 @@ export default function AdminKybDetailPage() {
               <Row k={t('onboarding.field.countryOfOrigin')} v={org.country_of_origin} />
               <Row k={t('onboarding.field.sourcingCountries')} v={(org.sourcing_countries ?? []).join(', ') || null} />
               <Row k={t('onboarding.field.productCategories')} v={(org.product_categories ?? []).join(', ') || null} />
-              {isSupplier ? (
-                <>
-                  <Row k={t('onboarding.field.customerCount')} v={org.customer_count} />
-                  <Row k={t('onboarding.field.largestCustomerPct')} v={org.largest_customer_pct} />
-                  <Row k={t('onboarding.field.financingNeed')} v={org.financing_need} />
-                </>
-              ) : (
-                <>
-                  <Row k={t('onboarding.field.supplierCount')} v={org.supplier_count} />
-                  <Row k={t('onboarding.field.largestSupplierPct')} v={org.largest_supplier_pct} />
-                  <Row k={t('onboarding.field.supplierPaymentTermsOffered')} v={org.supplier_payment_terms} />
-                </>
-              )}
+              <Row k={t('onboarding.field.customerCount')} v={org.customer_count} />
+              <Row k={t('onboarding.field.largestCustomerPct')} v={org.largest_customer_pct} />
+              <Row k={t('onboarding.field.financingNeed')} v={org.financing_need} />
+              <Row k={t('onboarding.field.supplierCount')} v={org.supplier_count} />
+              <Row k={t('onboarding.field.largestSupplierPct')} v={org.largest_supplier_pct} />
+              <Row k={t('onboarding.field.supplierPaymentTermsOffered')} v={org.supplier_payment_terms} />
               <Row k={t('onboarding.field.paymentTermsOffered')} v={org.payment_terms_offered} />
               <Row k={t('onboarding.field.paymentTermsReceived')} v={org.payment_terms_received} />
               <Row k={t('onboarding.field.paymentTermsPreference')} v={org.payment_terms_preference} />

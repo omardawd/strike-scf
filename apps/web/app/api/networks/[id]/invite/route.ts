@@ -74,13 +74,15 @@ export async function POST(
 
     const { data: targetOrg } = await adminClient
       .from('organizations')
-      .select('id, legal_name, type, primary_contact_email, network_visible')
+      .select('id, legal_name, primary_contact_email, network_visible')
       .eq('id', body.org_id)
       .single()
 
+    // Banks aren't rows in `organizations` at all, so a bank id here simply
+    // won't match — no separate type check needed to keep them out.
     if (!targetOrg) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
-    if (targetOrg.type !== 'supplier' && targetOrg.type !== 'both') {
-      return NextResponse.json({ error: 'Target organization must be a supplier' }, { status: 400 })
+    if (body.org_id === me.org_id) {
+      return NextResponse.json({ error: 'Cannot invite your own organization' }, { status: 400 })
     }
 
     // Check not already an active/invited/suspended member
@@ -169,15 +171,15 @@ export async function POST(
     .eq('email', inviteEmail)
     .maybeSingle()
 
-  if (existingUser?.org_id) {
+  if (existingUser?.org_id && existingUser.org_id !== me.org_id) {
     // Treat as existing org invite
     const { data: targetOrg } = await adminClient
       .from('organizations')
-      .select('id, legal_name, type, primary_contact_email')
+      .select('id, legal_name, primary_contact_email')
       .eq('id', existingUser.org_id)
       .single()
 
-    if (targetOrg && (targetOrg.type === 'supplier' || targetOrg.type === 'both')) {
+    if (targetOrg) {
       const { data: existing } = await adminClient
         .from('anchor_network_members')
         .select('id, status')

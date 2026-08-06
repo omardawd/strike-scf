@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/portal-context'
+import { useUser } from '@/lib/user-context'
 import { pushTransactionDetail, pushTransactionNew } from '@/lib/transaction-referrer'
 import { PortalShell, Topbar, Icon, NotifBell } from '@/components/portal-shell'
 import { AIInsightCard } from '@/components/ai-insight-card'
@@ -16,6 +17,8 @@ interface Transaction {
   invoice_amount: number | null
   financing_amount_requested: number | null
   financing_amount_approved: number | null
+  supplier_id: string | null
+  anchor_id: string | null
   supplier_name: string | null
   anchor_name: string | null
   bank_name: string | null
@@ -86,6 +89,7 @@ function shortId(id: string): string {
 
 export default function TransactionsPage() {
   const portal = usePortal()
+  const user = useUser()
   const router = useRouter()
   const t = useT()
   const [txns, setTxns] = useState<Transaction[]>([])
@@ -112,8 +116,12 @@ export default function TransactionsPage() {
   const visible = txns.filter(tx => matchesFilter(tx.status, filter))
 
   function counterparty(txn: Transaction): string {
-    if (portal === 'supplier') return txn.anchor_name ?? '—'
-    if (portal === 'anchor')   return txn.supplier_name ?? '—'
+    if (portal === 'bank') {
+      const parts = [txn.supplier_name, txn.anchor_name].filter(Boolean)
+      return parts.length > 0 ? parts.join(' → ') : '—'
+    }
+    if (txn.supplier_id === user?.org_id) return txn.anchor_name ?? '—'
+    if (txn.anchor_id === user?.org_id)   return txn.supplier_name ?? '—'
     const parts = [txn.supplier_name, txn.anchor_name].filter(Boolean)
     return parts.length > 0 ? parts.join(' → ') : '—'
   }
@@ -125,7 +133,7 @@ export default function TransactionsPage() {
         actions={
           <>
             <NotifBell />
-            {portal === 'supplier' && (
+            {portal === 'org' && (
               <button
                 className="btn btn-primary"
                 type="button"
@@ -214,11 +222,11 @@ export default function TransactionsPage() {
                 {filter !== 'all' ? t('transactionsPage.noFilteredTransactions', { filter: filters(t).find(f => f.key === filter)?.label ?? filter }) : t('transactionsPage.noTransactionsYet')}
               </div>
               <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20 }}>
-                {portal === 'supplier'
+                {portal === 'org'
                   ? t('transactionsPage.submitFirstInvoice')
                   : t('transactionsPage.willAppearHere')}
               </div>
-              {portal === 'supplier' && filter === 'all' && (
+              {portal === 'org' && filter === 'all' && (
                 <button
                   className="btn btn-primary"
                   type="button"
@@ -236,7 +244,7 @@ export default function TransactionsPage() {
                 <tr>
                   <th>{t('transactionsPage.transactionId')}</th>
                   <th>
-                    {portal === 'bank' ? t('transactionsPage.supplierAnchor') : portal === 'supplier' ? t('transactionsPage.anchor') : t('transactionsPage.supplier')}
+                    {portal === 'bank' ? t('transactionsPage.supplierAnchor') : t('deals.col.counterparty')}
                   </th>
                   <th className="amount">{t('transactionsPage.invoiceAmount')}</th>
                   <th className="amount">{t('transactionsPage.financingReq')}</th>

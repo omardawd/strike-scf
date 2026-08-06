@@ -98,16 +98,17 @@ const BASE_DOCS: DocSpec[] = [
   { kind: 'proof_of_address', label: 'Proof of business address — utility bill, bank letter or lease dated within 90 days', required: true },
   { kind: 'ubo_declaration', label: 'Corporate ownership / UBO declaration — signed', required: true },
 ]
-const SUPPLIER_DOCS: DocSpec[] = [
+// Any org can act as buyer or supplier per deal, so every org uploads the
+// same set — the union of what used to be two role-specific lists. Docs that
+// were only required for one role become optional rather than dropped, so an
+// org that does end up acting as a buyer/supplier hasn't silently lost a
+// compliance-relevant document from its KYB file.
+const ORG_DOCS: DocSpec[] = [
   ...BASE_DOCS,
   { kind: 'bank_statements', label: 'Business bank statements — last 6 months', required: true },
   { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: false },
   { kind: 'tax_return', label: 'Latest corporate tax return', required: false },
-]
-const ANCHOR_DOCS: DocSpec[] = [
-  ...BASE_DOCS,
-  { kind: 'audited_financials', label: 'Financial statements — last 2 years', required: false },
-  { kind: 'board_resolution', label: 'Board resolution / authority letter authorizing the signatory', required: true },
+  { kind: 'board_resolution', label: 'Board resolution / authority letter authorizing the signatory', required: false },
 ]
 
 // Reference data for the new Financial & Trade and Systems & Intent steps.
@@ -866,8 +867,7 @@ export default function OnboardingWizard() {
     }))
   }
 
-  const orgType: 'anchor' | 'supplier' = org?.type === 'anchor' ? 'anchor' : 'supplier'
-  const docSpecs = orgType === 'anchor' ? ANCHOR_DOCS : SUPPLIER_DOCS
+  const docSpecs = ORG_DOCS
 
   useEffect(() => {
     let cancelled = false
@@ -957,18 +957,13 @@ export default function OnboardingWizard() {
       if (!profile.bankruptcy) return t('onboarding.validation.bankruptcy')
       if (!profile.litigation) return t('onboarding.validation.litigation')
     }
-    // Step 4 — Financial & Trade Profile
+    // Step 4 — Financial & Trade Profile. Selling-activity and buying-activity
+    // fields are both shown (any org can do either) and both optional — only
+    // the fields that applied to every org regardless of role stay required.
     if (current === 4) {
       if (!form.annual_revenue_range) return t('onboarding.validation.annualRevenue')
       if (!form.employee_count_range) return t('onboarding.validation.employeeCount')
       if (!profile.primary_currency) return t('onboarding.validation.primaryCurrency')
-      if (orgType === 'supplier') {
-        if (!form.country_of_origin) return t('onboarding.validation.countryOfOrigin')
-        if (form.sourcing_countries.length === 0) return t('onboarding.validation.sourcingCountries')
-        if (!profile.financing_need) return t('onboarding.validation.financingNeed')
-      } else {
-        if (form.product_categories.length === 0) return t('onboarding.validation.productCategories')
-      }
       if (!form.payment_terms_preference) return t('onboarding.validation.paymentTermsPreference')
     }
     // Step 5 — Systems & Intent
@@ -1285,77 +1280,80 @@ export default function OnboardingWizard() {
                 </Field>
               </div>
 
-              {orgType === 'supplier' ? (
-                <>
-                  <Field label={t('onboarding.field.countryOfOrigin')}>
-                    <select className="form-input form-select" value={form.country_of_origin} onChange={(e) => update({ country_of_origin: e.target.value })}>
-                      <option value="">{t('common.select')}</option>
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>{c.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label={t('onboarding.field.sourcingCountries')}>
-                    <MultiSelect
-                      options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
-                      selected={form.sourcing_countries}
-                      onToggle={(v) => toggleInArray('sourcing_countries', v)}
-                      cols={3}
-                    />
-                  </Field>
-                  <div className="form-row-2">
-                    <Field label={t('onboarding.field.customerCount')} optional>
-                      <select className="form-input form-select" value={profile.customer_count} onChange={(e) => updateProfile({ customer_count: e.target.value })}>
-                        <option value="">{t('common.select')}</option>
-                        {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                      </select>
-                    </Field>
-                    <Field label={t('onboarding.field.largestCustomerPct')} optional>
-                      <select className="form-input form-select" value={profile.largest_customer_pct} onChange={(e) => updateProfile({ largest_customer_pct: e.target.value })}>
-                        <option value="">{t('common.select')}</option>
-                        {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                      </select>
-                    </Field>
-                  </div>
-                  <Field label={t('onboarding.field.financingNeed')}>
-                    <select className="form-input form-select" value={profile.financing_need} onChange={(e) => updateProfile({ financing_need: e.target.value })}>
-                      <option value="">{t('common.select')}</option>
-                      {FINANCING_NEEDS.map((c) => (<option key={c} value={c}>{c}</option>))}
-                    </select>
-                  </Field>
-                </>
-              ) : (
-                <>
-                  <Field label={t('onboarding.field.productCategories')}>
-                    <MultiSelect
-                      options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
-                      selected={form.product_categories}
-                      onToggle={(v) => toggleInArray('product_categories', v)}
-                      cols={3}
-                    />
-                  </Field>
-                  <div className="form-row-2">
-                    <Field label={t('onboarding.field.supplierCount')} optional>
-                      <select className="form-input form-select" value={profile.supplier_count} onChange={(e) => updateProfile({ supplier_count: e.target.value })}>
-                        <option value="">{t('common.select')}</option>
-                        {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                      </select>
-                    </Field>
-                    <Field label={t('onboarding.field.largestSupplierPct')} optional>
-                      <select className="form-input form-select" value={profile.largest_supplier_pct} onChange={(e) => updateProfile({ largest_supplier_pct: e.target.value })}>
-                        <option value="">{t('common.select')}</option>
-                        {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                      </select>
-                    </Field>
-                  </div>
-                  <Field label={t('onboarding.field.supplierPaymentTerms')} optional>
-                    <select className="form-input form-select" value={profile.supplier_payment_terms} onChange={(e) => updateProfile({ supplier_payment_terms: e.target.value })}>
-                      <option value="">{t('common.select')}</option>
-                      {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
-                    </select>
-                  </Field>
-                </>
-              )}
+              {/* Any org can act as either side per deal, so both activity
+                  blocks are shown unconditionally rather than branched on a
+                  fixed org type — fill in whichever applies to you. */}
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-soft)', marginTop: 6 }}>
+                {t('onboarding.field.sellingActivity')}
+              </div>
+              <Field label={t('onboarding.field.countryOfOrigin')} optional>
+                <select className="form-input form-select" value={form.country_of_origin} onChange={(e) => update({ country_of_origin: e.target.value })}>
+                  <option value="">{t('common.select')}</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('onboarding.field.sourcingCountries')} optional>
+                <MultiSelect
+                  options={SOURCING_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
+                  selected={form.sourcing_countries}
+                  onToggle={(v) => toggleInArray('sourcing_countries', v)}
+                  cols={3}
+                />
+              </Field>
+              <div className="form-row-2">
+                <Field label={t('onboarding.field.customerCount')} optional>
+                  <select className="form-input form-select" value={profile.customer_count} onChange={(e) => updateProfile({ customer_count: e.target.value })}>
+                    <option value="">{t('common.select')}</option>
+                    {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </Field>
+                <Field label={t('onboarding.field.largestCustomerPct')} optional>
+                  <select className="form-input form-select" value={profile.largest_customer_pct} onChange={(e) => updateProfile({ largest_customer_pct: e.target.value })}>
+                    <option value="">{t('common.select')}</option>
+                    {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </Field>
+              </div>
+              <Field label={t('onboarding.field.financingNeed')} optional>
+                <select className="form-input form-select" value={profile.financing_need} onChange={(e) => updateProfile({ financing_need: e.target.value })}>
+                  <option value="">{t('common.select')}</option>
+                  {FINANCING_NEEDS.map((c) => (<option key={c} value={c}>{c}</option>))}
+                </select>
+              </Field>
+
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-soft)', marginTop: 6 }}>
+                {t('onboarding.field.buyingActivity')}
+              </div>
+              <Field label={t('onboarding.field.productCategories')} optional>
+                <MultiSelect
+                  options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                  selected={form.product_categories}
+                  onToggle={(v) => toggleInArray('product_categories', v)}
+                  cols={3}
+                />
+              </Field>
+              <div className="form-row-2">
+                <Field label={t('onboarding.field.supplierCount')} optional>
+                  <select className="form-input form-select" value={profile.supplier_count} onChange={(e) => updateProfile({ supplier_count: e.target.value })}>
+                    <option value="">{t('common.select')}</option>
+                    {CUSTOMER_COUNT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </Field>
+                <Field label={t('onboarding.field.largestSupplierPct')} optional>
+                  <select className="form-input form-select" value={profile.largest_supplier_pct} onChange={(e) => updateProfile({ largest_supplier_pct: e.target.value })}>
+                    <option value="">{t('common.select')}</option>
+                    {PERCENT_RANGES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </Field>
+              </div>
+              <Field label={t('onboarding.field.supplierPaymentTerms')} optional>
+                <select className="form-input form-select" value={profile.supplier_payment_terms} onChange={(e) => updateProfile({ supplier_payment_terms: e.target.value })}>
+                  <option value="">{t('common.select')}</option>
+                  {PAYMENT_TERM_DAYS.map((c) => (<option key={c} value={c}>{c} days</option>))}
+                </select>
+              </Field>
 
               <div className="form-row-2">
                 <Field label={t('onboarding.field.paymentTermsOffered')} optional>
@@ -1615,15 +1613,6 @@ export default function OnboardingWizard() {
                   <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-ink-1)' }}>
                     {form.legal_name || t('onboarding.review.yourOrganization')}
                   </div>
-                  <span
-                    className="badge"
-                    style={{
-                      marginTop: 6,
-                      color: orgType === 'anchor' ? 'var(--blue)' : 'var(--color-green)',
-                    }}
-                  >
-                    {orgType === 'anchor' ? t('onboarding.review.anchorBuyer') : t('onboarding.review.supplier')}
-                  </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-ink-1)' }}>55–75</div>
@@ -1709,15 +1698,12 @@ export default function OnboardingWizard() {
                 <ReviewRow k={t('onboarding.review.annualRevenue')} v={form.annual_revenue_range} />
                 <ReviewRow k={t('onboarding.review.employees')} v={form.employee_count_range} />
                 <ReviewRow k={t('onboarding.review.operatingCurrency')} v={profile.primary_currency} />
-                {orgType === 'supplier' ? (
-                  <>
-                    <ReviewRow k={t('onboarding.field.countryOfOrigin')} v={countryName(form.country_of_origin)} />
-                    <ReviewRow k={t('onboarding.field.sourcingCountries')} v={form.sourcing_countries.map(countryName).join(', ')} />
-                    <ReviewRow k={t('onboarding.field.financingNeed')} v={profile.financing_need} />
-                  </>
-                ) : (
-                  <ReviewRow k={t('onboarding.field.productCategories')} v={form.product_categories.join(', ')} />
-                )}
+                {/* Both activity blocks — ReviewRow hides itself when empty,
+                    so only whichever the org actually filled in shows up. */}
+                <ReviewRow k={t('onboarding.field.countryOfOrigin')} v={countryName(form.country_of_origin)} />
+                <ReviewRow k={t('onboarding.field.sourcingCountries')} v={form.sourcing_countries.map(countryName).join(', ')} />
+                <ReviewRow k={t('onboarding.field.financingNeed')} v={profile.financing_need} />
+                <ReviewRow k={t('onboarding.field.productCategories')} v={form.product_categories.join(', ')} />
                 <ReviewRow k={t('onboarding.review.paymentTerms')} v={form.payment_terms_preference} />
               </ReviewSection>
 

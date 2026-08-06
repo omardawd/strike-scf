@@ -299,7 +299,6 @@ export default function KYBDetailPage() {
           <h1 className="page-id-title">
             <span className="id-text">{org.legal_name}</span>
             <span className={kybBadgeClass(org.kyb_status)}>{kybStatusLabel(org.kyb_status, t)}</span>
-            <span className="badge badge-draft" style={{ textTransform: 'capitalize' }}>{org.type}</span>
             {riskData && (
               <RiskBadge
                 score={riskData.risk_score}
@@ -338,7 +337,6 @@ export default function KYBDetailPage() {
               <div className="card-head"><h3 className="t-card-head">{t('bankKybDetail.businessDetails')}</h3></div>
               <div className="kv-rows">
                 <div className="kv-row"><span className="k">{t('onboarding.field.legalName')}</span><span className="v">{org.legal_name}</span></div>
-                <div className="kv-row"><span className="k">{t('kybStatus.type')}</span><span className="v" style={{ textTransform: 'capitalize' }}>{org.type}</span></div>
                 {org.ein && <div className="kv-row"><span className="k">{t('bankKybDetail.einLabel')}</span><span className="v mono">{org.ein}</span></div>}
                 {(org.city || org.state) && (
                   <div className="kv-row"><span className="k">{t('bankKybDetail.location')}</span><span className="v">{[org.city, org.state].filter(Boolean).join(', ')}</span></div>

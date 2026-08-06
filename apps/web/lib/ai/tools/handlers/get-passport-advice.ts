@@ -75,7 +75,6 @@ export async function getPassportAdvice(input: GetPassportAdviceInput) {
 
   const snapshot = {
     org_name: org.doing_business_as ?? org.legal_name,
-    org_type: org.type,
     passport_score: org.passport_score,
     kyb_status: org.kyb_status,
     kyb_submitted: !!org.kyb_submitted_at,

@@ -180,12 +180,7 @@ export default function ProgramsPage() {
       .catch(err  => { setError(err.message);           setLoading(false) })
   }, [])
 
-  const emptyMessage =
-    portal === 'bank'
-      ? t('programsPage.emptyBank')
-      : portal === 'anchor'
-        ? t('programsPage.emptyAnchor')
-        : t('programsPage.emptySupplier')
+  const emptyMessage = portal === 'bank' ? t('programsPage.emptyBank') : t('programsPage.emptyOrg')
 
   return (
     <PortalShell activeSection="programs">
@@ -193,7 +188,7 @@ export default function ProgramsPage() {
         crumbs={[{ label: t('programsPage.title') }]}
         actions={
           <>
-            {(portal === 'bank' || portal === 'anchor') && (
+            {portal !== 'admin' && (
               <button
                 className="btn btn-primary"
                 type="button"
@@ -253,7 +248,7 @@ export default function ProgramsPage() {
               <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 20, maxWidth: 360, margin: '0 auto 20px' }}>
                 {emptyMessage}
               </div>
-              {(portal === 'bank' || portal === 'anchor') && (
+              {portal !== 'admin' && (
                 <button
                   className="btn btn-primary"
                   type="button"

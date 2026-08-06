@@ -545,9 +545,11 @@ export const TASK_CHAT_TOOLS = [
   CREATE_FINANCING_REQUEST,
 ]
 
-// Portal-specific tool sets — only send what each role can actually use.
-// Fewer tools = fewer input tokens on every request.
-const SUPPLIER_TOOLS = [
+// Unified tool set for any organization — any org can both buy and sell, so
+// there's no more anchor-only vs supplier-only split (this is the union of
+// the former ANCHOR_TOOLS/SUPPLIER_TOOLS sets). Fewer tools than STRIKE_TOOLS
+// (bank/admin-only tools excluded) = fewer input tokens on every request.
+const ORG_TOOLS = [
   LOOKUP_ENTITIES,
   SEARCH_WEB,
   SEARCH_MARKETPLACE_LISTINGS,
@@ -560,6 +562,8 @@ const SUPPLIER_TOOLS = [
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
   SCORE_AND_RANK_FINANCING_OFFERS,
+  RECOMMEND_SUPPLIERS_FOR_BUYER,
+  EVALUATE_SUPPLIER_PASSPORT,
   EVALUATE_LISTING_OFFERS,
   GET_PASSPORT_ADVICE,
   SUMMARIZE_DEAL_NEGOTIATION,
@@ -569,31 +573,6 @@ const SUPPLIER_TOOLS = [
   GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
   PROACTIVE_PORTFOLIO_ALERTS,
-  GENERATE_DOCUMENT,
-]
-
-const ANCHOR_TOOLS = [
-  LOOKUP_ENTITIES,
-  SEARCH_WEB,
-  SEARCH_MARKETPLACE_LISTINGS,
-  SUBMIT_MARKETPLACE_OFFER,
-  COUNTER_MARKETPLACE_OFFER,
-  REJECT_MARKETPLACE_OFFER,
-  CREATE_MARKETPLACE_LISTING,
-  CREATE_FINANCING_REQUEST,
-  GET_ACTIVE_DEALS,
-  FIND_AND_RECOMMEND_DEALS,
-  GET_PRICING_INSIGHTS,
-  RECOMMEND_SUPPLIERS_FOR_BUYER,
-  EVALUATE_SUPPLIER_PASSPORT,
-  GENERATE_DEAL_TERM_SHEET,
-  EVALUATE_LISTING_OFFERS,
-  SUMMARIZE_DEAL_NEGOTIATION,
-  DETECT_DEAL_RISK_SIGNALS,
-  GET_PASSPORT_ADVICE,
-  GET_ERP_DATA,
-  GET_CAPITAL_POSITION,
-  GET_AGENT_TASKS,
   GENERATE_DOCUMENT,
 ]
 
@@ -675,8 +654,11 @@ export const OVERLAY_TOOLS = [SEARCH_WEB]
 
 export function getToolsForPortal(portal?: string) {
   switch (portal) {
-    case 'supplier': return SUPPLIER_TOOLS
-    case 'anchor':   return ANCHOR_TOOLS
+    // 'anchor'/'supplier' kept as aliases for 'org' until every caller is
+    // migrated off the old PortalType values — same unified tool set either way.
+    case 'org':
+    case 'supplier':
+    case 'anchor':   return ORG_TOOLS
     case 'bank':     return BANK_TOOLS
     default:         return STRIKE_TOOLS
   }

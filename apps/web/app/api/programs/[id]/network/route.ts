@@ -212,7 +212,7 @@ export async function GET(
 
         const { data: kybOrgs } = await adminClient
           .from('organizations')
-          .select('id, legal_name, kyb_status, type')
+          .select('id, legal_name, kyb_status')
           .in('id', kybOrgIds)
           // Include 'approved' so orgs approved before enrollment creation fix don't disappear
           .in('kyb_status', ['in_progress', 'submitted', 'under_review', 'more_info_requested', 'approved'])
@@ -224,7 +224,10 @@ export async function GET(
         for (const org of (kybOrgs ?? [])) {
           const email = orgToEmail.get(org.id)
           const inv   = email ? emailToInvite.get(email) : null
-          if (org.type === 'anchor') {
+          // Bucket by the role this org was invited under for THIS program, not
+          // by org-level type — any org can be invited as anchor on one program
+          // and supplier on another.
+          if (inv?.role === 'anchor') {
             // Skip if already enrolled
             if (!anchorMap.has(org.id)) {
               kyb_anchors.push({ id: org.id, legal_name: org.legal_name, kyb_status: org.kyb_status })
@@ -328,42 +331,41 @@ export async function GET(
   }
 
   // ── ANCHOR / SUPPLIER ────────────────────────────────────────────────────
-  const { data: networkOrgRow } = await adminClient.from('organizations').select('type').eq('id', userData.org_id).single()
-  const networkOrgType = networkOrgRow?.type  // 'anchor' | 'supplier'
+  // Any org can be the anchor side of this program (has invited/enrolled suppliers
+  // under itself) and/or the supplier side (enrolled under someone else) — this is
+  // per-program standing, never `organizations.type`. Try anchor standing first;
+  // fall through to the supplier view below if the org has none.
+  // public.users.email may be null for older invited users — fall back to auth.users
+  let anchorEmail = userData.email as string | null
+  if (!anchorEmail) {
+    const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
+    anchorEmail = authUser?.user?.email ?? null
+  }
 
-  if (networkOrgType === 'anchor') {
-    // public.users.email may be null for older invited users — fall back to auth.users
-    let anchorEmail = userData.email as string | null
-    if (!anchorEmail) {
-      const { data: authUser } = await adminClient.auth.admin.getUserById(user.id)
-      anchorEmail = authUser?.user?.email ?? null
-    }
+  // Use .limit(1) to avoid maybeSingle() error when multiple enrollment rows share anchor_org_id
+  const [anchorEnrollCheck, anchorInviteCheck] = await Promise.all([
+    adminClient
+      .from('program_enrollments')
+      .select('id')
+      .eq('program_id', programId)
+      .eq('anchor_org_id', userData.org_id)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle(),
+    anchorEmail
+      ? adminClient
+          .from('invitations')
+          .select('id')
+          .eq('program_id', programId)
+          .eq('email', anchorEmail)
+          .in('status', ['pending', 'accepted'])
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const hasAnchorStanding = !!anchorEnrollCheck.data || !!anchorInviteCheck.data
 
-    // Use .limit(1) to avoid maybeSingle() error when multiple enrollment rows share anchor_org_id
-    const [enrollCheck, inviteCheck] = await Promise.all([
-      adminClient
-        .from('program_enrollments')
-        .select('id')
-        .eq('program_id', programId)
-        .eq('anchor_org_id', userData.org_id)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle(),
-      anchorEmail
-        ? adminClient
-            .from('invitations')
-            .select('id')
-            .eq('program_id', programId)
-            .eq('email', anchorEmail)
-            .in('status', ['pending', 'accepted'])
-            .limit(1)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ])
-    if (!enrollCheck.data && !inviteCheck.data) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
+  if (hasAnchorStanding) {
     const [enrollResult, inviteResult, acceptedSupplierInviteResult] = await Promise.all([
       adminClient
         .from('program_enrollments')
@@ -437,7 +439,7 @@ export async function GET(
     }
 
     if (supplierIds.length === 0) {
-      return NextResponse.json({ suppliers: [], pending_suppliers, kyb_suppliers, signed_up_suppliers })
+      return NextResponse.json({ suppliers: [], pending_suppliers, kyb_suppliers, signed_up_suppliers, viewer_role: 'anchor' })
     }
 
     const [{ data: supplierOrgs }, { data: txns }] = await Promise.all([
@@ -474,7 +476,7 @@ export async function GET(
       latest_transaction_status: txnBySup.get(org.id)?.latest_status ?? null,
     }))
 
-    return NextResponse.json({ suppliers, pending_suppliers, kyb_suppliers, signed_up_suppliers })
+    return NextResponse.json({ suppliers, pending_suppliers, kyb_suppliers, signed_up_suppliers, viewer_role: 'anchor' })
   }
 
   // ── SUPPLIER ──────────────────────────────────────────────────────────────
@@ -540,7 +542,11 @@ export async function GET(
     }
   }
 
-  if (anchorIds2.length === 0) return NextResponse.json({ anchors: [], isInvoiceFactoring: isIFOnly })
+  if (anchorIds2.length === 0) {
+    // No anchor standing (checked above) and no supplier standing either — the
+    // caller's org has no relationship to this program at all.
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const [{ data: anchorOrgs2 }, { data: txns2 }] = await Promise.all([
     adminClient
@@ -584,5 +590,5 @@ export async function GET(
     outstanding_balance:   txnByAnchor2.get(org.id)?.outstanding ?? 0,
   }))
 
-  return NextResponse.json({ anchors: anchors2, isInvoiceFactoring: isIFOnly })
+  return NextResponse.json({ anchors: anchors2, isInvoiceFactoring: isIFOnly, viewer_role: 'supplier' })
 }

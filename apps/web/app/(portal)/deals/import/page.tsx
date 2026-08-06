@@ -71,9 +71,11 @@ function PassportMiniCompact({ org }: { org: OrgResult }) {
       <PassportScoreRing score={org.passport_score} size="sm" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-        <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray-soft)', marginTop: 2 }}>
-          {org.type} · {org.country}
-        </div>
+        {org.country && (
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-body)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray-soft)', marginTop: 2 }}>
+            {org.country}
+          </div>
+        )}
       </div>
     </div>
   )

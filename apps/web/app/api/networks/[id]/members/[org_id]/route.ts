@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, networkRemovedEmailHtml } from '@/lib/email'
+import { syncNetworkRoomParticipants } from '@/lib/networks/room-sync'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -72,6 +73,11 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+
+  // Suspending drops them from the room; reactivating adds them back. No-op
+  // if the network has no room yet.
+  if (body.status) await syncNetworkRoomParticipants(adminClient, id)
+
   return NextResponse.json({ member: updated })
 }
 
@@ -133,6 +139,10 @@ export async function DELETE(
       .update({ member_count: network.member_count - 1 })
       .eq('id', id)
   }
+
+  // Drop them from the network room, if one exists — a removed member must
+  // not keep seeing the room's chat.
+  if (wasActive) await syncNetworkRoomParticipants(adminClient, id)
 
   // Notify removed supplier
   const { data: supplierUsers } = await adminClient

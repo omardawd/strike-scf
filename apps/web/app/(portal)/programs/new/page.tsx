@@ -27,9 +27,13 @@ export default function NewProgramPage() {
   const router = useRouter()
   const t = useT()
 
-  const portal = user?.org?.type === 'anchor' ? 'anchor' : 'bank'
+  // Any org creating a program here can only self-fund Dynamic Discounting
+  // (direct anchor-to-supplier, no bank involved) — the other financing types
+  // require a bank to originate. This is an org-vs-bank distinction, not an
+  // anchor-vs-supplier one.
+  const isOrgCreator = user?.role === 'org_admin' || user?.role === 'org_member'
   const allFinTypes = finTypes(t)
-  const visibleFinTypes = portal === 'anchor'
+  const visibleFinTypes = isOrgCreator
     ? allFinTypes.filter(ft => ft.id === 'dynamic_discounting')
     : allFinTypes.filter(ft => ft.id !== 'dynamic_discounting')
 
@@ -52,10 +56,10 @@ export default function NewProgramPage() {
     { days: 30, rate: 1.0 },
   ])
 
-  // Set defaults when portal is known
+  // Set defaults when creator type is known
   useEffect(() => {
-    if (portal === 'anchor') setFinType('dynamic_discounting')
-  }, [portal])
+    if (isOrgCreator) setFinType('dynamic_discounting')
+  }, [isOrgCreator])
 
   useEffect(() => {
     if (user && user.role !== 'bank_admin' && user.role !== 'org_admin') {
@@ -156,7 +160,7 @@ export default function NewProgramPage() {
         <div className="page-header">
           <h1 className="t-page-title" style={{ fontSize: 20 }}>{t('newProgram.createProgram')}</h1>
           <div className="subtitle">
-            {portal === 'anchor'
+            {isOrgCreator
               ? t('newProgram.setupDdSubtitle')
               : t('newProgram.setupScfSubtitle')}
           </div>
