@@ -93,7 +93,13 @@ export default function AdminPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? t('admin.actionFailed')); return }
-      setKybOrgs(prev => prev.filter(o => o.id !== orgId))
+      // "more_info" keeps the org in the queue (awaiting the applicant's response) —
+      // only approve/reject actually resolve it out of view.
+      setKybOrgs(prev =>
+        action === 'more_info'
+          ? prev.map(o => o.id === orgId ? { ...o, kyb_status: 'more_info_requested' } : o)
+          : prev.filter(o => o.id !== orgId)
+      )
       setActionState(null)
     } catch {
       setError(t('common.networkError'))
@@ -238,6 +244,11 @@ export default function AdminPage() {
                             >
                               {name}
                             </a>
+                            {org.kyb_status === 'more_info_requested' && (
+                              <span className="badge badge-pending" style={{ fontSize: 9, marginTop: 2, display: 'inline-block' }}>
+                                {t('admin.awaitingApplicant')}
+                              </span>
+                            )}
                             {org.primary_contact_email && (
                               <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{org.primary_contact_email}</div>
                             )}

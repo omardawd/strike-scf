@@ -110,6 +110,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'No organization associated with this user' }, { status: 400 })
   }
 
+  const { data: currentOrg } = await adminClient
+    .from('organizations')
+    .select('kyb_status')
+    .eq('id', orgId)
+    .single()
+
   const incoming = body.data ?? {}
   const update: Record<string, unknown> = {}
   for (const key of ALLOWED_FIELDS) {
@@ -124,9 +130,18 @@ export async function PATCH(request: Request) {
     update.years_in_operation = Number.isFinite(n) ? n : null
   }
 
-  // Reflect that the applicant is actively filling out KYB.
-  update.kyb_status = 'in_progress'
-  update.status = 'kyb_in_progress'
+  // Reflect that the applicant is actively filling out KYB — but only pre-submission.
+  // Once a submission has moved kyb_status past 'in_progress' (submitted, under_review,
+  // more_info_requested, approved, rejected), a wizard autosave must never silently
+  // revert it: that would un-approve a live org, or drop an org responding to a
+  // "more info requested" request straight out of every admin/bank queue with no
+  // visible action. Resubmission after more-info is its own explicit step
+  // (POST /api/kyb/status), not a side effect of saving a field here.
+  const preSubmission = !currentOrg?.kyb_status || currentOrg.kyb_status === 'not_started' || currentOrg.kyb_status === 'in_progress'
+  if (preSubmission) {
+    update.kyb_status = 'in_progress'
+    update.status = 'kyb_in_progress'
+  }
 
   const { data: org, error } = await adminClient
     .from('organizations')

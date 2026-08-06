@@ -23,7 +23,7 @@ export async function GET() {
   const { data: orgs, error } = await adminClient
     .from('organizations')
     .select('id, legal_name, doing_business_as, type, kyb_status, kyb_submitted_at, risk_score, risk_flags, primary_contact_email, primary_contact_name, network_visible, status')
-    .eq('kyb_status', 'under_review')
+    .in('kyb_status', ['under_review', 'more_info_requested'])
     .order('kyb_submitted_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
