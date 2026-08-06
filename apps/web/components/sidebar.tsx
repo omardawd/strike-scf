@@ -9,6 +9,7 @@ import { useT } from '@/lib/i18n/locale-context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
 import { useRoomsUnread } from '@/lib/use-rooms-unread'
+import { isDemoAccount } from '@/lib/demo'
 
 // ── Role labels (v2 roles only) ──
 const ROLE_LABELS: Record<string, string> = {
@@ -364,7 +365,18 @@ export function Sidebar() {
 
   function handleSignOut() {
     const supabase = createClient()
-    supabase.auth.signOut().then(() => router.push('/login')).catch(() => router.push('/login'))
+    // Demo account: wipe everything this viewing generated BEFORE the session
+    // (and its cookie) goes away — /api/demo/reset needs a valid session to
+    // authenticate, so this has to run first, not fire-and-forget alongside
+    // signOut. Never blocks a real user's logout; only the demo account's own
+    // sign-out waits on it, and even then falls through to signOut regardless
+    // of whether the reset call itself succeeded.
+    const cleanup = isDemoAccount(user?.email)
+      ? fetch('/api/demo/reset', { method: 'POST' }).catch(() => {})
+      : Promise.resolve()
+    cleanup.then(() => {
+      supabase.auth.signOut().then(() => router.push('/login')).catch(() => router.push('/login'))
+    })
   }
 
   const sections = navFor(portal, user?.role)

@@ -609,12 +609,22 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         if (isCancelled()) return
 
         if (!result) {
-          // No open offer to act on this run (execute didn't go through,
-          // most likely) — end gracefully rather than surfacing a raw error
-          // to a live demo audience.
+          // mock-negotiate didn't come back with a usable result this run
+          // (execute's submit not landing in time, a session hiccup, a
+          // stray overlapping call losing the atomic claim — see
+          // app/api/demo/mock-negotiate/route.ts). Previously this just slept
+          // and advanced silently, leaving the caption frozen on "triggering
+          // a negotiation" with zero acknowledgment before the scene cut
+          // straight to Settings/ERP — exactly the "did this break?" moment
+          // to avoid in front of a live audience. Say something and move on,
+          // same graceful-fallback shape as the catch block below.
           setPhase('done')
-          setLogStatus('No offer to negotiate this run')
-          await sleep(1600)
+          const fallbackLine = 'This run’s negotiation didn’t come back in time — let’s keep moving and pick things up from here.'
+          setCaption(fallbackLine)
+          setLogStatus('Negotiation unavailable this run')
+          await narrate(fallbackLine)
+          if (isCancelled()) return
+          await sleep(SCENE_TRANSITION_MS)
           if (!isCancelled()) onDoneRef.current()
           return
         }

@@ -75,15 +75,6 @@ function DemoRunner() {
     reducedMotionRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/demo/state')
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (!cancelled) setStatus(d?.intro_played_at ? 'idle' : 'running') })
-      .catch(() => { if (!cancelled) setStatus('idle') })
-    return () => { cancelled = true }
-  }, [])
-
   const finish = useCallback(() => {
     if (beatTimerRef.current) clearTimeout(beatTimerRef.current)
     clickResolverRef.current = null
@@ -103,8 +94,16 @@ function DemoRunner() {
   const advance = useCallback(() => setBeatIndex(i => i + 1), [])
 
   // Reset the sandbox (wipes anything a prior viewing generated on top of the
-  // seeded data) before replaying, so a second prospect never sees the first
-  // prospect's leftover financing request / offers / negotiation.
+  // seeded data) before playing, so a viewer never sees a previous viewing's
+  // leftover financing request / offers / negotiation. Used both by the
+  // explicit "Replay demo" button AND by the initial-mount check below — the
+  // sign-out flow (sidebar.tsx) already resets on a clean logout, but this is
+  // the backstop for every OTHER way a viewing can end (closed tab, crash, a
+  // dev-server hiccup mid-run) without ever reaching `finish()`, which would
+  // otherwise leave `intro_played_at` null forever and auto-resume the next
+  // session's tour straight into that abandoned run's half-finished state —
+  // e.g. a negotiation already claimed/resolved, so the next run's own
+  // negotiate step finds nothing 'active' to act on and silently skips it.
   const start = useCallback(() => {
     setStatus('resetting')
     setDisplayedIndex(null)
@@ -122,6 +121,23 @@ function DemoRunner() {
         setStatus('running')
       })
   }, [router])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/demo/state')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled) return
+        // Already played through to completion at some point — show the
+        // Replay button rather than auto-starting. Anything else (never
+        // played, OR a previous viewing never finished) always resets first.
+        if (d?.intro_played_at) setStatus('idle')
+        else start()
+      })
+      .catch(() => { if (!cancelled) setStatus('idle') })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (status !== 'running') return
