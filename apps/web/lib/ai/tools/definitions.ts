@@ -508,6 +508,37 @@ const GET_AGENT_TASKS = {
   },
 }
 
+const CREATE_NETWORK = {
+  name: 'create_network',
+  description: 'Create a private supplier/business network the org owns and can invite other organizations to. Use when the user asks to create a network or supplier group. "Private" means visibility_default: network_only (new listings posted to it default to network-only visibility); use "public" only if the user explicitly wants it open.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string', description: 'The owning org (use org_id from context)' },
+      name: { type: 'string', description: 'Network name, max 60 characters' },
+      description: { type: 'string' },
+      visibility_default: { type: 'string', enum: ['public', 'network_only'], default: 'public', description: 'Use "network_only" for a private network' },
+    },
+    required: ['org_id', 'name'],
+  },
+}
+
+const ADD_NETWORK_MEMBER = {
+  name: 'add_network_member',
+  description: 'Invite an organization to join a network the caller\'s org owns. Requires network_id (from create_network or lookup) and either target_org_id (an org already on Strike — use lookup_entities with entity_type:"organization" first) or email (to invite a business not yet on Strike). If lookup_entities finds no match, use the email path instead of guessing an org_id.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string', description: 'The network-owning org making the invite (use org_id from context)' },
+      network_id: { type: 'string' },
+      target_org_id: { type: 'string', description: 'UUID of an existing org on Strike to invite' },
+      email: { type: 'string', description: 'Email to invite a business not yet on Strike (used only if target_org_id is not available)' },
+      notes: { type: 'string', description: 'Optional personal note included in the invite' },
+    },
+    required: ['org_id', 'network_id'],
+  },
+}
+
 const CREATE_FINANCING_REQUEST = {
   name: 'create_financing_request',
   description: 'Post a receivables or trade financing request to Strike Place so banks can submit offers. Use this — NOT create_marketplace_listing — whenever the user wants to finance an invoice, receivable, or existing trade. For ERP-sourced invoices with no Strike deal yet, provide invoice details and a deal is auto-imported. Always prefer invoice_factoring for AR/receivables financing.',
@@ -558,6 +589,8 @@ const ORG_TOOLS = [
   REJECT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
   CREATE_FINANCING_REQUEST,
+  CREATE_NETWORK,
+  ADD_NETWORK_MEMBER,
   GET_ACTIVE_DEALS,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
@@ -605,6 +638,8 @@ export const STRIKE_TOOLS = [
   REJECT_MARKETPLACE_OFFER,
   CREATE_MARKETPLACE_LISTING,
   CREATE_FINANCING_REQUEST,
+  CREATE_NETWORK,
+  ADD_NETWORK_MEMBER,
   GET_ACTIVE_DEALS,
   EVALUATE_SUPPLIER_PASSPORT,
   FIND_AND_RECOMMEND_DEALS,

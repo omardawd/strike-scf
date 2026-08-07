@@ -749,6 +749,11 @@ WRITE tools (subject to agent_preferences require_approval_for_actions gate):
                                follow-through — see lib/ai/agent-negotiation-setup.ts and the
                                "Autonomous Agent Manager" section below.
   create_financing_request   — request financing against a deal's receivable
+  create_network              — create a network the caller's org owns (visibility_default:'network_only'
+                               for a private network); not exposed to bank users (banks are never part
+                               of networks) or to overlay sessions (OVERLAY_TOOLS = [search_web] only).
+  add_network_member          — invite an org (by target_org_id if already on Strike, else by email) to
+                               a network the caller's org owns; same tool-set scoping as create_network.
 
 NEGOTIATION tools — only ever offered to Claude inside the tick loop (NEGOTIATION_TOOLS in
 definitions.ts), never in general chat. See "Autonomous Agent Manager" section below.

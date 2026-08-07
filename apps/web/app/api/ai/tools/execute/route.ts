@@ -146,6 +146,8 @@ export async function POST(req: NextRequest) {
 function getEntityType(toolName: ToolName): string {
   const map: Partial<Record<ToolName, string>> = {
     create_marketplace_listing: 'listing',
+    create_network: 'network',
+    add_network_member: 'network',
     evaluate_supplier_passport: 'organization',
     find_and_recommend_deals: 'deal',
     get_pricing_insights: 'market_signal',

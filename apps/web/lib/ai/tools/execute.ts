@@ -23,6 +23,8 @@ import { getFinancingPrograms, type GetFinancingProgramsInput } from './handlers
 import { getErpData, type GetErpDataInput } from './handlers/get-erp-data'
 import { getCapitalPosition, type GetCapitalPositionInput } from './handlers/get-capital-position'
 import { createFinancingRequest } from './handlers/create-financing-request'
+import { createNetwork, type CreateNetworkInput } from './handlers/create-network'
+import { addNetworkMember, type AddNetworkMemberInput } from './handlers/add-network-member'
 import { getAgentTasks, type GetAgentTasksInput } from './handlers/get-agent-tasks'
 import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './handlers/counter-marketplace-offer'
 import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './handlers/accept-marketplace-offer'
@@ -34,6 +36,8 @@ export type ToolName =
   | 'get_agent_tasks'
   | 'create_financing_request'
   | 'create_marketplace_listing'
+  | 'create_network'
+  | 'add_network_member'
   | 'counter_marketplace_offer'
   | 'accept_marketplace_offer'
   | 'reject_marketplace_offer'
@@ -102,6 +106,10 @@ async function dispatchTool(
       return createFinancingRequest(toolInput as unknown as Parameters<typeof createFinancingRequest>[0])
     case 'create_marketplace_listing':
       return createMarketplaceListing(toolInput as unknown as CreateMarketplaceListingInput)
+    case 'create_network':
+      return createNetwork(toolInput as unknown as CreateNetworkInput)
+    case 'add_network_member':
+      return addNetworkMember(toolInput as unknown as AddNetworkMemberInput)
     case 'evaluate_supplier_passport':
       return evaluateSupplierPassport(toolInput as unknown as EvaluateSupplierPassportInput)
     case 'find_and_recommend_deals':
@@ -160,6 +168,8 @@ export const BANK_ONLY_TOOLS: ToolName[] = ['proactive_portfolio_alerts']
 export const WRITE_TOOLS: ToolName[] = [
   'create_financing_request',
   'create_marketplace_listing',
+  'create_network',
+  'add_network_member',
   'score_and_rank_financing_offers',
   'submit_marketplace_offer',
   'counter_marketplace_offer',
