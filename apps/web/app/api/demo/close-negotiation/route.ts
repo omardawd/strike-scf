@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 import { DEMO_ALL_ORG_IDS } from '@/lib/demo-entities'
 
 const adminClient = createAdmin(
@@ -20,6 +20,9 @@ const adminClient = createAdmin(
 // completion and an early skip/unmount, so nothing demo-created is ever
 // left ticking unattended.
 export async function POST() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

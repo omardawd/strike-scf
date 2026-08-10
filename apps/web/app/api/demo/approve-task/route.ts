@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 import { DEMO_ALL_ORG_IDS } from '@/lib/demo-entities'
 import { executeApproval } from '@/lib/ai/agent-approve'
 
@@ -22,6 +22,9 @@ const adminClient = createAdmin(
 // orgs — gated to the demo account AND to DEMO_ALL_ORG_IDS specifically so it can never touch a
 // real org's task.
 export async function POST(req: NextRequest) {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

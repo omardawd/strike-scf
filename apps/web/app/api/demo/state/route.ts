@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +12,9 @@ const adminClient = createAdmin(
 // has played, so it auto-plays once and is otherwise only reachable via the
 // "Replay demo" trigger. Scoped to the demo account only.
 export async function GET() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !isDemoAccount(user.email)) {
@@ -31,6 +34,9 @@ export async function GET() {
 }
 
 export async function POST() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !isDemoAccount(user.email)) {

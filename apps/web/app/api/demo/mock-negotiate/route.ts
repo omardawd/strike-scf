@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 import { DEMO_ORG_ID, DEMO_ALL_ORG_IDS } from '@/lib/demo-entities'
 import { counterOffer, acceptOffer } from '@/lib/marketplace/offer-actions'
 import { postSystemMessage } from '@/lib/ai/agent-task-chat'
@@ -33,6 +33,9 @@ const adminClient = createAdmin(
 // two rounds, nowhere near what a multi-round live negotiation could spend,
 // but not literally zero either.
 export async function POST() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
