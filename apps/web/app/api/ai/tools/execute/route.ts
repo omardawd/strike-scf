@@ -80,7 +80,9 @@ export async function POST(req: NextRequest) {
   let result: Record<string, unknown>
   const startMs = Date.now()
   try {
-    result = await executeTool(tool_name, tool_input)
+    result = await executeTool(tool_name, tool_input, {
+      actor: { userId: userData.id, orgId: userData.org_id, bankId: userData.bank_id },
+    })
   } catch (err) {
     console.error(`[AI Tool] ${tool_name} error:`, err)
     const message = err instanceof Error ? err.message : 'Unknown error'

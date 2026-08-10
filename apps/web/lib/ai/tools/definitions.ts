@@ -162,6 +162,33 @@ const SUMMARIZE_DEAL_NEGOTIATION = {
   },
 }
 
+const GET_DEAL_WORKFLOW = {
+  name: 'get_deal_workflow',
+  description: 'List the buyer-customized checkpoints for a deal. The caller must be the buyer or supplier on that deal.',
+  input_schema: {
+    type: 'object',
+    properties: { deal_id: { type: 'string', description: 'Full deal UUID' } },
+    required: ['deal_id'],
+  },
+}
+
+const PROPOSE_DEAL_WORKFLOW_STEP = {
+  name: 'propose_deal_workflow_step',
+  description: 'Add a negotiated checkpoint to a deal workflow. Only the organization playing the buyer role on this specific deal may propose it; organization type does not determine this permission.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      deal_id: { type: 'string', description: 'Full deal UUID' },
+      title: { type: 'string' },
+      description: { type: 'string' },
+      responsible_party: { type: 'string', enum: ['buyer', 'supplier', 'both'] },
+      requires_document: { type: 'boolean', default: false },
+      due_at: { type: 'string', format: 'date-time' },
+    },
+    required: ['deal_id', 'title', 'responsible_party'],
+  },
+}
+
 const SCORE_AND_RANK_FINANCING_OFFERS = {
   name: 'score_and_rank_financing_offers',
   description: 'Score and rank all bank offers on a financing request by rate, amount, tenor, and bank reputation. Writes ai_score back to each offer.',
@@ -592,6 +619,8 @@ const ORG_TOOLS = [
   CREATE_NETWORK,
   ADD_NETWORK_MEMBER,
   GET_ACTIVE_DEALS,
+  GET_DEAL_WORKFLOW,
+  PROPOSE_DEAL_WORKFLOW_STEP,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
   SCORE_AND_RANK_FINANCING_OFFERS,
@@ -641,6 +670,8 @@ export const STRIKE_TOOLS = [
   CREATE_NETWORK,
   ADD_NETWORK_MEMBER,
   GET_ACTIVE_DEALS,
+  GET_DEAL_WORKFLOW,
+  PROPOSE_DEAL_WORKFLOW_STEP,
   EVALUATE_SUPPLIER_PASSPORT,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,

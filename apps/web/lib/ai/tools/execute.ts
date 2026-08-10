@@ -30,6 +30,7 @@ import { counterMarketplaceOffer, type CounterMarketplaceOfferInput } from './ha
 import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './handlers/accept-marketplace-offer'
 import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
 import { generateDocument, type GenerateDocumentInput } from './handlers/generate-document'
+import { getDealWorkflow, proposeDealWorkflowStep, type ProposeDealWorkflowStepInput, type ToolActor } from './handlers/deal-workflow'
 import { getCachedAiResponse, setCachedAiResponse } from '../demo-ai-cache'
 
 export type ToolName =
@@ -61,6 +62,8 @@ export type ToolName =
   | 'get_erp_data'
   | 'get_capital_position'
   | 'generate_document'
+  | 'get_deal_workflow'
+  | 'propose_deal_workflow_step'
 
 // Stable (key-sorted) stringify so the same logical tool input always
 // produces the same cache key regardless of property insertion order.
@@ -82,22 +85,23 @@ export async function executeTool(
   // — WRITE_TOOLS are always excluded here regardless of this flag, since
   // those need to create fresh real state (offers, negotiations, deals)
   // every single replay.
-  opts?: { demoCacheable?: boolean }
+  opts?: { demoCacheable?: boolean; actor?: ToolActor }
 ): Promise<Record<string, unknown>> {
   if (opts?.demoCacheable && !WRITE_TOOLS.includes(toolName)) {
     const cacheKey = `tool:${toolName}:${stableStringify(toolInput)}`
     const cached = await getCachedAiResponse(cacheKey)
     if (cached) return cached as Record<string, unknown>
-    const result = await dispatchTool(toolName, toolInput)
+    const result = await dispatchTool(toolName, toolInput, opts.actor)
     setCachedAiResponse(cacheKey, result)
     return result
   }
-  return dispatchTool(toolName, toolInput)
+  return dispatchTool(toolName, toolInput, opts?.actor)
 }
 
 async function dispatchTool(
   toolName: ToolName,
-  toolInput: Record<string, unknown>
+  toolInput: Record<string, unknown>,
+  actor?: ToolActor
 ): Promise<Record<string, unknown>> {
   switch (toolName) {
     case 'get_agent_tasks':
@@ -156,6 +160,10 @@ async function dispatchTool(
       return getCapitalPosition(toolInput as unknown as GetCapitalPositionInput)
     case 'generate_document':
       return generateDocument(toolInput as unknown as GenerateDocumentInput)
+    case 'get_deal_workflow':
+      return getDealWorkflow(toolInput as unknown as { deal_id: string }, actor)
+    case 'propose_deal_workflow_step':
+      return proposeDealWorkflowStep(toolInput as unknown as ProposeDealWorkflowStepInput, actor)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
@@ -175,4 +183,5 @@ export const WRITE_TOOLS: ToolName[] = [
   'counter_marketplace_offer',
   'accept_marketplace_offer',
   'reject_marketplace_offer',
+  'propose_deal_workflow_step',
 ]
