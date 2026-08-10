@@ -59,7 +59,7 @@ describe('POST /api/risk/score — cross-tenant isolation (P0-1 regression)', ()
     const { POST } = await import('./route')
 
     state.currentUser = { id: 'bank-user-1' }
-    state.tables.users = { data: { role: 'bank_admin', bank_id: 'bank-A', org_id: null } }
+    state.tables.users = { data: { role: 'bank_admin', bank_id: 'bank-A', org_id: null, is_active: true } }
     state.tables.organizations = { data: { id: 'org-1', primary_bank_id: 'bank-B', kyb_status: 'approved' } }
 
     const res = await POST(postRequest({ org_id: 'org-1' }))
@@ -70,7 +70,7 @@ describe('POST /api/risk/score — cross-tenant isolation (P0-1 regression)', ()
     const { POST } = await import('./route')
 
     state.currentUser = { id: 'bank-user-1' }
-    state.tables.users = { data: { role: 'bank_admin', bank_id: 'bank-A', org_id: null } }
+    state.tables.users = { data: { role: 'bank_admin', bank_id: 'bank-A', org_id: null, is_active: true } }
     state.tables.organizations = {
       data: {
         id: 'org-1',
@@ -95,7 +95,7 @@ describe('POST /api/risk/score — cross-tenant isolation (P0-1 regression)', ()
     const { POST } = await import('./route')
 
     state.currentUser = { id: 'org-user-1' }
-    state.tables.users = { data: { role: 'org_admin', bank_id: null, org_id: 'org-mine' } }
+    state.tables.users = { data: { role: 'org_admin', bank_id: null, org_id: 'org-mine', is_active: true } }
 
     const res = await POST(postRequest({ org_id: 'org-not-mine' }))
     expect(res.status).toBe(403)
@@ -105,6 +105,16 @@ describe('POST /api/risk/score — cross-tenant isolation (P0-1 regression)', ()
     const { POST } = await import('./route')
 
     state.currentUser = null
+    const res = await POST(postRequest({ org_id: 'org-1' }))
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects a deactivated user even with a valid Supabase session (getSessionContext gate)', async () => {
+    const { POST } = await import('./route')
+
+    state.currentUser = { id: 'bank-user-1' }
+    state.tables.users = { data: { role: 'bank_admin', bank_id: 'bank-A', org_id: null, is_active: false } }
+
     const res = await POST(postRequest({ org_id: 'org-1' }))
     expect(res.status).toBe(401)
   })

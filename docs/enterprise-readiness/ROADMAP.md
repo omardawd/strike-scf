@@ -47,10 +47,10 @@ Goal: the things a customer's security team will ask for directly. This is the b
 ### 1.D Authorization architecture
 | Item | Depends on | Acceptance criteria | Effort |
 |---|---|---|---|
-| Centralized `requireAuth()`/`requireRole()` + typed role/tenant context helper | — | New helper module exists, unit-tested in isolation | 1 day |
-| Resource-level authorization helpers (org, bank, deal, listing, room, document, financing_request, transaction, program, network) | above | Each helper has a positive + negative test | 1-2 days |
-| Migrate a representative high-risk sample (bank_accounts, documents/[id]/url, admin/*, risk/score, agents/tasks/*) to the new helpers | above | Behavior-identical per existing manual QA + new tests; NOT a mass rewrite of all 159 routes | 1-2 days |
-| Inventory of routes still on manual auth (follow-up doc, not code) | above | A checked-in list exists, used to sequence future migration work outside this engagement | 2 hrs |
+| ✅ Centralized `requireSession()`/`requireRole()` + typed `SessionContext` (`lib/auth/session.ts`, `lib/auth/require.ts`) | — | Unit-tested; also closes a previously-undocumented gap where no route checked `users.is_active` — a deactivated user's Supabase session still worked everywhere. `getSessionContext()` now treats `is_active=false` as unauthenticated by construction, so every route that migrates to it gets this for free. | Done |
+| ✅ (partial) Resource-level authorization helpers (`lib/auth/resource-access.ts`): `canAccessOwnOrganization`, `canBankAccessOrganization` (the exact P0-1/P0-6 comparison, centralized), `canAccessOwnBank`, `canAccessDealParty`, `bankCanAccessOrgById` | above | Each has positive + negative unit tests | Done for these 5; listing/room/document/financing_request/transaction/program/network helpers not yet added |
+| ✅ (2 of ~161 routes) Migrated `app/api/risk/score` and `app/api/kyb/[org_id]/decision` to the new helpers | above | Behavior-identical (existing tests still pass) + the inactive-user gate now applies to both; NOT a mass rewrite | Done for these 2 |
+| Inventory of routes still on manual auth | above | 161 total route files in `app/api/**`; 2 migrated in this engagement (the ones directly tied to the P0-1 fix, chosen to double as the pattern's proof-of-concept). The remaining ~159 still use the inline `getUser()` → admin lookup → role check pattern, which is correct today per the sampled audit but has no structural safety net (ASSESSMENT.md P1-3). Migrate in small batches per domain (start with `bank_accounts`, `documents/[id]/url`, `admin/*`, `agents/tasks/*` — all named in the original brief as high-risk) rather than all at once, each batch with its own test coverage before merging. | Ongoing, tracked here rather than a separate file since the count/list changes as routes are added |
 
 ### 1.E Database & RLS
 | Item | Depends on | Acceptance criteria | Effort |

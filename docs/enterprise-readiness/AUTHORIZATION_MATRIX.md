@@ -154,3 +154,4 @@ This list is the direct input to the Phase 1.C "authorization-matrix test suite"
 10. `/api/demo/*` routes 404 when `DEMO_ROUTES_ENABLED` is unset (Phase 0.4 regression test).
 11. AI WRITE tools respect `require_approval_for_actions` for every WRITE tool, not a sample.
 12. AI portal/tool-set boundaries hold (org can't invoke BANK_ONLY tools; nothing can invoke `accept_marketplace_offer`).
+13. A deactivated user (`users.is_active=false`) is treated as unauthenticated on every route, not just the ones migrated to `lib/auth/session.ts`'s `getSessionContext()` (**directly motivated by the confirmed P1-9 finding** — done for `risk/score` and `kyb/[org_id]/decision`; write this as each additional route migrates, per ROADMAP.md 1.D).

@@ -17,7 +17,7 @@ While validating the RLS/seed fixes below against a real, fully-migrated databas
 
 ### Counts
 - **P0 (fix before any pilot data is real):** 6
-- **P1 (fix before a customer security review):** 8
+- **P1 (fix before a customer security review):** 9
 - **P2 (fix during Phase 1–2):** 9
 - **P3 (track, not urgent):** 6
 
@@ -129,7 +129,12 @@ Confirmed: no workflow contains a `pull_request` or `push` trigger. Nothing vali
 ### P1-8 — Lint is effectively disabled by volume: 682 warnings against a `--max-warnings 0` script
 **File:** `apps/web/package.json:9` (`"lint": "eslint --max-warnings 0"`), current run: 682 warnings / 0 errors
 Categories: `@typescript-eslint/no-explicit-any` (335), `turbo/no-undeclared-env-vars` (203 — env vars used in code but not declared in `turbo.json`'s env list), `@typescript-eslint/no-unused-vars` (55), `no-empty` (36), `react-hooks/exhaustive-deps` (25), plus a handful of `@next/next/*` rules. The configured script would fail outright the moment it's ever run in CI, which is presumably *why* no CI runs it today — a silent standoff. TypeScript itself compiles clean (`tsc --noEmit`, exit 0) — this is purely a lint-hygiene backlog, not a correctness signal.
-**Fix (Track C/B):** do not weaken the rules (explicitly forbidden) — establish a ratcheting baseline (e.g. `eslint --max-warnings <current count>` checked into CI, only decreasing over time) and document the 682-warning starting point plus a bounded remediation plan by category.
+**Fixed:** `turbo.json` had no `globalEnv` declared at all, so `turbo/no-undeclared-env-vars` flagged every non-`NEXT_PUBLIC_` env var used anywhere — 203 of the 682 warnings came from this single gap. Declared the 11 real env vars in use, dropping the count to 479 (0 errors). CI (Track B) now enforces `--max-warnings=479` as a ratcheting ceiling — it can only be lowered from here, never raised; the remaining 479 (dominated by `@typescript-eslint/no-explicit-any` at 335 and `no-unused-vars` at 55) are tracked as a Phase 2 remediation backlog, not weakened or suppressed.
+
+### P1-9 — No route checked `users.is_active`; a deactivated user's session kept working everywhere (discovered and fixed mid-engagement)
+**Files:** `apps/web/app/api/settings/team/[user_id]/route.ts:68-74` (the only place `is_active` is ever *written*), confirmed via full-corpus grep that zero routes ever *read* it as part of an authorization decision (the 3 files matching `select.*is_active` use it for display or for an unrelated table's own `is_active` column — e.g. `agent_preferences.is_active` in `ai/tools/execute/route.ts:65`, not the caller's own status)
+An org_admin can deactivate a team member via the Settings → Team UI (`users.is_active` → `false`, which defaults to `true` per `00000000000000_baseline_schema.sql:674`). That flag was never actually checked anywhere: Supabase Auth has no concept of this app-level field, so a deactivated user's existing session continued to authenticate successfully against every route, which only ever checked `role`/`org_id`/`bank_id`. This is exactly test category #2 ("inactive users") from the engagement brief's prioritized list — a real, previously-undiscovered gap, not a hypothetical one.
+**Fixed (Track D):** the new centralized `getSessionContext()` helper (`lib/auth/session.ts`) treats `is_active=false` as equivalent to no session at all — returns `null`, which `requireSession()`/`requireRole()` turn into a 401. Any route migrated to use these helpers gets this fix automatically; routes not yet migrated (159 of 161) remain exposed to this gap until they are. Unit-tested (`app/api/risk/score/route.test.ts`'s "rejects a deactivated user" case).
 
 ---
 
