@@ -72,13 +72,14 @@ Goal: the things a customer's security team will ask for directly. This is the b
 ### 1.G External AI dispatch hardening
 | Item | Depends on | Acceptance criteria | Effort |
 |---|---|---|---|
-| Threat model doc for `/api/ai/dispatch` | — | Written doc: assets, actors, trust boundary, accepted risks | 2 hrs |
-| Hash dispatch tokens at rest (prefix + digest lookup pattern), migration + route rewrite | 1.E migration pattern | Old plaintext tokens migrated or rotated; new tokens never stored/displayed after creation except once | 1 day |
-| Add `expires_at`, `scopes`, revocation support | above | Expired/revoked token → 401; scope-restricted token can't invoke out-of-scope tools (tested) | 1 day |
-| Rate limiting + replay/idempotency protection + request validation | 1.F | Duplicate request with same idempotency key doesn't double-execute | 4-6 hrs |
-| Restrict CORS to configured origins where browser use is required | — | Wildcard removed unless a documented browser use case needs it | 2 hrs |
-| Append-only audit events for every dispatch call | 1.J | Every dispatch invocation produces an `agent_actions`-style row, tool-scoped | 3-4 hrs |
-| Tests proving a token can't operate outside its org/scopes | 1.C | Negative tests pass | included in 1.C matrix |
+| Threat model doc for `/api/ai/dispatch` | — | Written doc: assets, actors, trust boundary, accepted risks | Not done as a standalone doc — captured inline in ASSESSMENT.md P0-4/this table instead; a dedicated doc is still worth writing for Track K |
+| ✅ Hash dispatch tokens at rest (prefix + digest lookup pattern), migration + route rewrite | 1.E migration pattern | `dispatch_token_hash`/`dispatch_token_prefix` added, backfilled from existing tokens (no forced reconnect), `app/api/ai/dispatch` validates by hash; raw token returned only once, from `erp/connect`'s connect/rotate response | Done |
+| ✅ Add `expires_at`, `scopes`, revocation support | above | Columns added, `isDispatchTokenValid()`/`dispatchTokenHasScope()` unit-tested. Expiry/revocation are enforced in the dispatch route today; **scope enforcement is not yet wired into tool execution** — every existing/new token defaults to `'*'` (unrestricted), matching current behavior, so this is a schema+helper foundation, not yet a behavior change | Foundation done; wiring scope checks into `executeTool()` is the next increment (~4 hrs) |
+| ✅ Rate limiting + replay/idempotency protection + request validation | 1.F | 20 req/min per org (Track F); `Idempotency-Key` header reuse within 5 minutes → 409 | Done |
+| ✅ Restrict CORS to configured origins where browser use is required | — | `DISPATCH_ALLOWED_ORIGINS` allowlist, empty by default (no CORS headers at all) — verified the endpoint's actual current callers (native apps, server-to-server webhooks, the same-origin `/dispatch` page) need none | Done |
+| Append-only audit events for every dispatch call | 1.J | Every dispatch invocation produces an `agent_actions`-style row, tool-scoped — today it logs to `agent_actions` same as before this engagement; the richer canonical schema is Track J | Deferred to 1.J |
+| Tests proving a token can't operate outside its org/scopes | 1.C | 12 unit tests on the token helpers (generation, hashing, expiry, revocation, scope logic); an end-to-end route-level test (mocked Supabase, like `risk/score/route.test.ts`) is not yet written | Partial — helper-level tests done, route-level test is a follow-up |
+| Purge the legacy plaintext `dispatch_token` column | above | A follow-up migration drops the column once confirmed no row still relies on it (the hardening migration intentionally kept it nullable rather than dropping it immediately) | Not started — see the hardening migration's own comment |
 
 ### 1.H Observability foundation
 | Item | Depends on | Acceptance criteria | Effort |

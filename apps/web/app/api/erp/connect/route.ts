@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { assertPublicHttpUrl } from '@/lib/ssrf'
+import { generateDispatchToken } from '@/lib/erp/dispatch-token'
 
 // Node runtime: the SSRF guard uses node:dns / node:net.
 export const runtime = 'nodejs'
@@ -120,6 +121,13 @@ export async function POST(req: NextRequest) {
     ? { db_name: db_name || new URL(cleanUrl).hostname.split('.')[0] }
     : {}
 
+  // Every successful (re)connect issues a fresh dispatch token — matches the
+  // pre-existing behavior where connect always returned a usable token. The
+  // raw value is generated here, in application code, and never stored:
+  // only its hash + prefix persist. This response is the ONLY place it is
+  // ever returned — see ASSESSMENT.md P0-4 and lib/erp/dispatch-token.ts.
+  const { token: dispatchToken, hash: dispatchTokenHash, prefix: dispatchTokenPrefix } = generateDispatchToken()
+
   const { data: conn, error } = await adminClient
     .from('erp_connections')
     .upsert(
@@ -132,11 +140,16 @@ export async function POST(req: NextRequest) {
         extra_config: extraConfig,
         status: 'active',
         error_message: null,
+        dispatch_token: null,
+        dispatch_token_hash: dispatchTokenHash,
+        dispatch_token_prefix: dispatchTokenPrefix,
+        dispatch_token_revoked_at: null,
+        dispatch_token_rotated_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'org_id' }
     )
-    .select('id, dispatch_token, status')
+    .select('id, status')
     .single()
 
   if (error) return NextResponse.json({ error: `Failed to save connection: ${error.message}` }, { status: 500 })
@@ -144,7 +157,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     connection_id: conn.id,
-    dispatch_token: conn.dispatch_token,
+    dispatch_token: dispatchToken,
     erp_user: erpUser,
   })
 }
@@ -186,7 +199,7 @@ export async function GET(req: NextRequest) {
 
   const { data: conn } = await adminClient
     .from('erp_connections')
-    .select('id, erp_type, base_url, status, last_synced_at, error_message, dispatch_token, created_at')
+    .select('id, erp_type, base_url, status, last_synced_at, error_message, dispatch_token_prefix, dispatch_token_expires_at, dispatch_token_revoked_at, created_at')
     .eq('org_id', userData.org_id)
     .neq('status', 'disconnected')
     .single()

@@ -33,7 +33,12 @@ interface ErpConnection {
   status: 'active' | 'error' | 'pending' | 'disconnected'
   last_synced_at: string | null
   error_message: string | null
-  dispatch_token: string
+  // The raw dispatch token is never returned outside the connect/rotate
+  // response — see lib/erp/dispatch-token.ts. Only a display-safe prefix is
+  // available on subsequent reads.
+  dispatch_token_prefix: string | null
+  dispatch_token_expires_at: string | null
+  dispatch_token_revoked_at: string | null
   created_at: string
 }
 
@@ -390,8 +395,11 @@ export default function SettingsPage() {
   const [erpAlert, setErpAlert] = useState<Alert | null>(null)
   const [erpSyncing, setErpSyncing] = useState(false)
   const [erpDisconnecting, setErpDisconnecting] = useState(false)
-  const [erpShowToken, setErpShowToken] = useState(false)
   const [erpCopied, setErpCopied] = useState(false)
+  // The raw token is only ever available right after a connect/rotate call
+  // (the API response), never on a later GET — cleared on disconnect or
+  // navigating away. See ErpConnection's comment above.
+  const [newlyIssuedToken, setNewlyIssuedToken] = useState<string | null>(null)
   const [erpProvider, setErpProvider] = useState('erpnext')
   const [erpBaseUrl, setErpBaseUrl] = useState('')
   const [erpApiKey, setErpApiKey] = useState('')
@@ -436,6 +444,9 @@ export default function SettingsPage() {
       }
       setErpAlert({ kind: 'info', msg: t('settingsPage.connectedErpUser', { user: json.erp_user }) })
       setErpBaseUrl(''); setErpApiKey(''); setErpApiSecret(''); setErpDbName('')
+      // The connect response is the only place the raw token is ever
+      // returned — capture it now, GET never includes it again.
+      if (json.dispatch_token) setNewlyIssuedToken(json.dispatch_token)
       await fetchErpConnection()
     } finally {
       setErpConnecting(false)
@@ -471,6 +482,7 @@ export default function SettingsPage() {
     try {
       await fetch('/api/erp/connect', { method: 'DELETE' })
       setErpConnection(null)
+      setNewlyIssuedToken(null)
       setErpAlert({ kind: 'info', msg: t('settingsPage.erpConnectionRemoved') })
     } finally {
       setErpDisconnecting(false)
@@ -478,8 +490,8 @@ export default function SettingsPage() {
   }
 
   function copyErpToken() {
-    if (!erpConnection?.dispatch_token) return
-    void navigator.clipboard.writeText(erpConnection.dispatch_token)
+    if (!newlyIssuedToken) return
+    void navigator.clipboard.writeText(newlyIssuedToken)
     setErpCopied(true)
     setTimeout(() => setErpCopied(false), 2000)
   }
@@ -1323,6 +1335,13 @@ export default function SettingsPage() {
                     <p style={{ fontSize: 13, color: 'var(--gray)', margin: '0 0 14px' }}>
                       {t('settingsPage.dispatchTokenHint')}
                     </p>
+
+                    {newlyIssuedToken ? (
+                      <div style={{ padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1px solid var(--color-amber)', background: '#FEF3C7', marginBottom: 12, fontSize: 12.5, color: 'var(--ink)' }}>
+                        {t('settingsPage.dispatchTokenShowOnceWarning')}
+                      </div>
+                    ) : null}
+
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{
                         flex: 1, minWidth: 160, padding: '9px 12px', borderRadius: 'var(--radius-input)',
@@ -1330,29 +1349,39 @@ export default function SettingsPage() {
                         fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
-                        {erpShowToken ? erpConnection.dispatch_token : '•'.repeat(40)}
+                        {newlyIssuedToken
+                          ? newlyIssuedToken
+                          : `${erpConnection.dispatch_token_prefix ?? ''}${'•'.repeat(32)}`}
                       </div>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setErpShowToken(v => !v)}>
-                        {erpShowToken ? t('dealDetail.hide') : t('settingsPage.show')}
-                      </button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={copyErpToken}>
-                        {erpCopied ? t('dealDetail.copied') : t('settingsPage.copy')}
-                      </button>
+                      {newlyIssuedToken ? (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={copyErpToken}>
+                          {erpCopied ? t('dealDetail.copied') : t('settingsPage.copy')}
+                        </button>
+                      ) : null}
                     </div>
+                    {erpConnection.dispatch_token_revoked_at ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-red)' }}>{t('settingsPage.dispatchTokenRevoked')}</div>
+                    ) : erpConnection.dispatch_token_expires_at ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--gray)' }}>
+                        {t('settingsPage.dispatchTokenExpires', { date: new Date(erpConnection.dispatch_token_expires_at).toLocaleDateString() })}
+                      </div>
+                    ) : null}
 
                     <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--offwhite)', borderRadius: 'var(--radius-input)', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--ink)', overflowX: 'auto' }}>
                       <div style={{ color: 'var(--gray)', marginBottom: 6, fontFamily: 'var(--font-body)' }}>{t('settingsPage.exampleWebhookPayload')}</div>
                       {`POST https://your-strike-domain.com/api/ai/dispatch\n` +
-                       `Authorization: Bearer ${erpShowToken ? erpConnection.dispatch_token : '<your-dispatch-token>'}\n\n` +
+                       `Authorization: Bearer ${newlyIssuedToken ?? '<your-dispatch-token>'}\n\n` +
                        `{ "message": "Inventory is low on SKU-001, create a listing", "source": "erp_webhook" }`}
                     </div>
 
-                    <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gray)' }}>
-                      {t('settingsPage.orOpenMobileCommand')}{' '}
-                      <a href={`/dispatch?token=${erpConnection.dispatch_token}`} target="_blank" style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
-                        /dispatch?token=…
-                      </a>
-                    </div>
+                    {newlyIssuedToken ? (
+                      <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gray)' }}>
+                        {t('settingsPage.orOpenMobileCommand')}{' '}
+                        <a href={`/dispatch?token=${newlyIssuedToken}`} target="_blank" style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
+                          /dispatch?token=…
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

@@ -1,6 +1,8 @@
 // Strike AI Dispatch — external trigger endpoint.
 // Accepts authenticated POST requests from phones, ERPNext webhooks, or any HTTP client.
-// Auth: Bearer <dispatch_token> (stored in erp_connections.dispatch_token).
+// Auth: Bearer <dispatch_token>, validated against erp_connections.dispatch_token_hash
+// (sha256 of the raw token — the raw value itself is never stored; see
+// lib/erp/dispatch-token.ts and ASSESSMENT.md P0-4).
 
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -8,6 +10,8 @@ import { getToolsForPortal } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
 import { rateLimit } from '@/lib/rate-limit'
+import { hashDispatchToken, isDispatchTokenValid } from '@/lib/erp/dispatch-token'
+import { logger } from '@/lib/logger'
 
 const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer']
 
@@ -31,30 +35,50 @@ const DISPATCH_SYSTEM =
   'Only call tools when the user asks about their finances, ERP data, deals, inventory, or wants to take an action. ' +
   'Never proactively dump ERP data unless the user asks for it. Keep responses concise and conversational.'
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+// Restricted to explicitly configured origins — unset/empty means no CORS
+// headers at all, which is correct for this route's actual current callers
+// (native phone apps and server-to-server ERP webhooks don't send/enforce
+// CORS; the in-app /dispatch page is same-origin and needs no CORS either).
+// Only set DISPATCH_ALLOWED_ORIGINS if a genuine cross-origin browser
+// caller is added later.
+const ALLOWED_ORIGINS = (process.env.DISPATCH_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean)
+
+function corsHeaders(req: NextRequest): Record<string, string> {
+  const origin = req.headers.get('origin')
+  if (!origin || !ALLOWED_ORIGINS.includes(origin)) return {}
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
+    Vary: 'Origin',
+  }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) })
 }
 
 export async function POST(req: NextRequest) {
-  // Verify dispatch token
+  const CORS_HEADERS = corsHeaders(req)
+
+  // Verify dispatch token — hash-compare, never a plaintext match (P0-4).
   const authHeader = req.headers.get('Authorization') ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
   if (!token) return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401, headers: CORS_HEADERS })
 
+  const tokenHash = hashDispatchToken(token)
   const { data: conn } = await adminClient
     .from('erp_connections')
-    .select('id, org_id, dispatch_token')
-    .eq('dispatch_token', token)
-    .eq('status', 'active')
+    .select('id, org_id, status, dispatch_token_revoked_at, dispatch_token_expires_at, dispatch_token_scopes')
+    .eq('dispatch_token_hash', tokenHash)
     .single()
 
-  if (!conn) return NextResponse.json({ error: 'Invalid or inactive dispatch token' }, { status: 401, headers: CORS_HEADERS })
+  if (!conn || !isDispatchTokenValid(conn)) {
+    return NextResponse.json({ error: 'Invalid, inactive, expired, or revoked dispatch token' }, { status: 401, headers: CORS_HEADERS })
+  }
 
   const orgId = conn.org_id
 
@@ -66,6 +90,22 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: { ...CORS_HEADERS, 'Retry-After': String(retryAfterSeconds) } }
     )
   }
+
+  // Replay protection: an Idempotency-Key reused within 5 minutes is
+  // rejected rather than re-executed. Scoped per-org so one caller's key
+  // choices can't collide with another's.
+  const idempotencyKey = req.headers.get('Idempotency-Key')
+  if (idempotencyKey) {
+    const idempotencyResult = await rateLimit(`ai-dispatch-idempotency:${orgId}:${idempotencyKey}`, 1, 5 * 60_000)
+    if (!idempotencyResult.allowed) {
+      return NextResponse.json(
+        { error: 'Duplicate request: this Idempotency-Key was already used within the last 5 minutes' },
+        { status: 409, headers: CORS_HEADERS }
+      )
+    }
+  }
+
+  logger.info('ai/dispatch request', { orgId, requestId: req.headers.get('x-request-id') ?? undefined })
 
   // Look up org + a representative user for context
   const { data: org } = await adminClient

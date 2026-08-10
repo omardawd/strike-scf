@@ -48,10 +48,12 @@ export async function POST(req: NextRequest) {
     agent = data
   }
 
-  // Return the org's dispatch token so the user can reference it
+  // Raw dispatch tokens are never retrievable after creation (see
+  // lib/erp/dispatch-token.ts) — only a display-safe prefix is available
+  // here. The frontend does not currently read this field.
   const { data: conn } = await adminClient
     .from('erp_connections')
-    .select('dispatch_token')
+    .select('dispatch_token_prefix')
     .eq('org_id', userData.org_id)
     .eq('status', 'active')
     .limit(1)
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     agent,
-    dispatch_token: conn?.dispatch_token ?? null,
+    dispatch_token_prefix: conn?.dispatch_token_prefix ?? null,
     message: isActive ? 'Agent activated.' : 'Agent deactivated.',
   })
 }
