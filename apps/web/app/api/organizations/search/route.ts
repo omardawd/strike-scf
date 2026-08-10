@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sanitizeSearchTerm } from '@/lib/search'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,11 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const limitResult = await rateLimit(`org-search:${user.id}`, 30, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
+  }
 
   const { searchParams } = new URL(request.url)
   const q = sanitizeSearchTerm(searchParams.get('q') ?? '')

@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,6 +40,11 @@ export async function POST(req: Request) {
     .eq('id', user.id)
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  const limitResult = await rateLimit(`ai-upload:${userData.id}`, 10, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
+  }
 
   const contentType = req.headers.get('content-type') ?? ''
   if (!contentType.includes('multipart/form-data')) {

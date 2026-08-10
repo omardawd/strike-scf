@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, inviteEmailHtml } from '@/lib/email'
-import { rateLimit } from '@/lib/rate-limit'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,9 +66,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { allowed } = rateLimit(`invitations:${userData.id}`, 5, 60000)
-  if (!allowed) {
-    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  const limitResult = await rateLimit(`invitations:${userData.id}`, 5, 60000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
   }
 
   let body: Record<string, unknown>

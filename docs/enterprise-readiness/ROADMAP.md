@@ -64,8 +64,9 @@ Goal: the things a customer's security team will ask for directly. This is the b
 ### 1.F Abuse prevention
 | Item | Depends on | Acceptance criteria | Effort |
 |---|---|---|---|
-| Replace in-memory rate limiter with Upstash Redis (or equivalent) behind a small provider abstraction with safe fallback | — | Enforced consistently across ≥2 serverless instances (test via concurrent requests) | 1 day |
-| Apply limits to: auth/register, invitations (already has it), uploads, AI endpoints (chat/documents/upload/dispatch), external dispatch, document generation, search, reports | above | Each listed endpoint returns `429` + `Retry-After` once its limit is exceeded, keyed by authenticated user/org id (not client-supplied header) | 1 day |
+| ✅ Replace in-memory rate limiter with Upstash Redis (or equivalent) behind a small provider abstraction with safe fallback | — | `lib/rate-limit.ts` rewritten: uses Upstash REST API when `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are set, fails open on Upstash errors, falls back to the original in-memory counter (documented as dev-only) when unconfigured. `lib/request-ip.ts` added for unauthenticated-route keying. | Done |
+| ✅ (partial) Apply limits to: auth/register, invitations, ai/chat, ai/documents, ai/upload, ai/dispatch, deals/extract, marketplace/listings/extract, organizations/search | above | All 9 return `429` + `Retry-After`, keyed by user id / org id (dispatch) / client IP (register) — never a client-supplied header | Done for these 9 |
+| Remaining rollout: uploads outside `ai/upload` (kyb/documents, transactions/documents, collateral, onboarding/documents, deal/listing document uploads), `reporting/route.ts` and other expensive-report endpoints, remaining AI tool-execution paths (`ai/insight`, `ai/tools/execute`) | above | Same 429 pattern applied; tracked here as the explicit remaining punch list rather than left implicit | 3-4 hrs |
 | Request-body and upload-size limits at the framework level (not just per-route ad hoc) | — | A route with no explicit check still rejects oversized bodies | 3-4 hrs |
 
 ### 1.G External AI dispatch hardening

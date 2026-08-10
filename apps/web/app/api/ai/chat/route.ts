@@ -7,6 +7,7 @@ import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
 import { languageInstruction } from '@/lib/ai/system-prompt'
 import { DEMO_ORG_ID } from '@/lib/demo-entities'
 import { getCachedAiResponse, setCachedAiResponse } from '@/lib/ai/demo-ai-cache'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 // generate_document (executeTool below) uses pdfkit, which is excluded from
 // webpack bundling (serverExternalPackages in next.config.ts) — needs Node runtime.
@@ -63,6 +64,11 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!userRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const limitResult = await rateLimit(`ai-chat:${userRow.id}`, 20, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
+  }
 
   const body = await req.json()
 

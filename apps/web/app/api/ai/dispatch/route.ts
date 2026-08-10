@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToolsForPortal } from '@/lib/ai/tools/definitions'
 import { executeTool, type ToolName } from '@/lib/ai/tools/execute'
 import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
+import { rateLimit } from '@/lib/rate-limit'
 
 const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer']
 
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest) {
   if (!conn) return NextResponse.json({ error: 'Invalid or inactive dispatch token' }, { status: 401, headers: CORS_HEADERS })
 
   const orgId = conn.org_id
+
+  const limitResult = await rateLimit(`ai-dispatch:${orgId}`, 20, 60_000)
+  if (!limitResult.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((limitResult.resetAt - Date.now()) / 1000))
+    return NextResponse.json(
+      { error: 'Too many requests', retry_after_seconds: retryAfterSeconds },
+      { status: 429, headers: { ...CORS_HEADERS, 'Retry-After': String(retryAfterSeconds) } }
+    )
+  }
 
   // Look up org + a representative user for context
   const { data: org } = await adminClient

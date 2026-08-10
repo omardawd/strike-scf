@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,6 +88,11 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single()
   if (!userRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const limitResult = await rateLimit(`ai-documents:${userRow.id}`, 10, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
+  }
 
   const body = (await req.json()) as Partial<DocumentRequest>
   const type = body.type
