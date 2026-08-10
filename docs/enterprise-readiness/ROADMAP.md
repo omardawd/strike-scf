@@ -94,7 +94,8 @@ Goal: the things a customer's security team will ask for directly. This is the b
 | Item | Depends on | Acceptance criteria | Effort |
 |---|---|---|---|
 | CSP: document a safe path to remove `unsafe-eval` and reduce `unsafe-inline`; execute the parts that are safe now | — | Doc + at least a first incremental tightening if verifiably safe; no behavior regression | 4-6 hrs (doc) + variable (execution, may extend into Phase 2) |
-| Shared upload-validation helper (size, MIME allowlist, filename sanitization) applied to the 3 unsanitized routes + standardized elsewhere | — | All 12 upload routes use the shared helper | 1 day |
+| ✅ Shared upload-validation helper (`lib/uploads/validate.ts`: size, MIME allowlist, filename sanitization, malware-scan extension point) applied to the 3 previously-unsanitized routes | — | Those 3 routes (`onboarding/documents`, `transactions/[id]/documents`, `collateral/[id]`) now sanitize filenames and enforce a 20MB cap; unit-tested | Done for 3 of 12 |
+| Roll the same helper out to the remaining 9 upload routes for consistent size/MIME enforcement | above | Each route uses `validateUpload()`/`sanitizeFilename()` instead of ad hoc or missing checks | 4-6 hrs |
 | Malware-scanning integration point (interface + no-op default, real provider deferred) | above | A clear extension point exists; documented as Phase 2/3 to actually wire a scanner | 3-4 hrs |
 | CORS/SSRF/redirect/signed-URL/caching/error-response review | — | Findings folded into CONTROL_MATRIX; any quick fixes applied, larger ones scheduled | 1 day review |
 | `SECURITY.md` + disclosure documentation | — | Exists, honest, no false claims | 2 hrs |

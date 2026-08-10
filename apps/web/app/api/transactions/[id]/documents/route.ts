@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { sanitizeFilename, validateUpload } from '@/lib/uploads/validate'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -121,8 +122,13 @@ export async function POST(
     return NextResponse.json({ error: `document_kind must be one of: ${VALID_KINDS.join(', ')}` }, { status: 400 })
   }
 
+  const uploadCheck = validateUpload(file)
+  if (!uploadCheck.ok) {
+    return NextResponse.json({ error: uploadCheck.error }, { status: 400 })
+  }
+
   const filename = file.name
-  const storagePath = `${id}/${document_kind}/${filename}`
+  const storagePath = `${id}/${document_kind}/${sanitizeFilename(filename)}`
 
   const arrayBuffer = await file.arrayBuffer()
   const { error: uploadError } = await adminClient.storage
