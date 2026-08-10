@@ -41,3 +41,8 @@ export const DEMO_SEEDED_AGENT_TASK_IDS = [DEMO_PLAN_TASK_ID]
 // any OTHER room a live run creates.
 export const DEMO_ROOM_ID = 'dea00000-0000-0000-0000-000000000001'
 export const DEMO_SEEDED_ROOM_IDS = [DEMO_ROOM_ID]
+
+// Seeded private network — Harborview's own, with the 3 supplier orgs above
+// as active members. Reset keeps this row + its memberships exactly as
+// seeded (nothing about the demo tour ever creates or deletes a network).
+export const DEMO_NETWORK_ID = 'deb00000-0000-0000-0000-000000000001'

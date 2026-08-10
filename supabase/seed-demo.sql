@@ -234,7 +234,7 @@ INSERT INTO public.marketplace_listings (
   id, org_id, listing_type, status, title, description, category,
   quantity, unit, target_price, currency, incoterms, delivery_location, delivery_deadline,
   payment_terms, origin_country, network_visible, visibility, view_count, offer_count,
-  matched_deal_id, created_at, updated_at
+  matched_deal_id, created_at, updated_at, cover_image_url, image_urls
 )
 VALUES
   ('de600000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000002', 'product_service', 'active',
@@ -249,35 +249,43 @@ VALUES
    -- silently falls off that page as other listings accumulate. /api/demo/reset
    -- also re-bumps this on every replay; this seed-time value only matters for
    -- a pristine environment's very first, reset-less playthrough.
-   NULL, now() - interval '30 minutes', now() - interval '2 days'),
+   NULL, now() - interval '30 minutes', now() - interval '2 days',
+   'https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000001/1786001810-steel-coils.png',
+   ARRAY['https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000001/1786001810-steel-coils.png']),
 
   ('de600000-0000-0000-0000-000000000002', 'de200000-0000-0000-0000-000000000002', 'product_service', 'active',
    'Galvanized Steel Sheet — 4x8 Panels, 2,000 Units',
    '14-gauge hot-dip galvanized steel sheet, 4x8ft panels, corrosion-resistant finish. Common stock item, ships within 2 weeks of order.',
    'Metals & Steel', 2000, 'units', 290000, 'USD', 'FOB', 'Pittsburgh, PA', (now() + interval '30 days')::date,
    'Net 45', 'US', true, 'public', 21, 0,
-   NULL, now() - interval '12 days', now() - interval '1 days'),
+   NULL, now() - interval '12 days', now() - interval '1 days',
+   'https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000002/1786001810-steel-sheet.png',
+   ARRAY['https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000002/1786001810-steel-sheet.png']),
 
   ('de600000-0000-0000-0000-000000000003', 'de200000-0000-0000-0000-000000000003', 'product_service', 'active',
    'Corrugated Shipping Cartons — Custom Print, 250,000 Units',
    'RSC-style corrugated shipping cartons, custom single-color print, ECT-32 board. High-volume production run for retail distribution replenishment.',
    'Packaging & Materials', 250000, 'units', 155000, 'USD', 'FOB', 'Charlotte, NC', (now() + interval '35 days')::date,
    'Net 30', 'US', true, 'public', 15, 0,
-   NULL, now() - interval '9 days', now() - interval '1 days'),
+   NULL, now() - interval '9 days', now() - interval '1 days',
+   'https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000003/1786001810-cartons.png',
+   ARRAY['https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000003/1786001810-cartons.png']),
 
   ('de600000-0000-0000-0000-000000000004', 'de200000-0000-0000-0000-000000000004', 'product_service', 'active',
    'SMT PCB Assembly — Retail POS Controller Boards, 15,000 Units',
    'Turnkey SMT assembly for retail POS controller boards, IPC-A-610 Class 2, includes AOI and functional test. Components sourced and stocked, ready for a production slot.',
    'Electronics & Components', 15000, 'units', 577500, 'USD', 'DDP', 'Austin, TX', (now() + interval '50 days')::date,
    'Net 45', 'US', true, 'public', 27, 0,
-   NULL, now() - interval '6 days', now()),
+   NULL, now() - interval '6 days', now(),
+   'https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000004/1786001810-pcb.png',
+   ARRAY['https://dthkgrnhlxkzvkegvure.supabase.co/storage/v1/object/public/listing-images/de600000-0000-0000-0000-000000000004/1786001810-pcb.png']),
 
   ('de600000-0000-0000-0000-000000000005', 'de200000-0000-0000-0000-000000000002', 'product_service', 'matched',
    'Structural Steel Angle Bar — 3in x 3in, 300 MT',
    'ASTM A36 structural steel angle bar, 3in x 3in x 3/8in, mill-certified. Sourced for retail fixture and shelving fabrication runs.',
    'Metals & Steel', 300, 'MT', 243000, 'USD', 'FOB', 'Port of Houston, TX', (now() - interval '10 days')::date,
    'Net 60', 'US', true, 'public', 56, 4,
-   NULL, now() - interval '35 days', now() - interval '5 days')
+   NULL, now() - interval '35 days', now() - interval '5 days', NULL, ARRAY[]::text[])
 ON CONFLICT (id) DO NOTHING;
 -- matched_deal_id is backfilled by an UPDATE after section 9 (deals) below —
 -- marketplace_listings.matched_deal_id has an FK to deals.id, so the deal row
@@ -713,3 +721,31 @@ SET passport_expert_analysis = to_jsonb((jsonb_build_object(
 ))::text),
 passport_ai_evaluated_at = now() - interval '2 hours'
 WHERE id = 'de200000-0000-0000-0000-000000000001';
+
+-- ---------------------------------------------------------------------------
+-- Harborview's own private network, with the 3 supplier orgs as active
+-- members — what the demo tour's Networks scene points at, right after the
+-- financing-request beat. visibility_default 'network_only' so the list
+-- page's VisibilityBadge reads "Private", matching what the scene narrates.
+-- Real trade volume for the Analytics section comes for free: it's computed
+-- live from `deals` between the owner and active members (see
+-- app/api/networks/[id]/analytics/route.ts), and the Ironbridge + Cedarline
+-- deals seeded above already cover both.
+-- ---------------------------------------------------------------------------
+INSERT INTO anchor_networks (id, anchor_org_id, name, description, visibility_default, member_count, created_at, updated_at)
+VALUES (
+  'deb00000-0000-0000-0000-000000000001',
+  'de200000-0000-0000-0000-000000000001',
+  'Harborview Preferred Suppliers',
+  'Our vetted, invite-only network — steel, packaging, and electronics partners with real trade history behind them.',
+  'network_only', 3,
+  now() - interval '90 days', now() - interval '90 days'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO anchor_network_members (id, network_id, supplier_org_id, status, invited_at, invited_by_user_id, joined_at)
+VALUES
+  (gen_random_uuid(), 'deb00000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000002', 'active', now() - interval '90 days', 'de000000-0000-0000-0000-000000000001', now() - interval '88 days'),
+  (gen_random_uuid(), 'deb00000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000003', 'active', now() - interval '75 days', 'de000000-0000-0000-0000-000000000001', now() - interval '73 days'),
+  (gen_random_uuid(), 'deb00000-0000-0000-0000-000000000001', 'de200000-0000-0000-0000-000000000004', 'active', now() - interval '60 days', 'de000000-0000-0000-0000-000000000001', now() - interval '58 days')
+ON CONFLICT (network_id, supplier_org_id) DO NOTHING;

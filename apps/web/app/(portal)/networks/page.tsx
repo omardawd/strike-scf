@@ -203,7 +203,7 @@ function MyNetworksSection({ onCreateClick }: { onCreateClick: () => void }) {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {networks.map(net => (
-            <div key={net.id} className="card-interactive" style={{
+            <div key={net.id} className="card-interactive" data-demo-target={`network-card-${net.id}`} style={{
               background: 'var(--white)', borderRadius: 'var(--radius-card)',
               padding: 20, boxShadow: 'var(--shadow-card)', cursor: 'pointer',
               border: '1.5px solid var(--border)',

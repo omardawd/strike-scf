@@ -30,6 +30,15 @@ const REVISE_MESSAGE =
   "Tighten the price ceiling a bit and make sure the deadline is no more than 14 days out. Just update the plan for now — don't submit anything until I say go."
 const EXECUTE_MESSAGE =
   "That works — go ahead and submit the opening offer now."
+// Sent once the deal is closed, so the financing request is a real, asked-for
+// action too — not something that just silently appears. The deal itself was
+// created by the deterministic mock-negotiate route, not by Claude, so Claude
+// has no tool-result memory of its ID; naming Ironbridge explicitly is what
+// lets it resolve the right deal via get_active_deals (the earlier seeded
+// Ironbridge deal is already 'completed' and won't show up there, so there's
+// only ever one live match at this point in the run).
+const FINANCING_MESSAGE =
+  "We just closed that deal with Ironbridge — let's request financing on it."
 
 type Phase = 'landing' | 'planning' | 'revising' | 'executing' | 'negotiating' | 'wrapping' | 'done' | 'error'
 
@@ -73,26 +82,19 @@ async function runMockNegotiation(isCancelled: () => boolean): Promise<{ rounds:
   }
 }
 
-async function submitFinancing(dealId: string): Promise<string | null> {
+// Confirms the financing request FINANCING_MESSAGE just asked for actually
+// landed, and reads back its amount/currency for the closing caption — same
+// deal GET route the real financing page itself uses to resolve the linked
+// financing_requests row (app/api/deals/[id]/route.ts), so this is reading
+// real state, not re-deriving anything client-side.
+async function checkFinancingRequested(dealId: string): Promise<string | null> {
   try {
-    const dealRes = await fetch(`/api/deals/${dealId}`)
-    if (!dealRes.ok) return null
-    const { deal } = await dealRes.json()
-    const amount = Math.round(Number(deal?.total_value ?? 0))
-    if (!amount) return null
-    const currency = deal?.agreed_currency ?? 'USD'
-    const res = await fetch('/api/marketplace/financing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deal_id: dealId,
-        structure_type: 'open',
-        amount_requested: amount,
-        preferred_tenor_days: 60,
-        currency,
-      }),
-    })
+    const res = await fetch(`/api/deals/${dealId}`)
     if (!res.ok) return null
+    const { financing_request } = await res.json()
+    const amount = Math.round(Number(financing_request?.amount_requested ?? 0))
+    if (!amount) return null
+    const currency = financing_request?.currency ?? 'USD'
     return `${currency} ${amount.toLocaleString()}`
   } catch {
     return null
@@ -687,21 +689,38 @@ export function DemoAgentActivityFeed({ onDone, onSkip }: { onDone: () => void; 
         setCaption(closedLine)
         setLogStatus('Deal finalized ✓')
         setLogNow('Terms agreed. Now in the contract period.')
-        setLogNext(null)
+        setLogNext('Ask it to request financing on this deal.')
         await narrate(closedLine, 'scene6-deal-closed')
         if (isCancelled()) return
         await sleep(SCENE_TRANSITION_MS)
         if (isCancelled()) return
-        const summary = await submitFinancing(dealId)
+
+        setLogStatus('Requesting financing…')
+        setLogNow('Asking Strike AI to request financing on the deal.')
+        setLogNext(null)
+        // Cache label paired with the others above — same real chat call,
+        // same real create_financing_request tool, same caching so a replay
+        // doesn't re-spend real tokens. Previously this financing request was
+        // fired directly (a plain POST, no chat message, no reply), so the
+        // "Our request is live" line that followed was narrating an action
+        // nobody had actually asked Strike AI to take.
+        await bridge?.getChatApi()?.sendMessage(FINANCING_MESSAGE, 'demo-financing-v1')
+        if (isCancelled()) return
+
+        const summary = await checkFinancingRequested(dealId)
         if (isCancelled()) return
         if (summary) setLogNow(`Terms agreed — now in the contract period. Financing requested: ${summary}.`)
         const finalLine = summary
-          ? 'Our request is live. We have sourced, vetted, negotiated, and financed with Strike in less than 2 minutes!'
+          ? 'Financing request submitted. Sourced, vetted, negotiated, and financed — the entire cycle, end to end.'
           : 'Done. We have secured a deal and now it’s in the contract period.'
         setCaption(finalLine)
-        // Only the "with financing" happy-path variant has a recorded clip —
-        // the no-financing fallback is an edge case, same as timeout/error.
-        await narrate(finalLine, summary ? 'scene6-final-with-financing' : undefined)
+        // Cache label bumped alongside the text — the old recorded clip still
+        // said the previous, more enthusiastic line, and narrate() plays a
+        // recorded clip over live text whenever the two disagree, that
+        // mismatch is invisible until someone actually listens. No clip
+        // exists yet for the new id, so this falls back to live speech until
+        // a fresh one is recorded.
+        await narrate(finalLine, summary ? 'scene6-final-with-financing-v2' : undefined)
         if (!isCancelled()) await sleep(SCENE_TRANSITION_MS)
         if (!isCancelled()) onDoneRef.current()
       } catch {

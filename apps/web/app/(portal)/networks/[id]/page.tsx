@@ -280,7 +280,7 @@ function NetworkAnalyticsSection({ networkId }: { networkId: string }) {
   const maxCounterparty = Math.max(1, ...data.top_counterparties.map(c => c.deal_volume))
 
   return (
-    <div style={{ marginBottom: 32 }}>
+    <div data-demo-target="network-analytics" style={{ marginBottom: 32 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 16 }}>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Active members</div>
@@ -583,7 +583,7 @@ export default function NetworkDetailPage() {
 
         <NetworkListingsSnippet networkId={id} isOwner={isOwner} />
 
-        <div>
+        <div data-demo-target="network-members">
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
             {t('networksDetail.tab.members')} ({members.length})
           </h2>

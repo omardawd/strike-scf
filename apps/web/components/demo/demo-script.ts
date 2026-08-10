@@ -20,6 +20,7 @@ import {
   DEMO_CEDARLINE_DEAL_ID,
   DEMO_ROOM_ID,
   DEMO_PLAN_TASK_ID,
+  DEMO_NETWORK_ID,
 } from '@/lib/demo-entities'
 
 export type SceneKind = 'text' | 'spotlight' | 'agent-demo'
@@ -236,6 +237,31 @@ export const DEMO_SCENES: DemoBeat[] = [
     target: 'financing-submit',
     submitForm: true,
     extraMs: 800,
+  }),
+
+  // ── Scene 4b — private networks ─────────────────────────────────────────
+  scene({
+    id: 'network-intro',
+    kind: 'spotlight',
+    narration: 'Anchors can also build a private network — a closed, invite-only group of trusted counterparties, visible only to its members.',
+    navSteps: [{ target: 'nav-networks' }],
+    target: `network-card-${DEMO_NETWORK_ID}`,
+    extraMs: 300,
+  }),
+  scene({
+    id: 'network-analytics',
+    kind: 'spotlight',
+    narration: 'Inside, you get a live view of trade flowing across the network — deal volume, activity, and your top counterparties, all in one place.',
+    navSteps: [{ target: `network-card-${DEMO_NETWORK_ID}` }],
+    target: 'network-analytics',
+    extraMs: 400,
+  }),
+  scene({
+    id: 'network-members',
+    kind: 'spotlight',
+    narration: 'Every member carries their own PassportScore, and can see network-only listings and financing requests that never reach the public marketplace.',
+    target: 'network-members',
+    extraMs: 300,
   }),
 
   // ── Scene 5 — the twist (the one dark beat) ─────────────────────────────
