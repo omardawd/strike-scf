@@ -2,14 +2,28 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// Correlation ID propagation (Track H — observability foundation): every
+// request gets an x-request-id, either passed through from an upstream
+// caller/load balancer or generated fresh here. Set on both the forwarded
+// request (so route handlers' logger calls can read and include it) and
+// the response (so callers can correlate their own logs/support tickets).
+function withRequestId(response: NextResponse, requestId: string): NextResponse {
+  response.headers.set('x-request-id', requestId)
+  return response
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID()
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-request-id', requestId)
+
   if (pathname.includes('..')) {
-    return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    return withRequestId(NextResponse.json({ error: 'Invalid path' }, { status: 400 }), requestId)
   }
 
-  let supabaseResponse = NextResponse.next({ request })
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +37,7 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
-          supabaseResponse = NextResponse.next({ request })
+          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -40,9 +54,9 @@ export async function middleware(request: NextRequest) {
   if (pathname === '/api/risk/refresh-signals') {
     const cronSecret = request.headers.get('x-cron-secret')
     if (!cronSecret || cronSecret !== process.env.CRON_SECRET) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return withRequestId(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), requestId)
     }
-    return supabaseResponse
+    return withRequestId(supabaseResponse, requestId)
   }
 
   // Authenticated-only API routes
@@ -55,7 +69,7 @@ export async function middleware(request: NextRequest) {
     '/api/graph',
   ]
   if (!user && AUTHED_API_PREFIXES.some(p => pathname.startsWith(p))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return withRequestId(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), requestId)
   }
 
   if (
@@ -77,10 +91,10 @@ export async function middleware(request: NextRequest) {
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return withRequestId(NextResponse.redirect(url), requestId)
   }
 
-  return supabaseResponse
+  return withRequestId(supabaseResponse, requestId)
 }
 
 export const config = {

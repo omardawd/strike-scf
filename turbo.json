@@ -12,6 +12,7 @@
     "DEMO_ROUTES_ENABLED",
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",
+    "ERROR_TRACKING_DSN",
     "NODE_ENV"
   ],
   "tasks": {
