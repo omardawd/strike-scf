@@ -43,6 +43,11 @@ export async function POST(request: Request) {
 
   if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
 
+  // Banks may only score organizations belonging to their own bank
+  if (isBank && org.bank_id !== me.bank_id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const countryOfOrigin: string | null = org.country_of_origin ?? null
   const sourcingCountries: string[] = Array.isArray(org.sourcing_countries) ? org.sourcing_countries : []
 
