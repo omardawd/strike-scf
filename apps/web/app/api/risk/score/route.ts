@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
 
   // Banks may only score organizations belonging to their own bank
-  if (isBank && org.bank_id !== me.bank_id) {
+  if (isBank && org.primary_bank_id !== me.bank_id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

@@ -42,7 +42,7 @@ export async function GET() {
     ] = await Promise.all([
       adminClient.from('programs').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id),
       adminClient.from('programs').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).eq('status', 'active'),
-      adminClient.from('organizations').select('*', { count: 'exact', head: true }).eq('bank_id', userData.bank_id).eq('kyb_status', 'submitted'),
+      adminClient.from('organizations').select('*', { count: 'exact', head: true }).eq('primary_bank_id', userData.bank_id).eq('kyb_status', 'submitted'),
       adminClient.from('programs').select('id').eq('bank_id', userData.bank_id),
     ])
 
@@ -79,7 +79,7 @@ export async function GET() {
     const { data: riskOrgs } = await adminClient
       .from('organizations')
       .select('id, legal_name, risk_tier, risk_score, risk_flags')
-      .eq('bank_id', userData.bank_id)
+      .eq('primary_bank_id', userData.bank_id)
       .eq('risk_tier', 'red')
       .not('risk_score', 'is', null)
 
@@ -87,7 +87,7 @@ export async function GET() {
     const { data: tariffOrgs } = await adminClient
       .from('organizations')
       .select('id')
-      .eq('bank_id', userData.bank_id)
+      .eq('primary_bank_id', userData.bank_id)
       .contains('risk_flags', '[{"code":"tariff_exposed"}]')
 
     // TC.6 — PassportScore distribution across the bank's portfolio (replaces the
@@ -95,7 +95,7 @@ export async function GET() {
     const { data: scoreOrgs } = await adminClient
       .from('organizations')
       .select('passport_score')
-      .eq('bank_id', userData.bank_id)
+      .eq('primary_bank_id', userData.bank_id)
 
     const passportBuckets = { strong: 0, fair: 0, weak: 0, pending: 0 }
     let scoreSum = 0

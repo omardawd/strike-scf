@@ -42,12 +42,12 @@ export async function POST(
 
   const { data: org } = await adminClient
     .from('organizations')
-    .select('id, bank_id, credit_score, risk_tier')
+    .select('id, primary_bank_id, credit_score, risk_tier')
     .eq('id', org_id)
     .single()
 
   if (!org) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (org.primary_bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: DecisionBody
   try {

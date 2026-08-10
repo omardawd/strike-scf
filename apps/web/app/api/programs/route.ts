@@ -164,10 +164,10 @@ export async function POST(request: Request) {
   if (isOrgCreator) {
     const { data: creatorOrg } = await adminClient
       .from('organizations')
-      .select('bank_id')
+      .select('primary_bank_id')
       .eq('id', userData.org_id)
       .single()
-    effectiveBankId = creatorOrg?.bank_id ?? userData.bank_id
+    effectiveBankId = creatorOrg?.primary_bank_id ?? userData.bank_id
   }
 
   const { data: program, error } = await adminClient

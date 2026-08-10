@@ -37,7 +37,7 @@ export async function GET(
   if (!org) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (BANK_ROLES.includes(me.role)) {
-    if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (org.primary_bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   } else if (ORG_ROLES.includes(me.role)) {
     if (me.org_id !== org_id) {
       // Any org can be enrolled as the anchor over another org on one program
