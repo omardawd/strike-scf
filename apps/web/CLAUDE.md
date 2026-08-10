@@ -46,7 +46,10 @@ apps/web/
 │   ├── (portal)/         ← ALL authenticated portal pages
 │   │   ├── layout.tsx    ← Auth check + PortalProvider + UserProvider + PortalShell
 │   │   ├── portal-shell.tsx ← Sidebar + main + AIOverlay (Strike AI)
-│   │   ├── dashboard/    ← Role-aware dashboard (bank/buyer/supplier/admin views)
+│   │   ├── home/         ← THE real dashboard (role-aware: bank/buyer/supplier/admin views); sidebar labels it "Home"
+│   │   ├── dashboard/    ← Superseded by home/ — now just `redirect('/home')`. Kept because several
+│   │   │                    "back to dashboard" flows (KYB, admin, collateral, transactions/new) still
+│   │   │                    link `/dashboard`; middleware gates both prefixes identically. Don't build here.
 │   │   ├── ai/           ← STRIKE AI — dedicated agent page (chat + history + doc gen)
 │   │   │
 │   │   ├── marketplace/  ← STRIKE PLACE — listings + offers hub
@@ -117,9 +120,9 @@ apps/web/
 >
 > **Strike AI** (`/ai`) is rendered as a special featured button at the **top** of the nav (above all other items) for all portals — blue→purple gradient pill with shimmer animation. It is NOT part of the `ANCHOR_NAV` / `SUPPLIER_NAV` / `BANK_NAV` / `ADMIN_NAV` arrays; it is hardcoded in the nav render above the `sections.map()` loop. Do not add it to the nav arrays.
 >
-> - **Anchor & Supplier** (identical): Strike AI (top) · Dashboard · Strike Place (`/marketplace`) · My Deals (`/deals`) · Financing (`/marketplace/financing`) · Networks (`/networks`) · Strike Rooms (`/rooms`) · Strike Passport (`/passport`) · Analytics (`/reporting`)
-> - **Bank**: Strike AI (top) · Dashboard · Strike Place (`/marketplace/financing`) · Programs (`/programs`) · Strike Passport (`/passport`) · Reporting (`/reporting`) · Supply Graph (`/supply-graph`)
-> - **Admin**: Strike AI (top) · Dashboard · KYB Queue (`/admin`) · Platform Stats (`/admin`) · Room Reports (`/admin`) · Strike Passport (`/passport`)
+> - **Anchor & Supplier** (identical): Strike AI (top) · Home (`/home`) · Strike Place (`/marketplace`) · My Deals (`/deals`) · Financing (`/marketplace/financing`) · Networks (`/networks`) · Strike Rooms (`/rooms`) · Strike Passport (`/passport`) · Analytics (`/reporting`)
+> - **Bank**: Strike AI (top) · Home (`/home`) · Strike Place (`/marketplace/financing`) · Programs (`/programs`) · Strike Passport (`/passport`) · Reporting (`/reporting`) · Supply Graph (`/supply-graph`)
+> - **Admin**: Strike AI (top) · Home (`/home`) · KYB Queue (`/admin`) · Platform Stats (`/admin`) · Room Reports (`/admin`) · Strike Passport (`/passport`)
 
 ---
 
@@ -542,7 +545,7 @@ Inline the pattern above in each route (auth → user row → role gate → scop
 There is no shared auth helper module — `lib/api-auth.ts` was deleted (T1.5): it used
 the deprecated `getSession()` and had zero importers. Do **not** reintroduce it.
 
-**RLS is enabled.** Admin client bypasses it — always add a manual `.eq()` scope. See `skills/supabase-patterns.md`.
+**RLS is enabled.** Admin client bypasses it — always add a manual `.eq()` scope.
 
 ---
 
@@ -644,6 +647,30 @@ these before writing new loading/reveal/emphasis CSS — most needs are already 
 `components/motion.tsx` exports `CountUp`, `Reveal`, `Skeleton`, `SkeletonText`, `SkeletonCard`
 React wrappers around the above classes. A `prefers-reduced-motion` kill-switch block disables
 all of it. Used throughout dashboards, marketplace, deals, rooms, passport, auth, and AI surfaces.
+
+---
+
+## Internationalization (i18n)
+
+Full EN/AR/ES translation, not a stub. `lib/i18n/translations.ts` (~7,300 lines) is a flat
+dot-notation dictionary — `Record<Locale, Record<string,string>>`, `Locale = 'en'|'ar'|'es'`,
+grouped by page/area via section comments. English is the fallback for any key missing in
+another locale.
+
+- `lib/i18n/locale-context.tsx` — `LocaleProvider` (mounted once, globally, in the root
+  `app/layout.tsx` — covers auth pages too, not just the portal), `useLocale()` (`{locale,
+  setLocale, t}`), `useT()` (shorthand for just `t`). Locale persisted to `localStorage`
+  (`strike_locale`); `t(key, vars?)` supports `{varName}` interpolation.
+- `components/language-switcher.tsx` — `LanguageSwitcher`, compact dropdown with a `variant`
+  prop (`'light'|'dark'`) to fit either the dark auth-page header or the light sidebar user
+  menu. Used throughout sidebar, dashboards, AI surfaces, KYB pages (see components importing
+  `useLocale`/`useT`).
+- **Known gap:** nothing sets `document.dir` or a `dir` attribute anywhere — Arabic (`ar`) gets
+  translated strings but still renders left-to-right. If you're asked to fix Arabic layout, this
+  missing RTL wiring is the actual gap, not the translations themselves.
+- Not every string in the app is wired through `t()` yet — `translations.ts`'s own header
+  comment says to keep adding keys grouped by area "as more of the app gets translated." Don't
+  assume 100% coverage; check a specific page's strings before promising they're localized.
 
 ---
 
@@ -980,6 +1007,73 @@ and production capacity, and upserting into `erp_sync_data` (`UNIQUE(org_id, dat
   ordering by a column, `synced_at`, that doesn't exist on `erp_sync_data` — the real column is
   `fetched_at` — which silently zeroed out the daily scan's ERP context even for connected,
   synced orgs; `get_erp_data` was never affected, only the background scan was).
+
+---
+
+## Demo tour (`demo@demo.com`)
+
+A cinematic, cursor-driven guided walkthrough of the whole platform — gated entirely to one
+account, `lib/demo.ts`'s `isDemoAccount(email)` (`DEMO_EMAIL = 'demo@demo.com'`). Nothing else
+reads or branches on this in a way that changes real customers' behavior. Mounted in
+`app/(portal)/layout.tsx`: `{isDemo ? <DemoConductor>{children}</DemoConductor> : children}`.
+
+**The point of it**: most scenes drive the *real* app end to end (real Claude calls, the real
+negotiation tick loop, real tool calls) rather than mocking the UI — several route doc-comments
+say this explicitly. The `/api/demo/*` routes below exist to make that real behavior scriptable
+and replayable, not to fake it.
+
+- **Seeded tenant** — `supabase/seed-demo.sql` + `lib/demo-entities.ts` (single source of truth
+  for the fixed IDs, imported by both the client script and server reset route so they can't
+  drift apart): `DEMO_ORG_ID` = Harborview Retail Group (the buyer, demo login), 3 supplier orgs
+  (Ironbridge/Cedarline/Vantage), a bank, a program, 5 listings, 2 seeded deals (one completed
+  with real negotiation history, one `delivery_confirmed`/financeable), 1 seeded `agent_tasks`
+  proposal, 1 seeded Strike Room with `ai_suggestion` narration, and 1 seeded private network
+  (Harborview's own, with the 3 supplier orgs as active members).
+- **`components/demo/DemoConductor.tsx`** — the orchestrator: scripted scene sequence, cursor
+  movement (`DemoCursor.tsx`), spotlight highlighting real UI elements (`SpotlightOverlay.tsx`),
+  narration (`DemoNarrator.tsx` + `demo-speech.ts` — pre-rendered ElevenLabs mp3s under
+  `public/audio/demo/`, one per scene, with a Web Speech synthesis fallback).
+- **`components/demo/demo-script.ts`** — the ~25-scene script (audio-gate → welcome →
+  passport-score/breakdown/documents → strike-place-intro/listing-intro/listing-passport/
+  listing-offer → strike-rooms → deal-flow/contract → financing-1/2/3 → network-intro/analytics/
+  members → twist-1/2 → live-agent-demo → erp-integration/ai-proposal → deals-erp-import →
+  closing). Some steps carry a `formFill` payload (e.g. financing amount/rate) applied through
+  `components/demo/DemoFormBridge.tsx`, which calls a component's real setters/submit function
+  directly rather than dispatching synthetic DOM events.
+- **`components/demo/DemoAgentActivityFeed.tsx`** (the largest file in `components/demo/`) —
+  drives Scene 7's live negotiation, backed by the `/api/demo/*` routes below.
+- **`lib/ai/demo-ai-cache.ts`** / `demo_ai_cache` table — caches real Anthropic responses per
+  cache key so replaying the script doesn't re-spend API credits on every viewing; first run for
+  a key calls Claude for real and records it, later runs replay it. Callers gate eligibility
+  themselves (check `org_id` against `DEMO_ORG_ID`/`DEMO_ALL_ORG_IDS`) — nothing in the cache
+  module itself restricts who can use it.
+- **`app/api/demo/*` routes** (all gate on `isDemoAccount`, no effect on real customers):
+  - `state` — tracks whether the intro cinematic has auto-played once (vs. "Replay demo").
+  - `reset` — wipes anything the script or a live run created on top of the seeded tenant;
+    keeps the seeded rows (`DEMO_SEEDED_DEAL_IDS`/`DEMO_SEEDED_AGENT_TASK_IDS`/
+    `DEMO_SEEDED_ROOM_IDS`) exactly as seeded.
+  - `tick` — accelerated negotiation tick for Scene 7, calling `runAgentTick`/
+    `runListingDefenseTick` **unscoped** (no `orgId`). The real, session-scoped
+    `/api/agents/tick` only ticks the caller's own org, which is useless here: Harborview made
+    the opening offer, so it's the counterparty's (Ironbridge's) turn first, and Ironbridge has
+    no session in this demo.
+  - `mock-negotiate` — deterministic fallback for Scene 7 when the real tick loop's per-round
+    Claude call risks not converging within the scene's fixed time budget.
+  - `pause-agents` — deactivates every demo org's agent immediately after Scene 6's execute
+    step, to close the race window against the real pg_cron tick before `mock-negotiate`'s own
+    silencing takes effect a few seconds later.
+  - `close-negotiation` — force-closes any still-`active` demo negotiation the instant Scene 7
+    ends (normal completion or early skip/unmount). **Important**: the real pg_cron tick job
+    ticks *every* `active` `agent_negotiations` row platform-wide once a minute regardless of
+    origin — an abandoned demo negotiation left `active` between viewings keeps consuming real
+    Sonnet calls until someone replays the tour again.
+  - `approve-task` / `negotiation-status` — demo-only cross-org GATE-2 approval and status
+    lookup. The real per-org-scoped routes only show a session its own org's thread, but GATE-2
+    finalization can be recommended from either side of a negotiation (`runListingDefenseTick`
+    in `lib/ai/agent-tick.ts`) — when the counterparty (listing owner) is the one who decides to
+    accept, that finalize task is created under *their* org, and there's no counterparty session
+    in this demo to see or approve it from. Safe only because this is a fully isolated, fictional
+    demo tenant — this pattern would be a cross-tenant data leak anywhere else.
 
 ---
 
