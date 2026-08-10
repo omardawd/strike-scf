@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { writeAuditEvent } from '@/lib/audit/log'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -106,8 +107,30 @@ export async function GET(
   if (!doc) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
 
   if (!(await canAccessDocument(doc, me))) {
+    void writeAuditEvent({
+      actorUserId: user.id,
+      actorRole: me.role,
+      tenantOrgId: me.org_id,
+      tenantBankId: me.bank_id,
+      action: 'document.access_denied',
+      targetType: 'document',
+      targetId: id,
+      outcome: 'failure',
+      afterData: { entity_type: doc.entity_type },
+    })
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+
+  void writeAuditEvent({
+    actorUserId: user.id,
+    actorRole: me.role,
+    tenantOrgId: me.org_id,
+    tenantBankId: me.bank_id,
+    action: 'document.signed_url_issued',
+    targetType: 'document',
+    targetId: id,
+    afterData: { entity_type: doc.entity_type, document_kind: doc.document_kind },
+  })
 
   // Deal documents may be in deal-documents bucket; everything else in kyb-documents
   const bucket = (doc.entity_type === 'deal' || doc.entity_type === 'financing_request') ? 'deal-documents' : 'kyb-documents'

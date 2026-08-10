@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { writeAuditEvent } from '@/lib/audit/log'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,5 +89,25 @@ export async function POST(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: 'Failed to create account' }, { status: 500 })
+
+  // Never include full account_number/routing_number in the audit payload —
+  // only non-sensitive metadata + a masked last-4, matching how the app
+  // displays these elsewhere.
+  void writeAuditEvent({
+    actorUserId: user.id,
+    actorRole: entity.role,
+    tenantOrgId: entity.entity_type === 'organization' ? entity.entity_id : null,
+    tenantBankId: entity.entity_type === 'bank' ? entity.entity_id : null,
+    action: 'bank_account.created',
+    targetType: 'bank_account',
+    targetId: data.id,
+    afterData: {
+      bank_name: data.bank_name,
+      account_type: data.account_type,
+      is_primary: data.is_primary,
+      account_number_last4: String(data.account_number ?? '').slice(-4),
+    },
+  })
+
   return NextResponse.json({ account: data }, { status: 201 })
 }

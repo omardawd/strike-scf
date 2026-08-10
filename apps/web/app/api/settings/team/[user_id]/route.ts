@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { writeAuditEvent } from '@/lib/audit/log'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,6 +79,18 @@ export async function PATCH(
     console.error('Update user error:', updateError)
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
   }
+
+  void writeAuditEvent({
+    actorUserId: userData.id,
+    actorRole: userData.role,
+    tenantOrgId: userData.org_id,
+    tenantBankId: userData.bank_id,
+    action: 'user.is_active_changed',
+    targetType: 'user',
+    targetId: user_id,
+    beforeData: { is_active: target.is_active },
+    afterData: { is_active: body.is_active },
+  })
 
   return NextResponse.json({ success: true })
 }
