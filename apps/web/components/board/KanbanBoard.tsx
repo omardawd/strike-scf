@@ -283,7 +283,7 @@ export function KanbanBoard({
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
         <div className="board-glass" style={{
-          position: 'relative', zIndex: 1,
+          position: 'relative', zIndex: 1, flex: 1, minHeight: 520,
           display: 'flex', gap: 22, overflowX: 'auto', padding: '20px 22px 24px',
           borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-elevated)',
         }}>

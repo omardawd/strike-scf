@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow, Background, Controls, MarkerType, useNodesState, useEdgesState, BackgroundVariant, Position,
-  type Node, type Edge, type Connection, type NodeMouseHandler, type OnNodeDrag,
+  type Node, type Edge, type Connection, type NodeMouseHandler, type OnNodeDrag, type EdgeMouseHandler,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { BoardColumn, BoardEdge, BoardTask } from './types'
@@ -167,10 +167,11 @@ function toFlowEdge(edge: BoardEdge): Edge {
     targetHandle: null,
     label: edge.label ?? undefined,
     type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--blue)', width: 16, height: 16 },
-    style: { stroke: 'var(--blue)', strokeWidth: 1.5, opacity: 0.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--blue)', width: 22, height: 22 },
+    style: { stroke: 'var(--blue)', strokeWidth: 2.5, opacity: 0.75, cursor: 'pointer' },
     labelStyle: { fontSize: 11, fontWeight: 600, fill: 'var(--gray)' },
     labelBgStyle: { fill: 'var(--white)' },
+    interactionWidth: 24, // wider invisible hit area — makes a thin line much easier to click
   }
 }
 
@@ -203,8 +204,7 @@ export function FlowBoard({
     [] // eslint-disable-line react-hooks/exhaustive-deps -- seed once; the effect below keeps nodes in sync afterward
   )
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const initialEdges = useMemo(() => edges.map(toFlowEdge), [edges])
-  const [flowEdges, , onEdgesChange] = useEdgesState(initialEdges)
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   // Rebuild node data/style whenever the underlying data or expansion state
   // changes, but keep each node's live `position` (drag results) rather
@@ -216,6 +216,13 @@ export function FlowBoard({
       return existing ? { ...built, position: existing.position } : built
     }))
   }, [columns, tasksByColumn, expandedColumnId, onOpenTask, setNodes])
+
+  // `edges` is server state passed down as a prop, not something dnd-kit-style
+  // local state owns — resync whenever it changes (new/removed connection)
+  // so drawing or deleting an arrow shows up immediately, no page reload.
+  useEffect(() => {
+    setFlowEdges(edges.map(toFlowEdge))
+  }, [edges, setFlowEdges])
 
   const handleConnect = useCallback((connection: Connection) => {
     if (!isAdmin || !connection.source || !connection.target) return
@@ -231,9 +238,16 @@ export function FlowBoard({
     setExpandedColumnId(prev => (prev === node.id ? null : node.id))
   }, [])
 
+  // Click an arrow to remove it — no need to select-then-press-Delete.
+  const handleEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
+    if (!isAdmin) return
+    event.stopPropagation()
+    onDeleteEdge(edge.id)
+  }, [isAdmin, onDeleteEdge])
+
   return (
     <div className="board-glass" style={{
-      position: 'relative', zIndex: 1, height: 480, borderRadius: 'var(--radius-card)', overflow: 'hidden',
+      position: 'relative', zIndex: 1, flex: 1, minHeight: 520, borderRadius: 'var(--radius-card)', overflow: 'hidden',
       boxShadow: 'var(--shadow-elevated)',
     }}>
       <ReactFlow
@@ -244,6 +258,7 @@ export function FlowBoard({
         onConnect={handleConnect}
         onNodeDragStop={handleNodeDragStop}
         onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
         onEdgesDelete={isAdmin ? (removed => removed.forEach(e => onDeleteEdge(e.id))) : undefined}
         nodesDraggable={isAdmin}
         nodesConnectable={isAdmin}

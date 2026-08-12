@@ -162,9 +162,10 @@ export default function BoardPage() {
   }
 
   async function handleReorderColumns(newOrder: BoardColumn[]) {
-    // Optimistic update — the reorder should feel instant while dragging.
+    // Optimistic update, no full reload — dragging a column should never
+    // cause the board to flash/remount.
     setData(prev => prev ? { ...prev, columns: newOrder } : prev)
-    await Promise.all(
+    const results = await Promise.all(
       newOrder.map((c, i) =>
         fetch(`/api/board/columns/${c.id}`, {
           method: 'PATCH',
@@ -173,7 +174,7 @@ export default function BoardPage() {
         })
       )
     )
-    load()
+    if (results.some(r => !r.ok)) load() // revert to server truth on failure
   }
 
   async function handleCreateEdge(fromColumnId: string, toColumnId: string) {
@@ -183,12 +184,18 @@ export default function BoardPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ board_id: data.board.id, from_column_id: fromColumnId, to_column_id: toColumnId }),
     })
-    if (res.ok) load()
+    if (!res.ok) return
+    const json = await res.json()
+    // Add the real edge in place — no full board reload, so drawing a
+    // connection feels instant instead of flashing the whole canvas.
+    setData(prev => prev ? { ...prev, edges: [...prev.edges, json.edge] } : prev)
   }
 
   async function handleDeleteEdge(edgeId: string) {
-    await fetch(`/api/board/edges/${edgeId}`, { method: 'DELETE' })
-    load()
+    // Optimistic — remove immediately, no reload.
+    setData(prev => prev ? { ...prev, edges: prev.edges.filter(e => e.id !== edgeId) } : prev)
+    const res = await fetch(`/api/board/edges/${edgeId}`, { method: 'DELETE' })
+    if (!res.ok) load() // revert to server truth on failure
   }
 
   const aiContext = useMemo(() => {
@@ -207,7 +214,10 @@ export default function BoardPage() {
 
       <div
         className="page"
-        style={{ maxWidth: 1280 }}
+        style={{
+          maxWidth: '100%', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 56px)',
+          boxSizing: 'border-box', padding: '36px 44px 44px',
+        }}
         data-page-name="Board"
         data-ai-context={JSON.stringify(aiContext)}
       >
@@ -275,7 +285,8 @@ export default function BoardPage() {
         {loading || !data ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
         ) : (
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="board-halo" />
             <div className="board-ambient" />
             {view === 'kanban' ? (
               <KanbanBoard
