@@ -12,16 +12,16 @@ import { useT } from '@/lib/i18n/locale-context'
 import type { BoardColumn, BoardTask } from './types'
 
 const PRIORITY_COLOR: Record<string, string> = {
-  low: 'var(--gray)',
+  low: 'var(--gray-soft)',
   medium: 'var(--color-amber)',
   high: 'var(--color-red)',
 }
 
-// Column accent palette — cycles by position so every stage reads as a
-// distinct lane at a glance, same "give each thing its own identity" idea
-// as the label-chip hashing below.
-const COLUMN_PALETTE = ['#1428CC', '#7C3AED', '#10B981', '#F59E0B', '#0891B2', '#EF4444']
-const LABEL_PALETTE = ['#1428CC', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#0891B2']
+// A restrained, desaturated set — column identity should read at a glance
+// without turning the board into a rainbow. Muted rather than saturated so
+// it stays calm next to the app's mostly-blue-and-neutral palette.
+const COLUMN_PALETTE = ['#5B6EE8', '#9B7EE8', '#4FAE8E', '#D99A4E']
+const LABEL_PALETTE = ['#1428CC', '#7C3AED', '#10B981', '#B45309']
 
 function labelColor(label: string): string {
   let hash = 0
@@ -48,41 +48,41 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
   return (
     <div
       ref={setNodeRef}
-      className="card-interactive"
+      className="board-card"
       onClick={onOpen}
       style={{
         ...style,
         background: 'var(--white)',
-        borderRadius: 'var(--radius-sm)',
+        borderRadius: 'var(--radius-card)',
         border: '1px solid var(--border)',
-        borderLeft: `3px solid ${PRIORITY_COLOR[task.priority]}`,
-        padding: '11px 13px',
-        marginBottom: 9,
+        padding: '13px 14px',
+        marginBottom: 8,
         cursor: draggable ? 'grab' : 'pointer',
         boxShadow: 'var(--shadow-card)',
       }}
       {...(draggable ? { ...attributes, ...listeners } : {})}
     >
       {task.labels.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 7 }}>
           {task.labels.slice(0, 3).map(label => (
             <span key={label} style={{
-              fontSize: 9.5, fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--radius-badge)',
-              background: `${labelColor(label)}1A`, color: labelColor(label),
+              fontSize: 9.5, fontWeight: 600, padding: '1px 7px', borderRadius: 'var(--radius-badge)',
+              background: `${labelColor(label)}14`, color: labelColor(label),
             }}>
               {label}
             </span>
           ))}
         </div>
       )}
-      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', marginBottom: 8, lineHeight: 1.35 }}>{task.title}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', marginBottom: 9, lineHeight: 1.4 }}>{task.title}</div>
 
       {task.checklist_total > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
           <div style={{ flex: 1, height: 3, background: 'var(--offwhite)', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${(task.checklist_done / task.checklist_total) * 100}%`,
               background: task.checklist_done === task.checklist_total ? 'var(--color-green)' : 'var(--blue)',
+              transition: 'width var(--dur-2) var(--ease-out)',
             }} />
           </div>
           <span style={{ fontSize: 10.5, color: 'var(--gray-soft)', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -92,21 +92,16 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[task.priority],
-            textTransform: 'uppercase', letterSpacing: '0.04em',
-          }}>
-            {task.priority}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: PRIORITY_COLOR[task.priority], flexShrink: 0 }} />
           {task.due_date && (
-            <span style={{ fontSize: 11, color: overdue ? 'var(--color-red)' : 'var(--gray-soft)', fontWeight: overdue ? 700 : 400 }}>
+            <span style={{ fontSize: 11.5, color: overdue ? 'var(--color-red)' : 'var(--gray-soft)', fontWeight: overdue ? 600 : 400 }}>
               {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </span>
           )}
           {task.comment_count > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--gray-soft)', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-              💬 {task.comment_count}
+            <span style={{ fontSize: 11.5, color: 'var(--gray-soft)' }}>
+              {task.comment_count} comment{task.comment_count === 1 ? '' : 's'}
             </span>
           )}
         </div>
@@ -114,8 +109,8 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
           <span
             title={task.assignee.full_name}
             style={{
-              width: 21, height: 21, borderRadius: '50%', background: 'var(--blue-light)',
-              color: 'var(--blue)', fontSize: 10, fontWeight: 700,
+              width: 20, height: 20, borderRadius: '50%', background: 'var(--blue-light)',
+              color: 'var(--blue)', fontSize: 9.5, fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}
           >
@@ -143,15 +138,12 @@ function ColumnDropZone({
   const taskIds = tasks.map(tk => tk.id)
 
   return (
-    <div style={{ width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 4px' }}>
+    <div className="board-col" style={{ width: 276, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 2px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent, flexShrink: 0 }} />
-          <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{column.name}</span>
-          <span style={{
-            fontSize: 11, fontWeight: 700, color: accent, background: `${accent}14`,
-            borderRadius: 'var(--radius-badge)', padding: '1px 9px',
-          }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent, flexShrink: 0 }} />
+          <span style={{ fontSize: 13.5, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>{column.name}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--gray-soft)' }}>
             {tasks.length}
           </span>
         </div>
@@ -159,7 +151,8 @@ function ColumnDropZone({
           <button
             onClick={() => onDeleteColumn(column.id)}
             title="Delete stage"
-            style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 4 }}
+            className="board-col-actions"
+            style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 4 }}
           >
             ✕
           </button>
@@ -169,17 +162,16 @@ function ColumnDropZone({
         ref={setNodeRef}
         style={{
           background: isOver ? 'var(--blue-light)' : 'var(--offwhite)',
-          border: `1px solid ${isOver ? accent : 'transparent'}`,
           borderRadius: 'var(--radius-card)',
-          padding: 11,
+          padding: 10,
           minHeight: 140,
           flex: 1,
-          transition: 'background var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out)',
+          transition: 'background var(--dur-2) var(--ease-out)',
         }}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           {tasks.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--gray-soft)', textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 12, color: 'var(--gray-soft)', textAlign: 'center', padding: '24px 0' }}>
               {t('board.noTasks')}
             </div>
           )}
@@ -243,7 +235,7 @@ export function KanbanBoard({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div style={{
-        display: 'flex', gap: 20, overflowX: 'auto', padding: '18px 20px 22px',
+        display: 'flex', gap: 22, overflowX: 'auto', padding: '20px 22px 24px',
         background: 'var(--white)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
       }}>
         {columns.map((column, i) => (

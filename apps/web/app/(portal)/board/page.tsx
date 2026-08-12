@@ -1,12 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Topbar } from '@/components/portal-shell'
 import { useUser } from '@/lib/user-context'
 import { useT } from '@/lib/i18n/locale-context'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import { FlowBoard } from '@/components/board/FlowBoard'
-import { TaskDetailModal } from '@/components/board/TaskDetailModal'
+import { TaskPanel } from '@/components/board/TaskPanel'
 import type { BoardData } from '@/components/board/types'
 
 const VIEW_KEY = 'strike_board_view'
@@ -17,11 +17,23 @@ interface TeamMember {
   email: string
 }
 
-function NewStageModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => Promise<void> }) {
+// Small anchored popover — appears right under the button it came from, no
+// dark backdrop, closes on outside click. Used for the one-field "new stage"
+// action so it never has to feel like a dialog interrupting the page.
+function NewStagePopover({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => Promise<void> }) {
   const t = useT()
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const ref = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [onClose])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -33,112 +45,34 @@ function NewStageModal({ onClose, onCreate }: { onClose: () => void; onCreate: (
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.32)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
-      <div style={{ background: 'var(--white)', borderRadius: 'var(--radius-card)', padding: 28, width: '100%', maxWidth: 360, boxShadow: 'var(--shadow-elevated)' }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{t('board.newStage')}</h2>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <input
-            autoFocus
-            value={name}
-            onChange={e => setName(e.target.value)}
-            maxLength={60}
-            placeholder="Stage name"
-            style={{ padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14 }}
-          />
-          {error && <p style={{ color: 'var(--color-red)', fontSize: 13 }}>{error}</p>}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 'var(--radius-button)', border: '1.5px solid var(--border)', background: 'none', fontSize: 14, cursor: 'pointer' }}>
-              {t('common.cancel')}
-            </button>
-            <button type="submit" disabled={loading} style={{ padding: '9px 20px', borderRadius: 'var(--radius-button)', background: 'var(--blue)', color: '#fff', border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
-              {t('board.newStage')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function NewTaskModal({
-  columns, members, onClose, onCreate,
-}: {
-  columns: BoardData['columns']
-  members: TeamMember[]
-  onClose: () => void
-  onCreate: (input: { title: string; column_id: string; assignee_user_id: string | null; priority: string; due_date: string | null }) => Promise<void>
-}) {
-  const t = useT()
-  const [title, setTitle] = useState('')
-  const [columnId, setColumnId] = useState(columns[0]?.id ?? '')
-  const [assigneeId, setAssigneeId] = useState('')
-  const [priority, setPriority] = useState('medium')
-  const [dueDate, setDueDate] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!title.trim() || !columnId) return
-    setLoading(true)
-    setError('')
-    try {
-      await onCreate({
-        title: title.trim(),
-        column_id: columnId,
-        assignee_user_id: assigneeId || null,
-        priority,
-        due_date: dueDate || null,
-      })
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const inputStyle: React.CSSProperties = { padding: '10px 12px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 14, width: '100%', boxSizing: 'border-box' }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.32)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={onClose}>
-      <div style={{ background: 'var(--white)', borderRadius: 'var(--radius-card)', padding: 28, width: '100%', maxWidth: 420, boxShadow: 'var(--shadow-elevated)' }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{t('board.newTask')}</h2>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <input autoFocus value={title} onChange={e => setTitle(e.target.value)} maxLength={160} placeholder="Task title" style={inputStyle} />
-          <select value={columnId} onChange={e => setColumnId(e.target.value)} style={inputStyle}>
-            {columns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)} style={inputStyle}>
-            <option value="">{t('board.unassigned')}</option>
-            {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <select value={priority} onChange={e => setPriority(e.target.value)} style={inputStyle}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={inputStyle} />
-          </div>
-          {error && <p style={{ color: 'var(--color-red)', fontSize: 13 }}>{error}</p>}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 'var(--radius-button)', border: '1.5px solid var(--border)', background: 'none', fontSize: 14, cursor: 'pointer' }}>
-              {t('common.cancel')}
-            </button>
-            <button type="submit" disabled={loading} style={{ padding: '9px 20px', borderRadius: 'var(--radius-button)', background: 'var(--blue)', color: '#fff', border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
-              {t('board.newTask')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <form
+      ref={ref}
+      onSubmit={handleSubmit}
+      style={{
+        position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 60,
+        background: 'var(--white)', borderRadius: 'var(--radius-card)', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-elevated)', padding: 14, width: 240,
+        animation: 'motion-fade var(--dur-2) var(--ease-out) both',
+      }}
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={e => setName(e.target.value)}
+        maxLength={60}
+        placeholder="Stage name"
+        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 13.5, marginBottom: 10 }}
+      />
+      {error && <p style={{ color: 'var(--color-red)', fontSize: 12, marginBottom: 8 }}>{error}</p>}
+      <button type="submit" disabled={loading || !name.trim()} className="btn btn-blue btn-sm" style={{ width: '100%', opacity: loading || !name.trim() ? 0.6 : 1 }}>
+        {loading ? '…' : t('board.newStage')}
+      </button>
+    </form>
   )
 }
 
@@ -149,9 +83,9 @@ export default function BoardPage() {
   const [members, setMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'kanban' | 'flow'>('kanban')
-  const [showNewTask, setShowNewTask] = useState(false)
   const [showNewStage, setShowNewStage] = useState(false)
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  // 'new' opens the panel in create mode; a task id opens it for that task.
+  const [panelTaskId, setPanelTaskId] = useState<string | 'new' | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -195,18 +129,6 @@ export default function BoardPage() {
       body: JSON.stringify({ column_id: columnId }),
     })
     if (!res.ok) load() // revert to server truth on failure
-  }
-
-  async function handleCreateTask(input: { title: string; column_id: string; assignee_user_id: string | null; priority: string; due_date: string | null }) {
-    if (!data) return
-    const res = await fetch('/api/board/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ board_id: data.board.id, ...input }),
-    })
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error ?? 'Failed to create task')
-    load()
   }
 
   async function handleCreateStage(name: string) {
@@ -269,7 +191,7 @@ export default function BoardPage() {
       <Topbar
         crumbs={[{ label: t('board.title') }]}
         actions={
-          <div className="topbar-right" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div className="topbar-right" style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
             <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-button)', overflow: 'hidden' }}>
               {(['kanban', 'flow'] as const).map(v => (
                 <button
@@ -280,6 +202,7 @@ export default function BoardPage() {
                     padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
                     background: view === v ? 'var(--blue)' : 'none',
                     color: view === v ? '#fff' : 'var(--ink)',
+                    transition: 'background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out)',
                   }}
                 >
                   {v === 'kanban' ? t('board.kanbanView') : t('board.flowView')}
@@ -288,17 +211,20 @@ export default function BoardPage() {
             </div>
             {data?.is_admin && (
               <>
-                <button
-                  onClick={() => setShowNewStage(true)}
-                  style={{
-                    border: '1.5px solid var(--border-strong)', background: 'var(--white)', color: 'var(--ink)',
-                    borderRadius: 'var(--radius-button)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  + {t('board.newStage')}
-                </button>
-                <button className="btn btn-blue btn-sm" onClick={() => setShowNewTask(true)}>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setShowNewStage(s => !s)}
+                    style={{
+                      border: '1.5px solid var(--border-strong)', background: 'var(--white)', color: 'var(--ink)',
+                      borderRadius: 'var(--radius-button)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    + {t('board.newStage')}
+                  </button>
+                  {showNewStage && <NewStagePopover onClose={() => setShowNewStage(false)} onCreate={handleCreateStage} />}
+                </div>
+                <button className="btn btn-blue btn-sm" onClick={() => setPanelTaskId('new')}>
                   + {t('board.newTask')}
                 </button>
               </>
@@ -340,7 +266,7 @@ export default function BoardPage() {
             currentUserId={user?.id}
             onMoveTask={handleMoveTask}
             onDeleteColumn={handleDeleteColumn}
-            onOpenTask={setSelectedTaskId}
+            onOpenTask={setPanelTaskId}
           />
         ) : (
           <FlowBoard
@@ -351,21 +277,19 @@ export default function BoardPage() {
             onMoveColumn={handleMoveColumn}
             onCreateEdge={handleCreateEdge}
             onDeleteEdge={handleDeleteEdge}
-            onOpenTask={setSelectedTaskId}
+            onOpenTask={setPanelTaskId}
           />
         )}
       </div>
 
-      {showNewStage && <NewStageModal onClose={() => setShowNewStage(false)} onCreate={handleCreateStage} />}
-      {showNewTask && data && (
-        <NewTaskModal columns={data.columns} members={members} onClose={() => setShowNewTask(false)} onCreate={handleCreateTask} />
-      )}
-      {selectedTaskId && data && (
-        <TaskDetailModal
-          taskId={selectedTaskId}
+      {panelTaskId && data && (
+        <TaskPanel
+          taskId={panelTaskId === 'new' ? null : panelTaskId}
+          boardId={data.board.id}
           columns={data.columns}
           members={members}
-          onClose={() => setSelectedTaskId(null)}
+          defaultColumnId={data.columns[0]?.id}
+          onClose={() => setPanelTaskId(null)}
           onChanged={load}
         />
       )}

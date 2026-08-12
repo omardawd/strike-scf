@@ -9,7 +9,9 @@ import '@xyflow/react/dist/style.css'
 import type { BoardColumn, BoardEdge, BoardTask } from './types'
 
 const COLUMN_WIDTH_GAP = 240
-const COLUMN_PALETTE = ['#1428CC', '#7C3AED', '#10B981', '#F59E0B', '#0891B2', '#EF4444']
+// Same restrained palette as KanbanBoard — column identity stays consistent
+// between the two views.
+const COLUMN_PALETTE = ['#5B6EE8', '#9B7EE8', '#4FAE8E', '#D99A4E']
 
 function toFlowNode(column: BoardColumn, taskCount: number, index: number): Node {
   const accent = column.color || COLUMN_PALETTE[index % COLUMN_PALETTE.length]!
@@ -21,14 +23,13 @@ function toFlowNode(column: BoardColumn, taskCount: number, index: number): Node
     },
     data: {
       label: (
-        <div style={{ textAlign: 'center', width: '100%' }}>
-          <div style={{ height: 4, background: accent, borderRadius: '3px 3px 0 0', margin: '-13px -17px 10px' }} />
-          <div style={{ fontWeight: 700, fontSize: 13.5, fontFamily: 'var(--font-display)' }}>{column.name}</div>
-          <div style={{
-            display: 'inline-block', fontSize: 11, fontWeight: 700, color: accent, background: `${accent}14`,
-            borderRadius: 'var(--radius-badge)', padding: '1px 10px', marginTop: 6,
-          }}>
-            {taskCount} task{taskCount === 1 ? '' : 's'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent, flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)' }}>{column.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-soft)', marginTop: 1 }}>
+              {taskCount} task{taskCount === 1 ? '' : 's'}
+            </div>
           </div>
         </div>
       ),
@@ -38,8 +39,8 @@ function toFlowNode(column: BoardColumn, taskCount: number, index: number): Node
       border: '1px solid var(--border)',
       borderRadius: 'var(--radius-card)',
       boxShadow: 'var(--shadow-card)',
-      padding: '13px 17px',
-      width: 172,
+      padding: '12px 16px',
+      width: 176,
     },
   }
 }
@@ -51,9 +52,9 @@ function toFlowEdge(edge: BoardEdge): Edge {
     target: edge.to_column_id,
     label: edge.label ?? undefined,
     type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--blue)' },
-    style: { stroke: 'var(--blue)', strokeWidth: 1.75, opacity: 0.55 },
-    labelStyle: { fontSize: 11, fontWeight: 600, fill: 'var(--ink)' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--gray-soft)', width: 16, height: 16 },
+    style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
+    labelStyle: { fontSize: 11, fontWeight: 600, fill: 'var(--gray)' },
     labelBgStyle: { fill: 'var(--white)' },
   }
 }
@@ -110,62 +111,59 @@ export function FlowBoard({
 
   return (
     <div style={{
-      position: 'relative', borderRadius: 'var(--radius-card)', overflow: 'hidden',
-      boxShadow: 'var(--shadow-card)', background: 'var(--white)',
+      position: 'relative', height: 480, borderRadius: 'var(--radius-card)', overflow: 'hidden',
+      border: '1px solid var(--border)', background: 'var(--white)', boxShadow: 'var(--shadow-card)',
     }}>
-      <div style={{ height: 4, background: 'var(--gradient-ai)' }} />
-      <div style={{ position: 'relative', height: 476 }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={flowEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={handleConnect}
-          onNodeDragStop={handleNodeDragStop}
-          onNodeClick={handleNodeClick}
-          onEdgesDelete={isAdmin ? (removed => removed.forEach(e => onDeleteEdge(e.id))) : undefined}
-          nodesDraggable={isAdmin}
-          nodesConnectable={isAdmin}
-          elementsSelectable
-          deleteKeyCode={isAdmin ? ['Backspace', 'Delete'] : []}
-          fitView
-        >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="var(--border-strong)" />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+      <ReactFlow
+        nodes={nodes}
+        edges={flowEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
+        onNodeDragStop={handleNodeDragStop}
+        onNodeClick={handleNodeClick}
+        onEdgesDelete={isAdmin ? (removed => removed.forEach(e => onDeleteEdge(e.id))) : undefined}
+        nodesDraggable={isAdmin}
+        nodesConnectable={isAdmin}
+        elementsSelectable
+        deleteKeyCode={isAdmin ? ['Backspace', 'Delete'] : []}
+        fitView
+      >
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="var(--border)" />
+        <Controls showInteractive={false} />
+      </ReactFlow>
 
-        {selectedColumn && (
-          <div style={{
-            position: 'absolute', top: 16, right: 16, width: 250,
-            background: 'var(--white)', borderRadius: 'var(--radius-card)',
-            border: '1px solid var(--border)', boxShadow: 'var(--shadow-elevated)',
-            padding: 14, zIndex: 10, maxHeight: 400, overflowY: 'auto',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 13 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: selectedAccent }} />
-                {selectedColumn.name}
-              </span>
-              <button onClick={() => setSelectedColumnId(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray-soft)' }}>✕</button>
-            </div>
-            {selectedTasks.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--gray-soft)' }}>No tasks in this stage</div>
-            ) : (
-              selectedTasks.map(task => (
-                <div
-                  key={task.id}
-                  onClick={() => onOpenTask(task.id)}
-                  className="card-interactive"
-                  style={{ padding: '7px 8px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}
-                >
-                  <div style={{ fontWeight: 600 }}>{task.title}</div>
-                  {task.assignee && <div style={{ color: 'var(--gray)', fontSize: 11 }}>{task.assignee.full_name}</div>}
-                </div>
-              ))
-            )}
+      {selectedColumn && (
+        <div style={{
+          position: 'absolute', top: 16, right: 16, width: 250,
+          background: 'var(--white)', borderRadius: 'var(--radius-card)',
+          border: '1px solid var(--border)', boxShadow: 'var(--shadow-elevated)',
+          padding: 14, zIndex: 10, maxHeight: 400, overflowY: 'auto',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 600, fontSize: 13 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: selectedAccent }} />
+              {selectedColumn.name}
+            </span>
+            <button onClick={() => setSelectedColumnId(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray-soft)' }}>✕</button>
           </div>
-        )}
-      </div>
+          {selectedTasks.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray-soft)' }}>No tasks in this stage</div>
+          ) : (
+            selectedTasks.map(task => (
+              <div
+                key={task.id}
+                onClick={() => onOpenTask(task.id)}
+                className="card-interactive"
+                style={{ padding: '7px 8px', borderRadius: 6, fontSize: 12.5, cursor: 'pointer' }}
+              >
+                <div style={{ fontWeight: 600 }}>{task.title}</div>
+                {task.assignee && <div style={{ color: 'var(--gray)', fontSize: 11 }}>{task.assignee.full_name}</div>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

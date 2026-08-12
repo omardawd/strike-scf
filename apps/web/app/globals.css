@@ -2628,6 +2628,22 @@ textarea.input {
   transition-duration: var(--dur-1);
 }
 
+/* ── Board — calm, restrained card/column treatment ── */
+.board-card {
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+.board-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+  border-color: var(--border-strong);
+}
+.board-card:active { transform: translateY(-1px) scale(0.995); }
+.board-col-actions { opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.board-col:hover .board-col-actions { opacity: 1; }
+
 /* ── 5. .ai-sheen — AI-surface treatment (animated conic-gradient border) ── */
 @property --sheen-angle {
   syntax: '<angle>';
