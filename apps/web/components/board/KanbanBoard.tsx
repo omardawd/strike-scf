@@ -5,7 +5,7 @@ import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   closestCorners, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { SortableContext, verticalListSortingStrategy, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useT } from '@/lib/i18n/locale-context'
@@ -52,7 +52,9 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
       onClick={onOpen}
       style={{
         ...style,
-        background: 'var(--white)',
+        background: 'rgba(255,255,255,0.82)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
         borderRadius: 'var(--radius-card)',
         border: '1px solid var(--border)',
         padding: '13px 14px',
@@ -137,19 +139,43 @@ function ColumnDropZone({
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const taskIds = tasks.map(tk => tk.id)
 
+  const {
+    attributes, listeners, setNodeRef: setColumnNodeRef, transform: columnTransform,
+    transition: columnTransition, isDragging: isColumnDragging,
+  } = useSortable({ id: column.id, disabled: !isAdmin })
+  const columnStyle = {
+    transform: CSS.Transform.toString(columnTransform),
+    transition: columnTransition,
+    opacity: isColumnDragging ? 0.5 : 1,
+  }
+
   return (
-    <div className="board-col" style={{ width: 276, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 2px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent, flexShrink: 0 }} />
-          <span style={{ fontSize: 13.5, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--ink)' }}>{column.name}</span>
-          <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--gray-soft)' }}>
+    <div
+      ref={setColumnNodeRef}
+      className="board-col"
+      style={{ ...columnStyle, flex: '1 1 0', minWidth: 260, maxWidth: 360, display: 'flex', flexDirection: 'column' }}
+    >
+      <div
+        {...(isAdmin ? { ...attributes, ...listeners } : {})}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 2px',
+          cursor: isAdmin ? 'grab' : 'default',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent, flexShrink: 0 }} />
+          <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)', letterSpacing: '-0.01em' }}>{column.name}</span>
+          <span style={{
+            fontSize: 11.5, fontWeight: 700, color: accent, background: `${accent}1C`,
+            borderRadius: 'var(--radius-badge)', padding: '1.5px 8px',
+          }}>
             {tasks.length}
           </span>
         </div>
         {isAdmin && (
           <button
-            onClick={() => onDeleteColumn(column.id)}
+            onClick={(e) => { e.stopPropagation(); onDeleteColumn(column.id) }}
+            onPointerDown={(e) => e.stopPropagation()}
             title="Delete stage"
             className="board-col-actions"
             style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 4 }}
@@ -161,12 +187,13 @@ function ColumnDropZone({
       <div
         ref={setNodeRef}
         style={{
-          background: isOver ? 'var(--blue-light)' : 'var(--offwhite)',
+          background: isOver ? 'rgba(20,40,204,0.10)' : 'rgba(255,255,255,0.28)',
+          border: `1px solid ${isOver ? 'rgba(20,40,204,0.25)' : 'rgba(255,255,255,0.4)'}`,
           borderRadius: 'var(--radius-card)',
           padding: 10,
           minHeight: 140,
           flex: 1,
-          transition: 'background var(--dur-2) var(--ease-out)',
+          transition: 'background var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out)',
         }}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
@@ -190,7 +217,7 @@ function ColumnDropZone({
 }
 
 export function KanbanBoard({
-  columns, tasks, isAdmin, currentUserId, onMoveTask, onDeleteColumn, onOpenTask,
+  columns, tasks, isAdmin, currentUserId, onMoveTask, onDeleteColumn, onOpenTask, onReorderColumns,
 }: {
   columns: BoardColumn[]
   tasks: BoardTask[]
@@ -199,9 +226,12 @@ export function KanbanBoard({
   onMoveTask: (taskId: string, columnId: string) => void
   onDeleteColumn: (columnId: string) => void
   onOpenTask: (taskId: string) => void
+  onReorderColumns: (newOrder: BoardColumn[]) => void
 }) {
   const [activeTask, setActiveTask] = useState<BoardTask | null>(null)
+  const [activeColumn, setActiveColumn] = useState<BoardColumn | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const columnIds = useMemo(() => columns.map(c => c.id), [columns])
 
   const tasksByColumn = useMemo(() => {
     const map = new Map<string, BoardTask[]>()
@@ -211,13 +241,30 @@ export function KanbanBoard({
   }, [columns, tasks])
 
   function handleDragStart(event: DragStartEvent) {
+    const column = columns.find(c => c.id === event.active.id)
+    if (column) { setActiveColumn(column); return }
     const task = tasks.find(tk => tk.id === event.active.id)
     setActiveTask(task ?? null)
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveTask(null)
     const { active, over } = event
+
+    if (activeColumn) {
+      setActiveColumn(null)
+      if (!over || active.id === over.id) return
+      // Only reorder when dropped near another column's header — dropping
+      // on a task inside some other column is a no-op rather than a
+      // surprising reorder.
+      if (!columns.some(c => c.id === over.id)) return
+      const oldIndex = columns.findIndex(c => c.id === active.id)
+      const newIndex = columns.findIndex(c => c.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+      onReorderColumns(arrayMove(columns, oldIndex, newIndex))
+      return
+    }
+
+    setActiveTask(null)
     if (!over) return
     const draggedTask = tasks.find(tk => tk.id === active.id)
     if (!draggedTask) return
@@ -234,25 +281,33 @@ export function KanbanBoard({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div style={{
-        display: 'flex', gap: 22, overflowX: 'auto', padding: '20px 22px 24px',
-        background: 'var(--white)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
-      }}>
-        {columns.map((column, i) => (
-          <ColumnDropZone
-            key={column.id}
-            column={column}
-            accent={column.color || COLUMN_PALETTE[i % COLUMN_PALETTE.length]!}
-            tasks={tasksByColumn.get(column.id) ?? []}
-            isAdmin={isAdmin}
-            currentUserId={currentUserId}
-            onDeleteColumn={onDeleteColumn}
-            onOpenTask={onOpenTask}
-          />
-        ))}
-      </div>
+      <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+        <div className="board-glass" style={{
+          position: 'relative', zIndex: 1,
+          display: 'flex', gap: 22, overflowX: 'auto', padding: '20px 22px 24px',
+          borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-elevated)',
+        }}>
+          {columns.map((column, i) => (
+            <ColumnDropZone
+              key={column.id}
+              column={column}
+              accent={column.color || COLUMN_PALETTE[i % COLUMN_PALETTE.length]!}
+              tasks={tasksByColumn.get(column.id) ?? []}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+              onDeleteColumn={onDeleteColumn}
+              onOpenTask={onOpenTask}
+            />
+          ))}
+        </div>
+      </SortableContext>
       <DragOverlay>
         {activeTask && <TaskCard task={activeTask} draggable onOpen={() => {}} />}
+        {activeColumn && (
+          <div className="board-glass" style={{ width: 260, padding: '10px 16px', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-elevated)', fontSize: 13.5, fontWeight: 600, fontFamily: 'var(--font-display)' }}>
+            {activeColumn.name}
+          </div>
+        )}
       </DragOverlay>
     </DndContext>
   )

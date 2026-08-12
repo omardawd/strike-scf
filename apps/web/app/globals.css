@@ -69,6 +69,11 @@
   --teal-dim:  rgba(0, 191, 165, 0.10);
   --gold:      #C9A84C;
   --gold-dim:  rgba(201, 168, 76, 0.12);
+
+  /* ── Glass surfaces (Board) — theme-aware so dark mode tints navy, not white ── */
+  --glass-bg:        rgba(255,255,255,0.55);
+  --glass-bg-strong: rgba(255,255,255,0.74);
+  --glass-border:    rgba(255,255,255,0.65);
 }
 
 [data-theme="dark"] {
@@ -129,6 +134,11 @@
      card bg (#13244D) so the insight stands apart (color only; Track E
      owns the radius/structure of these cards). */
   --ai-insight-bg: #182C5E;
+
+  /* Glass surfaces tint navy instead of white on dark mode */
+  --glass-bg:        rgba(19,36,77,0.55);
+  --glass-bg-strong: rgba(19,36,77,0.74);
+  --glass-border:    rgba(255,255,255,0.10);
 }
 
 /* Portal accent swap */
@@ -2643,6 +2653,56 @@ textarea.input {
 .board-card:active { transform: translateY(-1px) scale(0.995); }
 .board-col-actions { opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .board-col:hover .board-col-actions { opacity: 1; }
+
+/* Frosted-glass surfaces — used for the board/flow containers and flow
+   nodes so they read as floating panels over the ambient backdrop below,
+   rather than flat opaque cards. */
+.board-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+.board-glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+
+/* Soft blurred color blobs sitting behind the glass board surface — the
+   thing the backdrop-filter actually blurs. Purely decorative, so it's
+   pointer-events:none and lives in its own absolutely-positioned layer
+   behind the board content (z-index 0 vs. content's 1). */
+.board-ambient { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; border-radius: var(--radius-card); }
+.board-ambient::before,
+.board-ambient::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.28;
+}
+.board-ambient::before {
+  width: 460px; height: 460px; left: -120px; top: -160px;
+  background: radial-gradient(circle, var(--blue) 0%, transparent 70%);
+}
+.board-ambient::after {
+  width: 420px; height: 420px; right: -100px; top: -60px;
+  background: radial-gradient(circle, var(--color-purple) 0%, transparent 70%);
+}
+
+/* React Flow handles — small, brand-colored dots instead of the library
+   default, so side-to-side connection points read as an intentional
+   design detail rather than debug UI. */
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--blue);
+  border: 2px solid var(--white);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.react-flow__handle:hover { background: var(--blue-hover); }
 
 /* ── 5. .ai-sheen — AI-surface treatment (animated conic-gradient border) ── */
 @property --sheen-angle {

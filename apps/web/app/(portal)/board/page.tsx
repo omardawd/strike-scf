@@ -7,7 +7,7 @@ import { useT } from '@/lib/i18n/locale-context'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import { FlowBoard } from '@/components/board/FlowBoard'
 import { TaskPanel } from '@/components/board/TaskPanel'
-import type { BoardData } from '@/components/board/types'
+import type { BoardColumn, BoardData } from '@/components/board/types'
 
 const VIEW_KEY = 'strike_board_view'
 
@@ -161,6 +161,21 @@ export default function BoardPage() {
     })
   }
 
+  async function handleReorderColumns(newOrder: BoardColumn[]) {
+    // Optimistic update — the reorder should feel instant while dragging.
+    setData(prev => prev ? { ...prev, columns: newOrder } : prev)
+    await Promise.all(
+      newOrder.map((c, i) =>
+        fetch(`/api/board/columns/${c.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ position: i }),
+        })
+      )
+    )
+    load()
+  }
+
   async function handleCreateEdge(fromColumnId: string, toColumnId: string) {
     if (!data) return
     const res = await fetch('/api/board/edges', {
@@ -188,10 +203,29 @@ export default function BoardPage() {
 
   return (
     <>
-      <Topbar
-        crumbs={[{ label: t('board.title') }]}
-        actions={
-          <div className="topbar-right" style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
+      <Topbar crumbs={[{ label: t('board.title') }]} />
+
+      <div
+        className="page"
+        style={{ maxWidth: 1280 }}
+        data-page-name="Board"
+        data-ai-context={JSON.stringify(aiContext)}
+      >
+        <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
+              {data?.board.name ?? t('board.title')}
+            </h1>
+            <p className="subtitle">
+              {data?.is_admin
+                ? 'Design your team\'s workflow and assign work — chat with Strike AI or edit it directly.'
+                : 'See where everything stands and what\'s assigned to you.'}
+            </p>
+          </div>
+
+          {/* Right next to the title, not buried in the topbar — this is
+              the board's own primary toolbar. */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative', flexShrink: 0 }}>
             <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-button)', overflow: 'hidden' }}>
               {(['kanban', 'flow'] as const).map(v => (
                 <button
@@ -230,24 +264,6 @@ export default function BoardPage() {
               </>
             )}
           </div>
-        }
-      />
-
-      <div
-        className="page"
-        style={{ maxWidth: 1280 }}
-        data-page-name="Board"
-        data-ai-context={JSON.stringify(aiContext)}
-      >
-        <div className="page-header">
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            {data?.board.name ?? t('board.title')}
-          </h1>
-          <p className="subtitle">
-            {data?.is_admin
-              ? 'Design your team\'s workflow and assign work — chat with Strike AI or edit it directly.'
-              : 'See where everything stands and what\'s assigned to you.'}
-          </p>
         </div>
 
         {error && (
@@ -258,27 +274,33 @@ export default function BoardPage() {
 
         {loading || !data ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--gray)' }}>{t('common.loading')}</div>
-        ) : view === 'kanban' ? (
-          <KanbanBoard
-            columns={data.columns}
-            tasks={data.tasks}
-            isAdmin={data.is_admin}
-            currentUserId={user?.id}
-            onMoveTask={handleMoveTask}
-            onDeleteColumn={handleDeleteColumn}
-            onOpenTask={setPanelTaskId}
-          />
         ) : (
-          <FlowBoard
-            columns={data.columns}
-            edges={data.edges}
-            tasks={data.tasks}
-            isAdmin={data.is_admin}
-            onMoveColumn={handleMoveColumn}
-            onCreateEdge={handleCreateEdge}
-            onDeleteEdge={handleDeleteEdge}
-            onOpenTask={setPanelTaskId}
-          />
+          <div style={{ position: 'relative' }}>
+            <div className="board-ambient" />
+            {view === 'kanban' ? (
+              <KanbanBoard
+                columns={data.columns}
+                tasks={data.tasks}
+                isAdmin={data.is_admin}
+                currentUserId={user?.id}
+                onMoveTask={handleMoveTask}
+                onDeleteColumn={handleDeleteColumn}
+                onOpenTask={setPanelTaskId}
+                onReorderColumns={handleReorderColumns}
+              />
+            ) : (
+              <FlowBoard
+                columns={data.columns}
+                edges={data.edges}
+                tasks={data.tasks}
+                isAdmin={data.is_admin}
+                onMoveColumn={handleMoveColumn}
+                onCreateEdge={handleCreateEdge}
+                onDeleteEdge={handleDeleteEdge}
+                onOpenTask={setPanelTaskId}
+              />
+            )}
+          </div>
         )}
       </div>
 
