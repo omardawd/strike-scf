@@ -928,6 +928,36 @@ the top 10 obvious results — see the broad-discovery + deep-qualification desi
     shortlisted, only 12 ever got extracted. Fixed by querying only the next
     `EXTRACT_BATCH_SIZE`-sized batch of remaining `status='shortlisted'` rows each call and
     checking completion via a fresh remaining-count query, not cursor-vs-length.
+  - **Directory/aggregator-page bug (fixed)**: the wholesale-bias fix above (directory-domain
+    queries every round) had a real side effect — Exa/Tavily's top hits for a domain-restricted
+    "wholesale X" query are very often the marketplace's OWN category/search-results page (e.g.
+    `alibaba.com/wholesale/sale-50-mixer.html`, `made-in-china.com/manufacturers/...`, a
+    globalsources "247 suppliers" listing, even an off-domain "Best X" blog listicle) rather than
+    one seller's product page. Confirmed live: an "electric whisk" search shortlisted 10
+    candidates, ALL of them aggregator/category pages, and extraction correctly found zero
+    coherent single-supplier facts on any of them — 0/10 extracted, job completed empty. A page
+    listing 50+ suppliers has no single price/MOQ to evidence-extract; this isn't an extraction
+    bug, it's a shortlisting bug that fed extraction pages it could never succeed on. Fixed with
+    two layers: (1) the shortlisting prompt now explicitly rejects aggregator/category/directory
+    pages even from good domains, and explicitly prefers an individual supplier's own page/subdomain
+    (`companyname.en.alibaba.com/product/...`) over the bare marketplace's own search/category URL;
+    (2) as a safety net if one still slips through, the extraction prompt now asks for up to 3
+    `directory_lead` fields (named companies actually mentioned on the page) instead of returning
+    nothing when it detects a listing/directory page. Re-tested live with the same failing query
+    after the fix: 20 shortlisted (only 1-2 borderline aggregators vs. 10/10 before), 11/20
+    extracted successfully, completed with named real US distributors and a correct
+    country-of-origin filter against the brief's "US-based" requirement.
+  - **`get_sourcing_search_status` couldn't show raw results (fixed)**: when a job completes with
+    zero qualified (`extracted`) candidates, the tool used to return only counts — so "show me the
+    candidates" had no real answer once qualification failed, and the model either claimed the data
+    "wasn't available for display" (it was, in the DB, just never surfaced) or invented a "run one
+    more round" option that doesn't exist for a `stage='completed'` job (no tool can resume a
+    finished job — a fresh `request_sourcing_search` call is the only real retry path). Fixed:
+    the tool now returns `unqualified_leads` (title/domain/url/snippet, capped at 15) whenever
+    `candidates_extracted` is 0, explicitly labeled as unverified leads, and a `resumable: boolean`
+    + `note` field that tells the model outright when a job is terminal so it stops offering to
+    extend it. The tool description was updated to require relaying `unqualified_leads` when
+    present rather than claiming no data exists.
   - **Atomic claim**: same pattern as `agent_negotiations.last_tick_at` — an `UPDATE ... WHERE
     claimed_at IS NULL OR claimed_at < now() - 20s` guards against two overlapping advances
     double-acting on one job.

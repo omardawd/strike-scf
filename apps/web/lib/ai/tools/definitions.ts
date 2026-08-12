@@ -528,7 +528,7 @@ const REQUEST_SOURCING_SEARCH = {
 
 const GET_SOURCING_SEARCH_STATUS = {
   name: 'get_sourcing_search_status',
-  description: 'Check the progress or read the outcome of a Strike Sourcing job started with request_sourcing_search. The live progress card already polls this automatically — only call this tool yourself if the user asks about status in plain chat outside that card.',
+  description: 'Check the progress or read the outcome of a Strike Sourcing job started with request_sourcing_search. The live progress card already polls this automatically — only call this tool yourself if the user asks about status in plain chat outside that card, or asks to see the actual candidates/results in the conversation. If the response includes unqualified_leads, relay them directly (title/domain/url) and label them clearly as unverified leads that were not evidence-qualified, not as vetted suppliers — never say the raw candidate list "isn\'t available", it\'s in this field when it exists. If resumable is false (a completed/failed job), do not offer to run another round or continue this same search — that isn\'t possible; instead offer a fresh request_sourcing_search call with broadened terms, or the other paths (PO request, marketplace search).',
   input_schema: {
     type: 'object',
     properties: { job_id: { type: 'string' } },
