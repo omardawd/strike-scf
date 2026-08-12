@@ -6,6 +6,7 @@ import type { ListingType } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { useT } from '@/lib/i18n/locale-context'
 import { emitToast } from '@/lib/toast-bus'
+import { RfxEditor } from '@/components/rfx/RfxEditor'
 
 interface LineItem {
   id: string
@@ -100,6 +101,9 @@ function NewListingPageInner() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const coverImageInputRef = useRef<HTMLInputElement>(null)
   const MAX_IMAGES = 3
+  const [activeEditor, setActiveEditor] = useState<'rfx' | 'invoice' | null>(null)
+  const [pendingRfxDraftId, setPendingRfxDraftId] = useState<string | null>(null)
+  const [pendingInvoiceDraftId, setPendingInvoiceDraftId] = useState<string | null>(null)
 
   useEffect(() => {
     const qNetworkId  = searchParams.get('network_id')
@@ -267,6 +271,17 @@ function NewListingPageInner() {
         }).catch(() => {})
       }
 
+      // Attach any drafted RFx/invoice (created before the listing existed,
+      // so it had no entity_id to attach to yet)
+      for (const draftId of [pendingRfxDraftId, pendingInvoiceDraftId]) {
+        if (!draftId) continue
+        await fetch(`/api/ai/rfx/${draftId}/attach`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity_id: listingId }),
+        }).catch(() => {})
+      }
+
       // Upload listing images (sequential — the API appends to an ordered array,
       // so parallel requests would race on the read-then-write).
       for (const file of imageFiles) {
@@ -352,6 +367,28 @@ function NewListingPageInner() {
                     {t('passport.productService')}
                     <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>— {t('newListing.iWantToSell')}</span>
                   </button>
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                  {listingType === 'po_request' && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 12 }}
+                      onClick={() => setActiveEditor('rfx')}
+                    >
+                      ✦ Draft RFx Now {pendingRfxDraftId && '(drafted)'}
+                    </button>
+                  )}
+                  {listingType === 'product_service' && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 12 }}
+                      onClick={() => setActiveEditor('invoice')}
+                    >
+                      ✦ Draft Invoice {pendingInvoiceDraftId && '(drafted)'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -878,6 +915,41 @@ function NewListingPageInner() {
           </div>
         </div>
       </div>
+
+      {activeEditor && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div className="card" style={{ maxWidth: 980, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="card-head">{activeEditor === 'invoice' ? 'Draft Invoice' : 'Draft RFx'}</div>
+            <div className="card-body">
+              <RfxEditor
+                entityType="listing"
+                docType={activeEditor}
+                context={{
+                  title: form.title || undefined,
+                  description: form.description || undefined,
+                  category: form.category || undefined,
+                  currency: form.currency,
+                  incoterms: form.incoterms || undefined,
+                  delivery_location: form.delivery_location || undefined,
+                  delivery_deadline: form.delivery_deadline || undefined,
+                  payment_terms: form.payment_terms || undefined,
+                  line_items: validLineItems.map(i => ({
+                    name: i.name, description: i.description || undefined,
+                    quantity: parseFloat(i.quantity), unit: i.unit || undefined,
+                    unit_price: parseFloat(i.unit_price), currency: form.currency,
+                  })),
+                }}
+                onFinalize={(draftId) => {
+                  if (activeEditor === 'invoice') setPendingInvoiceDraftId(draftId)
+                  else setPendingRfxDraftId(draftId)
+                  setActiveEditor(null)
+                }}
+                onCancel={() => setActiveEditor(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

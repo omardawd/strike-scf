@@ -4,6 +4,7 @@
 import React, { useState, useRef } from 'react'
 import type { FinancingContext } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
+import { RfxEditor } from '@/components/rfx/RfxEditor'
 
 function fmt(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
@@ -406,7 +407,7 @@ function GenericActionForm({ action, dealId, onSubmit, loading, error }: {
 
 // ── Contract Submit Form ──────────────────────────────────────────────────────
 
-type ContractPhase = 'form' | 'generating' | 'preview' | 'uploading'
+type ContractPhase = 'form' | 'generating' | 'preview' | 'uploading' | 'editor'
 
 function ContractSubmitForm({ dealId, onSubmit, loading }: {
   dealId: string
@@ -531,6 +532,24 @@ function ContractSubmitForm({ dealId, onSubmit, loading }: {
     )
   }
 
+  // ── Draft & Refine with AI ──
+  if (phase === 'editor') {
+    return (
+      <RfxEditor
+        entityType="deal"
+        entityId={dealId}
+        context={{}}
+        onFinalize={(_draftId, text, documentId) => {
+          if (!documentId) return
+          setPreviewDocId(documentId)
+          setPreviewText(text)
+          setPhase('preview')
+        }}
+        onCancel={() => setPhase('form')}
+      />
+    )
+  }
+
   // ── Upload mode ──
   if (showUpload) {
     return (
@@ -572,13 +591,22 @@ function ContractSubmitForm({ dealId, onSubmit, loading }: {
       <button className="btn btn-primary btn-sm" onClick={generatePreview}>
         Generate Contract with AI
       </button>
-      <button
-        className="btn btn-ghost btn-sm"
-        style={{ fontSize: 11, alignSelf: 'flex-start' }}
-        onClick={() => { setShowUpload(true); setError(null) }}
-      >
-        Upload your own document instead
-      </button>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: 11 }}
+          onClick={() => { setPhase('editor'); setError(null) }}
+        >
+          Draft & Refine with AI
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: 11 }}
+          onClick={() => { setShowUpload(true); setError(null) }}
+        >
+          Upload your own document instead
+        </button>
+      </div>
     </div>
   )
 }

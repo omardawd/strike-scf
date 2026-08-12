@@ -3,6 +3,7 @@
 // Shared between the financing detail page and the deal detail page (bank view).
 import React, { useState, useEffect } from 'react'
 import { calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
+import { RfxEditor } from '@/components/rfx/RfxEditor'
 
 function fmtAmt(n: number | null | undefined, currency = 'USD'): string {
   if (n == null) return '—'
@@ -114,7 +115,7 @@ export function FinancingManagementCard({
   const { requesterFee, bankFee } = calcFinancingFees(financingAmount)
   const netDisbursement = calcNetDisbursement(financingAmount, requesterFee)
   const [generating, setGenerating]   = useState(false)
-  const [contractMode, setContractMode] = useState<'ai' | 'upload'>('ai')
+  const [contractMode, setContractMode] = useState<'ai' | 'upload' | 'editor'>('ai')
   const [contractFile, setContractFile] = useState<File | null>(null)
   const [uploading, setUploading]     = useState(false)
   const [previewText, setPreviewText]   = useState<string>('')
@@ -314,11 +315,22 @@ export function FinancingManagementCard({
                       </button>
                     </div>
                   </div>
+                ) : contractMode === 'editor' ? (
+                  <RfxEditor
+                    entityType="deal"
+                    entityId={requestId}
+                    context={{}}
+                    onFinalize={(_draftId, text, documentId) => { if (documentId) { setPreviewDocId(documentId); setPreviewText(text) } }}
+                    onCancel={() => setContractMode('ai')}
+                  />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button type="button" className={`btn btn-sm ${contractMode === 'ai' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('ai')}>
                         AI Generate
+                      </button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setContractMode('editor')}>
+                        Draft & Refine with AI
                       </button>
                       <button type="button" className={`btn btn-sm ${contractMode === 'upload' ? 'btn-blue' : 'btn-ghost'}`} onClick={() => setContractMode('upload')}>
                         Upload PDF
