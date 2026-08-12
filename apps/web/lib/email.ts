@@ -315,6 +315,26 @@ export function dealAmendmentRespondedEmailHtml({ accepted, dealId, dealShortId 
   `)
 }
 
+export function dealWorkflowProposedEmailHtml({ buyerName, title, responsibleParty, dealId, dealShortId }: { buyerName: string; title: string; responsibleParty: string; dealId: string; dealShortId: string }) {
+  return dealEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">Workflow step proposed — Deal #${dealShortId}</h2>
+    <p style="color:#64748b;font-size:14px;line-height:1.7;margin:0 0 12px;"><strong>${buyerName}</strong> proposed a new checkpoint for your shared deal flow.</p>
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <div style="font-size:14px;font-weight:600;color:#0f172a;">${title}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:5px;">Responsible party: ${responsibleParty}</div>
+    </div>
+    ${dealCta(dealLink(dealId), 'Review workflow step →')}
+  `)
+}
+
+export function dealWorkflowRespondedEmailHtml({ title, accepted, dealId, dealShortId }: { title: string; accepted: boolean; dealId: string; dealShortId: string }) {
+  return dealEmailWrapper(`
+    <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">Workflow step ${accepted ? 'accepted' : 'declined'}</h2>
+    <p style="color:#64748b;font-size:14px;line-height:1.7;margin:0 0 20px;">The supplier has <strong>${accepted ? 'accepted' : 'declined'}</strong> “${title}” on Deal #${dealShortId}.</p>
+    ${dealCta(dealLink(dealId), 'View deal flow →')}
+  `)
+}
+
 export function dealPaymentOverdueEmailHtml({ recipientName, dealId, dealShortId, dueDate, isBuyer }: { recipientName: string; dealId: string; dealShortId: string; dueDate: string; isBuyer: boolean }) {
   return dealEmailWrapper(`
     <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;padding:14px 16px;margin-bottom:20px;">

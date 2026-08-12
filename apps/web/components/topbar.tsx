@@ -60,7 +60,7 @@ function NotifBell() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ read: true }),
       })
-    } catch {}
+    } catch { /* best-effort — UI already optimistically updates below */ }
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     setUnread(prev => Math.max(0, prev - 1))
   }

@@ -10,10 +10,10 @@ const adminClient = createAdmin(
 async function getBankIdForSupplier(orgId: string, client: typeof adminClient) {
   const { data: org } = await client
     .from('organizations')
-    .select('bank_id')
+    .select('primary_bank_id')
     .eq('id', orgId)
     .maybeSingle()
-  if (org?.bank_id) return org.bank_id
+  if (org?.primary_bank_id) return org.primary_bank_id
 
   const { data } = await client
     .from('program_enrollments')

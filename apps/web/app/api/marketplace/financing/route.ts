@@ -5,6 +5,7 @@ import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { CreateFinancingRequestPayload } from '@strike-scf/types'
 import { getVisibilityFilter } from '@/lib/networks/visibility'
 import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,18 +36,19 @@ export async function GET() {
 
     if (error) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
 
-    // TD.5 — ghost enforcement: NEVER surface a financing request whose REQUESTOR
-    // org is a ghost (network_visible=false) to a bank. Service role bypasses RLS,
-    // so this manual filter is required.
+    // Admission enforcement: NEVER surface a financing request whose REQUESTOR
+    // org isn't a fully approved, active org to a bank — network_visible alone
+    // (Ghost Mode) only means KYB was submitted, not approved. Service role
+    // bypasses RLS, so this manual filter is required.
     const requestorIds = [...new Set((rawRequests ?? []).map((r: any) => r.requesting_org_id as string).filter(Boolean))]
     const visibleRequestorIds = new Set<string>()
     if (requestorIds.length > 0) {
       const { data: requestorOrgs } = await adminClient
         .from('organizations')
-        .select('id, network_visible')
+        .select('id, status, kyb_status')
         .in('id', requestorIds)
       for (const o of requestorOrgs ?? []) {
-        if (o.network_visible === true) visibleRequestorIds.add(o.id)
+        if (isOrgAdmitted(o)) visibleRequestorIds.add(o.id)
       }
     }
     const requests = (rawRequests ?? []).filter((r: any) => visibleRequestorIds.has(r.requesting_org_id))
@@ -275,6 +277,15 @@ export async function POST(request: Request) {
 
   if (!ORG_ROLES.includes(me.role)) {
     return NextResponse.json({ error: 'Only organization members can request financing' }, { status: 403 })
+  }
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', me.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to request financing' }, { status: 403 })
   }
 
   let body: CreateFinancingRequestPayload

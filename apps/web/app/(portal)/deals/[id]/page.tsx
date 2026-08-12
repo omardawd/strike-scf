@@ -7,6 +7,7 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
+import { DealWorkflowPanel } from '@/components/deals/DealWorkflowPanel'
 import { FinancingManagementCard, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import { CountUp, Skeleton, SkeletonText } from '@/components/motion'
 import { createClient } from '@/lib/supabase/client'
@@ -19,7 +20,7 @@ import {
   type BankAccountForContext,
 } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
-import type { Deal, Organization, FinancingRequest, AmendmentRecord } from '@strike-scf/types'
+import type { Deal, Organization, FinancingRequest, AmendmentRecord, DealWorkflowStep } from '@strike-scf/types'
 import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 import { FINANCEABLE_STATUSES } from '@/lib/deals/transitions'
 import { useT } from '@/lib/i18n/locale-context'
@@ -430,6 +431,7 @@ export default function DealDetailPage() {
   const [aiDocs, setAiDocs] = useState<AiDoc[]>([])
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([])
   const [availableActions, setAvailableActions] = useState<AvailableAction[]>([])
+  const [workflowSteps, setWorkflowSteps] = useState<DealWorkflowStep[]>([])
   const [showFinancingForm, setShowFinancingForm] = useState(false)
   const [finType, setFinType] = useState('')
   const [finAmount, setFinAmount] = useState('')
@@ -459,11 +461,13 @@ export default function DealDetailPage() {
     Promise.all([
       fetch(`/api/deals/${id}`).then(r => r.json()),
       fetch(`/api/deals/${id}/available-actions`).then(r => r.json()).catch(() => ({ actions: [] })),
+      fetch(`/api/deals/${id}/workflow`).then(r => r.ok ? r.json() : ({ steps: [] })).catch(() => ({ steps: [] })),
     ])
-      .then(([dealData, actionsData]) => {
+      .then(([dealData, actionsData, workflowData]) => {
         if (dealData.error) setError(dealData.error)
         else setData(dealData)
         setAvailableActions(actionsData.actions ?? [])
+        setWorkflowSteps(workflowData.steps ?? [])
       })
       .catch(() => setError(t('dealDetail.failedToLoadDeal')))
       .finally(() => setLoading(false))
@@ -883,6 +887,7 @@ export default function DealDetailPage() {
   const recentActions = availableActions.filter(a => a.available).slice(0, 3).map(a => `- ${a.action}: ${a.description}`).join('\n')
   const aiContext = JSON.stringify({
     deal_id: shortId(deal.id),
+    deal_uuid: deal.id,
     status: deal.status,
     user_role,
     buyer: buyer_org?.legal_name ?? null,
@@ -925,6 +930,7 @@ export default function DealDetailPage() {
       dynamic_discounting: 'Anchor (buyer) pays supplier early in exchange for a discount on the invoice.',
     } : null,
     available_actions: availableActions.filter(a => a.available).map(a => ({ action: a.action, description: a.description })),
+    custom_workflow_steps: workflowSteps.map(step => ({ title: step.title, responsible_party: step.responsible_party, status: step.status, due_at: step.due_at })),
   })
 
   return (
@@ -971,6 +977,15 @@ export default function DealDetailPage() {
                 />
               </div>
             </div>
+
+            {user_role !== 'bank' && (
+              <DealWorkflowPanel
+                dealId={deal.id}
+                steps={workflowSteps}
+                currentUserRole={user_role}
+                onRefresh={load}
+              />
+            )}
 
             {/* Action Required — G4.2. For the bank, this section is replaced by the
                 financing management lifecycle (contract → disbursement → confirm receipt)

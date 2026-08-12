@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,6 +54,15 @@ export async function POST(request: Request) {
 
   if (me.role !== 'org_admin' || !me.org_id) {
     return NextResponse.json({ error: 'Only org admins can create networks' }, { status: 403 })
+  }
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', me.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to create a network' }, { status: 403 })
   }
 
   let body: { name?: string; description?: string; visibility_default?: string }

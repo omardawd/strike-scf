@@ -1,0 +1,146 @@
+# Strike SCF — Enterprise Readiness Roadmap
+
+Companion to [`ASSESSMENT.md`](./ASSESSMENT.md). Phases are sequential; items within a phase can run in parallel unless a dependency is noted. Effort estimates assume one senior full-stack engineer familiar with this codebase; they are planning inputs, not commitments.
+
+---
+
+## Phase 0 — Immediate containment (hours, not days)
+
+Goal: remove the handful of things that are actively unsafe *today*, with minimal code change and zero behavior change for real users.
+
+| # | Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|---|
+| 0.1 | Redact the real-looking Resend key in `.env.production.example`; replace with placeholder | — | File contains no credential-shaped value; grep for `re_` prefix returns nothing outside comments | 15 min |
+| 0.2 | Add gitignore exception so `.env.production.example` is actually tracked in git | 0.1 | `git ls-files` includes the file | 15 min |
+| 0.3 | Fix `/api/risk/score` cross-tenant write (add `org.bank_id !== me.bank_id` check for bank callers) | — | Manual test: bank A cannot POST a score for bank B's org (403) | 30 min |
+| 0.4 | Add `DEMO_ROUTES_ENABLED` env guard to all `/api/demo/*` routes, default off in production | — | With the flag unset/false, every demo route returns 404; with it true, existing behavior unchanged | 1 hr |
+| 0.5 | Document the (already-fixed) `rooms_private` RLS history in the assessment (done) and confirm no other policy has the same copy-paste bug | — | Grep of full migration set for `X.id = X.id`-shaped self joins returns only the known, superseded line | 30 min |
+
+**Total: ~3 hours.** No schema migration, no route contract changes, no behavior change for any real (non-demo, non-bank-admin-abusing) user.
+
+---
+
+## Phase 1 — Audit-ready engineering foundation
+
+Goal: the things a customer's security team will ask for directly. This is the bulk of the engagement.
+
+### 1.A Secrets & production isolation
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| Production env-validation module (fails fast/safe if required vars missing) | — | Boot with a missing required var → clear startup error, not a runtime 500 deep in a request | 2-3 hrs |
+| Document all credentials requiring rotation (Resend key; review dispatch tokens once hashed in 1.G) | 0.1 | A markdown list exists with rotation status per credential, no values in it | 1 hr |
+
+### 1.B CI/CD
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| `ci.yml`: install → migration/schema validation → typecheck → lint (against ratcheted baseline) → build, on PR + push to main | 1.C (for test step), lint baseline decision | Green on a clean PR; fails on a newly introduced type/lint error | 4-6 hrs |
+| Dependency scanning (Dependabot or `npm audit` gate) + secret scanning (gitleaks) + basic SAST (CodeQL) | — | Workflow runs on PR, minimum token permissions, no production secrets referenced | 2-3 hrs |
+| Concurrency cancellation for superseded PR runs | — | Pushing twice to the same PR cancels the first run | 15 min |
+
+### 1.C Testing foundation
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| Pick + wire up test tooling (Vitest for unit/API integration, Playwright for E2E) compatible with Next.js 16 | — | `npm test` runs locally and in CI against a local/ephemeral Supabase, not production | 3-4 hrs |
+| Local/ephemeral Supabase test target (fix `config.toml` absence, or a documented alternative like a dedicated test project) | 1.E (seed fix) | Tests never connect to the real project URL — enforced by an assertion in test setup, not just convention | 2-4 hrs |
+| Authorization-matrix test suite — the 12 categories in the engagement brief (unauthenticated access, inactive users, role enforcement, tenant isolation for bank/org/deal/room/document, admin actions, invitation tokens, cron-secret validation, AI tool authorization, external dispatch, demo-route isolation) | 1.D (helpers), 1.C tooling | Every category has at least one passing test proving tenant A cannot touch tenant B's data; risk-score fix (0.3) has a regression test | 2-3 days (largest single item in Phase 1) |
+
+### 1.D Authorization architecture
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| ✅ Centralized `requireSession()`/`requireRole()` + typed `SessionContext` (`lib/auth/session.ts`, `lib/auth/require.ts`) | — | Unit-tested; also closes a previously-undocumented gap where no route checked `users.is_active` — a deactivated user's Supabase session still worked everywhere. `getSessionContext()` now treats `is_active=false` as unauthenticated by construction, so every route that migrates to it gets this for free. | Done |
+| ✅ (partial) Resource-level authorization helpers (`lib/auth/resource-access.ts`): `canAccessOwnOrganization`, `canBankAccessOrganization` (the exact P0-1/P0-6 comparison, centralized), `canAccessOwnBank`, `canAccessDealParty`, `bankCanAccessOrgById` | above | Each has positive + negative unit tests | Done for these 5; listing/room/document/financing_request/transaction/program/network helpers not yet added |
+| ✅ (2 of ~161 routes) Migrated `app/api/risk/score` and `app/api/kyb/[org_id]/decision` to the new helpers | above | Behavior-identical (existing tests still pass) + the inactive-user gate now applies to both; NOT a mass rewrite | Done for these 2 |
+| Inventory of routes still on manual auth | above | 161 total route files in `app/api/**`; 2 migrated in this engagement (the ones directly tied to the P0-1 fix, chosen to double as the pattern's proof-of-concept). The remaining ~159 still use the inline `getUser()` → admin lookup → role check pattern, which is correct today per the sampled audit but has no structural safety net (ASSESSMENT.md P1-3). Migrate in small batches per domain (start with `bank_accounts`, `documents/[id]/url`, `admin/*`, `agents/tasks/*` — all named in the original brief as high-risk) rather than all at once, each batch with its own test coverage before merging. | Ongoing, tracked here rather than a separate file since the count/list changes as routes are added |
+
+### 1.E Database & RLS
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| Table/policy inventory doc (derived from the P1-1 findings) | — | Every table has a documented RLS status | done as part of ASSESSMENT.md; formalize in CONTROL_MATRIX |
+| New forward-only migration adding policies to the 11 zero-policy tables | — | `supabase db reset` (once seed is fixed) leaves no table RLS-enabled-with-zero-policies, verified by a script | 1 day |
+| Fix `seed.sql` enum drift (org status, risk_tier, financing_types, transaction status) | — | Fresh `supabase db reset` completes without error | 3-4 hrs |
+| Prove fresh local environment reproducibility | above two | Documented, repeatable command sequence; CI runs it (ties into 1.B) | included above |
+| DB-level tests for the fixed `rooms_private`-style policies and the new 11-table policies | 1.C | pgTAP or equivalent test proving cross-tenant SELECT/UPDATE denied | 1 day |
+
+### 1.F Abuse prevention
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| ✅ Replace in-memory rate limiter with Upstash Redis (or equivalent) behind a small provider abstraction with safe fallback | — | `lib/rate-limit.ts` rewritten: uses Upstash REST API when `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are set, fails open on Upstash errors, falls back to the original in-memory counter (documented as dev-only) when unconfigured. `lib/request-ip.ts` added for unauthenticated-route keying. | Done |
+| ✅ (partial) Apply limits to: auth/register, invitations, ai/chat, ai/documents, ai/upload, ai/dispatch, deals/extract, marketplace/listings/extract, organizations/search | above | All 9 return `429` + `Retry-After`, keyed by user id / org id (dispatch) / client IP (register) — never a client-supplied header | Done for these 9 |
+| Remaining rollout: uploads outside `ai/upload` (kyb/documents, transactions/documents, collateral, onboarding/documents, deal/listing document uploads), `reporting/route.ts` and other expensive-report endpoints, remaining AI tool-execution paths (`ai/insight`, `ai/tools/execute`) | above | Same 429 pattern applied; tracked here as the explicit remaining punch list rather than left implicit | 3-4 hrs |
+| Request-body and upload-size limits at the framework level (not just per-route ad hoc) | — | A route with no explicit check still rejects oversized bodies | 3-4 hrs |
+
+### 1.G External AI dispatch hardening
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| Threat model doc for `/api/ai/dispatch` | — | Written doc: assets, actors, trust boundary, accepted risks | Not done as a standalone doc — captured inline in ASSESSMENT.md P0-4/this table instead; a dedicated doc is still worth writing for Track K |
+| ✅ Hash dispatch tokens at rest (prefix + digest lookup pattern), migration + route rewrite | 1.E migration pattern | `dispatch_token_hash`/`dispatch_token_prefix` added, backfilled from existing tokens (no forced reconnect), `app/api/ai/dispatch` validates by hash; raw token returned only once, from `erp/connect`'s connect/rotate response | Done |
+| ✅ Add `expires_at`, `scopes`, revocation support | above | Columns added, `isDispatchTokenValid()`/`dispatchTokenHasScope()` unit-tested. Expiry/revocation are enforced in the dispatch route today; **scope enforcement is not yet wired into tool execution** — every existing/new token defaults to `'*'` (unrestricted), matching current behavior, so this is a schema+helper foundation, not yet a behavior change | Foundation done; wiring scope checks into `executeTool()` is the next increment (~4 hrs) |
+| ✅ Rate limiting + replay/idempotency protection + request validation | 1.F | 20 req/min per org (Track F); `Idempotency-Key` header reuse within 5 minutes → 409 | Done |
+| ✅ Restrict CORS to configured origins where browser use is required | — | `DISPATCH_ALLOWED_ORIGINS` allowlist, empty by default (no CORS headers at all) — verified the endpoint's actual current callers (native apps, server-to-server webhooks, the same-origin `/dispatch` page) need none | Done |
+| Append-only audit events for every dispatch call | 1.J | Every dispatch invocation produces an `agent_actions`-style row, tool-scoped — today it logs to `agent_actions` same as before this engagement; the richer canonical schema is Track J | Deferred to 1.J |
+| Tests proving a token can't operate outside its org/scopes | 1.C | 12 unit tests on the token helpers (generation, hashing, expiry, revocation, scope logic); an end-to-end route-level test (mocked Supabase, like `risk/score/route.test.ts`) is not yet written | Partial — helper-level tests done, route-level test is a follow-up |
+| Purge the legacy plaintext `dispatch_token` column | above | A follow-up migration drops the column once confirmed no row still relies on it (the hardening migration intentionally kept it nullable rather than dropping it immediately) | Not started — see the hardening migration's own comment |
+
+### 1.H Observability foundation
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| Structured server logger with redaction (credentials, tokens, financial account data, document contents) | — | Logger module exists, redaction unit-tested against known-sensitive field names | 1 day |
+| Request/correlation IDs propagated through API responses and logs | above | A single request's ID appears in all logs it generates | 4-6 hrs |
+| `/api/health` + `/api/ready` (no secrets revealed) | — | Both return 200 with minimal, non-sensitive payload | 2 hrs |
+| Disabled-by-default error-tracking abstraction (e.g. Sentry) | — | With no config, zero external calls made (verified by test); with config, errors report | 4 hrs |
+| Documented recommended alerts + log-retention settings | above | Doc exists, references actual Vercel/Supabase capabilities from the manual checklist | 2 hrs |
+
+### 1.I Security hardening
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| CSP: document a safe path to remove `unsafe-eval` and reduce `unsafe-inline`; execute the parts that are safe now | — | Doc + at least a first incremental tightening if verifiably safe; no behavior regression | 4-6 hrs (doc) + variable (execution, may extend into Phase 2) |
+| ✅ Shared upload-validation helper (`lib/uploads/validate.ts`: size, MIME allowlist, filename sanitization, malware-scan extension point) applied to the 3 previously-unsanitized routes | — | Those 3 routes (`onboarding/documents`, `transactions/[id]/documents`, `collateral/[id]`) now sanitize filenames and enforce a 20MB cap; unit-tested | Done for 3 of 12 |
+| Roll the same helper out to the remaining 9 upload routes for consistent size/MIME enforcement | above | Each route uses `validateUpload()`/`sanitizeFilename()` instead of ad hoc or missing checks | 4-6 hrs |
+| Malware-scanning integration point (interface + no-op default, real provider deferred) | above | A clear extension point exists; documented as Phase 2/3 to actually wire a scanner | 3-4 hrs |
+| CORS/SSRF/redirect/signed-URL/caching/error-response review | — | Findings folded into CONTROL_MATRIX; any quick fixes applied, larger ones scheduled | 1 day review |
+| `SECURITY.md` + disclosure documentation | — | Exists, honest, no false claims | 2 hrs |
+
+### 1.J Audit trails & AI governance
+| Item | Depends on | Acceptance criteria | Effort |
+|---|---|---|---|
+| ✅ Canonical append-only audit-event schema (actor, tenant, action, target, timestamp, request ID, source, outcome, safe before/after) | 1.E migration pattern | `audit_events` table (migration `00000000000045`); no document bodies/full bank details/secrets stored in it — enforced by convention in `lib/audit/log.ts`'s callers, not by a DB constraint (a future improvement could add a check constraint or column allowlist) | Done |
+| ✅ (3 of ~10 categories) Wire audit writes into: `users.is_active` changes, document access (both granted and denied), `bank_accounts` creation | above | Each has a passing unit test | Done for these 3 |
+| Remaining categories: role changes (no route mutates an existing user's `role` today — confirmed via grep, so this is a non-issue until such a route exists), new-team-member role assignment, org-initiated KYB transitions, credit overrides, `bank_accounts` edit/delete, contracts, offers, disbursements, repayments, external dispatch (still logs to `agent_actions` only), AI tool actions (same) | above | Each category gets at least one `writeAuditEvent()` call + test | 2-3 days |
+| ✅ Ensure audit writes cannot silently disappear | above | A `BEFORE UPDATE/DELETE` trigger on `audit_events` raises unconditionally — verified locally to reject even a superuser mutation, not just an RLS-scoped one (RLS is bypassable by the service-role client used everywhere in this app; a trigger is not). A failed *insert* is logged at error level and reported via `lib/error-tracking.ts`, never silently swallowed. | Done |
+| Document model/version, tool use, input provenance, output, human decision, override reason for AI actions | 1.G, 1.J schema | `agent_actions` rows for AI tool calls carry `model`/`tokens_used` today; richer provenance (input/output summaries beyond what's already there, explicit override-reason field) is not yet added | Not started |
+
+### 1.K Operational documentation
+All items in the engagement brief's list (`SECURITY.md`, `docs/security/*.md` ×7, `docs/runbooks/*.md` ×3). These are largely independent of code work and can run in parallel with 1.A–1.J. Each must be an honest operating document with named owner placeholders and evidence requirements, not a claim that controls are live. **Effort: 1-2 days total for a first honest draft of all 12 documents; they will need real owners assigned by Strike, not by this engagement.**
+
+---
+
+## Phase 2 — Pilot readiness
+
+Triggered once Phase 1 is merged and a real pilot customer is being onboarded. Not built in this engagement; listed for sequencing.
+
+- Route the remaining manually-authorized API routes through the Phase 1 authorization helpers (using the Phase 1 inventory as the punch list), in small batches with tests per batch.
+- Real malware-scanning integration (ClamAV or a managed scanning API) behind the Phase 1 extension point.
+- MFA (Supabase Auth TOTP) enablement for bank/admin roles at minimum.
+- CSP tightening execution (remove `unsafe-eval`; move toward nonce-based inline scripts).
+- Real distributed rate-limit tuning based on actual pilot traffic patterns.
+- First tested backup/restore drill (`docs/runbooks/DATABASE_RESTORE_TEST.md` executed for real, not just documented).
+- Vendor DPA collection for all subprocessors (Supabase, Vercel, Anthropic, Resend, Tavily) — legal/ops task, not engineering, but blocks a real audit.
+
+## Phase 3 — SOC 2 operational maturity
+
+Not started in this engagement — listed to show the destination the roadmap is heading toward.
+
+- Formal change-management process (this roadmap's Phase 1 CI is the technical prerequisite; the *process* — required reviews, deploy approvals — is largely a GitHub branch-protection + Vercel settings exercise, tracked in the manual checklist).
+- Continuous vulnerability management cadence (scheduled dependency/SAST scans already exist from Phase 1; SOC 2 needs a documented remediation SLA on top).
+- Incident response drills against `docs/security/INCIDENT_RESPONSE.md`.
+- Access reviews (quarterly review of who has bank/org/admin roles — a process, not code).
+- Formal SOC 2 Type I readiness assessment with an external auditor once the above is operating, not just documented.
+
+---
+
+## Sequencing notes
+
+- **1.D (authz helpers) should land before 1.C's authorization-matrix tests are written against migrated routes**, but the *unmigrated* routes' tests can be written first against current behavior — don't block all testing on the helper migration.
+- **1.E's seed fix blocks 1.C's local test environment** — do this early, it's small (3-4 hrs) and unblocks the largest item in the phase.
+- **1.G (AI dispatch hardening) is the single largest Phase 1 track** — consider running it partially in parallel with 1.F (rate limiting) since they share almost no code surface.
+- **1.K (docs) has no code dependencies** — assign to run fully in parallel with everything else.

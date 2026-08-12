@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, networkSupplierJoinedEmailHtml } from '@/lib/email'
 import { syncNetworkRoomParticipants } from '@/lib/networks/room-sync'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,6 +29,15 @@ export async function POST(
 
   if (!['org_admin', 'org_member'].includes(me.role) || !me.org_id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', me.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to join a network' }, { status: 403 })
   }
 
   const { data: membership } = await adminClient

@@ -6,6 +6,7 @@ import { usePortal } from '@/lib/portal-context'
 import { useLocale } from '@/lib/i18n/locale-context'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { parseAiChatStream } from '@/lib/ai/stream-client'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -111,6 +112,7 @@ export function AIOverlay() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [toolStatus, setToolStatus] = useState<string | null>(null)
   const [pageName, setPageName] = useState('this page')
 
   // Draggable position — stored as { top, left } once dragged, null = use default bottom-right
@@ -193,6 +195,7 @@ export function AIOverlay() {
     setPageName(pn)
     setInput('')
     setLoading(true)
+    setToolStatus(null)
 
     const userMsg: Message = { role: 'user', content: trimmed, timestamp: new Date().toISOString() }
     const nextMessages = [...messages, userMsg]
@@ -200,6 +203,7 @@ export function AIOverlay() {
 
     const systemPrompt = buildSystemPrompt(pn, contextData, userName, portal, user?.org_id ?? null)
 
+    let assistantTimestamp: string | null = null
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -212,6 +216,7 @@ export function AIOverlay() {
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 1024,
           locale,
+          stream: true,
         }),
       })
       if (res.status === 429) {
@@ -222,13 +227,35 @@ export function AIOverlay() {
         setMessages(prev => [...prev, { role: 'assistant', content: 'Strike AI is temporarily unavailable. Please try again.', timestamp: new Date().toISOString() }])
         return
       }
-      const data: { content?: { type: string; text?: string }[] } = await res.json()
-      const reply = data.content?.find(b => b.type === 'text')?.text ?? data.content?.[0]?.text ?? 'No response'
-      setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: new Date().toISOString() }])
+      const replyTime = new Date().toISOString()
+      assistantTimestamp = replyTime
+      setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: replyTime }])
+      let reply = ''
+      await parseAiChatStream(res, {
+        onText(delta) {
+          reply += delta
+          setMessages(prev => prev.map(message =>
+            message.timestamp === replyTime ? { ...message, content: reply } : message
+          ))
+        },
+        onToolStart(name) {
+          setToolStatus(`Using ${name.replace(/_/g, ' ')}…`)
+        },
+      })
+      if (!reply) {
+        setMessages(prev => prev.map(message =>
+          message.timestamp === replyTime ? { ...message, content: 'No response' } : message
+        ))
+      }
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Strike AI is temporarily unavailable. Please try again.', timestamp: new Date().toISOString() }])
+      const errorMessage = { role: 'assistant' as const, content: 'Strike AI is temporarily unavailable. Please try again.', timestamp: new Date().toISOString() }
+      setMessages(prev => assistantTimestamp
+        ? prev.map(message => message.timestamp === assistantTimestamp ? errorMessage : message)
+        : [...prev, errorMessage]
+      )
     } finally {
       setLoading(false)
+      setToolStatus(null)
     }
   }, [loading, messages, portal, userName, locale])
 
@@ -387,6 +414,7 @@ export function AIOverlay() {
                       animation: `ai-dot-pulse 1.2s ease-in-out ${d * 0.15}s infinite`,
                     }} />
                   ))}
+                  {toolStatus && <span style={{ fontSize: 10, color: 'var(--gray)', marginLeft: 3 }}>{toolStatus}</span>}
                 </div>
               </div>
             )}

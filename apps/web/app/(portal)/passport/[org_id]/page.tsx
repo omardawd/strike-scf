@@ -358,7 +358,7 @@ export default function PublicPassportPage() {
       loadNarrative()
       logView()
     }
-  }, [data, loadNarrative, logView]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, loadNarrative, logView])
 
   const org = data?.organization ?? null
   const dba =

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, transactionStatusEmailHtml } from '@/lib/email'
+import { sanitizeFilename, validateUpload } from '@/lib/uploads/validate'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -156,7 +157,12 @@ export async function PATCH(
 
     // Upload supporting document to the existing transaction-documents bucket
     if (uploadedFile) {
-      const storagePath = `collateral/${id}/${uploadedFile.name}`
+      const uploadCheck = validateUpload(uploadedFile)
+      if (!uploadCheck.ok) {
+        return NextResponse.json({ error: uploadCheck.error }, { status: 400 })
+      }
+
+      const storagePath = `collateral/${id}/${sanitizeFilename(uploadedFile.name)}`
       const arrayBuffer = await uploadedFile.arrayBuffer()
       const { error: uploadError } = await adminClient.storage
         .from('transaction-documents')

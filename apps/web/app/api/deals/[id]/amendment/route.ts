@@ -6,6 +6,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail, dealAmendmentProposedEmailHtml, dealAmendmentRespondedEmailHtml } from '@/lib/email'
 import type { AmendmentRecord } from '@strike-scf/types'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,6 +50,12 @@ export async function POST(
   if (!['confirmed', 'in_preparation', 'active'].includes(deal.status)) {
     return NextResponse.json({ error: `Amendments are only available at confirmed or in_preparation status. Current: ${deal.status}` }, { status: 400 })
   }
+
+  // Proposing an amendment changes/expands the agreed deal — an optional
+  // action, unlike fulfilling the deal as already agreed. See lib/deals/
+  // admission-policy.ts.
+  const admissionError = await assertOrgCanExpandDeal(adminClient, userData.org_id, 'propose a deal amendment')
+  if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
 
   // Block if there's already a pending amendment
   const history: AmendmentRecord[] = Array.isArray(deal.amendment_history) ? deal.amendment_history : []
@@ -162,6 +169,14 @@ export async function PATCH(
   const { amendment_id, response } = body as { amendment_id: string; response: 'accepted' | 'rejected' }
   if (!amendment_id) return NextResponse.json({ error: 'amendment_id required' }, { status: 400 })
   if (!['accepted', 'rejected'].includes(response)) return NextResponse.json({ error: 'response must be accepted or rejected' }, { status: 400 })
+
+  // Rejecting an amendment declines an optional change — always allowed
+  // (same principle as offer withdraw/reject). Accepting one changes the
+  // deal's agreed terms, so it requires admission like proposing one does.
+  if (response === 'accepted') {
+    const admissionError = await assertOrgCanExpandDeal(adminClient, userData.org_id, 'accept a deal amendment')
+    if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
+  }
 
   const history: AmendmentRecord[] = Array.isArray(deal.amendment_history) ? deal.amendment_history : []
   const amendIdx = history.findIndex(a => a.id === amendment_id)

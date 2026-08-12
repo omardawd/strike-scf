@@ -55,7 +55,7 @@ export async function POST() {
   const { data: kybOrgs } = await adminClient
     .from('organizations')
     .select('id, legal_name, kyb_submitted_at')
-    .eq('bank_id', bankId)
+    .eq('primary_bank_id', bankId)
     .eq('kyb_status', 'submitted')
     .lt('kyb_submitted_at', new Date(Date.now() - 7 * 86_400_000).toISOString())
 

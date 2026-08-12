@@ -208,7 +208,12 @@ export async function postUserMessage(
       break
     }
 
-    const result = await executeTool(toolUse.name, toolUse.input)
+    // orgId here is postUserMessage's own parameter, already validated
+    // against rootTask.org_id above — the one trustworthy identity for this
+    // chat turn, never whatever org id a tool_input might otherwise claim.
+    const result = await executeTool(toolUse.name, toolUse.input, {
+      actor: { userId: 'agent-task-chat', orgId, bankId: null },
+    })
     anthropicMessages.push({ role: 'assistant', content: responseContent })
     anthropicMessages.push({
       role: 'user',

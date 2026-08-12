@@ -1,7 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { KybStatus, OrgStatus, RiskTier } from '@strike-scf/types'
+import { requireRole, forbidden, notFound } from '@/lib/auth/require'
+import { BANK_ROLES } from '@/lib/auth/session'
+import { canBankAccessOrganization } from '@/lib/auth/resource-access'
 
 type CreditDecision = 'approved' | 'override_approved' | 'more_info_requested' | 'rejected' | 'pending_countersign'
 import { sendEmail, kybApprovalEmailHtml, kybRejectionEmailHtml } from '@/lib/email'
@@ -26,28 +28,24 @@ export async function POST(
 ) {
   const { org_id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireRole(BANK_ROLES)
+  if (!auth.ok) return auth.response
+  const { context } = auth
 
   const { data: me } = await adminClient
     .from('users')
-    .select('id, role, bank_id, full_name')
-    .eq('id', user.id)
+    .select('full_name')
+    .eq('id', context.userId)
     .single()
-
-  if (!me || (me.role !== 'bank_admin' && me.role !== 'bank_credit_officer')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { data: org } = await adminClient
     .from('organizations')
-    .select('id, bank_id, credit_score, risk_tier')
+    .select('id, primary_bank_id, credit_score, risk_tier')
     .eq('id', org_id)
     .single()
 
-  if (!org) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (org.bank_id !== me.bank_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!org) return notFound()
+  if (!canBankAccessOrganization(context, org.primary_bank_id)) return forbidden()
 
   let body: DecisionBody
   try {
@@ -117,8 +115,8 @@ export async function POST(
     const decisionInsert: Record<string, unknown> = {
       org_id,
       decision,
-      decided_by_user_id: user.id,
-      decided_by_user_name: me.full_name ?? null,
+      decided_by_user_id: context.userId,
+      decided_by_user_name: me?.full_name ?? null,
       score_at_decision: scoreValue,
       risk_tier_at_decision: tierValue,
       override_reason: override_reason ?? null,
@@ -222,7 +220,7 @@ export async function POST(
           if (existingEnroll) {
             const { error: updateErr } = await adminClient
               .from('program_enrollments')
-              .update({ status: 'active', anchor_org_id: anchorOrgId, enrolled_by_user_id: user.id })
+              .update({ status: 'active', anchor_org_id: anchorOrgId, enrolled_by_user_id: context.userId })
               .eq('id', existingEnroll.id)
             if (updateErr) console.error('Enrollment update error:', updateErr)
           } else {
@@ -233,7 +231,7 @@ export async function POST(
                 org_id,
                 anchor_org_id:       anchorOrgId,
                 status:              'active',
-                enrolled_by_user_id: user.id,
+                enrolled_by_user_id: context.userId,
               })
             if (insertErr) console.error('Enrollment insert error:', insertErr)
           }

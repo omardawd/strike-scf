@@ -15,9 +15,16 @@
 -- UUIDs are hardcoded ONLY here (seed files are the sanctioned exception).
 -- Atlas Bank uses NEXT_PUBLIC_DEV_BANK_ID so the dev env lines up out of the box.
 --
--- NOTE: This seed targets the schema documented in apps/web/CLAUDE.md. It has not
--- been executed against the live DB (see BLOCKED.md / T1.2 — no DB access yet).
+-- NOTE: This seed targets the schema documented in apps/web/CLAUDE.md.
 -- It is idempotent where practical (ON CONFLICT) so it is safe to re-run.
+-- Enum values here are checked against the live enum definitions in
+-- 00000000000000_baseline_schema.sql (org_status, risk_tier, financing_type,
+-- transaction_status) — earlier versions of this file used values that don't
+-- exist in those enums (e.g. organizations.status='approved', risk_tier
+-- letter grades 'A'/'B'/'C', financing_types 'factoring'/'open', and five
+-- invalid transactions.status values), which made `supabase db reset` fail
+-- on the very first INSERT. Fixed 2026-08-09 — see docs/enterprise-readiness/
+-- ASSESSMENT.md P1-2 for the full drift list.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -68,7 +75,7 @@ ON CONFLICT (id) DO NOTHING;
 -- 2. Organizations  (1 anchor/buyer + 2 suppliers)
 -- ---------------------------------------------------------------------------
 INSERT INTO public.organizations (
-  id, bank_id, type, status, legal_name, doing_business_as, ein, business_type,
+  id, primary_bank_id, type, status, legal_name, doing_business_as, ein, business_type,
   state_of_incorporation, address_line1, city, state, zip,
   years_in_operation, annual_revenue_range, industry_naics,
   primary_contact_name, primary_contact_title, primary_contact_phone, primary_contact_email,
@@ -76,9 +83,9 @@ INSERT INTO public.organizations (
   network_visible, passport_score, created_at, updated_at
 )
 VALUES
-  ('1a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'anchor',   'approved', 'Pacific Dynamics Inc.',      'Pacific Dynamics',      '47-1234567', 'corporation', 'DE', '500 Harbor Blvd',     'San Francisco', 'CA', '94105', 18, '$500M-$1B', '333120', 'Maria Delgado', 'VP Procurement', '+1-415-555-0101', 'buyer@pacific.dev',      'approved', 88, 'A', 'US', true, 88, now(), now()),
-  ('1b000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'supplier', 'approved', 'Westcoast Fabricators LLC',  'Westcoast Fabricators', '47-2345678', 'llc',         'CA', '1200 Industrial Way', 'Oakland',       'CA', '94607', 12, '$10M-$50M',  '332710', 'Rachel Wong',   'CFO',            '+1-510-555-0102', 'supplier@westcoast.dev', 'approved', 76, 'B', 'US', true, 79, now(), now()),
-  ('1b000000-0000-0000-0000-000000000002', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'supplier', 'approved', 'Coastal Suppliers Co.',      'Coastal Suppliers',     '47-3456789', 'corporation', 'WA', '88 Marine Dr',        'Seattle',       'WA', '98101', 7,  '$1M-$10M',   '423510', 'Mike Alvarez',  'Owner',          '+1-206-555-0103', 'supplier@coastal.dev',   'approved', 64, 'C', 'US', true, 67, now(), now())
+  ('1a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'anchor',   'active', 'Pacific Dynamics Inc.',      'Pacific Dynamics',      '47-1234567', 'corporation', 'DE', '500 Harbor Blvd',     'San Francisco', 'CA', '94105', 18, '$500M-$1B', '333120', 'Maria Delgado', 'VP Procurement', '+1-415-555-0101', 'buyer@pacific.dev',      'approved', 88, 'green', 'US', true, 88, now(), now()),
+  ('1b000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'supplier', 'active', 'Westcoast Fabricators LLC',  'Westcoast Fabricators', '47-2345678', 'llc',         'CA', '1200 Industrial Way', 'Oakland',       'CA', '94607', 12, '$10M-$50M',  '332710', 'Rachel Wong',   'CFO',            '+1-510-555-0102', 'supplier@westcoast.dev', 'approved', 76, 'amber', 'US', true, 79, now(), now()),
+  ('1b000000-0000-0000-0000-000000000002', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', 'supplier', 'active', 'Coastal Suppliers Co.',      'Coastal Suppliers',     '47-3456789', 'corporation', 'WA', '88 Marine Dr',        'Seattle',       'WA', '98101', 7,  '$1M-$10M',   '423510', 'Mike Alvarez',  'Owner',          '+1-206-555-0103', 'supplier@coastal.dev',   'approved', 64, 'red', 'US', true, 67, now(), now())
 ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -112,7 +119,7 @@ VALUES (
   'ff1a209f-aa2a-471c-95c8-9d01018cdecd',
   '0a000000-0000-0000-0000-000000000001',
   'Pacific Dynamics Supplier Finance',
-  ARRAY['reverse_factoring','factoring','po_financing','open'],
+  ARRAY['reverse_factoring','invoice_factoring','po_financing','dynamic_discounting']::financing_type[],
   25000000, 5000000, 10000, 2000000,
   90, 60, 'USD', true,
   'active', now(), now(), now()
@@ -143,16 +150,16 @@ INSERT INTO public.transactions (
 )
 VALUES
   ('3a000000-0000-0000-0000-000000000001', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'draft',                                'INV-0001', now() - interval '5 days',  now() + interval '55 days', 50000,  50000,  NULL,   NULL, 60, NULL,                       'Machined steel brackets',    now(), now()),
-  ('3a000000-0000-0000-0000-000000000002', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_anchor_initiation',            'INV-0002', now() - interval '6 days',  now() + interval '54 days', 75000,  75000,  NULL,   NULL, 60, NULL,                       'Industrial fasteners',       now(), now()),
+  ('3a000000-0000-0000-0000-000000000002', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_anchor_approval',              'INV-0002', now() - interval '6 days',  now() + interval '54 days', 75000,  75000,  NULL,   NULL, 60, NULL,                       'Industrial fasteners',       now(), now()),
   ('3a000000-0000-0000-0000-000000000003', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_anchor_approval',              'INV-0003', now() - interval '7 days',  now() + interval '53 days', 120000, 120000, NULL,   NULL, 60, NULL,                       'CNC-milled housings',        now(), now()),
   ('3a000000-0000-0000-0000-000000000004', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_anchor_confirmation',          'INV-0004', now() - interval '8 days',  now() + interval '52 days', 90000,  90000,  NULL,   NULL, 60, NULL,                       'Packaging materials',        now(), now()),
   ('3a000000-0000-0000-0000-000000000005', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_bank_review',                  'INV-0005', now() - interval '9 days',  now() + interval '51 days', 200000, 200000, NULL,   NULL, 60, NULL,                       'Precision bearings',         now(), now()),
-  ('3a000000-0000-0000-0000-000000000006', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'more_info_requested',                  'INV-0006', now() - interval '10 days', now() + interval '50 days', 60000,  60000,  NULL,   NULL, 60, NULL,                       'Raw aluminum stock',         now(), now()),
-  ('3a000000-0000-0000-0000-000000000007', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'financing_approved_pending_collateral','INV-0007', now() - interval '12 days', now() + interval '48 days', 150000, 150000, 135000, 8.5,  60, now() + interval '60 days', 'Welded subassemblies',       now(), now()),
+  ('3a000000-0000-0000-0000-000000000006', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'pending_bank_review',                  'INV-0006', now() - interval '10 days', now() + interval '50 days', 60000,  60000,  NULL,   NULL, 60, NULL,                       'Raw aluminum stock',         now(), now()),
+  ('3a000000-0000-0000-0000-000000000007', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'financing_approved',                   'INV-0007', now() - interval '12 days', now() + interval '48 days', 150000, 150000, 135000, 8.5,  60, now() + interval '60 days', 'Welded subassemblies',       now(), now()),
   ('3a000000-0000-0000-0000-000000000008', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'financing_approved',                   'INV-0008', now() - interval '13 days', now() + interval '47 days', 180000, 180000, 162000, 8.5,  60, now() + interval '60 days', 'Coastal logistics services', now(), now()),
   ('3a000000-0000-0000-0000-000000000009', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'funded',                               'INV-0009', now() - interval '20 days', now() + interval '40 days', 110000, 110000, 99000,  7.9,  60, now() + interval '40 days', 'Sheet metal enclosures',     now(), now()),
-  ('3a000000-0000-0000-0000-000000000010', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'po_financing',      true, 'pending_delivery_confirmation',        'INV-0010', now() - interval '21 days', now() + interval '39 days', 95000,  95000,  85500,  8.2,  60, now() + interval '39 days', 'PO: marine hardware',        now(), now()),
-  ('3a000000-0000-0000-0000-000000000011', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'delivery_confirmed',                   'INV-0011', now() - interval '25 days', now() + interval '35 days', 130000, 130000, 117000, 8.0,  60, now() + interval '35 days', 'Assembled control panels',   now(), now()),
+  ('3a000000-0000-0000-0000-000000000010', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'po_financing',      true, 'pending_anchor_confirmation',           'INV-0010', now() - interval '21 days', now() + interval '39 days', 95000,  95000,  85500,  8.2,  60, now() + interval '39 days', 'PO: marine hardware',        now(), now()),
+  ('3a000000-0000-0000-0000-000000000011', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'repayment_due',                        'INV-0011', now() - interval '25 days', now() + interval '35 days', 130000, 130000, 117000, 8.0,  60, now() + interval '35 days', 'Assembled control panels',   now(), now()),
   ('3a000000-0000-0000-0000-000000000012', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'repayment_due',                        'INV-0012', now() - interval '55 days', now() + interval '5 days',  140000, 140000, 126000, 8.3,  60, now() + interval '5 days',  'Bulk packaging supply',      now(), now()),
   ('3a000000-0000-0000-0000-000000000013', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001', '0c000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'completed',                            'INV-0013', now() - interval '90 days', now() - interval '30 days', 100000, 100000, 90000,  7.5,  60, now() - interval '30 days', 'Fabricated frames (closed)', now(), now()),
   ('3a000000-0000-0000-0000-000000000014', '2a000000-0000-0000-0000-000000000001', 'ff1a209f-aa2a-471c-95c8-9d01018cdecd', '1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000002', '0b000000-0000-0000-0000-000000000001', 'reverse_factoring', true, 'rejected',                             'INV-0014', now() - interval '15 days', now() + interval '45 days', 70000,  70000,  NULL,   NULL, 60, NULL,                       'Incomplete documentation',   now(), now()),

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,8 +27,8 @@ export async function POST(req: Request) {
     .eq('id', userData.org_id)
     .single()
 
-  if (!org || !org.network_visible || org.kyb_status === 'not_started') {
-    return NextResponse.json({ error: 'Activate your Passport to create rooms' }, { status: 403 })
+  if (!isOrgAdmitted(org)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to create rooms' }, { status: 403 })
   }
 
   const body = await req.json()

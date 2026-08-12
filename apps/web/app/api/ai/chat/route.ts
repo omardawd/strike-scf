@@ -7,10 +7,13 @@ import { startAutonomousFollowThrough } from '@/lib/ai/agent-negotiation-setup'
 import { languageInstruction } from '@/lib/ai/system-prompt'
 import { DEMO_ORG_ID } from '@/lib/demo-entities'
 import { getCachedAiResponse, setCachedAiResponse } from '@/lib/ai/demo-ai-cache'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { streamAnthropicMessage } from '@/lib/ai/anthropic-stream'
 
 // generate_document (executeTool below) uses pdfkit, which is excluded from
 // webpack bundling (serverExternalPackages in next.config.ts) — needs Node runtime.
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 const NEGOTIATION_FOLLOW_THROUGH_TOOLS = ['submit_marketplace_offer', 'counter_marketplace_offer']
 
@@ -64,22 +67,12 @@ export async function POST(req: NextRequest) {
 
   if (!userRow) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-
-  // Ghost (Tier-0) enforcement: if the org has not activated its Passport,
-  // Strike AI is info-only. Tools are stripped and the system prompt is overridden.
-  let ghostOverride = false
-  if (userRow.org_id) {
-    const { data: orgRow } = await adminClient
-      .from('organizations')
-      .select('network_visible, kyb_status')
-      .eq('id', userRow.org_id)
-      .single()
-    if (orgRow && !orgRow.network_visible &&
-        (orgRow.kyb_status === 'not_started' || orgRow.kyb_status === 'in_progress')) {
-      ghostOverride = true
-    }
+  const limitResult = await rateLimit(`ai-chat:${userRow.id}`, 20, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
   }
+
+  const body = await req.json()
 
   const GHOST_SYSTEM_PROMPT =
     'This user has not completed their Passport on Strike SCF. Your ONLY goal is to ' +
@@ -94,18 +87,19 @@ export async function POST(req: NextRequest) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  let dailyCount = 0
-  try {
-    const { count } = await adminClient
-      .from('ai_usage')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userRow.id)
-      .eq('feature', body.feature)
-      .gte('created_at', today.toISOString())
-    dailyCount = count ?? 0
-  } catch {
-    // silently continue if table doesn't exist
-  }
+  // These checks are independent after the user row is known. Running them
+  // together removes one database round-trip from every chat request.
+  const [orgResult, usageResult] = await Promise.all([
+    userRow.org_id
+      ? adminClient.from('organizations').select('network_visible, kyb_status').eq('id', userRow.org_id).single()
+      : Promise.resolve({ data: null }),
+    adminClient.from('ai_usage').select('*', { count: 'exact', head: true })
+      .eq('user_id', userRow.id).eq('feature', body.feature ?? 'chat').gte('created_at', today.toISOString()),
+  ])
+  const orgRow = orgResult.data
+  const ghostOverride = !!(orgRow && !orgRow.network_visible &&
+    (orgRow.kyb_status === 'not_started' || orgRow.kyb_status === 'in_progress'))
+  const dailyCount = usageResult.count ?? 0
 
   if (dailyCount >= (DAILY_LIMITS[body.feature ?? 'chat'] ?? 50)) {
     return NextResponse.json({
@@ -118,7 +112,10 @@ export async function POST(req: NextRequest) {
 
   // Model routing — 'sonnet' signals the upgraded model (dedicated /ai workspace).
   // Everything else (overlay, insight, inline widgets) stays on cost-sensitive Haiku.
-  const model = body.model === 'sonnet'
+  const latestUserText = [...(body.messages ?? [])].reverse().find((m: { role?: string }) => m.role === 'user')?.content
+  const isSimpleGreeting = typeof latestUserText === 'string' &&
+    /^(hi|hello|hey|good (morning|afternoon|evening)|how are you)[.!?\s]*$/i.test(latestUserText.trim())
+  const model = body.model === 'sonnet' && !isSimpleGreeting
     ? 'claude-sonnet-4-6'
     : 'claude-haiku-4-5-20251001'
 
@@ -156,6 +153,19 @@ export async function POST(req: NextRequest) {
   const demoCacheLabel = userRow.org_id === DEMO_ORG_ID && typeof body.demoCacheKey === 'string'
     ? body.demoCacheKey
     : null
+
+  if (body.stream === true) {
+    return streamChatResponse({
+      body,
+      userRow,
+      model,
+      useTools,
+      ghostOverride,
+      systemPrompt,
+      initialMessages: messages,
+      demoCacheLabel,
+    })
+  }
 
   for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
     const anthropicBody: Record<string, unknown> = {
@@ -242,7 +252,10 @@ export async function POST(req: NextRequest) {
       toolUseBlocks.map(async (block: any) => {
         let result: Record<string, unknown>
         try {
-          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>, { demoCacheable: demoCacheLabel !== null })
+          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>, {
+            demoCacheable: demoCacheLabel !== null,
+            actor: { userId: userRow.id, orgId: userRow.org_id, bankId: userRow.bank_id },
+          })
         } catch (err) {
           result = { error: err instanceof Error ? err.message : 'Tool execution failed' }
         }
@@ -329,4 +342,184 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(finalData)
+}
+
+type ChatUser = { id: string; org_id: string | null; bank_id: string | null; role: string }
+
+function streamChatResponse({
+  body,
+  userRow,
+  model,
+  useTools,
+  ghostOverride,
+  systemPrompt,
+  initialMessages,
+  demoCacheLabel,
+}: {
+  body: Record<string, any>
+  userRow: ChatUser
+  model: string
+  useTools: boolean
+  ghostOverride: boolean
+  systemPrompt: string
+  initialMessages: Array<{ role: string; content: any }>
+  demoCacheLabel: string | null
+}) {
+  const encoder = new TextEncoder()
+  const send = (controller: ReadableStreamDefaultController, event: string, payload: Record<string, unknown>) => {
+    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`))
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let messages = initialMessages
+      let totalInputTokens = 0
+      let totalOutputTokens = 0
+
+      try {
+        let finished = false
+        for (let iter = 0; iter < MAX_AGENTIC_ITERATIONS; iter++) {
+          const anthropicBody: Record<string, unknown> = {
+            model,
+            max_tokens: body.max_tokens ?? 1024,
+            system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+            messages,
+          }
+          if (useTools) {
+            const portalTools = body.overlay ? OVERLAY_TOOLS : getToolsForPortal(body.portal as string | undefined)
+            anthropicBody.tools = portalTools.map((tool, index) =>
+              index === portalTools.length - 1 ? { ...tool, cache_control: { type: 'ephemeral' } } : tool
+            )
+          } else if (!ghostOverride && Array.isArray(body.tools)) {
+            anthropicBody.tools = body.tools
+            if (body.tool_choice) anthropicBody.tool_choice = body.tool_choice
+          }
+
+          const iterCacheKey = demoCacheLabel ? `chat:${demoCacheLabel}:${iter}` : null
+          let data: any = iterCacheKey ? await getCachedAiResponse(iterCacheKey) : null
+
+          if (data) {
+            for (const block of data.content ?? []) {
+              if (block.type === 'text' && block.text) send(controller, 'text', { text: block.text })
+              if (block.type === 'tool_use') send(controller, 'tool_start', { name: block.name })
+            }
+          } else {
+            const blocks = new Map<number, any>()
+            let stopReason: string | null = null
+            for await (const event of streamAnthropicMessage(anthropicBody)) {
+              if (event.type === 'message_start') totalInputTokens += event.inputTokens
+              if (event.type === 'tool_use_start') {
+                blocks.set(event.index, { type: 'tool_use', id: event.id, name: event.name, inputJson: '' })
+                send(controller, 'tool_start', { name: event.name })
+              }
+              if (event.type === 'tool_use_delta') {
+                const block = blocks.get(event.index)
+                if (block) block.inputJson += event.partialJson
+              }
+              if (event.type === 'text_delta') {
+                const existing = blocks.get(event.index) ?? { type: 'text', text: '' }
+                existing.text += event.text
+                blocks.set(event.index, existing)
+                send(controller, 'text', { text: event.text })
+              }
+              if (event.type === 'message_delta') {
+                stopReason = event.stopReason
+                totalOutputTokens += event.outputTokens
+              }
+            }
+            data = {
+              stop_reason: stopReason,
+              content: [...blocks.entries()].sort(([a], [b]) => a - b).map(([, block]) =>
+                block.type === 'tool_use'
+                  ? { type: 'tool_use', id: block.id, name: block.name, input: JSON.parse(block.inputJson || '{}') }
+                  : block
+              ),
+            }
+            if (iterCacheKey) setCachedAiResponse(iterCacheKey, data)
+          }
+
+          if (data.stop_reason !== 'tool_use' || !useTools) {
+            finished = true
+            break
+          }
+
+          const toolUseBlocks = (data.content ?? []).filter((block: any) => block.type === 'tool_use')
+          if (toolUseBlocks.length === 0) { finished = true; break }
+
+          const toolResults = await Promise.all(toolUseBlocks.map(async (block: any) => {
+            let result: Record<string, unknown>
+            try {
+              result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>, {
+                demoCacheable: demoCacheLabel !== null,
+                actor: { userId: userRow.id, orgId: userRow.org_id, bankId: userRow.bank_id },
+              })
+            } catch (error) {
+              result = { error: error instanceof Error ? error.message : 'Tool execution failed' }
+            }
+
+            if (!('error' in result) && userRow.org_id && NEGOTIATION_FOLLOW_THROUGH_TOOLS.includes(block.name)) {
+              try {
+                result.autonomous_follow_through = await startAutonomousFollowThrough({
+                  orgId: userRow.org_id,
+                  toolName: block.name,
+                  toolInput: block.input,
+                  result,
+                })
+              } catch (error) { console.error('[AI] startAutonomousFollowThrough error:', error) }
+            }
+
+            void adminClient.from('agent_actions').insert({
+              org_id: userRow.org_id,
+              bank_id: userRow.bank_id,
+              action_type: block.name,
+              entity_type: 'ai_tool',
+              input_summary: JSON.stringify(block.input).slice(0, 500),
+              output_summary: JSON.stringify(result).slice(0, 500),
+              outcome: 'error' in result ? 'error' : 'success',
+              model,
+            }).then(({ error }) => { if (error) console.error('[AI] agent_actions log error:', error) })
+
+            return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
+          }))
+
+          messages = [
+            ...messages,
+            { role: 'assistant', content: data.content },
+            { role: 'user', content: toolResults },
+          ]
+        }
+
+        if (!finished) send(controller, 'text', { text: 'I reached the maximum number of steps. Please try breaking your request into smaller parts.' })
+
+        try {
+          await adminClient.from('ai_usage').insert({
+            user_id: userRow.id,
+            org_id: userRow.org_id,
+            bank_id: userRow.bank_id,
+            feature: body.feature ?? 'chat',
+            tokens_input: totalInputTokens,
+            tokens_output: totalOutputTokens,
+            tokens_total: totalInputTokens + totalOutputTokens,
+            model,
+          })
+        } catch { /* usage logging is non-critical */ }
+
+        send(controller, 'done', {})
+      } catch (error) {
+        console.error('[AI] Streaming error:', error)
+        send(controller, 'error', { message: 'Strike AI is temporarily unavailable. Please try again.' })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

@@ -2,6 +2,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { DocumentEntityType } from '@strike-scf/types'
+import { sanitizeFilename, validateUpload } from '@/lib/uploads/validate'
 
 const adminClient = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,7 +70,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const storagePath = `${org_id}/${document_kind}/${file.name}`
+  const uploadCheck = validateUpload(file)
+  if (!uploadCheck.ok) {
+    return NextResponse.json({ error: uploadCheck.error }, { status: 400 })
+  }
+
+  const safeName = sanitizeFilename(file.name)
+  const storagePath = `${org_id}/${document_kind}/${safeName}`
   const fileBytes = await file.arrayBuffer()
 
   const { error: uploadError } = await adminClient.storage

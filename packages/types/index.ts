@@ -474,6 +474,25 @@ export interface AmendmentRecord {
   response: string | null
 }
 
+export interface DealWorkflowStep {
+  id: string
+  deal_id: string
+  position: number
+  title: string
+  description: string | null
+  responsible_party: 'buyer' | 'supplier' | 'both'
+  requires_document: boolean
+  due_at: string | null
+  status: 'proposed' | 'accepted' | 'declined' | 'completed'
+  proposed_by_user_id: string
+  proposed_by_org_id: string
+  responded_at: string | null
+  responded_by_user_id: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface DealEvent {
   id: string
   deal_id: string
@@ -715,6 +734,7 @@ export interface SubmitOfferPayload {
   notes?: string
   bank_account_id?: string
   offer_items?: unknown[]
+  exceptions?: unknown[]
 }
 
 export interface CounterOfferPayload {

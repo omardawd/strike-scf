@@ -21,10 +21,10 @@ async function getBankUser(userId: string) {
 async function checkOrgAccess(orgId: string, bankId: string): Promise<boolean> {
   const { data: org } = await adminClient
     .from('organizations')
-    .select('id, bank_id')
+    .select('id, primary_bank_id')
     .eq('id', orgId)
     .single()
-  return !!org && org.bank_id === bankId
+  return !!org && org.primary_bank_id === bankId
 }
 
 export async function GET(

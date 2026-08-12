@@ -20,6 +20,7 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // ── Sidebar navigation ──
     'nav.strikeAi': 'Strike AI',
+    'nav.board': 'Board',
     'nav.dashboard': 'Dashboard',
     'nav.dashboard2': 'Dashboard 2',
     'nav.home': 'Home',
@@ -36,6 +37,19 @@ export const translations: Record<Locale, Record<string, string>> = {
     'nav.kybQueue': 'KYB Queue',
     'nav.platformStats': 'Platform Stats',
     'nav.roomReports': 'Room Reports',
+
+    // ── Board ──
+    'board.title': 'Board',
+    'board.kanbanView': 'Kanban',
+    'board.flowView': 'Flow',
+    'board.newTask': 'New Task',
+    'board.newStage': 'New Stage',
+    'board.assignTo': 'Assign to',
+    'board.unassigned': 'Unassigned',
+    'board.dueDate': 'Due date',
+    'board.priority': 'Priority',
+    'board.noTasks': 'No tasks yet',
+    'board.askAi': 'Ask Strike AI to design this',
 
     // ── User menu ──
     'userMenu.settings': 'Settings',
@@ -1179,6 +1193,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'settingsPage.neverClickSync': 'Never — click Sync Now',
     'settingsPage.dispatchToken': 'Dispatch Token',
     'settingsPage.dispatchTokenHint': 'Use this token to send commands to Strike AI from your phone, ERPNext webhooks, or any HTTP client.',
+    'settingsPage.dispatchTokenShowOnceWarning': 'Save this token now — for your security, it is shown in full only once and cannot be retrieved again. Reconnecting or rotating issues a new one.',
+    'settingsPage.dispatchTokenRevoked': 'This token has been revoked.',
+    'settingsPage.dispatchTokenExpires': 'Expires {date}',
     'settingsPage.copy': 'Copy',
     'settingsPage.exampleWebhookPayload': 'Example — ERPNext webhook payload:',
     'settingsPage.orOpenMobileCommand': 'Or open the mobile command page:',
@@ -2477,6 +2494,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.no': 'لا',
 
     'nav.strikeAi': 'الذكاء الاصطناعي',
+    'nav.board': 'اللوحة',
     'nav.dashboard': 'لوحة التحكم',
     'nav.dashboard2': 'لوحة التحكم 2',
     'nav.home': 'الرئيسية',
@@ -2493,6 +2511,18 @@ export const translations: Record<Locale, Record<string, string>> = {
     'nav.kybQueue': 'قائمة مراجعة KYB',
     'nav.platformStats': 'إحصاءات المنصة',
     'nav.roomReports': 'تقارير الغرف',
+
+    'board.title': 'اللوحة',
+    'board.kanbanView': 'كانبان',
+    'board.flowView': 'التدفق',
+    'board.newTask': 'مهمة جديدة',
+    'board.newStage': 'مرحلة جديدة',
+    'board.assignTo': 'إسناد إلى',
+    'board.unassigned': 'غير مسندة',
+    'board.dueDate': 'تاريخ الاستحقاق',
+    'board.priority': 'الأولوية',
+    'board.noTasks': 'لا توجد مهام بعد',
+    'board.askAi': 'اطلب من Strike AI تصميم هذا',
 
     'userMenu.settings': 'الإعدادات',
     'userMenu.lightMode': 'الوضع الفاتح',
@@ -4930,6 +4960,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'common.no': 'No',
 
     'nav.strikeAi': 'Strike AI',
+    'nav.board': 'Tablero',
     'nav.dashboard': 'Panel',
     'nav.dashboard2': 'Panel 2',
     'nav.home': 'Inicio',
@@ -4946,6 +4977,18 @@ export const translations: Record<Locale, Record<string, string>> = {
     'nav.kybQueue': 'Cola de KYB',
     'nav.platformStats': 'Estadísticas de la Plataforma',
     'nav.roomReports': 'Reportes de Salas',
+
+    'board.title': 'Tablero',
+    'board.kanbanView': 'Kanban',
+    'board.flowView': 'Flujo',
+    'board.newTask': 'Nueva Tarea',
+    'board.newStage': 'Nueva Etapa',
+    'board.assignTo': 'Asignar a',
+    'board.unassigned': 'Sin asignar',
+    'board.dueDate': 'Fecha límite',
+    'board.priority': 'Prioridad',
+    'board.noTasks': 'Aún no hay tareas',
+    'board.askAi': 'Pedir a Strike AI que diseñe esto',
 
     'userMenu.settings': 'Configuración',
     'userMenu.lightMode': 'Modo claro',

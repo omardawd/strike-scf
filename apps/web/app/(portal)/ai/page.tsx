@@ -12,6 +12,7 @@ import {
 } from '@/lib/ai/conversation-store'
 import { useT, useLocale } from '@/lib/i18n/locale-context'
 import { TaskThreadView, StatusBadge, friendlyToolLabel, timeSince, type AgentTask } from '@/components/agent-task-thread'
+import { parseAiChatStream } from '@/lib/ai/stream-client'
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string
 
@@ -400,6 +401,7 @@ function AIWorkspaceInner() {
     const convoMessages = working.find(c => c.id === convoId)?.messages ?? [userMsg]
     const isDocRequest = trimmed.toLowerCase().includes('document') || trimmed.toLowerCase().includes('report') || trimmed.toLowerCase().includes('summary')
 
+    let assistantTimestamp: string | null = null
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -412,36 +414,63 @@ function AIWorkspaceInner() {
           messages: convoMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 2048,
           locale,
+          stream: true,
         }),
       })
 
-      let reply: string
       if (res.status === 429) {
-        reply = t('aiPage.dailyLimitReached')
-      } else {
-        const data = await res.json()
-        reply = data.content?.find?.((b: { type: string; text?: string }) => b.type === 'text')?.text
-          ?? data.content?.[0]?.text
-          ?? t('aiPage.noResponse')
+        throw new Error(t('aiPage.dailyLimitReached'))
       }
 
       const replyTime = new Date().toISOString()
-      const assistantMsg: Message = { role: 'assistant', content: reply, timestamp: replyTime, isDocument: isDocRequest }
+      assistantTimestamp = replyTime
+      const assistantMsg: Message = { role: 'assistant', content: '', timestamp: replyTime, isDocument: isDocRequest }
       setConversations(prev => {
-        const updated = prev.map(c =>
+        return prev.map(c =>
           c.id === convoId
             ? { ...c, messages: [...c.messages, assistantMsg], updatedAt: replyTime }
             : c
         )
+      })
+      let reply = ''
+      await parseAiChatStream(res, {
+        onText(delta) {
+          reply += delta
+          setConversations(prev => prev.map(c =>
+            c.id === convoId
+              ? { ...c, messages: c.messages.map(m => m.timestamp === replyTime ? { ...m, content: reply } : m) }
+              : c
+          ))
+        },
+        onToolStart(name) {
+          setLoadingPhrase(friendlyToolLabel(name, t))
+        },
+      })
+      if (!reply) reply = t('aiPage.noResponse')
+      setConversations(prev => {
+        const updated = prev.map(c => c.id === convoId
+          ? { ...c, messages: c.messages.map(m => m.timestamp === replyTime ? { ...m, content: reply } : m), updatedAt: new Date().toISOString() }
+          : c)
         if (user?.id) saveConversations(user.id, updated)
         return updated
       })
-    } catch {
+    } catch (error) {
       const errTime = new Date().toISOString()
-      const errMsg: Message = { role: 'assistant', content: t('aiPage.encounteredError'), timestamp: errTime }
+      const errorText = error instanceof Error && error.message === t('aiPage.dailyLimitReached')
+        ? error.message
+        : t('aiPage.encounteredError')
+      const errMsg: Message = { role: 'assistant', content: errorText, timestamp: errTime }
       setConversations(prev => {
         const updated = prev.map(c =>
-          c.id === convoId ? { ...c, messages: [...c.messages, errMsg], updatedAt: errTime } : c
+          c.id === convoId
+            ? {
+                ...c,
+                messages: assistantTimestamp
+                  ? c.messages.map(message => message.timestamp === assistantTimestamp ? errMsg : message)
+                  : [...c.messages, errMsg],
+                updatedAt: errTime,
+              }
+            : c
         )
         if (user?.id) saveConversations(user.id, updated)
         return updated
@@ -874,6 +903,7 @@ function AIWorkspaceInner() {
                         }} />
                       ))}
                     </div>
+                    <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 2 }}>{loadingPhrase}</span>
                   </div>
                 )}
               </>

@@ -6,6 +6,7 @@ import {
   networkInviteExistingOrgHtml,
   networkInviteNewEmailHtml,
 } from '@/lib/email'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,6 +43,15 @@ export async function POST(
   if (!network) return NextResponse.json({ error: 'Network not found' }, { status: 404 })
   if (network.anchor_org_id !== me.org_id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', me.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to invite network members' }, { status: 403 })
   }
 
   const { data: anchorOrg } = await adminClient

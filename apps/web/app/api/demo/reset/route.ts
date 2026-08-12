@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { DEMO_EMAIL, isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, DEMO_EMAIL, isDemoAccount } from '@/lib/demo'
 import {
   DEMO_ALL_ORG_IDS,
   DEMO_LISTING_IDS,
@@ -23,6 +23,9 @@ const adminClient = createAdmin(
 // static seed rows (orgs, users, listings, the bank/program, the two seeded
 // deals, the one seeded agent_tasks proposal) are preserved, not recreated.
 export async function POST() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

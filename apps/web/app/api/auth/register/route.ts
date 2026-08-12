@@ -1,6 +1,8 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { OrgType, OrgStatus, KybStatus, UserRole } from '@strike-scf/types'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { getClientIp } from '@/lib/request-ip'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,6 +29,11 @@ interface RegisterBody {
 }
 
 export async function POST(request: Request) {
+  const limitResult = await rateLimit(`register:${getClientIp(request)}`, 10, 60_000)
+  if (!limitResult.allowed) {
+    return rateLimitResponse(limitResult)
+  }
+
   let body: RegisterBody
   try {
     body = await request.json()

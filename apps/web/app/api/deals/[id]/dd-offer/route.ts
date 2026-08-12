@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +59,11 @@ export async function POST(
   if (!['delivery_confirmed', 'payment_due', 'payment_overdue'].includes(deal.status)) {
     return NextResponse.json({ error: 'DD offer can only be presented after delivery is confirmed' }, { status: 400 })
   }
+
+  // Presenting a new, optional early-payment offer expands the deal — not a
+  // necessary fulfillment/repayment step. See lib/deals/admission-policy.ts.
+  const admissionError = await assertOrgCanExpandDeal(adminClient, userData.org_id, 'present a Dynamic Discounting offer')
+  if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
 
   let body: { discount_rate: number; early_payment_date: string }
   try { body = await request.json() }

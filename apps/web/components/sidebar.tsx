@@ -116,7 +116,7 @@ function matchLen(pathname: string, href: string): number {
 type NavIconName =
   | 'dashboard' | 'marketplace' | 'deals' | 'rooms' | 'passport'
   | 'programs'  | 'analytics'   | 'supply-graph' | 'ai' | 'financing'
-  | 'notifications' | 'settings' | 'networks'
+  | 'notifications' | 'settings' | 'networks' | 'board'
 
 const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
   // Dashboard — 4-square grid
@@ -216,6 +216,14 @@ const NAV_ICONS: Record<NavIconName, React.ReactNode> = {
     <>
       <circle cx="10" cy="10" r="2.6" />
       <path d="M10 2.2v2.2M10 15.6v2.2M2.2 10h2.2M15.6 10h2.2M4.5 4.5l1.6 1.6M13.9 13.9l1.6 1.6M15.5 4.5l-1.6 1.6M6.1 13.9L4.5 15.5" />
+    </>
+  ),
+  // Board — 3 kanban columns
+  board: (
+    <>
+      <rect x="3"  y="3" width="4.2" height="14" rx="1.2" />
+      <rect x="8"  y="3" width="4.2" height="9"  rx="1.2" />
+      <rect x="13" y="3" width="4.2" height="11" rx="1.2" />
     </>
   ),
   // Networks — 3 circles connected by lines
@@ -415,6 +423,27 @@ export function Sidebar() {
           <NavIcon name="ai" size={18} />
           {!collapsed && <span>{t('nav.strikeAi')}</span>}
         </Link>
+
+        {/* Board — pinned directly under Strike AI, above Home. Org/bank
+            scoped only (one board per org/bank); not shown in the admin
+            portal, which has no org/bank of its own. */}
+        {portal !== 'admin' && (
+          <Link
+            href="/board"
+            prefetch={false}
+            className={`nav-item ${pathname.startsWith('/board') ? 'active' : ''}`}
+            style={{
+              textDecoration: 'none',
+              transition: `background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out)`,
+            }}
+            title={collapsed ? t('nav.board') : undefined}
+            aria-label={t('nav.board')}
+            data-demo-target="nav-board"
+          >
+            <NavIcon name="board" size={18} />
+            {!collapsed && <span>{t('nav.board')}</span>}
+          </Link>
+        )}
 
         {sections.map((section, si) => (
           <React.Fragment key={section.label ?? `top-${si}`}>

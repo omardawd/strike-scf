@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 export interface NetworkRow {
   id: string
@@ -37,6 +38,20 @@ export async function getNetworkAccess(
   if (!network || !orgId) return { network: network ?? null, isOwner: false, hasAccess: false }
 
   const isOwner = network.anchor_org_id === orgId
+
+  // Admission is re-checked on every access, not just at join/create time —
+  // an org that was admitted when it joined (or created) this network but
+  // has since been suspended/rejected must lose room/listings/analytics
+  // access, not retain it indefinitely off a membership row that's now stale.
+  const { data: requesterOrg } = await supabaseAdmin
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', orgId)
+    .single()
+  if (!isOrgAdmitted(requesterOrg)) {
+    return { network, isOwner, hasAccess: false }
+  }
+
   if (isOwner) return { network, isOwner: true, hasAccess: true }
 
   const { data: membership } = await supabaseAdmin

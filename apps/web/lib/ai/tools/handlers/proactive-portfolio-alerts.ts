@@ -83,7 +83,7 @@ export async function proactivePortfolioAlerts(input: ProactivePortfolioAlertsIn
       ? adminClient
           .from('organizations')
           .select('id, legal_name, risk_score, risk_tier, risk_flags, kyb_status')
-          .eq('bank_id', input.bank_id)
+          .eq('primary_bank_id', input.bank_id)
           .eq('network_visible', true)
           .not('risk_flags', 'is', null)
       : Promise.resolve({ data: [] }),

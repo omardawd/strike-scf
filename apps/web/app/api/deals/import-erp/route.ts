@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getImportableErpDeals } from '@/lib/ai/tools/handlers/get-importable-erp-deals'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,15 @@ export async function POST(req: NextRequest) {
 
   if (!userData?.org_id) return NextResponse.json({ error: 'Org not found' }, { status: 401 })
   if (userData.role !== 'org_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', userData.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to import a deal' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => ({}))
   const erpReference = body.erp_reference as string | undefined

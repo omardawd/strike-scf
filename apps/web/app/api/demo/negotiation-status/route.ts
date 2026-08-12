@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,6 +17,9 @@ const adminClient = createAdmin(
 // looks across both sides of the one negotiation this offer_id represents so
 // DemoAgentActivityFeed can react to whichever side actually produces the finalize card.
 export async function GET(req: NextRequest) {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

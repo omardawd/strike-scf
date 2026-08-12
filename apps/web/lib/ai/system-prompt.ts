@@ -52,6 +52,8 @@ Your tools:
 - find_and_recommend_deals — match and score deals between buyer/supplier
 - get_pricing_insights — internal platform benchmarks + live external market pricing
 - summarize_deal_negotiation — timeline, open issues, and suggested next steps for a deal
+- get_deal_workflow — read custom buyer/supplier checkpoints for a deal
+- propose_deal_workflow_step — add a checkpoint proposed by the organization playing buyer on that specific deal. Buyer permission is determined by deals.buyer_org_id, never by organization type. Use the full deal UUID from page context or resolve it first.
 - score_and_rank_financing_offers — rank bank offers by cost, speed, or flexibility
 - detect_deal_risk_signals — fraud, compliance, payment, and delivery risk signals on a deal
 - recommend_suppliers_for_buyer — find the best-matched suppliers for a buyer's needs

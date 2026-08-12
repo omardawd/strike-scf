@@ -1,6 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { requireRole, forbidden, notFound } from '@/lib/auth/require'
+import { BANK_ROLES, ORG_ROLES, isBankRole, isOrgRole } from '@/lib/auth/session'
+import { canAccessOwnOrganization, canBankAccessOrganization } from '@/lib/auth/resource-access'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,30 +10,17 @@ const adminClient = createAdmin(
 )
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: me } = await adminClient
-    .from('users')
-    .select('role, bank_id, org_id')
-    .eq('id', user.id)
-    .single()
-
-  const isBank = me?.role === 'bank_admin' || me?.role === 'bank_credit_officer'
-  const isSupplier = me?.role === 'org_admin' || me?.role === 'org_member'
-
-  if (!me || (!isBank && !isSupplier)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const auth = await requireRole([...BANK_ROLES, ...ORG_ROLES])
+  if (!auth.ok) return auth.response
+  const { context } = auth
 
   const body = await request.json() as { org_id?: string }
   const { org_id } = body
   if (!org_id) return NextResponse.json({ error: 'org_id required' }, { status: 400 })
 
   // Suppliers may only score their own organization
-  if (isSupplier && me.org_id !== org_id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (isOrgRole(context.role) && !canAccessOwnOrganization(context, org_id)) {
+    return forbidden()
   }
 
   // Fetch organization
@@ -41,7 +30,12 @@ export async function POST(request: Request) {
     .eq('id', org_id)
     .single()
 
-  if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+  if (!org) return notFound('Organization not found')
+
+  // Banks may only score organizations belonging to their own bank
+  if (isBankRole(context.role) && !canBankAccessOrganization(context, org.primary_bank_id)) {
+    return forbidden()
+  }
 
   const countryOfOrigin: string | null = org.country_of_origin ?? null
   const sourcingCountries: string[] = Array.isArray(org.sourcing_countries) ? org.sourcing_countries : []

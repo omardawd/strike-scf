@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { isDemoAccount } from '@/lib/demo'
+import { assertDemoRoutesEnabled, isDemoAccount } from '@/lib/demo'
 import { runAgentTick, runListingDefenseTick } from '@/lib/ai/agent-tick'
 
 const adminClient = createAdmin(
@@ -22,6 +22,9 @@ const adminClient = createAdmin(
 // both sides. Gated to the demo account so this unscoped, no-secret-required
 // trigger can't be used to force-tick arbitrary orgs' real negotiations.
 export async function POST() {
+  const disabled = assertDemoRoutesEnabled()
+  if (disabled) return disabled
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

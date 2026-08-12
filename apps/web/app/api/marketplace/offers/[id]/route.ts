@@ -8,7 +8,9 @@ import {
   rejectOffer,
   TurnOrderError,
   InvalidStateError,
+  AdmissionError,
 } from '@/lib/marketplace/offer-actions'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -123,6 +125,26 @@ export async function PATCH(
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 
+  // Admission gate for 'counter'/'accept' now lives inside counterOffer()/
+  // acceptOffer() themselves (lib/marketplace/offer-actions.ts) — those shared
+  // functions are also called directly by the AI tool handlers and the
+  // autonomous tick loop, not just this route, so gating only here would have
+  // left those callers able to advance a negotiation for a non-admitted org.
+  // 'create_room' doesn't go through either shared function, so it still needs
+  // its own check. Declining (reject/withdraw) is exempt everywhere: reducing
+  // exposure never needs approval, and blocking it would trap a party that
+  // lost admission mid-negotiation with no way out.
+  if (action === 'create_room') {
+    const { data: callerOrg } = await adminClient
+      .from('organizations')
+      .select('status, kyb_status')
+      .eq('id', userData.org_id)
+      .single()
+    if (!isOrgAdmitted(callerOrg)) {
+      return NextResponse.json({ error: 'Your organization must be KYB-approved to do this' }, { status: 403 })
+    }
+  }
+
   // ── CREATE_ROOM ───────────────────────────────────────────
   if (action === 'create_room') {
     try {
@@ -189,6 +211,7 @@ export async function PATCH(
       })
       return NextResponse.json({ offer: updatedOffer, room_id: roomId })
     } catch (err) {
+      if (err instanceof AdmissionError) return NextResponse.json({ error: err.message }, { status: 403 })
       if (err instanceof TurnOrderError || err instanceof InvalidStateError) {
         return NextResponse.json({ error: err.message }, { status: 409 })
       }
@@ -202,6 +225,7 @@ export async function PATCH(
       const { offer: updatedOffer, deal } = await acceptOffer({ offerId, actingOrgId: userData.org_id })
       return NextResponse.json({ offer: updatedOffer, deal })
     } catch (err) {
+      if (err instanceof AdmissionError) return NextResponse.json({ error: err.message }, { status: 403 })
       if (err instanceof InvalidStateError) return NextResponse.json({ error: err.message }, { status: 409 })
       return NextResponse.json({ error: 'Failed to accept offer' }, { status: 500 })
     }

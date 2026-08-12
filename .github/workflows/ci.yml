@@ -1,0 +1,129 @@
+name: CI
+
+# Validates every PR and every push to main: clean install, DB schema/seed
+# validation, type checking, lint (against a ratcheting warning baseline —
+# see the lint job below), unit tests, and a production build. Does NOT
+# deploy anything — Vercel's own Git integration handles deploys separately.
+# No production secrets are used anywhere in this workflow; build-time env
+# vars below are placeholders sufficient to make `next build` succeed.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Placeholders only — real values live in Vercel's env var UI, never here.
+  NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+  NEXT_PUBLIC_APP_URL: https://ci-placeholder.example.com
+  NEXT_PUBLIC_DEV_BANK_ID: 00000000-0000-0000-0000-000000000000
+  CRON_SECRET: ci-placeholder-cron-secret
+  INTERNAL_SECRET: ci-placeholder-internal-secret
+  ANTHROPIC_API_KEY: ci-placeholder-anthropic-key
+  TAVILY_API_KEY: tvly-ci-placeholder
+  RESEND_API_KEY: ci-placeholder-resend-key
+
+jobs:
+  build-test:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (clean)
+        run: npm ci
+
+      - name: Type check
+        run: npm run check-types
+
+      - name: Lint (ratcheting baseline)
+        # package.json's own `lint` script uses --max-warnings 0, which
+        # would fail immediately against the current warning backlog
+        # (documented in docs/enterprise-readiness/ASSESSMENT.md P1-8).
+        # This ratcheting baseline is the temporary CI gate: it must only
+        # ever be lowered as warnings are fixed, never raised. Current
+        # baseline: 479 warnings, 0 errors (down from 682 at the start of
+        # this engagement — turbo.json's env-var allowlist was the single
+        # largest contributor and is now fixed). Lower this number as
+        # warnings are cleaned up; 0 errors is already enforced.
+        working-directory: apps/web
+        run: npx eslint . --max-warnings=479
+
+      - name: Unit tests
+        run: npm run test --workspace=apps/web
+
+      - name: Build
+        run: npm run build
+
+  db-validate:
+    name: Validate DB schema + seed
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Apply migrations + seed to a fresh database
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          chmod +x scripts/db-validate.sh
+          ./scripts/db-validate.sh
+
+  security-scan:
+    name: Secret + dependency scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed secrets (TruffleHog)
+        # Pinned to the v3.96.0 release commit, not a floating tag/branch,
+        # since this is a third-party action with write-adjacent trust
+        # (it reads full repo history via fetch-depth: 0 above).
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          extra_args: --results=verified,unknown
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (clean)
+        run: npm ci
+
+      - name: Dependency vulnerability audit
+        # Non-blocking for now: this is the first time an automated audit
+        # has run against this repo, so the current findings (if any) need
+        # human triage before this becomes a hard gate. Flip to a hard
+        # failure once the existing backlog (if any) is resolved or
+        # explicitly accepted — see docs/enterprise-readiness/ROADMAP.md.
+        run: npm audit --audit-level=high || echo "::warning::npm audit found issues — see job log; not yet a hard gate, see ROADMAP.md 1.B"

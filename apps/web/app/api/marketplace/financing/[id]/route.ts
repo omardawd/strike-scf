@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isListingVisibleToOrg } from '@/lib/networks/visibility'
 import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,6 +79,20 @@ export async function GET(
   // Bank: only open requests
   if (isBank && !['open', 'offers_received', 'accepted', 'funded'].includes(request.status)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // A bank browsing the list (GET /api/marketplace/financing) never sees a
+  // non-admitted org's request, but this direct-by-id route was reachable
+  // regardless — guessing/sharing an id bypassed that filter entirely.
+  if (isBank) {
+    const { data: requestorOrg } = await adminClient
+      .from('organizations')
+      .select('status, kyb_status')
+      .eq('id', request.requesting_org_id)
+      .single()
+    if (!isOrgAdmitted(requestorOrg)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
   }
 
   const { data: deal } = await adminClient

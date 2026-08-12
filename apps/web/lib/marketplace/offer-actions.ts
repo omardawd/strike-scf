@@ -7,6 +7,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { coerceNumber } from '@/lib/numeric'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,6 +17,26 @@ const adminClient = createAdmin(
 export class TurnOrderError extends Error {}
 export class InvalidStateError extends Error {}
 export class GuardrailError extends Error {}
+export class AdmissionError extends Error {}
+
+/**
+ * Admission check at the shared-function level, not just the HTTP route —
+ * counterOffer/acceptOffer are also called directly by the AI tool handlers
+ * (lib/ai/tools/handlers/{counter,accept}-marketplace-offer.ts) and, through
+ * them, by Strike AI chat, /api/ai/dispatch, and the autonomous negotiation
+ * tick loop (lib/ai/agent-tick.ts). Gating only the route would leave every
+ * one of those callers able to advance a negotiation for a non-admitted org.
+ */
+async function assertOrgAdmitted(orgId: string): Promise<void> {
+  const { data: org } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', orgId)
+    .single()
+  if (!isOrgAdmitted(org)) {
+    throw new AdmissionError('Organization must be KYB-approved to do this')
+  }
+}
 
 interface OfferRound {
   round: number
@@ -144,6 +165,8 @@ export async function counterOffer(params: {
     shipping_cost: coerceNumber(params.terms.shipping_cost) ?? undefined,
   }
   const { offer, listing, listingOrgId, offerorOrgId } = await loadOfferWithListing(offerId)
+
+  await assertOrgAdmitted(actingOrgId)
 
   if (!['pending', 'countered'].includes(offer.status)) {
     throw new InvalidStateError('Cannot counter in the current state')
@@ -326,6 +349,14 @@ export async function acceptOffer(params: {
   if (actingOrgId !== offerorOrgId && actingOrgId !== listingOrgId) {
     throw new InvalidStateError('Access denied')
   }
+  // Accepting binds BOTH parties into a deal — checking only the acting
+  // org's admission (as this used to) meant a buyer could still accept an
+  // offer from a supplier who was suspended after making it, or vice versa.
+  // PR 3: an award recommendation can sit awaiting approval for a while: if
+  // either side's admission changes between recommendation and approval,
+  // acceptance must fail, not silently go through.
+  await assertOrgAdmitted(offerorOrgId)
+  await assertOrgAdmitted(listingOrgId)
   if (!['pending', 'countered'].includes(offer.status)) {
     throw new InvalidStateError('Offer cannot be accepted in its current state')
   }
