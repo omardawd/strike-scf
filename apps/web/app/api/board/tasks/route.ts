@@ -1,6 +1,6 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { getOwnBoard, isBoardAdmin, loadBoardActor } from '@/lib/board/access'
+import { getOwnBoard, isBoardAdmin, loadBoardActor, logBoardTaskActivity } from '@/lib/board/access'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     assignee_user_id?: string | null
     priority?: string
     due_date?: string | null
+    labels?: string[]
   }
   try {
     body = await request.json()
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       assignee_user_id: body.assignee_user_id ?? null,
       priority: body.priority ?? 'medium',
       due_date: body.due_date ?? null,
+      labels: (body.labels ?? []).map(l => l.trim()).filter(Boolean).slice(0, 10),
       position: count ?? 0,
       created_by_user_id: actor.userId,
     })
@@ -87,5 +89,11 @@ export async function POST(request: Request) {
     .single()
 
   if (error || !task) return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
+
+  await logBoardTaskActivity(adminClient, task.id, actor.userId, 'Created this task')
+  if (task.assignee_user_id) {
+    await logBoardTaskActivity(adminClient, task.id, actor.userId, `Assigned to ${task.assignee?.full_name ?? 'a teammate'}`)
+  }
+
   return NextResponse.json({ task }, { status: 201 })
 }

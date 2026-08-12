@@ -6,6 +6,7 @@ import { useUser } from '@/lib/user-context'
 import { useT } from '@/lib/i18n/locale-context'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import { FlowBoard } from '@/components/board/FlowBoard'
+import { TaskDetailModal } from '@/components/board/TaskDetailModal'
 import type { BoardData } from '@/components/board/types'
 
 const VIEW_KEY = 'strike_board_view'
@@ -150,6 +151,7 @@ export default function BoardPage() {
   const [view, setView] = useState<'kanban' | 'flow'>('kanban')
   const [showNewTask, setShowNewTask] = useState(false)
   const [showNewStage, setShowNewStage] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -286,7 +288,14 @@ export default function BoardPage() {
             </div>
             {data?.is_admin && (
               <>
-                <button className="btn btn-sm" onClick={() => setShowNewStage(true)} style={{ border: '1.5px solid var(--border)', background: 'none', borderRadius: 'var(--radius-button)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                <button
+                  onClick={() => setShowNewStage(true)}
+                  style={{
+                    border: '1.5px solid var(--border-strong)', background: 'var(--white)', color: 'var(--ink)',
+                    borderRadius: 'var(--radius-button)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
                   + {t('board.newStage')}
                 </button>
                 <button className="btn btn-blue btn-sm" onClick={() => setShowNewTask(true)}>
@@ -331,6 +340,7 @@ export default function BoardPage() {
             currentUserId={user?.id}
             onMoveTask={handleMoveTask}
             onDeleteColumn={handleDeleteColumn}
+            onOpenTask={setSelectedTaskId}
           />
         ) : (
           <FlowBoard
@@ -341,6 +351,7 @@ export default function BoardPage() {
             onMoveColumn={handleMoveColumn}
             onCreateEdge={handleCreateEdge}
             onDeleteEdge={handleDeleteEdge}
+            onOpenTask={setSelectedTaskId}
           />
         )}
       </div>
@@ -348,6 +359,15 @@ export default function BoardPage() {
       {showNewStage && <NewStageModal onClose={() => setShowNewStage(false)} onCreate={handleCreateStage} />}
       {showNewTask && data && (
         <NewTaskModal columns={data.columns} members={members} onClose={() => setShowNewTask(false)} onCreate={handleCreateTask} />
+      )}
+      {selectedTaskId && data && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          columns={data.columns}
+          members={members}
+          onClose={() => setSelectedTaskId(null)}
+          onChanged={load}
+        />
       )}
     </>
   )
