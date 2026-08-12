@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { respondToWorkflowStep } from '@/lib/deals/workflow'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
 
 const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -16,6 +17,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const body = await request.json()
     if (!['accepted', 'declined'].includes(body.response)) {
       return NextResponse.json({ error: 'response must be accepted or declined' }, { status: 400 })
+    }
+    // Declining a proposed step is always allowed; accepting one commits to
+    // an optional addition, so it requires admission like proposing does.
+    if (body.response === 'accepted') {
+      const admissionError = await assertOrgCanExpandDeal(adminClient, userData.org_id, 'accept a workflow step')
+      if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
     }
     const step = await respondToWorkflowStep({
       dealId: id,

@@ -1,12 +1,25 @@
 import { adminClient } from '../admin'
+import { isOrgAdmitted } from '@/lib/auth/admission'
+
+export type ToolActor = { userId: string; orgId: string | null; bankId: string | null }
 
 export interface EvaluateListingOffersInput {
   listing_id: string
-  poster_org_id?: string  // provided from context; used to confirm ownership
   priority?: 'best_price' | 'fastest_delivery' | 'strongest_counterparty' | 'balanced'
 }
 
-export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
+/**
+ * PR 3 fix: this previously had NO ownership check at all, and execute.ts's
+ * dispatcher didn't even pass `actor` to it — any authenticated org could
+ * evaluate offers (competitor pricing, every offeror's Passport/risk data)
+ * on ANY listing_id, including another org's private listing, just by
+ * asking Strike AI. `actor` is now required and is the only source of
+ * identity used for the ownership check — the listing's own `org_id` is
+ * always read from the DB, never trusted from tool_input.
+ */
+export async function evaluateListingOffers(input: EvaluateListingOffersInput, actor?: ToolActor) {
+  if (!actor?.orgId) return { error: 'An authenticated organization user is required' }
+
   const priority = input.priority ?? 'balanced'
 
   const [{ data: listing, error: listingErr }, { data: offers, error: offersErr }] = await Promise.all([
@@ -22,7 +35,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
       .from('marketplace_offers')
       .select(
         'id, from_org_id, offered_price, offered_quantity, proposed_delivery_date, ' +
-        'proposed_incoterms, proposed_payment_terms, shipping_cost, notes, ' +
+        'proposed_incoterms, proposed_payment_terms, shipping_cost, notes, exceptions, document_ids, ' +
         'status, created_at'
       )
       .eq('listing_id', input.listing_id)
@@ -32,6 +45,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
 
   if (listingErr) return { error: `Failed to load listing: ${listingErr.message}` }
   if (!listing) return { error: `Listing ${input.listing_id} not found` }
+  if (listing.org_id !== actor.orgId) return { error: 'Forbidden' }
   if (offersErr) return { error: `Failed to load offers: ${offersErr.message}` }
   if (!offers || offers.length === 0) {
     return { listing_id: input.listing_id, message: 'No active offers to evaluate yet.' }
@@ -42,7 +56,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
   const { data: orgs } = await adminClient
     .from('organizations')
     .select(
-      'id, legal_name, doing_business_as, type, kyb_status, passport_score, ' +
+      'id, legal_name, doing_business_as, type, status, kyb_status, passport_score, ' +
       'risk_score, risk_tier, performance_score, performance_tier, ' +
       'years_in_operation, annual_revenue_range, country'
     )
@@ -57,7 +71,7 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
     id: string; from_org_id: string; offered_price: number; offered_quantity: number | null;
     proposed_delivery_date: string | null; proposed_incoterms: string | null;
     proposed_payment_terms: string | null; shipping_cost: number | null;
-    notes: string | null; status: string;
+    notes: string | null; exceptions: unknown[] | null; document_ids: string[] | null; status: string;
   }) => {
     const org = orgMap[o.from_org_id] ?? {}
     return {
@@ -73,10 +87,15 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
         years_in_operation: (org as { years_in_operation?: number }).years_in_operation,
         annual_revenue_range: (org as { annual_revenue_range?: string }).annual_revenue_range,
         country: (org as { country?: string }).country,
+        // Eligibility, not just reputation — a strong Passport score doesn't
+        // matter if the org isn't currently admitted (PR 1).
+        admitted: isOrgAdmitted(org as { status: string | null; kyb_status: string | null }),
       },
       offered_price: o.offered_price,
       offered_quantity: o.offered_quantity,
       shipping_cost: o.shipping_cost,
+      exceptions: o.exceptions ?? [],
+      document_count: o.document_ids?.length ?? 0,
       total_landed_cost: o.shipping_cost != null
         ? Number(o.offered_price) + Number(o.shipping_cost)
         : Number(o.offered_price),
@@ -87,6 +106,11 @@ export async function evaluateListingOffers(input: EvaluateListingOffersInput) {
       status: o.status,
     }
   })
+
+  // PR 3 constraint: never calculate or present an actual discount offer
+  // pre-award — there is no invoice, approved amount, or due date yet.
+  // Informational only.
+  const DYNAMIC_DISCOUNTING_NOTE = 'Dynamic discounting can be proposed after a matched/approved invoice.'
 
   const listingSummary = {
     title: listing.title,
@@ -166,6 +190,7 @@ Respond ONLY with valid JSON:
         offer_count: offers.length,
         priority,
         currency: listing.currency,
+        dynamic_discounting_note: DYNAMIC_DISCOUNTING_NOTE,
         ...parsed,
         raw_offers: offerSummaries,
       }
@@ -181,6 +206,7 @@ Respond ONLY with valid JSON:
     listing_title: listing.title,
     offer_count: offers.length,
     priority,
+    dynamic_discounting_note: DYNAMIC_DISCOUNTING_NOTE,
     currency: listing.currency,
     ranked_offers: sorted.map((o, i) => ({
       rank: i + 1,

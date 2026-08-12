@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
 import type { ImportDealPayload } from '@strike-scf/types'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,6 +28,15 @@ export async function POST(request: Request) {
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
   if (!userData.org_id) return NextResponse.json({ error: 'Organization not set up' }, { status: 400 })
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', userData.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to import a deal' }, { status: 403 })
+  }
 
   let body: ImportDealPayload
   try { body = await request.json() }

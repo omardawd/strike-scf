@@ -41,6 +41,33 @@ export async function executeApproval(
   const plan = (task.plan ?? null) as TaskPlan | null
   const negotiationId = plan?.negotiation_id
 
+  // PR 3 staleness guard: an award_recommendation can sit awaiting approval
+  // for a while. If the recommended offer changed since the recommendation
+  // was made (a new counter round — different terms than what the buyer
+  // reviewed), refuse to execute rather than silently accept whatever the
+  // offer looks like now. acceptOffer() itself re-validates offer status and
+  // both parties' admission, but it has no notion of "did the terms move" —
+  // that's specific to this task type, so it's checked here.
+  if (task.type === 'award_recommendation' && typeof plan?.proposed_offer_id === 'string') {
+    const { data: currentOffer } = await adminClient
+      .from('marketplace_offers')
+      .select('current_round, status')
+      .eq('id', plan.proposed_offer_id)
+      .single()
+    const stale = !currentOffer
+      || currentOffer.current_round !== plan.snapshot_round
+      || !['pending', 'countered'].includes(currentOffer.status)
+    if (stale) {
+      await adminClient.from('agent_tasks').update({
+        status: 'failed',
+        result: { error: 'This recommendation is stale — the offer changed or is no longer actionable since it was recommended. Ask Strike AI to re-compare and recommend again.' },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      await postSystemMessage(rootTaskId, 'This award recommendation is stale — the offer changed (or is no longer actionable) since it was recommended, so nothing was accepted. Ask me to re-compare offers and recommend again.')
+      return { success: true, result: { error: 'stale_recommendation' } }
+    }
+  }
+
   // A task starts a new negotiation when it carries guardrails (plan is set)
   // but has no negotiation_id yet — that id only exists once the negotiation
   // row itself has been created, which happens below on this same approval.
@@ -56,7 +83,16 @@ export async function executeApproval(
     const toolInput = (task.proposed_action.tool_input ?? {}) as Record<string, unknown>
 
     try {
-      result = await executeTool(toolName, { ...toolInput, org_id: toolInput.org_id ?? orgId })
+      // Force every org-identifying field to the task's own (trusted, DB-
+      // sourced) org — never trust whatever was stored in proposed_action.
+      // tool_input for this, since that was populated at proposal time from
+      // model output. Harmless no-op for tools that don't read a given key.
+      result = await executeTool(toolName, {
+        ...toolInput,
+        org_id: orgId,
+        acting_org_id: orgId,
+        from_org_id: orgId,
+      }, { actor: { userId: approvedByUserId, orgId, bankId: null } })
       const succeeded = !('error' in result)
 
       // Log to agent_actions. action_type is a closed enum — only insert with

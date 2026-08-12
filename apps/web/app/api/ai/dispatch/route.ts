@@ -197,7 +197,12 @@ export async function POST(req: NextRequest) {
       toolBlocks.map(async (block: any) => {
         let result: Record<string, unknown>
         try {
-          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>)
+          result = await executeTool(block.name as ToolName, block.input as Record<string, unknown>, {
+            // orgId comes from the validated dispatch token's erp_connections
+            // row (conn.org_id), never from the tool call itself — the one
+            // trustworthy identity a machine-to-machine dispatch call has.
+            actor: { userId: `dispatch:${orgId}`, orgId, bankId: null },
+          })
         } catch (err) {
           result = { error: err instanceof Error ? err.message : 'Tool failed' }
         }

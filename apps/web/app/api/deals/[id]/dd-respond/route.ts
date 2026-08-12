@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,6 +67,14 @@ export async function POST(
   let body: { accepted: boolean }
   try { body = await request.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+
+  // Declining an offered DD early-payment discount reduces exposure — always
+  // allowed. Accepting one commits to new optional terms, so it requires
+  // admission. See lib/deals/admission-policy.ts.
+  if (body.accepted) {
+    const admissionError = await assertOrgCanExpandDeal(adminClient, userData.org_id, 'accept a Dynamic Discounting offer')
+    if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
+  }
 
   const now = new Date().toISOString()
   const shortId = id.slice(0, 8).toUpperCase()

@@ -25,7 +25,6 @@ function DelayedSpotlight({ targetSelector, delayMs }: { targetSelector: string;
     setReady(false)
     const t = setTimeout(() => setReady(true), delayMs)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetSelector, delayMs])
   if (!ready) return null
   return <SpotlightOverlay targetSelector={targetSelector} />

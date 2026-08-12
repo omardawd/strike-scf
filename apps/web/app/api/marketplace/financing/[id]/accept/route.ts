@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,6 +29,15 @@ export async function PATCH(
 
   if (!ORG_ROLES.includes(me.role)) {
     return NextResponse.json({ error: 'Only organization members can accept financing offers' }, { status: 403 })
+  }
+
+  const { data: myOrgForAdmission } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', me.org_id)
+    .single()
+  if (!isOrgAdmitted(myOrgForAdmission)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to accept a financing offer' }, { status: 403 })
   }
 
   let body: { offer_id: string }

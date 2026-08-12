@@ -9,6 +9,7 @@ import { isShippingCostRequired } from '@/lib/deals/fees'
 import { sanitizeSearchTerm } from '@/lib/search'
 import { getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
 import { recomputeListingTotal, validateLineItems, type LineItemInput } from '@/lib/marketplace/listing-pricing'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,10 +43,19 @@ export async function GET(request: Request) {
   if (me.org_id) {
     const { data: org } = await adminClient
       .from('organizations')
-      .select('network_visible')
+      .select('network_visible, status, kyb_status')
       .eq('id', me.org_id)
       .single()
     if (org && org.network_visible === false) {
+      return NextResponse.json({ listings: [], total: 0, page, hasMore: false })
+    }
+    // Admission gate: browsing the marketplace (not viewing your own listings)
+    // requires an approved, active org — Ghost Mode only means KYB was
+    // submitted. A non-admitted org can still see its own listings (`mine`)
+    // but cannot discover other orgs' listings via GET, matching the
+    // waiting-page restriction the UI applies — this closes the direct-API
+    // bypass of that restriction.
+    if (!mine && !isOrgAdmitted(org)) {
       return NextResponse.json({ listings: [], total: 0, page, hasMore: false })
     }
   }
@@ -123,7 +133,7 @@ export async function GET(request: Request) {
     const [{ data: orgs }, statsMap] = await Promise.all([
       adminClient
         .from('organizations')
-        .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, country_of_origin, description, network_visible')
+        .select('id, legal_name, doing_business_as, type, passport_score, risk_tier, country_of_origin, description, network_visible, status, kyb_status')
         .in('id', orgIds),
       // trade_count_total / trade_volume_total are never written on
       // `organizations` — compute live from deals instead (see lib/passport/trade-stats.ts).
@@ -139,9 +149,11 @@ export async function GET(request: Request) {
   // (network_visible=false) to the marketplace. The service role bypasses RLS, so
   // this manual filter is required. The `mine` view is exempt — a user always sees
   // their own listings regardless of their own visibility.
+  // Admission enforcement: a non-admitted org's listing must not appear to other
+  // orgs either, even if it happens to be network_visible (see lib/auth/admission.ts).
   const visibleListings = mine
     ? (listings ?? [])
-    : (listings ?? []).filter((l: any) => orgsMap[l.org_id]?.network_visible === true)
+    : (listings ?? []).filter((l: any) => orgsMap[l.org_id]?.network_visible === true && isOrgAdmitted(orgsMap[l.org_id]))
 
   // Batch-fetch line item totals so cards can show aggregate price
   const listingIds = visibleListings.map((l: any) => l.id as string)
@@ -192,17 +204,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only organization members can create listings' }, { status: 403 })
   }
 
-  // Feature gate (TD.4): platform unlocks on Passport SUBMISSION, not approval.
-  // A network-visible org (network_visible=true is set on submission) may post —
-  // we no longer require status==='active' (which only happens after AI approval).
+  // Admission gate: publishing a listing requires an approved, active org —
+  // Ghost Mode (network_visible + kyb_status!=='not_started') only unlocks
+  // browsing, not marketplace mutations. See lib/auth/admission.ts.
   const { data: org } = await adminClient
     .from('organizations')
     .select('status, kyb_status, network_visible')
     .eq('id', me.org_id)
     .single()
 
-  if (!org || !org.network_visible || org.kyb_status === 'not_started') {
-    return NextResponse.json({ error: 'Activate your Passport to post listings' }, { status: 403 })
+  if (!isOrgAdmitted(org)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to post listings' }, { status: 403 })
   }
 
   let body: CreateListingPayload & { status?: string }

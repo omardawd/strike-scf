@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +24,17 @@ export async function POST(
     .eq('id', user.id)
     .single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 401 })
+
+  if (userData.org_id) {
+    const { data: myOrg } = await adminClient
+      .from('organizations')
+      .select('status, kyb_status')
+      .eq('id', userData.org_id)
+      .single()
+    if (!isOrgAdmitted(myOrg)) {
+      return NextResponse.json({ error: 'Your organization must be KYB-approved to join a room' }, { status: 403 })
+    }
+  }
 
   const { data: room } = await adminClient
     .from('rooms')

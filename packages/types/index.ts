@@ -734,6 +734,7 @@ export interface SubmitOfferPayload {
   notes?: string
   bank_account_id?: string
   offer_items?: unknown[]
+  exceptions?: unknown[]
 }
 
 export interface CounterOfferPayload {

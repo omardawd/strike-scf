@@ -31,7 +31,16 @@ import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './hand
 import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
 import { generateDocument, type GenerateDocumentInput } from './handlers/generate-document'
 import { getDealWorkflow, proposeDealWorkflowStep, type ProposeDealWorkflowStepInput, type ToolActor } from './handlers/deal-workflow'
+import { findEligibleSuppliers, type FindEligibleSuppliersInput } from './handlers/find-eligible-suppliers'
+import { draftSourcingRequest, type DraftSourcingRequestInput } from './handlers/draft-sourcing-request'
+import { draftSupplierOutreach, type DraftSupplierOutreachInput } from './handlers/draft-supplier-outreach'
+import { recommendAward, type RecommendAwardInput } from './handlers/recommend-award'
+import { requestSourcingSearch, type RequestSourcingSearchInput } from './handlers/request-sourcing-search'
+import { getSourcingSearchStatus, type GetSourcingSearchStatusInput } from './handlers/get-sourcing-search-status'
+import { getBoard, designBoardWorkflow, createBoardTask, assignBoardTask, moveBoardTask, type GetBoardInput, type DesignBoardWorkflowInput, type CreateBoardTaskInput, type AssignBoardTaskInput, type MoveBoardTaskInput } from './handlers/board'
 import { getCachedAiResponse, setCachedAiResponse } from '../demo-ai-cache'
+import { adminClient } from './admin'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 export type ToolName =
   | 'get_agent_tasks'
@@ -64,6 +73,17 @@ export type ToolName =
   | 'generate_document'
   | 'get_deal_workflow'
   | 'propose_deal_workflow_step'
+  | 'find_eligible_suppliers'
+  | 'draft_sourcing_request'
+  | 'draft_supplier_outreach'
+  | 'recommend_award'
+  | 'request_sourcing_search'
+  | 'get_sourcing_search_status'
+  | 'get_board'
+  | 'design_board_workflow'
+  | 'create_board_task'
+  | 'assign_board_task'
+  | 'move_board_task'
 
 // Stable (key-sorted) stringify so the same logical tool input always
 // produces the same cache key regardless of property insertion order.
@@ -98,11 +118,103 @@ export async function executeTool(
   return dispatchTool(toolName, toolInput, opts?.actor)
 }
 
+// Tool name -> the key in toolInput holding the ACTING org id, for every write
+// tool that identifies which org is performing the action. These handlers
+// (lib/ai/tools/handlers/*) write directly via their own adminClient — they
+// do NOT go through the HTTP routes in app/api/marketplace/**, so route-level
+// admission checks never applied to Strike AI chat, /api/ai/dispatch, or the
+// autonomous tick loop. This is the one place all of them funnel through.
+//
+// SECURITY: toolInput is model/prompt-controlled — an LLM can be prompted
+// (deliberately or via injection) to put ANY org id in these fields. It must
+// never be trusted as the caller's real identity. `actor.orgId` — set by the
+// caller (route/tick loop) from an authenticated session or a validated DB
+// row, never from tool_input — is the only trustworthy source of "who is
+// actually calling this." assertActorOwnsToolOrg() below rejects any call
+// where the org id claimed in toolInput doesn't match actor.orgId, and the
+// admission check itself is keyed off actor.orgId, never toolInput.
+const TOOL_ORG_ID_FIELDS: Partial<Record<ToolName, string>> = {
+  create_marketplace_listing: 'org_id',
+  submit_marketplace_offer: 'from_org_id',
+  create_financing_request: 'org_id',
+  create_network: 'org_id',
+  add_network_member: 'org_id',
+  counter_marketplace_offer: 'acting_org_id',
+  accept_marketplace_offer: 'acting_org_id',
+  reject_marketplace_offer: 'acting_org_id',
+  // Not admission-gated (see ADMISSION_GATED_TOOLS below) — searching isn't a
+  // commercial commitment, but the job
+  // row it creates must still be bound to the actor's own org.
+  request_sourcing_search: 'org_id',
+}
+
+// Subset of TOOL_ORG_ID_FIELDS that additionally requires the acting org to
+// be admitted (approved + active). reject/withdraw stay exempt everywhere —
+// declining never needs approval. counter/accept are admission-checked
+// inside counterOffer()/acceptOffer() themselves (lib/marketplace/
+// offer-actions.ts), which these handlers call — not duplicated here.
+const ADMISSION_GATED_TOOLS: ReadonlySet<ToolName> = new Set([
+  'create_marketplace_listing',
+  'submit_marketplace_offer',
+  'create_financing_request',
+  'create_network',
+  'add_network_member',
+])
+
+/**
+ * Rejects any write tool call where toolInput claims an org id that isn't
+ * the authenticated actor's own — a non-admitted actor cannot use an
+ * approved org's id to slip past admission (or, more generally, impersonate
+ * any other org) by simply putting a different id in the tool call.
+ */
+function assertActorOwnsToolOrg(
+  toolName: ToolName,
+  toolInput: Record<string, unknown>,
+  actor?: ToolActor
+): string | null {
+  const orgIdKey = TOOL_ORG_ID_FIELDS[toolName]
+  if (!orgIdKey) return null
+  const claimedOrgId = toolInput[orgIdKey]
+  if (typeof claimedOrgId !== 'string' || !claimedOrgId) return null
+  if (!actor?.orgId) {
+    return 'An authenticated organization is required to do this'
+  }
+  if (claimedOrgId !== actor.orgId) {
+    return 'Organization mismatch: this action can only be performed as your own organization'
+  }
+  return null
+}
+
+async function assertToolCallerAdmitted(
+  toolName: ToolName,
+  actor?: ToolActor
+): Promise<string | null> {
+  if (!ADMISSION_GATED_TOOLS.has(toolName)) return null
+  if (!actor?.orgId) {
+    return 'An authenticated organization is required to do this'
+  }
+  const { data: org } = await adminClient
+    .from('organizations')
+    .select('status, kyb_status')
+    .eq('id', actor.orgId)
+    .single()
+  if (!isOrgAdmitted(org)) {
+    return 'Organization must be KYB-approved to do this'
+  }
+  return null
+}
+
 async function dispatchTool(
   toolName: ToolName,
   toolInput: Record<string, unknown>,
   actor?: ToolActor
 ): Promise<Record<string, unknown>> {
+  const mismatchError = assertActorOwnsToolOrg(toolName, toolInput, actor)
+  if (mismatchError) return { error: mismatchError }
+
+  const admissionError = await assertToolCallerAdmitted(toolName, actor)
+  if (admissionError) return { error: admissionError }
+
   switch (toolName) {
     case 'get_agent_tasks':
       return getAgentTasks(toolInput as unknown as GetAgentTasksInput)
@@ -135,7 +247,7 @@ async function dispatchTool(
     case 'lookup_entities':
       return lookupEntities(toolInput as unknown as LookupEntitiesInput)
     case 'evaluate_listing_offers':
-      return evaluateListingOffers(toolInput as unknown as EvaluateListingOffersInput)
+      return evaluateListingOffers(toolInput as unknown as EvaluateListingOffersInput, actor)
     case 'get_passport_advice':
       return getPassportAdvice(toolInput as unknown as GetPassportAdviceInput)
     case 'get_active_deals':
@@ -164,6 +276,28 @@ async function dispatchTool(
       return getDealWorkflow(toolInput as unknown as { deal_id: string }, actor)
     case 'propose_deal_workflow_step':
       return proposeDealWorkflowStep(toolInput as unknown as ProposeDealWorkflowStepInput, actor)
+    case 'find_eligible_suppliers':
+      return findEligibleSuppliers(toolInput as unknown as FindEligibleSuppliersInput, actor)
+    case 'draft_sourcing_request':
+      return draftSourcingRequest(toolInput as unknown as DraftSourcingRequestInput)
+    case 'draft_supplier_outreach':
+      return draftSupplierOutreach(toolInput as unknown as DraftSupplierOutreachInput, actor)
+    case 'recommend_award':
+      return recommendAward(toolInput as unknown as RecommendAwardInput, actor)
+    case 'request_sourcing_search':
+      return requestSourcingSearch(toolInput as unknown as RequestSourcingSearchInput, actor)
+    case 'get_sourcing_search_status':
+      return getSourcingSearchStatus(toolInput as unknown as GetSourcingSearchStatusInput, actor)
+    case 'get_board':
+      return getBoard(toolInput as unknown as GetBoardInput, actor)
+    case 'design_board_workflow':
+      return designBoardWorkflow(toolInput as unknown as DesignBoardWorkflowInput, actor)
+    case 'create_board_task':
+      return createBoardTask(toolInput as unknown as CreateBoardTaskInput, actor)
+    case 'assign_board_task':
+      return assignBoardTask(toolInput as unknown as AssignBoardTaskInput, actor)
+    case 'move_board_task':
+      return moveBoardTask(toolInput as unknown as MoveBoardTaskInput, actor)
     default:
       return { error: `Unknown tool: ${toolName as string}` }
   }
@@ -184,4 +318,9 @@ export const WRITE_TOOLS: ToolName[] = [
   'accept_marketplace_offer',
   'reject_marketplace_offer',
   'propose_deal_workflow_step',
+  'request_sourcing_search',
+  'design_board_workflow',
+  'create_board_task',
+  'assign_board_task',
+  'move_board_task',
 ]

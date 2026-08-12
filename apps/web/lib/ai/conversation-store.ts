@@ -35,7 +35,7 @@ function conversationsKey(userId: string): string {
 export function newId(): string {
   try {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
-  } catch {}
+  } catch { /* fall through to the timestamp-based id below */ }
   return `c_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
 
@@ -76,7 +76,7 @@ export function saveConversations(userId: string, convos: Conversation[]) {
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, MAX_CONVERSATIONS)
     localStorage.setItem(conversationsKey(userId), JSON.stringify(pruned))
-  } catch {}
+  } catch { /* best-effort — e.g. storage quota exceeded or unavailable */ }
 }
 
 export function deriveTitle(messages: Message[], t: TFn): string {

@@ -69,7 +69,6 @@ export interface TransitionRule {
 }
 
 const ORG_ROLES: UserRole[] = ['org_admin', 'org_member']
-const ALL_ROLES: UserRole[] = ['bank_admin', 'bank_credit_officer', 'org_admin', 'org_member', 'strike_admin']
 
 export const PERMITTED_TRANSITIONS: Record<string, TransitionRule> = {
   // ── Contract flow (new procurement v2) ───────────────────────────────────────

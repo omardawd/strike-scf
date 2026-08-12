@@ -189,6 +189,66 @@ const PROPOSE_DEAL_WORKFLOW_STEP = {
   },
 }
 
+const FIND_ELIGIBLE_SUPPLIERS = {
+  name: 'find_eligible_suppliers',
+  description: 'List suppliers eligible to be invited to a specific po_request listing you own — scoped to that listing\'s own network/marketplace visibility rule, and filtered to currently admitted (KYB-approved, active) organizations. Never returns a general supplier directory; always scoped to one listing_id.',
+  input_schema: {
+    type: 'object',
+    properties: { listing_id: { type: 'string', description: 'Full listing UUID — must be a listing you own' } },
+    required: ['listing_id'],
+  },
+}
+
+const DRAFT_SOURCING_REQUEST = {
+  name: 'draft_sourcing_request',
+  description: 'Draft the fields for a po_request sourcing listing and flag which material fields (quantity, delivery deadline/location, incoterms, payment terms) are still missing. Returns a draft only — never creates a listing. The buyer must review and publish it themselves through the existing listing creation page.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      category: { type: 'string' },
+      quantity: { type: 'number' },
+      unit: { type: 'string' },
+      target_price: { type: 'number' },
+      currency: { type: 'string', default: 'USD' },
+      delivery_deadline: { type: 'string', format: 'date' },
+      delivery_location: { type: 'string' },
+      incoterms: { type: 'string' },
+      payment_terms: { type: 'string' },
+    },
+    required: ['title'],
+  },
+}
+
+const DRAFT_SUPPLIER_OUTREACH = {
+  name: 'draft_supplier_outreach',
+  description: 'Draft an outreach message inviting a specific organization to quote on your po_request listing. Returns text only — never sends anything. You must send it yourself.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      listing_id: { type: 'string', description: 'Your own listing UUID' },
+      target_org_id: { type: 'string', description: 'The organization to draft a message to' },
+    },
+    required: ['listing_id', 'target_org_id'],
+  },
+}
+
+const RECOMMEND_AWARD = {
+  name: 'recommend_award',
+  description: 'Create a NON-BINDING award recommendation for a po_request listing you own, naming one offer as the proposed winner with rationale, risks, and comparison. This does NOT accept the offer or create a deal — it posts an approval task to the Agent tab. The buyer must explicitly approve it there before anything binding happens; that approval (not this tool) is what accepts the offer.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      listing_id: { type: 'string', description: 'Your own po_request listing UUID' },
+      offer_id: { type: 'string', description: 'The offer being recommended — must belong to listing_id' },
+      rationale: { type: 'string', description: 'Why this offer is recommended' },
+      risks: { type: 'string', description: 'Any risks or caveats to flag to the buyer' },
+      comparison: { type: 'object', description: 'Optional structured comparison data against other offers' },
+    },
+    required: ['listing_id', 'offer_id', 'rationale'],
+  },
+}
+
 const SCORE_AND_RANK_FINANCING_OFFERS = {
   name: 'score_and_rank_financing_offers',
   description: 'Score and rank all bank offers on a financing request by rate, amount, tenor, and bank reputation. Writes ai_score back to each offer.',
@@ -453,6 +513,29 @@ const SEARCH_WEB = {
   },
 }
 
+const REQUEST_SOURCING_SEARCH = {
+  name: 'request_sourcing_search',
+  description: 'Start Strike Sourcing: a deep, multi-round research job that searches Strike Place plus the open web (including niche/buried suppliers a keyword search would miss) to find and evidence-qualify suppliers for a product/spec request. Before calling this, make sure the request has enough detail to search well — if something is genuinely ambiguous (e.g. an amount that could mean weight or capacity) either state your best interpretation or ask one quick clarifying question first. This is asynchronous and takes roughly 1-3 minutes; tell the user that up front. Returns a job_id immediately — after calling, always emit [[STRIKE_BLOCK:{"type":"sourcing_job","job_id":"<id>"}]] on its own line so the UI shows live progress and results.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      org_id: { type: 'string' },
+      query: { type: 'string', description: 'The sourcing request, in full detail — include any specs, quantities, price targets, and location/certification requirements the user has given' },
+    },
+    required: ['org_id', 'query'],
+  },
+}
+
+const GET_SOURCING_SEARCH_STATUS = {
+  name: 'get_sourcing_search_status',
+  description: 'Check the progress or read the outcome of a Strike Sourcing job started with request_sourcing_search. The live progress card already polls this automatically — only call this tool yourself if the user asks about status in plain chat outside that card.',
+  input_schema: {
+    type: 'object',
+    properties: { job_id: { type: 'string' } },
+    required: ['job_id'],
+  },
+}
+
 const PROACTIVE_PORTFOLIO_ALERTS = {
   name: 'proactive_portfolio_alerts',
   description: 'Scan a bank\'s portfolio for issues: overdue payments, stuck deals, deteriorating performance, concentration risk, upcoming maturities. Bank users only.',
@@ -588,6 +671,96 @@ const CREATE_FINANCING_REQUEST = {
   },
 }
 
+const GET_BOARD = {
+  name: 'get_board',
+  description: 'Read the caller\'s org/bank Team Board: its workflow stages (columns), the arrows/connections between them, and its tasks (with assignee, priority, due date). Use when the user asks what\'s on the board, what stage something is in, or who\'s working on what.',
+  input_schema: {
+    type: 'object',
+    properties: {},
+  },
+}
+
+const DESIGN_BOARD_WORKFLOW = {
+  name: 'design_board_workflow',
+  description: 'Design (or redesign) the org/bank Team Board\'s workflow: replaces its full set of stages (columns) and the arrows between them in one call. Use when the user describes a workflow by chatting, e.g. "set up a workflow: Intake, Review, Approved, Rejected, Done, with Review branching to Approved or Rejected". Existing tasks are automatically kept and moved to the stage with the closest matching name (or the first stage if none matches) — never deleted. Org/bank admins only.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      columns: {
+        type: 'array',
+        description: 'The full ordered list of stages the board should have after this call',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Stage name, e.g. "Review"' },
+            position: { type: 'number', description: 'Left-to-right order, 0-based. Defaults to array order.' },
+          },
+          required: ['name'],
+        },
+      },
+      edges: {
+        type: 'array',
+        description: 'Arrows between stages, shown in the flow-graph view. Reference stages by the exact name used in columns.',
+        items: {
+          type: 'object',
+          properties: {
+            from: { type: 'string', description: 'Source stage name' },
+            to: { type: 'string', description: 'Destination stage name' },
+            label: { type: 'string', description: 'Optional label on the arrow, e.g. "if rejected"' },
+          },
+          required: ['from', 'to'],
+        },
+      },
+    },
+    required: ['columns'],
+  },
+}
+
+const CREATE_BOARD_TASK = {
+  name: 'create_board_task',
+  description: 'Create a task on the org/bank Team Board and optionally assign it to a teammate. Use when the user asks to add a task, ticket, or to-do to the board. Org/bank admins only (assigning work is a workflow-design action).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Task title, max 160 characters' },
+      column_name: { type: 'string', description: 'Stage to place the task in, by name. Defaults to the first stage if omitted.' },
+      column_id: { type: 'string', description: 'Stage UUID, if already known — prefer column_name otherwise' },
+      description: { type: 'string' },
+      assignee_email: { type: 'string', description: 'Email of the teammate to assign the task to (must be in the same org/bank)' },
+      priority: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
+      due_date: { type: 'string', format: 'date' },
+    },
+    required: ['title'],
+  },
+}
+
+const ASSIGN_BOARD_TASK = {
+  name: 'assign_board_task',
+  description: 'Reassign an existing Team Board task to a different teammate by email. Org/bank admins only.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      task_id: { type: 'string' },
+      assignee_email: { type: 'string', description: 'Email of the teammate to assign the task to (must be in the same org/bank)' },
+    },
+    required: ['task_id', 'assignee_email'],
+  },
+}
+
+const MOVE_BOARD_TASK = {
+  name: 'move_board_task',
+  description: 'Move a Team Board task to a different workflow stage. Any user can move a task assigned to themselves; org/bank admins can move any task.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      task_id: { type: 'string' },
+      column_name: { type: 'string', description: 'Target stage name' },
+      column_id: { type: 'string', description: 'Target stage UUID, if already known — prefer column_name otherwise' },
+    },
+    required: ['task_id'],
+  },
+}
+
 // Bounded tool set for per-task plan chats — lets Strike AI look things up while
 // discussing a pending proposal, revise its terms, or adjust guardrails on a
 // live negotiation, but never execute anything directly (approve/reject in
@@ -621,6 +794,10 @@ const ORG_TOOLS = [
   GET_ACTIVE_DEALS,
   GET_DEAL_WORKFLOW,
   PROPOSE_DEAL_WORKFLOW_STEP,
+  FIND_ELIGIBLE_SUPPLIERS,
+  DRAFT_SOURCING_REQUEST,
+  DRAFT_SUPPLIER_OUTREACH,
+  RECOMMEND_AWARD,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
   SCORE_AND_RANK_FINANCING_OFFERS,
@@ -636,6 +813,13 @@ const ORG_TOOLS = [
   GET_AGENT_TASKS,
   PROACTIVE_PORTFOLIO_ALERTS,
   GENERATE_DOCUMENT,
+  REQUEST_SOURCING_SEARCH,
+  GET_SOURCING_SEARCH_STATUS,
+  GET_BOARD,
+  DESIGN_BOARD_WORKFLOW,
+  CREATE_BOARD_TASK,
+  ASSIGN_BOARD_TASK,
+  MOVE_BOARD_TASK,
 ]
 
 const BANK_TOOLS = [
@@ -655,6 +839,11 @@ const BANK_TOOLS = [
   GET_PASSPORT_ADVICE,
   GENERATE_DEAL_TERM_SHEET,
   GENERATE_DOCUMENT,
+  GET_BOARD,
+  DESIGN_BOARD_WORKFLOW,
+  CREATE_BOARD_TASK,
+  ASSIGN_BOARD_TASK,
+  MOVE_BOARD_TASK,
 ]
 
 // Full set used as fallback and for type inference in execute.ts.
@@ -672,6 +861,10 @@ export const STRIKE_TOOLS = [
   GET_ACTIVE_DEALS,
   GET_DEAL_WORKFLOW,
   PROPOSE_DEAL_WORKFLOW_STEP,
+  FIND_ELIGIBLE_SUPPLIERS,
+  DRAFT_SOURCING_REQUEST,
+  DRAFT_SUPPLIER_OUTREACH,
+  RECOMMEND_AWARD,
   EVALUATE_SUPPLIER_PASSPORT,
   FIND_AND_RECOMMEND_DEALS,
   GET_PRICING_INSIGHTS,
@@ -687,6 +880,13 @@ export const STRIKE_TOOLS = [
   GET_CAPITAL_POSITION,
   GET_AGENT_TASKS,
   GENERATE_DOCUMENT,
+  REQUEST_SOURCING_SEARCH,
+  GET_SOURCING_SEARCH_STATUS,
+  GET_BOARD,
+  DESIGN_BOARD_WORKFLOW,
+  CREATE_BOARD_TASK,
+  ASSIGN_BOARD_TASK,
+  MOVE_BOARD_TASK,
 ] as const
 
 // Bounded tool set for the autonomous negotiation tick loop (see

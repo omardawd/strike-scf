@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { callClaude, AI_MODEL } from '@/lib/ai'
 import type { SubmitOfferPayload } from '@strike-scf/types'
 import { isShippingCostRequired } from '@/lib/deals/fees'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,18 +82,17 @@ export async function POST(request: Request) {
     .single()
   if (!userData?.org_id) return NextResponse.json({ error: 'User not found or not linked to an org' }, { status: 401 })
 
-  // Feature gate (TD.4): unlock on Passport SUBMISSION, not approval. A
-  // network-visible org (set true on submission) may submit offers — we no longer
-  // require status==='active' (which only happens after AI approval). Ghost orgs
-  // (network_visible=false) remain blocked.
+  // Admission gate: submitting an offer requires an approved, active org —
+  // Ghost Mode (network_visible + kyb_status!=='not_started') only unlocks
+  // browsing, not marketplace mutations. See lib/auth/admission.ts.
   const { data: orgData } = await adminClient
     .from('organizations')
     .select('id, status, kyb_status, network_visible, legal_name, passport_score')
     .eq('id', userData.org_id)
     .single()
   if (!orgData) return NextResponse.json({ error: 'Organization not found' }, { status: 403 })
-  if (!orgData.network_visible || orgData.kyb_status === 'not_started') {
-    return NextResponse.json({ error: 'Activate your Passport to submit offers' }, { status: 403 })
+  if (!isOrgAdmitted(orgData)) {
+    return NextResponse.json({ error: 'Your organization must be KYB-approved to submit offers' }, { status: 403 })
   }
 
   let body: SubmitOfferPayload
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   }
 
   const { listing_id, offered_price, offered_quantity, proposed_delivery_date,
-    proposed_incoterms, proposed_payment_terms, shipping_cost, notes, bank_account_id, offer_items } = body
+    proposed_incoterms, proposed_payment_terms, shipping_cost, notes, bank_account_id, offer_items, exceptions } = body
 
   if (!listing_id || typeof offered_price !== 'number') {
     return NextResponse.json({ error: 'listing_id and offered_price are required' }, { status: 400 })
@@ -188,6 +188,7 @@ export async function POST(request: Request) {
       current_round: 1,
       offer_rounds: [firstRound],
       bank_account_id: bank_account_id ?? null,
+      exceptions: Array.isArray(exceptions) ? exceptions : [],
     })
     .select()
     .single()

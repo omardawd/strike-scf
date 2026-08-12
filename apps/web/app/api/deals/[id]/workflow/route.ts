@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { listWorkflowSteps, proposeWorkflowStep } from '@/lib/deals/workflow'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
 
 const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -31,6 +32,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const currentActor = await actor()
   if (!currentActor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Proposing an ad-hoc workflow step is an optional addition to the deal,
+  // not a necessary fulfillment/repayment/dispute/cancellation action. See
+  // lib/deals/admission-policy.ts.
+  const admissionError = await assertOrgCanExpandDeal(adminClient, currentActor.orgId, 'propose a workflow step')
+  if (admissionError) return NextResponse.json({ error: admissionError }, { status: 403 })
   try {
     const { id } = await params
     const body = await request.json()

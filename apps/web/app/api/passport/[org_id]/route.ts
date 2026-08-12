@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { getOrgTradeStats } from '@/lib/passport/trade-stats'
 import { getVisibilityFilter, buildListingVisibilityOr } from '@/lib/networks/visibility'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,7 +57,11 @@ export async function GET(
   if (!org) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const isOwn = me.org_id === org_id
-  if (!isOwn && org.network_visible !== true) {
+  // Own passport is always viewable (they may view their own KYB status even
+  // while not admitted). Another org's passport requires full admission, not
+  // just network_visible (Ghost Mode) — a submitted/rejected/suspended org
+  // must not be discoverable to other orgs via Passport either.
+  if (!isOwn && !isOrgAdmitted(org)) {
     return NextResponse.json({ error: 'This passport is private' }, { status: 403 })
   }
 

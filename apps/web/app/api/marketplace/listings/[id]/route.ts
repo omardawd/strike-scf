@@ -3,6 +3,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isListingVisibleToOrg } from '@/lib/networks/visibility'
 import { getOrgTradeStats, getOrgsTradeStatsBatch } from '@/lib/passport/trade-stats'
+import { isOrgAdmitted } from '@/lib/auth/admission'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,13 +44,20 @@ export async function GET(
   }
 
   // Network visibility enforcement: ghost orgs see nothing
+  const isOwnListing = me.org_id != null && me.org_id === listing.org_id
   if (me.org_id) {
     const { data: requesterOrg } = await adminClient
       .from('organizations')
-      .select('network_visible')
+      .select('network_visible, status, kyb_status')
       .eq('id', me.org_id)
       .single()
     if (requesterOrg && requesterOrg.network_visible === false) {
+      return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+    }
+    // Admission gate: viewing another org's listing (discovery) requires an
+    // approved, active org. Own listings remain visible regardless — needed
+    // to manage/withdraw them while awaiting approval.
+    if (!isOwnListing && !isOrgAdmitted(requesterOrg)) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
   }

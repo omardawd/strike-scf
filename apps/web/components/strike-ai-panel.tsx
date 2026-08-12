@@ -75,7 +75,7 @@ export function StrikeAIPanel() {
       .catch(() => {})
 
     return () => { active = false }
-  }, [pathname, open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, open])
 
   useEffect(() => {
     if (bodyRef.current) {

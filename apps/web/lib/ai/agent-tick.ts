@@ -185,7 +185,7 @@ export async function runListingDefenseTick(orgId?: string): Promise<{ processed
       const result = await executeTool('reject_marketplace_offer', {
         offer_id: offer.id, acting_org_id: listingOrgId,
         reason: decision.input.reason || decision.reasoning || undefined,
-      })
+      }, { actor: { userId: 'agent-tick', orgId: listingOrgId, bankId: null } })
       await logAction(listingOrgId, 'negotiation_rejected', offer.id, decision.input, result)
       results.push({ negotiation_id: offer.id, outcome: result.error ? 'failed' : 'rejected' })
       continue
@@ -282,7 +282,9 @@ async function execCounter(
   allowRepeatTurn: boolean
 ): Promise<Record<string, unknown>> {
   if (!allowRepeatTurn) {
-    return executeTool('counter_marketplace_offer', input)
+    return executeTool('counter_marketplace_offer', input, {
+      actor: { userId: 'agent-tick', orgId: input.acting_org_id, bankId: null },
+    })
   }
   try {
     const { offer, roomId } = await counterOfferDirect({
@@ -617,7 +619,7 @@ async function tickOne(neg: Row, claimWindowMs = 90 * 1000): Promise<string> {
       offer_id: offerId,
       acting_org_id: claimed.org_id,
       reason: decision.input.reason || decision.reasoning || undefined,
-    })
+    }, { actor: { userId: 'agent-tick', orgId: claimed.org_id, bankId: null } })
     await logAction(claimed.org_id, 'negotiation_rejected', offerId, decision.input, result)
     if (result.error) return await halt(claimed, 'failed', `Autonomous reject failed: ${result.error}`)
     return await finish(claimed, 'completed_rejected', decision.reasoning || 'Agent rejected the offer autonomously.')
@@ -998,7 +1000,10 @@ Make one decision now. If you call counter_marketplace_offer, reject_marketplace
     const reasoning = (textBlock?.text as string | undefined)?.trim() || (toolUse.input?.reasoning as string | undefined) || ''
 
     if (toolUse.name === 'get_pricing_insights' || toolUse.name === 'evaluate_listing_offers') {
-      const result = await executeTool(toolUse.name, toolUse.input, { demoCacheable: demoCacheEnabled })
+      const result = await executeTool(toolUse.name, toolUse.input, {
+        demoCacheable: demoCacheEnabled,
+        actor: { userId: 'agent-tick', orgId: actingOrgId, bankId: null },
+      })
       messages.push({ role: 'assistant', content })
       messages.push({
         role: 'user',

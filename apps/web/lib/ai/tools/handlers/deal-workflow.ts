@@ -1,4 +1,6 @@
 import { listWorkflowSteps, proposeWorkflowStep } from '@/lib/deals/workflow'
+import { assertOrgCanExpandDeal } from '@/lib/deals/admission-policy'
+import { adminClient } from '../admin'
 
 export interface ProposeDealWorkflowStepInput {
   deal_id: string
@@ -13,6 +15,8 @@ export type ToolActor = { userId: string; orgId: string | null; bankId: string |
 
 export async function proposeDealWorkflowStep(input: ProposeDealWorkflowStepInput, actor?: ToolActor) {
   if (!actor?.orgId) return { error: 'An authenticated organization user is required' }
+  const admissionError = await assertOrgCanExpandDeal(adminClient, actor.orgId, 'propose a workflow step')
+  if (admissionError) return { error: admissionError }
   try {
     const step = await proposeWorkflowStep({
       dealId: input.deal_id,
