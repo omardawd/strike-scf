@@ -1,5 +1,5 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
-import type { DealFlowData, DealFlowNode } from '@strike-scf/types'
+import type { DealFlowData, DealFlowNode, DealFlowRoadmapStage } from '@strike-scf/types'
 import { sendEmail, dealWorkflowRespondedEmailHtml } from '@/lib/email'
 
 const adminClient = createAdmin(
@@ -9,11 +9,42 @@ const adminClient = createAdmin(
 
 type Actor = { userId: string; orgId: string }
 
-// Mirrors DealRoadmap.tsx's ROADMAP_STEPS labels — the default flow seeded
-// for every deal so a simple single-shipment deal needs no customization.
-const DEFAULT_ROADMAP_STEPS = [
-  'Agreed', 'Contract', 'In Business', 'Shipped', 'Received', 'Accepted', 'Paid', 'Completed',
+// Mirrors DealRoadmap.tsx's ROADMAP_STEPS labels/keys, in order — the
+// default flow seeded for every deal so a simple single-shipment deal needs
+// no customization, and the title<->stage pairing every custom node's
+// roadmap_stage is inferred against.
+const DEFAULT_ROADMAP_STEPS: { title: string; stage: DealFlowRoadmapStage }[] = [
+  { title: 'Agreed', stage: 'agreed' },
+  { title: 'Contract', stage: 'contract_pending' },
+  { title: 'In Business', stage: 'confirmed' },
+  { title: 'Shipped', stage: 'shipped' },
+  { title: 'Received', stage: 'goods_received' },
+  { title: 'Accepted', stage: 'delivery_confirmed' },
+  { title: 'Paid', stage: 'payment_confirmed' },
+  { title: 'Completed', stage: 'completed' },
 ]
+
+/**
+ * Best-guess roadmap_stage for a node the caller (manual save or the AI
+ * drafting tool) didn't explicitly classify — exact title match against the
+ * fixed roadmap labels first, then keyword heuristics, defaulting to
+ * 'confirmed' ("In Business") as the general "deal in progress" bucket for
+ * anything unrecognizable. Never blocks a save — this is a convenience
+ * classification, not a hard requirement.
+ */
+function inferRoadmapStage(title: string): DealFlowRoadmapStage {
+  const exact = DEFAULT_ROADMAP_STEPS.find(s => s.title.toLowerCase() === title.toLowerCase())
+  if (exact) return exact.stage
+  const t = title.toLowerCase()
+  if (t.includes('ship')) return 'shipped'
+  if (t.includes('pay')) return 'payment_confirmed'
+  if (t.includes('inspect') || t.includes('accept')) return 'delivery_confirmed'
+  if (t.includes('receiv') || t.includes('deliver')) return 'goods_received'
+  if (t.includes('contract')) return 'contract_pending'
+  if (t.includes('agree')) return 'agreed'
+  if (t.includes('complet') || t.includes('final')) return 'completed'
+  return 'confirmed'
+}
 
 async function getDeal(dealId: string) {
   const { data } = await adminClient.from('deals')
@@ -104,7 +135,7 @@ export async function seedDefaultDealFlow(dealId: string, buyerOrgId: string, cr
   if (count && count > 0) return template
 
   await adminClient.from('deal_flow_nodes').insert(
-    DEFAULT_ROADMAP_STEPS.map((title, position) => ({
+    DEFAULT_ROADMAP_STEPS.map(({ title, stage }, position) => ({
       flow_template_id: template.id,
       node_type: 'step' as const,
       title,
@@ -112,6 +143,7 @@ export async function seedDefaultDealFlow(dealId: string, buyerOrgId: string, cr
       position,
       status: 'accepted' as const,
       proposed_by_org_id: buyerOrgId,
+      roadmap_stage: stage,
     }))
   )
   return template
@@ -154,6 +186,7 @@ export interface SaveDealFlowNodeInput {
   repeat_count?: number | null
   repeat_interval_days?: number | null
   anchor_date?: string | null
+  roadmap_stage?: DealFlowRoadmapStage | null
 }
 
 /**
@@ -227,6 +260,7 @@ export async function saveDealFlow(input: {
       repeat_count: node.node_type === 'cycle' ? node.repeat_count : null,
       repeat_interval_days: node.node_type === 'cycle' ? node.repeat_interval_days : null,
       anchor_date: node.node_type === 'cycle' ? node.anchor_date : null,
+      roadmap_stage: node.roadmap_stage ?? inferRoadmapStage(title),
     }
 
     if (existing) {

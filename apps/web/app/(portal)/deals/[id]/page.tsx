@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/portal-shell'
@@ -7,7 +7,6 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
-import { DealFlowSummaryPanel } from '@/components/deals/DealFlowSummaryPanel'
 import { DealFlowCanvas, type SaveFlowNodePayload } from '@/components/deals/DealFlowCanvas'
 import { FinancingManagementCard, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import { CountUp, Skeleton, SkeletonText } from '@/components/motion'
@@ -21,7 +20,7 @@ import {
   type BankAccountForContext,
 } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
-import type { Deal, Organization, FinancingRequest, AmendmentRecord, DealFlowData } from '@strike-scf/types'
+import type { Deal, Organization, FinancingRequest, AmendmentRecord, DealFlowData, DealFlowNode, DealFlowCycleOccurrence, DealFlowRoadmapStage } from '@strike-scf/types'
 import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 import { FINANCEABLE_STATUSES } from '@/lib/deals/transitions'
 import { useT } from '@/lib/i18n/locale-context'
@@ -482,6 +481,42 @@ export default function DealDetailPage() {
   const refetchFlow = useCallback(() => {
     fetch(`/api/deals/${id}/flow`).then(r => r.ok ? r.json() : null).then(setFlowData).catch(() => {})
   }, [id])
+
+  // Custom flow nodes/cycles, grouped for DealRoadmap's click-to-expand-a-
+  // stage UI — e.g. clicking "Shipped" reveals any node whose roadmap_stage
+  // is 'shipped' (a "Shipment" cycle, a manual "Pre-ship inspection" step, …).
+  const flowNodesByStage = useMemo(() => {
+    const map: Partial<Record<DealFlowRoadmapStage, DealFlowNode[]>> = {}
+    for (const node of flowData?.nodes ?? []) {
+      const stage: DealFlowRoadmapStage = node.roadmap_stage ?? 'confirmed'
+      ;(map[stage] ??= []).push(node)
+    }
+    return map
+  }, [flowData])
+
+  const occurrencesByFlowNode = useMemo(() => {
+    const map: Record<string, DealFlowCycleOccurrence[]> = {}
+    for (const occurrence of flowData?.occurrences ?? []) {
+      ;(map[occurrence.cycle_node_id] ??= []).push(occurrence)
+    }
+    return map
+  }, [flowData])
+
+  const respondFlowNode = useCallback((nodeId: string, response: 'accepted' | 'declined') => {
+    fetch(`/api/deals/${id}/flow/nodes/${nodeId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response }),
+    }).then(refetchFlow).catch(() => {})
+  }, [id, refetchFlow])
+
+  const completeFlowNode = useCallback((nodeId: string) => {
+    fetch(`/api/deals/${id}/flow/nodes/${nodeId}/complete`, { method: 'POST' }).then(refetchFlow).catch(() => {})
+  }, [id, refetchFlow])
+
+  const completeFlowOccurrence = useCallback((occurrenceId: string) => {
+    fetch(`/api/deals/${id}/flow/occurrences/${occurrenceId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }),
+    }).then(refetchFlow).catch(() => {})
+  }, [id, refetchFlow])
 
   const loadDocs = useCallback(() => {
     fetch(`/api/deals/${id}/documents`).then(r => r.json()).then(d => {
@@ -989,18 +1024,14 @@ export default function DealDetailPage() {
                   status={deal.status}
                   financingContext={financingContext}
                   currentUserRole={user_role}
+                  flowNodesByStage={flowNodesByStage}
+                  occurrencesByNode={occurrencesByFlowNode}
+                  onRespondNode={respondFlowNode}
+                  onCompleteNode={completeFlowNode}
+                  onCompleteOccurrence={completeFlowOccurrence}
                 />
               </div>
             </div>
-
-            {user_role !== 'bank' && (
-              <DealFlowSummaryPanel
-                dealId={deal.id}
-                flow={flowData}
-                currentUserRole={user_role}
-                onRefresh={load}
-              />
-            )}
 
             {showFlowCustomizer && flowData && (
               <DealFlowCanvas

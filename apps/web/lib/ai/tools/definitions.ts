@@ -211,6 +211,11 @@ const DRAFT_DEAL_FLOW = {
             repeat_count: { type: 'number', description: 'cycle nodes only — how many occurrences, e.g. 12' },
             repeat_interval_days: { type: 'number', description: 'cycle nodes only — days between occurrences, e.g. 60' },
             anchor_date: { type: 'string', format: 'date', description: 'cycle nodes only — date of the first occurrence' },
+            roadmap_stage: {
+              type: 'string',
+              enum: ['agreed', 'contract_pending', 'confirmed', 'shipped', 'goods_received', 'delivery_confirmed', 'payment_confirmed', 'completed'],
+              description: 'Which fixed roadmap step this checkpoint appears under when the buyer/supplier clicks it on the deal progress bar — e.g. a shipment cycle should be "shipped", a payment cycle "payment_confirmed", a pre-shipment inspection "confirmed" or "goods_received". Omit to let the server infer it from the title.',
+            },
           },
           required: ['node_type', 'title', 'responsible_party'],
         },

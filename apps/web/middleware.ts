@@ -12,6 +12,12 @@ function withRequestId(response: NextResponse, requestId: string): NextResponse 
   return response
 }
 
+// TEMPORARY: when DISABLE_AUTH=true, every unauthenticated visitor is silently
+// signed in as this dev account instead of being sent to /login. Set DISABLE_AUTH=true
+// in Vercel env vars to enable, remove/unset it (and redeploy) to revert.
+const NO_AUTH_EMAIL = 'jfurner@walmart.com'
+const NO_AUTH_PASSWORD = 'DevPass123!'
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -46,9 +52,25 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const {
+  let {
     data: { user },
   } = await supabase.auth.getUser()
+
+  if (!user && process.env.DISABLE_AUTH === 'true') {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: NO_AUTH_EMAIL,
+      password: NO_AUTH_PASSWORD,
+    })
+    if (!error) {
+      user = data.user
+    }
+  }
+
+  if (process.env.DISABLE_AUTH === 'true' && (pathname === '/login' || pathname === '/signup')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/home'
+    return withRequestId(NextResponse.redirect(url), requestId)
+  }
 
   // /api/risk/refresh-signals is cron-secret gated
   if (pathname === '/api/risk/refresh-signals') {

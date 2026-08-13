@@ -503,6 +503,12 @@ export interface DealFlowTemplate {
   updated_at: string
 }
 
+// Matches DealRoadmap.tsx's fixed 8-step lifecycle keys — lets a custom
+// flow node/cycle be associated with the roadmap step it belongs under.
+export type DealFlowRoadmapStage =
+  | 'agreed' | 'contract_pending' | 'confirmed' | 'shipped'
+  | 'goods_received' | 'delivery_confirmed' | 'payment_confirmed' | 'completed'
+
 export interface DealFlowNode {
   id: string
   flow_template_id: string
@@ -517,6 +523,7 @@ export interface DealFlowNode {
   repeat_count: number | null
   repeat_interval_days: number | null
   anchor_date: string | null
+  roadmap_stage: DealFlowRoadmapStage | null
   status: 'proposed' | 'accepted' | 'declined' | 'completed'
   due_at: string | null
   proposed_by_user_id: string | null

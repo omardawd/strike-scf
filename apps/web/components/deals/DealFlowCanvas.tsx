@@ -6,11 +6,25 @@ import {
   type Node, type Edge, type Connection, type NodeMouseHandler, type OnNodeDrag,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import type { DealFlowNode, DealFlowEdge, DealFlowCycleOccurrence, DealFlowPreset, DealFlowPresetDetail } from '@strike-scf/types'
+import type { DealFlowNode, DealFlowEdge, DealFlowCycleOccurrence, DealFlowPreset, DealFlowPresetDetail, DealFlowRoadmapStage } from '@strike-scf/types'
 import { DealFlowChatPanel } from './DealFlowChatPanel'
 
 const NODE_WIDTH_GAP = 260
 const DEFAULT_ROADMAP_TITLES = ['Agreed', 'Contract', 'In Business', 'Shipped', 'Received', 'Accepted', 'Paid', 'Completed']
+
+// Which fixed roadmap step (DealRoadmap.tsx) a checkpoint/cycle surfaces
+// under — lets the buyer pick "Shipped" for a shipment cycle instead of
+// relying only on the server's title-keyword guess.
+const ROADMAP_STAGE_OPTIONS: { value: DealFlowRoadmapStage; label: string }[] = [
+  { value: 'agreed', label: 'Agreed' },
+  { value: 'contract_pending', label: 'Contract' },
+  { value: 'confirmed', label: 'In Business' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'goods_received', label: 'Received' },
+  { value: 'delivery_confirmed', label: 'Accepted' },
+  { value: 'payment_confirmed', label: 'Paid' },
+  { value: 'completed', label: 'Completed' },
+]
 
 interface CanvasNode {
   localId: string
@@ -27,6 +41,7 @@ interface CanvasNode {
   position_x: number
   position_y: number
   status: string
+  roadmapStage: DealFlowRoadmapStage | ''
 }
 
 interface CanvasEdge {
@@ -58,6 +73,7 @@ function fromExisting(nodes: DealFlowNode[], index: number): CanvasNode {
     position_x: n.position_x ?? index * NODE_WIDTH_GAP,
     position_y: n.position_y ?? 100,
     status: n.status,
+    roadmapStage: n.roadmap_stage ?? '',
   }
 }
 
@@ -76,6 +92,7 @@ function newNode(nodeType: 'step' | 'cycle', index: number): CanvasNode {
     position_x: index * NODE_WIDTH_GAP,
     position_y: nodeType === 'cycle' ? 260 : 100,
     status: 'proposed',
+    roadmapStage: '',
   }
 }
 
@@ -91,6 +108,7 @@ export interface SaveFlowNodePayload {
   repeat_count?: number | null
   repeat_interval_days?: number | null
   anchor_date?: string | null
+  roadmap_stage?: DealFlowRoadmapStage | null
 }
 
 export function DealFlowCanvas({
@@ -210,6 +228,7 @@ export function DealFlowCanvas({
           position_x: n.position_x ?? i * NODE_WIDTH_GAP,
           position_y: n.position_y ?? (n.node_type === 'cycle' ? 260 : 100),
           status: 'proposed',
+          roadmapStage: '',
         }
         byPresetId.set(n.id, canvasNode)
         return canvasNode
@@ -320,6 +339,13 @@ export function DealFlowCanvas({
                 <select className="input" value={n.responsible_party} disabled={!isBuyer} onChange={e => updateNode(n.localId, { responsible_party: e.target.value as CanvasNode['responsible_party'] })}>
                   <option value="buyer">Buyer</option><option value="supplier">Supplier</option><option value="both">Both</option>
                 </select>
+                <div className="form-field">
+                  <label className="field-label">Shows under roadmap step</label>
+                  <select className="input" value={n.roadmapStage} disabled={!isBuyer} onChange={e => updateNode(n.localId, { roadmapStage: e.target.value as CanvasNode['roadmapStage'] })}>
+                    <option value="">Auto-detect from title</option>
+                    {ROADMAP_STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
                   <input type="checkbox" checked={n.requires_document} disabled={!isBuyer} onChange={e => updateNode(n.localId, { requires_document: e.target.checked })} />
                   Requires document
@@ -437,6 +463,7 @@ export function DealFlowCanvas({
         repeat_count: n.node_type === 'cycle' ? n.repeat_count : undefined,
         repeat_interval_days: n.node_type === 'cycle' ? n.repeat_interval_days : undefined,
         anchor_date: n.node_type === 'cycle' ? n.anchor_date : undefined,
+        roadmap_stage: n.roadmapStage || undefined,
       }))
       const edgesPayload: { from: string; to: string; label?: string }[] = []
       for (const e of canvasEdges) {

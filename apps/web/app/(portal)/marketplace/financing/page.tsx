@@ -754,9 +754,6 @@ function TerminalSkeleton() {
 }
 
 // ── Org list (unchanged behavior — non-bank requestor view) ─────────────────────────
-function structureBadge(s: string) {
-  return <span className="badge badge-draft" style={{ textTransform: 'none', fontSize: 10 }}>{s}</span>
-}
 function statusBadge(status: string) {
   const map: Record<string, string> = {
     open: 'badge badge-active', offers_received: 'badge badge-offer',
@@ -789,36 +786,53 @@ function OrgList({ items }: { items: OrgRequestItem[] }) {
 
   return (
     <div className="mp-listing-feed reveal-stagger">
-      {items.map(item => (
-        <div key={item.id} className="listing-card card-interactive" onClick={() => router.push(`/marketplace/financing/${item.id}`)}>
-          <div className="listing-card-head">
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
-              {fmt(item.amount_requested, item.currency)}
-            </span>
-            {structureBadge(item.financing_type ?? item.structure_type)}
-            <span className={statusBadge(item.status)} style={{ marginLeft: 4 }}>{item.status.replace(/_/g, ' ')}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>{timeAgo(item.created_at, t)}</span>
-          </div>
-          <div className="listing-card-body" style={{ gap: 8 }}>
-            {item.deal?.goods_description && (
-              <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0 }}>{item.deal.goods_description}</p>
-            )}
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <div className="listing-detail-item">
-                <span className="listing-detail-label">{t('financing.maxRate')}</span>
-                <span className="listing-detail-value">{item.preferred_rate_max ? `${item.preferred_rate_max}%` : '—'}</span>
+      {items.map(item => {
+        const tm = typeMeta(item, t)
+        return (
+          <div key={item.id} className="listing-card card-interactive" onClick={() => router.push(`/marketplace/financing/${item.id}`)}>
+            <div className="listing-card-head">
+              <span className={`term-tbadge ${tm.cls}`}>{tm.code}</span>
+              <span className={statusBadge(item.status)}>{item.status.replace(/_/g, ' ')}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray-soft)', fontFamily: 'var(--font-body)' }}>{timeAgo(item.created_at, t)}</span>
+            </div>
+            <div className="listing-card-body">
+              <div className="listing-price-row">
+                <span className="listing-price" style={{ fontSize: 26 }}>{fmt(item.amount_requested, item.currency)}</span>
+              </div>
+              {item.deal ? (
+                <button
+                  type="button"
+                  className="listing-card-deal-ref"
+                  onClick={e => { e.stopPropagation(); router.push(`/deals/${item.deal!.id}`) }}
+                  title={t('financing.underlyingDeal')}
+                >
+                  {item.deal.listing_title ?? `${t('financing.underlyingDeal')} #${item.deal.id.slice(0, 8).toUpperCase()}`}
+                </button>
+              ) : (
+                <span className="listing-card-deal-ref is-muted">{t('financing.noLinkedDeal')}</span>
+              )}
+              {item.deal?.goods_description && (
+                <p style={{ fontSize: 13, color: 'var(--gray)', margin: 0, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
+                  {item.deal.goods_description}
+                </p>
+              )}
+              <div className="listing-details-row">
+                <div className="listing-detail-item">
+                  <span className="listing-detail-label">{t('financing.maxRate')}</span>
+                  <span className="listing-detail-value">{item.preferred_rate_max ? `${item.preferred_rate_max}%` : t('financing.market')}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="listing-card-footer">
-            <div className="listing-offer-badge">
-              <span className="listing-offer-badge-count">{item.offer_count}</span>
-              {' '}{item.offer_count !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
+            <div className="listing-card-footer">
+              <div className="listing-offer-badge">
+                <span className="listing-offer-badge-count">{item.offer_count}</span>
+                {' '}{item.offer_count !== 1 ? t('marketplace.offersPlural') : t('marketplace.offerSingular')}
+              </div>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>{t('financing.viewArrow')}</span>
             </div>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--blue)', fontWeight: 500 }}>{t('financing.viewArrow')}</span>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
