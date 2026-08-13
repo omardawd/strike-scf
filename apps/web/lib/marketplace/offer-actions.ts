@@ -8,6 +8,7 @@ import { callClaude, AI_MODEL } from '@/lib/ai'
 import { isShippingCostRequired } from '@/lib/deals/fees'
 import { coerceNumber } from '@/lib/numeric'
 import { isOrgAdmitted } from '@/lib/auth/admission'
+import { seedDefaultDealFlow } from '@/lib/deals/flow'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -429,6 +430,14 @@ export async function acceptOffer(params: {
     status: 'matched',
     matched_deal_id: deal.id,
   }).eq('id', listing.id)
+
+  // Seed the default 8-step deal flow immediately so the supplier lands in
+  // a fully-set-up deal — buyer can customize it later via "Customize deal"
+  // on the roadmap. Non-fatal: a seeding failure must never block deal
+  // creation itself (same treatment as ensureRoom() below).
+  try {
+    await seedDefaultDealFlow(deal.id, buyerOrgId)
+  } catch { /* non-fatal */ }
 
   let roomId: string | null = null
   try {

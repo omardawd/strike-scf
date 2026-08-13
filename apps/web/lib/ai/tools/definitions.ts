@@ -189,6 +189,50 @@ const PROPOSE_DEAL_WORKFLOW_STEP = {
   },
 }
 
+const DRAFT_DEAL_FLOW = {
+  name: 'draft_deal_flow',
+  description: 'Draft (or redraft) a deal\'s custom progress flow from a natural-language description — e.g. "2-year contract, 12 shipments every 60 days, quarterly payments". Replaces the deal\'s current flow atomically; existing checkpoints/cycles are matched by title and keep their progress (completed status is never lost), unmatched titles are treated as new. Only the organization playing the buyer role on this deal may draft it. Use `node_type: "cycle"` for anything that repeats (a shipment cycle, a recurring payment) instead of listing out each occurrence as a separate step. After a successful call, emit [[STRIKE_BLOCK:{"type":"deal_flow_draft","deal_id":"...","node_count":N,"cycle_count":N}]] on its own line so the buyer can review the draft in the editable canvas — never claim the flow is final from chat text alone.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      deal_id: { type: 'string', description: 'Full deal UUID' },
+      nodes: {
+        type: 'array',
+        description: 'The full ordered list of checkpoints the deal flow should have after this call',
+        items: {
+          type: 'object',
+          properties: {
+            node_type: { type: 'string', enum: ['step', 'cycle'], description: '"step" for a single checkpoint, "cycle" for a repeating group (e.g. N shipments every X days)' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            responsible_party: { type: 'string', enum: ['buyer', 'supplier', 'both'] },
+            requires_document: { type: 'boolean', default: false },
+            due_at: { type: 'string', format: 'date-time', description: 'step nodes only' },
+            repeat_count: { type: 'number', description: 'cycle nodes only — how many occurrences, e.g. 12' },
+            repeat_interval_days: { type: 'number', description: 'cycle nodes only — days between occurrences, e.g. 60' },
+            anchor_date: { type: 'string', format: 'date', description: 'cycle nodes only — date of the first occurrence' },
+          },
+          required: ['node_type', 'title', 'responsible_party'],
+        },
+      },
+      edges: {
+        type: 'array',
+        description: 'Arrows showing sequence between checkpoints. Reference checkpoints by the exact title used in nodes.',
+        items: {
+          type: 'object',
+          properties: {
+            from: { type: 'string' },
+            to: { type: 'string' },
+            label: { type: 'string' },
+          },
+          required: ['from', 'to'],
+        },
+      },
+    },
+    required: ['deal_id', 'nodes'],
+  },
+}
+
 const FIND_ELIGIBLE_SUPPLIERS = {
   name: 'find_eligible_suppliers',
   description: 'List suppliers eligible to be invited to a specific po_request listing you own — scoped to that listing\'s own network/marketplace visibility rule, and filtered to currently admitted (KYB-approved, active) organizations. Never returns a general supplier directory; always scoped to one listing_id.',
@@ -794,6 +838,7 @@ const ORG_TOOLS = [
   GET_ACTIVE_DEALS,
   GET_DEAL_WORKFLOW,
   PROPOSE_DEAL_WORKFLOW_STEP,
+  DRAFT_DEAL_FLOW,
   FIND_ELIGIBLE_SUPPLIERS,
   DRAFT_SOURCING_REQUEST,
   DRAFT_SUPPLIER_OUTREACH,
@@ -861,6 +906,7 @@ export const STRIKE_TOOLS = [
   GET_ACTIVE_DEALS,
   GET_DEAL_WORKFLOW,
   PROPOSE_DEAL_WORKFLOW_STEP,
+  DRAFT_DEAL_FLOW,
   FIND_ELIGIBLE_SUPPLIERS,
   DRAFT_SOURCING_REQUEST,
   DRAFT_SUPPLIER_OUTREACH,

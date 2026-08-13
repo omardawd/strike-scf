@@ -151,7 +151,7 @@ export async function fetchBoardData(admin: SupabaseClient, boardId: string) {
     admin.from('board_column_edges').select('*').eq('board_id', boardId),
     admin
       .from('board_tasks')
-      .select('*, assignee:assignee_user_id(id, full_name, email)')
+      .select('*, assignee:assignee_user_id(id, full_name, email), assignee_agent:assignee_agent_id(id, name, role_label)')
       .eq('board_id', boardId)
       .order('position', { ascending: true }),
   ])
@@ -191,4 +191,19 @@ export async function fetchBoardData(admin: SupabaseClient, boardId: string) {
     edges: edges ?? [],
     tasks: enrichedTasks,
   }
+}
+
+/** Every configured agent for the actor's org/bank, newest first. */
+export async function fetchBoardAgents(admin: SupabaseClient, actor: BoardActor) {
+  const scopeColumn = actor.orgId ? 'org_id' : 'bank_id'
+  const scopeValue = actor.orgId ?? actor.bankId
+  if (!scopeValue) return []
+
+  const { data } = await admin
+    .from('board_agents')
+    .select('*')
+    .eq(scopeColumn, scopeValue)
+    .order('created_at', { ascending: false })
+
+  return data ?? []
 }

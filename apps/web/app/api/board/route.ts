@@ -1,6 +1,6 @@
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { getOrCreateBoard, fetchBoardData, isBoardAdmin, loadBoardActor } from '@/lib/board/access'
+import { getOrCreateBoard, fetchBoardData, fetchBoardAgents, isBoardAdmin, loadBoardActor } from '@/lib/board/access'
 
 const adminClient = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,12 +16,16 @@ export async function GET() {
   const board = await getOrCreateBoard(adminClient, actor)
   if (!board) return NextResponse.json({ error: 'Board is not available for this account' }, { status: 403 })
 
-  const { columns, edges, tasks } = await fetchBoardData(adminClient, board.id)
+  const [{ columns, edges, tasks }, agents] = await Promise.all([
+    fetchBoardData(adminClient, board.id),
+    fetchBoardAgents(adminClient, actor),
+  ])
   return NextResponse.json({
     board,
     columns,
     edges,
     tasks,
+    agents,
     is_admin: isBoardAdmin(actor.role),
   })
 }

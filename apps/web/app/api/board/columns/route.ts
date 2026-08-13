@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only org/bank admins can add stages' }, { status: 403 })
   }
 
-  let body: { board_id?: string; name?: string; position?: number; color?: string }
+  let body: { board_id?: string; name?: string; position?: number; color?: string; auto_assign_agent_id?: string | null; requires_review?: boolean }
   try {
     body = await request.json()
   } catch {
@@ -30,6 +30,17 @@ export async function POST(request: Request) {
 
   const board = await getOwnBoard(adminClient, actor, body.board_id)
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
+
+  if (body.auto_assign_agent_id) {
+    const scopeColumn = actor.orgId ? 'org_id' : 'bank_id'
+    const { data: agent } = await adminClient
+      .from('board_agents')
+      .select('id')
+      .eq('id', body.auto_assign_agent_id)
+      .eq(scopeColumn, actor.orgId ?? actor.bankId)
+      .maybeSingle()
+    if (!agent) return NextResponse.json({ error: 'Agent not found on this org/bank' }, { status: 400 })
+  }
 
   let position = body.position
   if (position === undefined) {
@@ -47,6 +58,8 @@ export async function POST(request: Request) {
       name: body.name.trim(),
       position,
       color: body.color ?? null,
+      auto_assign_agent_id: body.auto_assign_agent_id ?? null,
+      requires_review: body.requires_review ?? false,
     })
     .select()
     .single()

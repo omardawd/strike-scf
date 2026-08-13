@@ -31,6 +31,7 @@ import { acceptMarketplaceOffer, type AcceptMarketplaceOfferInput } from './hand
 import { rejectMarketplaceOffer, type RejectMarketplaceOfferInput } from './handlers/reject-marketplace-offer'
 import { generateDocument, type GenerateDocumentInput } from './handlers/generate-document'
 import { getDealWorkflow, proposeDealWorkflowStep, type ProposeDealWorkflowStepInput, type ToolActor } from './handlers/deal-workflow'
+import { draftDealFlow, type DraftDealFlowInput } from './handlers/deal-flow'
 import { findEligibleSuppliers, type FindEligibleSuppliersInput } from './handlers/find-eligible-suppliers'
 import { draftSourcingRequest, type DraftSourcingRequestInput } from './handlers/draft-sourcing-request'
 import { draftSupplierOutreach, type DraftSupplierOutreachInput } from './handlers/draft-supplier-outreach'
@@ -73,6 +74,7 @@ export type ToolName =
   | 'generate_document'
   | 'get_deal_workflow'
   | 'propose_deal_workflow_step'
+  | 'draft_deal_flow'
   | 'find_eligible_suppliers'
   | 'draft_sourcing_request'
   | 'draft_supplier_outreach'
@@ -276,6 +278,8 @@ async function dispatchTool(
       return getDealWorkflow(toolInput as unknown as { deal_id: string }, actor)
     case 'propose_deal_workflow_step':
       return proposeDealWorkflowStep(toolInput as unknown as ProposeDealWorkflowStepInput, actor)
+    case 'draft_deal_flow':
+      return draftDealFlow(toolInput as unknown as DraftDealFlowInput, actor)
     case 'find_eligible_suppliers':
       return findEligibleSuppliers(toolInput as unknown as FindEligibleSuppliersInput, actor)
     case 'draft_sourcing_request':
@@ -318,6 +322,7 @@ export const WRITE_TOOLS: ToolName[] = [
   'accept_marketplace_offer',
   'reject_marketplace_offer',
   'propose_deal_workflow_step',
+  'draft_deal_flow',
   'request_sourcing_search',
   'design_board_workflow',
   'create_board_task',

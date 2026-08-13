@@ -77,7 +77,14 @@ interface SourcingJobBlock {
   job_id: string
 }
 
-type StrikeBlockData = StatRowBlock | ComparisonBlock | AlertBlock | ChartBlock | DocumentBlock | SourcingJobBlock
+interface DealFlowDraftBlock {
+  type: 'deal_flow_draft'
+  deal_id: string
+  node_count: number
+  cycle_count: number
+}
+
+type StrikeBlockData = StatRowBlock | ComparisonBlock | AlertBlock | ChartBlock | DocumentBlock | SourcingJobBlock | DealFlowDraftBlock
 
 const CHART_COLORS = ['var(--blue)', 'var(--color-green)', 'var(--color-amber)', 'var(--color-purple)', 'var(--color-red)', 'var(--gray)']
 
@@ -171,6 +178,35 @@ function DocumentCard({ block }: { block: DocumentBlock }) {
         style={{ flexShrink: 0 }}
       >
         {t('txnDetail.download')}
+      </a>
+    </div>
+  )
+}
+
+function DealFlowDraftCard({ block }: { block: DealFlowDraftBlock }) {
+  return (
+    <div style={{
+      margin: '10px 0', display: 'flex', alignItems: 'center', gap: 12,
+      border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px', background: 'var(--white)',
+    }}>
+      <div style={{
+        width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'var(--blue-light)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)',
+      }}>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4 8a5 5 0 018.9-3.1M16 12a5 5 0 01-8.9 3.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M13.5 3.5v3.4h-3.4M6.5 16.5v-3.4h3.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Deal flow drafted</div>
+        <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 1 }}>
+          {block.node_count} checkpoint{block.node_count === 1 ? '' : 's'}
+          {block.cycle_count > 0 ? `, ${block.cycle_count} repeating cycle${block.cycle_count === 1 ? '' : 's'}` : ''}
+        </div>
+      </div>
+      <a href={`/deals/${block.deal_id}`} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }}>
+        Review in canvas
       </a>
     </div>
   )
@@ -485,6 +521,7 @@ export function StrikeBlockFromJson({ raw, keyProp }: { raw: string; keyProp: st
     case 'chart': return <Chart key={keyProp} block={data} />
     case 'document': return <DocumentCard key={keyProp} block={data} />
     case 'sourcing_job': return <SourcingJobCard key={keyProp} jobId={data.job_id} />
+    case 'deal_flow_draft': return <DealFlowDraftCard key={keyProp} block={data} />
     default: return null
   }
 }

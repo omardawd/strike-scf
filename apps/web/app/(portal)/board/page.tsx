@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n/locale-context'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import { FlowBoard } from '@/components/board/FlowBoard'
 import { TaskPanel } from '@/components/board/TaskPanel'
+import { AgentsPanel } from '@/components/board/AgentsPanel'
 import type { BoardColumn, BoardData } from '@/components/board/types'
 
 const VIEW_KEY = 'strike_board_view'
@@ -86,6 +87,7 @@ export default function BoardPage() {
   const [showNewStage, setShowNewStage] = useState(false)
   // 'new' opens the panel in create mode; a task id opens it for that task.
   const [panelTaskId, setPanelTaskId] = useState<string | 'new' | null>(null)
+  const [showAgents, setShowAgents] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -128,7 +130,28 @@ export default function BoardPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ column_id: columnId }),
     })
-    if (!res.ok) load() // revert to server truth on failure
+    if (!res.ok) {
+      // Revert to server truth AND surface why — e.g. a "requires review"
+      // stage blocking the move isn't a transient failure, it's a rule the
+      // admin configured, and silently reverting would look like a bug.
+      const json = await res.json().catch(() => ({}))
+      if (json.error) setError(json.error)
+      load()
+    }
+  }
+
+  async function handleUpdateColumn(columnId: string, updates: { auto_assign_agent_id: string | null; requires_review: boolean }) {
+    const res = await fetch(`/api/board/columns/${columnId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setError(json.error ?? 'Failed to update stage settings')
+      return
+    }
+    load()
   }
 
   async function handleCreateStage(name: string) {
@@ -268,6 +291,16 @@ export default function BoardPage() {
                   </button>
                   {showNewStage && <NewStagePopover onClose={() => setShowNewStage(false)} onCreate={handleCreateStage} />}
                 </div>
+                <button
+                  onClick={() => setShowAgents(true)}
+                  style={{
+                    border: '1.5px solid var(--border-strong)', background: 'var(--white)', color: 'var(--ink)',
+                    borderRadius: 'var(--radius-button)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  Agents
+                </button>
                 <button className="btn btn-blue btn-sm" onClick={() => setPanelTaskId('new')}>
                   + {t('board.newTask')}
                 </button>
@@ -294,10 +327,12 @@ export default function BoardPage() {
                 tasks={data.tasks}
                 isAdmin={data.is_admin}
                 currentUserId={user?.id}
+                agents={data.agents}
                 onMoveTask={handleMoveTask}
                 onDeleteColumn={handleDeleteColumn}
                 onOpenTask={setPanelTaskId}
                 onReorderColumns={handleReorderColumns}
+                onUpdateColumn={handleUpdateColumn}
               />
             ) : (
               <FlowBoard
@@ -321,8 +356,17 @@ export default function BoardPage() {
           boardId={data.board.id}
           columns={data.columns}
           members={members}
+          agents={data.agents}
           defaultColumnId={data.columns[0]?.id}
           onClose={() => setPanelTaskId(null)}
+          onChanged={load}
+        />
+      )}
+
+      {showAgents && data && (
+        <AgentsPanel
+          agents={data.agents}
+          onClose={() => setShowAgents(false)}
           onChanged={load}
         />
       )}

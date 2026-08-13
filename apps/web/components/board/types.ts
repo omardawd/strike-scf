@@ -13,6 +13,8 @@ export interface BoardColumn {
   color: string | null
   position_x: number | null
   position_y: number | null
+  auto_assign_agent_id: string | null
+  requires_review: boolean
 }
 
 export interface BoardEdge {
@@ -23,6 +25,21 @@ export interface BoardEdge {
   label: string | null
 }
 
+export interface BoardAgent {
+  id: string
+  org_id: string | null
+  bank_id: string | null
+  name: string
+  role_label: string | null
+  persona: string | null
+  task_types: string[]
+  expected_output: string | null
+  guardrails: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface BoardTask {
   id: string
   board_id: string
@@ -31,6 +48,8 @@ export interface BoardTask {
   description: string | null
   assignee_user_id: string | null
   assignee: { id: string; full_name: string; email: string } | null
+  assignee_agent_id: string | null
+  assignee_agent: { id: string; name: string; role_label: string | null } | null
   priority: 'low' | 'medium' | 'high'
   due_date: string | null
   labels: string[]
@@ -45,6 +64,7 @@ export interface BoardData {
   columns: BoardColumn[]
   edges: BoardEdge[]
   tasks: BoardTask[]
+  agents: BoardAgent[]
   is_admin: boolean
 }
 
@@ -66,10 +86,31 @@ export interface TaskComment {
   created_at: string
 }
 
+export interface AgentFindings {
+  summary: string
+  key_findings: string[]
+  recommendations: string[]
+  caveats: string[]
+  suggested_next_step: string
+}
+
+export interface BoardTaskAgentRun {
+  id: string
+  task_id: string
+  agent_id: string
+  agent: { id: string; name: string; role_label: string | null } | null
+  status: 'completed' | 'failed'
+  output: AgentFindings | null
+  error: string | null
+  model: string | null
+  created_at: string
+}
+
 export interface TaskDetail {
   task: BoardTask
   checklist_items: ChecklistItem[]
   comments: TaskComment[]
+  agent_runs: BoardTaskAgentRun[]
   is_admin: boolean
   current_user_id: string
 }

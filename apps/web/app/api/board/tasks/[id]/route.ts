@@ -20,7 +20,7 @@ export async function GET(
 
   const { data: task } = await adminClient
     .from('board_tasks')
-    .select('*, assignee:assignee_user_id(id, full_name, email)')
+    .select('*, assignee:assignee_user_id(id, full_name, email), assignee_agent:assignee_agent_id(id, name, role_label)')
     .eq('id', id)
     .single()
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
@@ -28,19 +28,25 @@ export async function GET(
   const board = await getOwnBoard(adminClient, actor, task.board_id)
   if (!board) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
-  const [{ data: checklistItems }, { data: comments }] = await Promise.all([
+  const [{ data: checklistItems }, { data: comments }, { data: agentRuns }] = await Promise.all([
     adminClient.from('board_task_checklist_items').select('*').eq('task_id', id).order('position', { ascending: true }),
     adminClient
       .from('board_task_comments')
       .select('*, author:author_user_id(id, full_name, email)')
       .eq('task_id', id)
       .order('created_at', { ascending: true }),
+    adminClient
+      .from('board_task_agent_runs')
+      .select('*, agent:agent_id(id, name, role_label)')
+      .eq('task_id', id)
+      .order('created_at', { ascending: false }),
   ])
 
   return NextResponse.json({
     task,
     checklist_items: checklistItems ?? [],
     comments: comments ?? [],
+    agent_runs: agentRuns ?? [],
     is_admin: isBoardAdmin(actor.role),
     current_user_id: actor.userId,
   })
@@ -81,6 +87,7 @@ export async function PATCH(
     title?: string
     description?: string | null
     assignee_user_id?: string | null
+    assignee_agent_id?: string | null
     priority?: string
     due_date?: string | null
     labels?: string[]
@@ -93,10 +100,13 @@ export async function PATCH(
 
   // Non-admins may only reposition their own card — every other field is a
   // workflow-design action reserved for org/bank admins.
-  const nonMoveFieldsPresent = ['title', 'description', 'assignee_user_id', 'priority', 'due_date', 'labels']
+  const nonMoveFieldsPresent = ['title', 'description', 'assignee_user_id', 'assignee_agent_id', 'priority', 'due_date', 'labels']
     .some(key => key in body)
   if (!admin && nonMoveFieldsPresent) {
     return NextResponse.json({ error: 'Only org/bank admins can edit task details or reassign it' }, { status: 403 })
+  }
+  if (body.assignee_user_id && body.assignee_agent_id) {
+    return NextResponse.json({ error: 'A task can be assigned to a teammate or an agent, not both' }, { status: 400 })
   }
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -104,15 +114,45 @@ export async function PATCH(
   let assigneeName: string | null | undefined // undefined = not being changed; null = unassigned
 
   if (body.column_id !== undefined && body.column_id !== task.column_id) {
-    const { data: column } = await adminClient
+    const { data: cols } = await adminClient
       .from('board_columns')
-      .select('id, name')
-      .eq('id', body.column_id)
+      .select('id, name, requires_review, auto_assign_agent_id')
       .eq('board_id', board.id)
-      .single()
-    if (!column) return NextResponse.json({ error: 'Stage not found on this board' }, { status: 404 })
+      .in('id', [task.column_id, body.column_id])
+    const newColumn = cols?.find(c => c.id === body.column_id)
+    const oldColumn = cols?.find(c => c.id === task.column_id)
+    if (!newColumn) return NextResponse.json({ error: 'Stage not found on this board' }, { status: 404 })
+
+    // A "requires review" stage means a task can't move on while an agent
+    // still owns it — a human must take explicit ownership (reassign it to
+    // a teammate) first. That reassignment IS the review step, structurally.
+    const reassigningToUser = 'assignee_user_id' in body && !!body.assignee_user_id
+    const effectiveAssigneeAgentId = 'assignee_agent_id' in body
+      ? body.assignee_agent_id
+      : reassigningToUser ? null : task.assignee_agent_id
+    if (oldColumn?.requires_review && effectiveAssigneeAgentId) {
+      return NextResponse.json({
+        error: `This task must be reassigned to a teammate before it can leave "${oldColumn.name}" — that stage requires human review.`,
+      }, { status: 409 })
+    }
+
     updates.column_id = body.column_id
-    movedToColumnName = column.name
+    movedToColumnName = newColumn.name
+
+    // Entering a stage with a designated agent auto-hands the task to that
+    // agent — unless this same request already set an assignee explicitly.
+    if (newColumn.auto_assign_agent_id && !('assignee_agent_id' in body) && !('assignee_user_id' in body)) {
+      const { data: autoAgent } = await adminClient
+        .from('board_agents')
+        .select('id, name')
+        .eq('id', newColumn.auto_assign_agent_id)
+        .single()
+      if (autoAgent) {
+        updates.assignee_agent_id = autoAgent.id
+        updates.assignee_user_id = null
+        assigneeName = `${autoAgent.name} (agent)`
+      }
+    }
   }
   if (body.position !== undefined) updates.position = body.position
 
@@ -141,10 +181,28 @@ export async function PATCH(
           .maybeSingle()
         if (!assignee) return NextResponse.json({ error: 'Assignee must be a member of this org/bank' }, { status: 400 })
         assigneeName = assignee.full_name
+        updates.assignee_agent_id = null
       } else {
         assigneeName = null
       }
       updates.assignee_user_id = body.assignee_user_id ?? null
+    }
+    if ('assignee_agent_id' in body && body.assignee_agent_id !== task.assignee_agent_id) {
+      if (body.assignee_agent_id) {
+        const scopeColumn = actor.orgId ? 'org_id' : 'bank_id'
+        const { data: agent } = await adminClient
+          .from('board_agents')
+          .select('id, name')
+          .eq('id', body.assignee_agent_id)
+          .eq(scopeColumn, actor.orgId ?? actor.bankId)
+          .maybeSingle()
+        if (!agent) return NextResponse.json({ error: 'Agent not found on this org/bank' }, { status: 400 })
+        assigneeName = `${agent.name} (agent)`
+        updates.assignee_user_id = null
+      } else if (assigneeName === undefined) {
+        assigneeName = null
+      }
+      updates.assignee_agent_id = body.assignee_agent_id ?? null
     }
   }
 
@@ -152,7 +210,7 @@ export async function PATCH(
     .from('board_tasks')
     .update(updates)
     .eq('id', id)
-    .select('*, assignee:assignee_user_id(id, full_name, email)')
+    .select('*, assignee:assignee_user_id(id, full_name, email), assignee_agent:assignee_agent_id(id, name, role_label)')
     .single()
 
   if (error) return NextResponse.json({ error: 'Update failed' }, { status: 500 })

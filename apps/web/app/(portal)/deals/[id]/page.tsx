@@ -7,7 +7,8 @@ import { PassportScoreRing } from '@/components/passport-score-ring'
 import { useUser } from '@/lib/user-context'
 import { DealRoadmap } from '@/components/deals/DealRoadmap'
 import { ActionPanel } from '@/components/deals/ActionPanel'
-import { DealWorkflowPanel } from '@/components/deals/DealWorkflowPanel'
+import { DealFlowSummaryPanel } from '@/components/deals/DealFlowSummaryPanel'
+import { DealFlowCanvas, type SaveFlowNodePayload } from '@/components/deals/DealFlowCanvas'
 import { FinancingManagementCard, type RequesterBankAccount } from '@/components/deals/FinancingManagementCard'
 import { CountUp, Skeleton, SkeletonText } from '@/components/motion'
 import { createClient } from '@/lib/supabase/client'
@@ -20,7 +21,7 @@ import {
   type BankAccountForContext,
 } from '@/lib/deals/financing-context'
 import type { AvailableAction } from '@/app/api/deals/[id]/available-actions/route'
-import type { Deal, Organization, FinancingRequest, AmendmentRecord, DealWorkflowStep } from '@strike-scf/types'
+import type { Deal, Organization, FinancingRequest, AmendmentRecord, DealFlowData } from '@strike-scf/types'
 import { calcProcurementFees, calcBuyerTotalDue, calcSupplierNetReceivable, calcFinancingFees, calcNetDisbursement } from '@/lib/deals/fees'
 import { FINANCEABLE_STATUSES } from '@/lib/deals/transitions'
 import { useT } from '@/lib/i18n/locale-context'
@@ -431,7 +432,8 @@ export default function DealDetailPage() {
   const [aiDocs, setAiDocs] = useState<AiDoc[]>([])
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([])
   const [availableActions, setAvailableActions] = useState<AvailableAction[]>([])
-  const [workflowSteps, setWorkflowSteps] = useState<DealWorkflowStep[]>([])
+  const [flowData, setFlowData] = useState<DealFlowData | null>(null)
+  const [showFlowCustomizer, setShowFlowCustomizer] = useState(false)
   const [showFinancingForm, setShowFinancingForm] = useState(false)
   const [finType, setFinType] = useState('')
   const [finAmount, setFinAmount] = useState('')
@@ -461,17 +463,25 @@ export default function DealDetailPage() {
     Promise.all([
       fetch(`/api/deals/${id}`).then(r => r.json()),
       fetch(`/api/deals/${id}/available-actions`).then(r => r.json()).catch(() => ({ actions: [] })),
-      fetch(`/api/deals/${id}/workflow`).then(r => r.ok ? r.json() : ({ steps: [] })).catch(() => ({ steps: [] })),
+      fetch(`/api/deals/${id}/flow`).then(r => r.ok ? r.json() : null).catch(() => null),
     ])
-      .then(([dealData, actionsData, workflowData]) => {
+      .then(([dealData, actionsData, flow]) => {
         if (dealData.error) setError(dealData.error)
         else setData(dealData)
         setAvailableActions(actionsData.actions ?? [])
-        setWorkflowSteps(workflowData.steps ?? [])
+        setFlowData(flow)
       })
       .catch(() => setError(t('dealDetail.failedToLoadDeal')))
       .finally(() => setLoading(false))
   }, [id, t])
+
+  // Lighter-weight than load() — used by the flow customizer modal (occurrence
+  // complete, AI draft applied) so refreshing the flow doesn't drop the page
+  // back to its full loading skeleton and unmount the modal (and the chat
+  // panel's conversation) out from under the user.
+  const refetchFlow = useCallback(() => {
+    fetch(`/api/deals/${id}/flow`).then(r => r.ok ? r.json() : null).then(setFlowData).catch(() => {})
+  }, [id])
 
   const loadDocs = useCallback(() => {
     fetch(`/api/deals/${id}/documents`).then(r => r.json()).then(d => {
@@ -930,7 +940,7 @@ export default function DealDetailPage() {
       dynamic_discounting: 'Anchor (buyer) pays supplier early in exchange for a discount on the invoice.',
     } : null,
     available_actions: availableActions.filter(a => a.available).map(a => ({ action: a.action, description: a.description })),
-    custom_workflow_steps: workflowSteps.map(step => ({ title: step.title, responsible_party: step.responsible_party, status: step.status, due_at: step.due_at })),
+    custom_workflow_steps: (flowData?.nodes ?? []).map(node => ({ title: node.title, responsible_party: node.responsible_party, status: node.status, due_at: node.due_at })),
   })
 
   return (
@@ -968,7 +978,12 @@ export default function DealDetailPage() {
           <div className="split-panel-main reveal-stagger">
             {/* Roadmap — G4.1 */}
             <div className="card reveal" data-demo-target="deal-negotiation">
-              <div className="card-head">{t('dealDetail.dealProgress')}</div>
+              <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>{t('dealDetail.dealProgress')}</span>
+                {user_role === 'buyer' && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowFlowCustomizer(true)}>Customize deal</button>
+                )}
+              </div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
                 <DealRoadmap
                   status={deal.status}
@@ -979,11 +994,42 @@ export default function DealDetailPage() {
             </div>
 
             {user_role !== 'bank' && (
-              <DealWorkflowPanel
+              <DealFlowSummaryPanel
                 dealId={deal.id}
-                steps={workflowSteps}
+                flow={flowData}
                 currentUserRole={user_role}
                 onRefresh={load}
+              />
+            )}
+
+            {showFlowCustomizer && flowData && (
+              <DealFlowCanvas
+                dealId={id}
+                nodes={flowData.nodes}
+                edges={flowData.edges}
+                occurrences={flowData.occurrences}
+                isBuyer={user_role === 'buyer'}
+                onClose={() => setShowFlowCustomizer(false)}
+                onCompleteOccurrence={async (occurrenceId) => {
+                  await fetch(`/api/deals/${id}/flow/occurrences/${occurrenceId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'completed' }),
+                  })
+                  refetchFlow()
+                }}
+                onSave={async (nodes: SaveFlowNodePayload[], edges) => {
+                  const response = await fetch(`/api/deals/${id}/flow`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nodes, edges }),
+                  })
+                  const result = await response.json()
+                  if (!response.ok) throw new Error(result.error ?? 'Unable to save deal flow')
+                  setFlowData(result)
+                  setShowFlowCustomizer(false)
+                }}
+                onDraftApplied={refetchFlow}
               />
             )}
 

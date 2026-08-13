@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     title?: string
     description?: string
     assignee_user_id?: string | null
+    assignee_agent_id?: string | null
     priority?: string
     due_date?: string | null
     labels?: string[]
@@ -42,6 +43,9 @@ export async function POST(request: Request) {
   if (body.title.trim().length > 160) return NextResponse.json({ error: 'title must be 160 characters or fewer' }, { status: 400 })
   if (body.priority && !['low', 'medium', 'high'].includes(body.priority)) {
     return NextResponse.json({ error: 'Invalid priority' }, { status: 400 })
+  }
+  if (body.assignee_user_id && body.assignee_agent_id) {
+    return NextResponse.json({ error: 'A task can be assigned to a teammate or an agent, not both' }, { status: 400 })
   }
 
   const board = await getOwnBoard(adminClient, actor, body.board_id)
@@ -66,6 +70,17 @@ export async function POST(request: Request) {
     if (!assignee) return NextResponse.json({ error: 'Assignee must be a member of this org/bank' }, { status: 400 })
   }
 
+  if (body.assignee_agent_id) {
+    const scopeColumn = actor.orgId ? 'org_id' : 'bank_id'
+    const { data: agent } = await adminClient
+      .from('board_agents')
+      .select('id')
+      .eq('id', body.assignee_agent_id)
+      .eq(scopeColumn, actor.orgId ?? actor.bankId)
+      .maybeSingle()
+    if (!agent) return NextResponse.json({ error: 'Agent not found on this org/bank' }, { status: 400 })
+  }
+
   const { count } = await adminClient
     .from('board_tasks')
     .select('id', { count: 'exact', head: true })
@@ -79,13 +94,14 @@ export async function POST(request: Request) {
       title: body.title.trim(),
       description: body.description ?? null,
       assignee_user_id: body.assignee_user_id ?? null,
+      assignee_agent_id: body.assignee_agent_id ?? null,
       priority: body.priority ?? 'medium',
       due_date: body.due_date ?? null,
       labels: (body.labels ?? []).map(l => l.trim()).filter(Boolean).slice(0, 10),
       position: count ?? 0,
       created_by_user_id: actor.userId,
     })
-    .select('*, assignee:assignee_user_id(id, full_name, email)')
+    .select('*, assignee:assignee_user_id(id, full_name, email), assignee_agent:assignee_agent_id(id, name, role_label)')
     .single()
 
   if (error || !task) return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
@@ -93,6 +109,8 @@ export async function POST(request: Request) {
   await logBoardTaskActivity(adminClient, task.id, actor.userId, 'Created this task')
   if (task.assignee_user_id) {
     await logBoardTaskActivity(adminClient, task.id, actor.userId, `Assigned to ${task.assignee?.full_name ?? 'a teammate'}`)
+  } else if (task.assignee_agent_id) {
+    await logBoardTaskActivity(adminClient, task.id, actor.userId, `Assigned to ${task.assignee_agent?.name ?? 'an agent'} (agent)`)
   }
 
   return NextResponse.json({ task }, { status: 201 })

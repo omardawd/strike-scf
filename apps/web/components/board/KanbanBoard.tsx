@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   closestCorners, type DragEndEvent, type DragStartEvent,
@@ -9,7 +9,7 @@ import { SortableContext, verticalListSortingStrategy, horizontalListSortingStra
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useT } from '@/lib/i18n/locale-context'
-import type { BoardColumn, BoardTask } from './types'
+import type { BoardAgent, BoardColumn, BoardTask } from './types'
 
 const PRIORITY_COLOR: Record<string, string> = {
   low: 'var(--gray-soft)',
@@ -107,7 +107,7 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
             </span>
           )}
         </div>
-        {task.assignee && (
+        {task.assignee ? (
           <span
             title={task.assignee.full_name}
             style={{
@@ -118,26 +118,107 @@ function TaskCard({ task, draggable, onOpen }: { task: BoardTask; draggable: boo
           >
             {task.assignee.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
           </span>
+        ) : task.assignee_agent && (
+          <span
+            title={`${task.assignee_agent.name} (agent)`}
+            style={{
+              width: 20, height: 20, borderRadius: 6, background: 'rgba(124,58,237,0.14)',
+              color: 'var(--color-purple)', fontSize: 9.5, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}
+          >
+            {task.assignee_agent.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+          </span>
         )}
       </div>
     </div>
   )
 }
 
+// Small anchored popover for configuring a stage's agent orchestration —
+// which agent (if any) tasks auto-assign to on entry, and whether a human
+// must take ownership before a task can leave. Same "no dark backdrop,
+// closes on outside click" treatment as the board page's NewStagePopover.
+function ColumnSettingsPopover({
+  column, agents, onClose, onSave,
+}: {
+  column: BoardColumn
+  agents: BoardAgent[]
+  onClose: () => void
+  onSave: (updates: { auto_assign_agent_id: string | null; requires_review: boolean }) => Promise<void>
+}) {
+  const [agentId, setAgentId] = useState(column.auto_assign_agent_id ?? '')
+  const [requiresReview, setRequiresReview] = useState(column.requires_review)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [onClose])
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave({ auto_assign_agent_id: agentId || null, requires_review: requiresReview })
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div
+      ref={ref}
+      onClick={e => e.stopPropagation()}
+      onPointerDown={e => e.stopPropagation()}
+      style={{
+        position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 60,
+        background: 'var(--white)', borderRadius: 'var(--radius-card)', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-elevated)', padding: 14, width: 240,
+        animation: 'motion-fade var(--dur-2) var(--ease-out) both',
+      }}
+    >
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray-soft)', marginBottom: 6 }}>
+        Auto-assign to agent
+      </div>
+      <select
+        value={agentId}
+        onChange={e => setAgentId(e.target.value)}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 'var(--radius-input)', border: '1.5px solid var(--border)', fontSize: 12.5, marginBottom: 12 }}
+      >
+        <option value="">None</option>
+        {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, cursor: 'pointer', marginBottom: 12, lineHeight: 1.4 }}>
+        <input type="checkbox" checked={requiresReview} onChange={e => setRequiresReview(e.target.checked)} style={{ marginTop: 2, accentColor: 'var(--blue)' }} />
+        Require human review before a task can leave this stage
+      </label>
+      <button onClick={handleSave} disabled={saving} className="btn btn-blue btn-sm" style={{ width: '100%', opacity: saving ? 0.6 : 1 }}>
+        {saving ? '…' : 'Save'}
+      </button>
+    </div>
+  )
+}
+
 function ColumnDropZone({
-  column, accent, tasks, isAdmin, currentUserId, onDeleteColumn, onOpenTask,
+  column, accent, tasks, isAdmin, currentUserId, agents, onDeleteColumn, onOpenTask, onUpdateColumn,
 }: {
   column: BoardColumn
   accent: string
   tasks: BoardTask[]
   isAdmin: boolean
   currentUserId: string | undefined
+  agents: BoardAgent[]
   onDeleteColumn: (id: string) => void
   onOpenTask: (id: string) => void
+  onUpdateColumn: (id: string, updates: { auto_assign_agent_id: string | null; requires_review: boolean }) => Promise<void>
 }) {
   const t = useT()
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const taskIds = tasks.map(tk => tk.id)
+  const [showSettings, setShowSettings] = useState(false)
+  const autoAssignAgent = column.auto_assign_agent_id ? agents.find(a => a.id === column.auto_assign_agent_id) : undefined
 
   const {
     attributes, listeners, setNodeRef: setColumnNodeRef, transform: columnTransform,
@@ -158,11 +239,11 @@ function ColumnDropZone({
       <div
         {...(isAdmin ? { ...attributes, ...listeners } : {})}
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 2px',
-          cursor: isAdmin ? 'grab' : 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '0 2px',
+          cursor: isAdmin ? 'grab' : 'default', position: 'relative',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent, flexShrink: 0 }} />
           <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--ink)', letterSpacing: '-0.01em' }}>{column.name}</span>
           <span style={{
@@ -172,18 +253,59 @@ function ColumnDropZone({
             {tasks.length}
           </span>
         </div>
-        {isAdmin && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDeleteColumn(column.id) }}
-            onPointerDown={(e) => e.stopPropagation()}
-            title="Delete stage"
-            className="board-col-actions"
-            style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 4 }}
-          >
-            ✕
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          {isAdmin && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowSettings(s => !s) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Stage settings"
+              className="board-col-actions"
+              style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 16, fontWeight: 700, lineHeight: 1, padding: 4 }}
+            >
+              ⋯
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteColumn(column.id) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Delete stage"
+              className="board-col-actions"
+              style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 4 }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {showSettings && (
+          <ColumnSettingsPopover
+            column={column}
+            agents={agents}
+            onClose={() => setShowSettings(false)}
+            onSave={updates => onUpdateColumn(column.id, updates)}
+          />
         )}
       </div>
+      {(autoAssignAgent || column.requires_review) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10, padding: '0 2px' }}>
+          {autoAssignAgent && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700,
+              padding: '2px 8px', borderRadius: 'var(--radius-badge)', background: 'rgba(124,58,237,0.1)', color: 'var(--color-purple)',
+            }}>
+              Auto-assigns to {autoAssignAgent.name}
+            </span>
+          )}
+          {column.requires_review && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700,
+              padding: '2px 8px', borderRadius: 'var(--radius-badge)', background: 'var(--blue-light)', color: 'var(--blue)',
+            }}>
+              Requires review
+            </span>
+          )}
+        </div>
+      )}
       <div
         ref={setNodeRef}
         style={{
@@ -217,16 +339,18 @@ function ColumnDropZone({
 }
 
 export function KanbanBoard({
-  columns, tasks, isAdmin, currentUserId, onMoveTask, onDeleteColumn, onOpenTask, onReorderColumns,
+  columns, tasks, isAdmin, currentUserId, agents, onMoveTask, onDeleteColumn, onOpenTask, onReorderColumns, onUpdateColumn,
 }: {
   columns: BoardColumn[]
   tasks: BoardTask[]
   isAdmin: boolean
   currentUserId: string | undefined
+  agents: BoardAgent[]
   onMoveTask: (taskId: string, columnId: string) => void
   onDeleteColumn: (columnId: string) => void
   onOpenTask: (taskId: string) => void
   onReorderColumns: (newOrder: BoardColumn[]) => void
+  onUpdateColumn: (columnId: string, updates: { auto_assign_agent_id: string | null; requires_review: boolean }) => Promise<void>
 }) {
   const [activeTask, setActiveTask] = useState<BoardTask | null>(null)
   const [activeColumn, setActiveColumn] = useState<BoardColumn | null>(null)
@@ -295,8 +419,10 @@ export function KanbanBoard({
               tasks={tasksByColumn.get(column.id) ?? []}
               isAdmin={isAdmin}
               currentUserId={currentUserId}
+              agents={agents}
               onDeleteColumn={onDeleteColumn}
               onOpenTask={onOpenTask}
+              onUpdateColumn={onUpdateColumn}
             />
           ))}
         </div>

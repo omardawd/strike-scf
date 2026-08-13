@@ -493,6 +493,107 @@ export interface DealWorkflowStep {
   updated_at: string
 }
 
+export interface DealFlowTemplate {
+  id: string
+  deal_id: string
+  source: 'default' | 'ai_drafted' | 'manual' | 'ai_then_manual'
+  locked_at: string | null
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DealFlowNode {
+  id: string
+  flow_template_id: string
+  node_type: 'step' | 'cycle'
+  title: string
+  description: string | null
+  responsible_party: 'buyer' | 'supplier' | 'both'
+  requires_document: boolean
+  position_x: number | null
+  position_y: number | null
+  position: number
+  repeat_count: number | null
+  repeat_interval_days: number | null
+  anchor_date: string | null
+  status: 'proposed' | 'accepted' | 'declined' | 'completed'
+  due_at: string | null
+  proposed_by_user_id: string | null
+  proposed_by_org_id: string | null
+  responded_at: string | null
+  responded_by_user_id: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DealFlowEdge {
+  id: string
+  flow_template_id: string
+  from_node_id: string
+  to_node_id: string
+  label: string | null
+}
+
+export interface DealFlowCycleOccurrence {
+  id: string
+  cycle_node_id: string
+  occurrence_index: number
+  due_at: string
+  status: 'pending' | 'completed'
+  completed_at: string | null
+  completed_by_user_id: string | null
+}
+
+export interface DealFlowData {
+  template: DealFlowTemplate
+  nodes: DealFlowNode[]
+  edges: DealFlowEdge[]
+  occurrences: DealFlowCycleOccurrence[]
+}
+
+// Reusable, org-owned flow "templates" — saved from a deal's customized flow
+// and applied to a new deal. See lib/deals/flow-presets.ts.
+export interface DealFlowPreset {
+  id: string
+  org_id: string
+  name: string
+  description: string | null
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DealFlowPresetNode {
+  id: string
+  preset_id: string
+  node_type: 'step' | 'cycle'
+  title: string
+  description: string | null
+  responsible_party: 'buyer' | 'supplier' | 'both'
+  requires_document: boolean
+  position_x: number | null
+  position_y: number | null
+  position: number
+  repeat_count: number | null
+  repeat_interval_days: number | null
+}
+
+export interface DealFlowPresetEdge {
+  id: string
+  preset_id: string
+  from_node_id: string
+  to_node_id: string
+  label: string | null
+}
+
+export interface DealFlowPresetDetail {
+  preset: DealFlowPreset
+  nodes: DealFlowPresetNode[]
+  edges: DealFlowPresetEdge[]
+}
+
 export interface DealEvent {
   id: string
   deal_id: string

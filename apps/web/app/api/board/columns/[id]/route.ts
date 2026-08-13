@@ -36,7 +36,15 @@ export async function PATCH(
   const { column } = await loadOwnColumn(actor, id)
   if (!column) return NextResponse.json({ error: 'Stage not found' }, { status: 404 })
 
-  let body: { name?: string; position?: number; color?: string | null; position_x?: number | null; position_y?: number | null }
+  let body: {
+    name?: string
+    position?: number
+    color?: string | null
+    position_x?: number | null
+    position_y?: number | null
+    auto_assign_agent_id?: string | null
+    requires_review?: boolean
+  }
   try {
     body = await request.json()
   } catch {
@@ -48,12 +56,25 @@ export async function PATCH(
     if (body.name.trim().length > 60) return NextResponse.json({ error: 'name must be 60 chars or fewer' }, { status: 400 })
   }
 
+  if (body.auto_assign_agent_id) {
+    const scopeColumn = actor.orgId ? 'org_id' : 'bank_id'
+    const { data: agent } = await adminClient
+      .from('board_agents')
+      .select('id')
+      .eq('id', body.auto_assign_agent_id)
+      .eq(scopeColumn, actor.orgId ?? actor.bankId)
+      .maybeSingle()
+    if (!agent) return NextResponse.json({ error: 'Agent not found on this org/bank' }, { status: 400 })
+  }
+
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (body.name !== undefined) updates.name = body.name.trim()
   if (body.position !== undefined) updates.position = body.position
   if ('color' in body) updates.color = body.color
   if ('position_x' in body) updates.position_x = body.position_x
   if ('position_y' in body) updates.position_y = body.position_y
+  if ('auto_assign_agent_id' in body) updates.auto_assign_agent_id = body.auto_assign_agent_id
+  if (body.requires_review !== undefined) updates.requires_review = body.requires_review
 
   const { data: updated, error } = await adminClient
     .from('board_columns')

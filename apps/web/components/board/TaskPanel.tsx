@@ -2,12 +2,25 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n/locale-context'
-import type { BoardColumn, ChecklistItem, TaskComment, TaskDetail } from './types'
+import type { BoardAgent, BoardColumn, BoardTaskAgentRun, ChecklistItem, TaskComment, TaskDetail } from './types'
 
 interface TeamMember {
   id: string
   full_name: string
   email: string
+}
+
+// The assignee <select> mixes two entity kinds (people, agents) in one
+// dropdown — encode which kind + which id in the option value rather than
+// adding a second parallel select, so "Assign to" reads as one decision.
+function encodeAssignee(kind: 'user' | 'agent', id: string): string {
+  return `${kind}:${id}`
+}
+function decodeAssignee(value: string): { kind: 'user' | 'agent'; id: string } | null {
+  if (!value) return null
+  const [kind, id] = value.split(':')
+  if ((kind !== 'user' && kind !== 'agent') || !id) return null
+  return { kind, id }
 }
 
 const PANEL_WIDTH = 440
@@ -54,18 +67,116 @@ function Avatar({ name, size = 24 }: { name: string; size?: number }) {
   )
 }
 
+// Distinct from the human Avatar (square-ish + purple, vs. round + blue) —
+// a task assigned to an agent should read differently at a glance. Uses the
+// same initials treatment as Avatar rather than an icon/emoji, so the two
+// read as the same visual language (an assignee chip) at different tints.
+export function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
+  return (
+    <span
+      title={`${name} (agent)`}
+      style={{
+        width: size, height: size, borderRadius: size * 0.3, background: 'rgba(124,58,237,0.14)',
+        color: 'var(--color-purple)', fontSize: size * 0.4, fontWeight: 700,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}
+    >
+      {initials(name)}
+    </span>
+  )
+}
+
+// Renders one agent run's structured findings. `compact` is used for the
+// collapsed run-history list — same content, tighter and without the
+// "current" framing, so older runs still read clearly for audit purposes
+// without competing visually with the latest one.
+function AgentRunCard({ run, compact = false }: { run: BoardTaskAgentRun; compact?: boolean }) {
+  const sectionGap = compact ? 8 : 12
+
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: 'var(--radius-card)',
+      padding: compact ? 12 : 16, background: compact ? 'var(--offwhite)' : 'rgba(124,58,237,0.04)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: compact ? 8 : 12 }}>
+        <AgentAvatar name={run.agent?.name ?? 'Agent'} size={compact ? 18 : 22} />
+        <span style={{ fontSize: compact ? 12 : 13, fontWeight: 700 }}>{run.agent?.name ?? 'Agent'}</span>
+        <span style={{ fontSize: 11, color: 'var(--gray-soft)' }}>· {timeAgo(run.created_at)}</span>
+        {run.status === 'failed' && (
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-red)', background: '#fee2e2', borderRadius: 'var(--radius-badge)', padding: '1px 8px', marginLeft: 'auto' }}>
+            Failed
+          </span>
+        )}
+      </div>
+
+      {run.status === 'failed' || !run.output ? (
+        <p style={{ fontSize: 12.5, color: 'var(--color-red)' }}>{run.error ?? 'This run failed.'}</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: sectionGap }}>
+          <p style={{ fontSize: compact ? 12.5 : 13.5, lineHeight: 1.55, color: 'var(--ink)' }}>{run.output.summary}</p>
+
+          {run.output.key_findings.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', marginBottom: 4 }}>Key Findings</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {run.output.key_findings.map((f, i) => (
+                  <li key={i} style={{ fontSize: compact ? 12 : 13, lineHeight: 1.5 }}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {run.output.recommendations.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', marginBottom: 4 }}>Recommendations</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {run.output.recommendations.map((r, i) => (
+                  <li key={i} style={{ fontSize: compact ? 12 : 13, lineHeight: 1.5, color: 'var(--color-green)' }}>
+                    <span style={{ color: 'var(--ink)' }}>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {run.output.caveats.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-amber)', marginBottom: 4 }}>Caveats</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {run.output.caveats.map((c, i) => (
+                  <li key={i} style={{ fontSize: compact ? 12 : 13, lineHeight: 1.5, color: 'var(--ink-soft)' }}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {run.output.suggested_next_step && (
+            <div style={{
+              fontSize: compact ? 12 : 12.5, lineHeight: 1.5, padding: '8px 12px',
+              background: 'var(--blue-light)', color: 'var(--blue)', borderRadius: 8, fontWeight: 600,
+            }}>
+              Next: {run.output.suggested_next_step}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const fieldStyle: React.CSSProperties = {
   fontSize: 13, border: 'none', background: 'transparent', color: 'var(--ink)',
   fontWeight: 600, padding: '2px 0', cursor: 'pointer',
 }
 
 export function TaskPanel({
-  taskId, boardId, columns, members, defaultColumnId, onClose, onChanged,
+  taskId, boardId, columns, members, agents, defaultColumnId, onClose, onChanged,
 }: {
   taskId: string | null
   boardId: string
   columns: BoardColumn[]
   members: TeamMember[]
+  agents: BoardAgent[]
   defaultColumnId?: string
   onClose: () => void
   onChanged: () => void
@@ -84,6 +195,9 @@ export function TaskPanel({
   const [editingDesc, setEditingDesc] = useState(false)
   const [labelDraft, setLabelDraft] = useState('')
   const [showLabelInput, setShowLabelInput] = useState(false)
+  const [runningAgent, setRunningAgent] = useState(false)
+  const [runError, setRunError] = useState('')
+  const [showRunHistory, setShowRunHistory] = useState(false)
 
   // Create-mode draft fields (used until the task is first saved)
   const [draftColumnId, setDraftColumnId] = useState(defaultColumnId ?? columns[0]?.id ?? '')
@@ -137,6 +251,7 @@ export function TaskPanel({
     setCreating(true)
     setError('')
     try {
+      const decoded = decodeAssignee(draftAssignee)
       const res = await fetch('/api/board/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,7 +259,8 @@ export function TaskPanel({
           board_id: boardId,
           column_id: draftColumnId,
           title: titleDraft.trim(),
-          assignee_user_id: draftAssignee || null,
+          assignee_user_id: decoded?.kind === 'user' ? decoded.id : null,
+          assignee_agent_id: decoded?.kind === 'agent' ? decoded.id : null,
           priority: draftPriority,
           due_date: draftDueDate || null,
         }),
@@ -208,6 +324,22 @@ export function TaskPanel({
       body: JSON.stringify({ body: newComment.trim() }),
     })
     if (res.ok) { setNewComment(''); load(localTaskId) }
+  }
+
+  async function handleRunAgent() {
+    if (!localTaskId) return
+    setRunningAgent(true)
+    setRunError('')
+    try {
+      const res = await fetch(`/api/board/tasks/${localTaskId}/run-agent`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Agent run failed')
+      await load(localTaskId)
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Agent run failed')
+    } finally {
+      setRunningAgent(false)
+    }
   }
 
   async function handleDelete() {
@@ -332,16 +464,51 @@ export function TaskPanel({
                   <span style={{ width: 84, fontSize: 12, color: 'var(--gray-soft)' }}>{t('board.assignTo')}</span>
                   {isAdmin ? (
                     <select
-                      value={isCreateMode ? draftAssignee : detail?.task.assignee_user_id ?? ''}
-                      onChange={e => isCreateMode ? setDraftAssignee(e.target.value) : patchTask({ assignee_user_id: e.target.value || null })}
+                      value={
+                        isCreateMode
+                          ? draftAssignee
+                          : detail?.task.assignee_user_id
+                            ? encodeAssignee('user', detail.task.assignee_user_id)
+                            : detail?.task.assignee_agent_id
+                              ? encodeAssignee('agent', detail.task.assignee_agent_id)
+                              : ''
+                      }
+                      onChange={e => {
+                        const decoded = decodeAssignee(e.target.value)
+                        if (isCreateMode) {
+                          setDraftAssignee(e.target.value)
+                        } else {
+                          patchTask({
+                            assignee_user_id: decoded?.kind === 'user' ? decoded.id : null,
+                            assignee_agent_id: decoded?.kind === 'agent' ? decoded.id : null,
+                          })
+                        }
+                      }}
                       style={fieldStyle}
                     >
                       <option value="">{t('board.unassigned')}</option>
-                      {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                      {members.length > 0 && (
+                        <optgroup label="Team">
+                          {members.map(m => <option key={m.id} value={encodeAssignee('user', m.id)}>{m.full_name}</option>)}
+                        </optgroup>
+                      )}
+                      {agents.length > 0 && (
+                        <optgroup label="Agents">
+                          {agents.map(a => (
+                            <option key={a.id} value={encodeAssignee('agent', a.id)} disabled={!a.is_active}>
+                              {a.name}{a.role_label ? ` — ${a.role_label}` : ''}{!a.is_active ? ' (inactive)' : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   ) : detail?.task.assignee ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
                       <Avatar name={detail.task.assignee.full_name} size={18} /> {detail.task.assignee.full_name}
+                    </span>
+                  ) : detail?.task.assignee_agent ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
+                      <AgentAvatar name={detail.task.assignee_agent.name} size={18} /> {detail.task.assignee_agent.name}
                     </span>
                   ) : (
                     <span style={{ fontSize: 13, color: 'var(--gray-soft)' }}>{t('board.unassigned')}</span>
@@ -435,6 +602,65 @@ export function TaskPanel({
                       </p>
                     )}
                   </div>
+
+                  {/* Agent Findings — a permanent record of any agent work on this
+                      task, kept visible even after the task is reassigned to a
+                      human (e.g. to pass a "requires review" stage). Hiding this
+                      the moment an agent stops owning the task would erase the
+                      exact audit trail a handoff depends on. */}
+                  {(detail.task.assignee_agent_id || detail.agent_runs.length > 0) && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-soft)' }}>Agent Findings</div>
+                        {isAdmin && detail.task.assignee_agent_id && (
+                          <button
+                            onClick={handleRunAgent}
+                            disabled={runningAgent}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700,
+                              color: 'var(--color-purple)', background: 'rgba(124,58,237,0.1)', border: 'none',
+                              borderRadius: 'var(--radius-badge)', padding: '5px 12px', cursor: runningAgent ? 'default' : 'pointer',
+                              opacity: runningAgent ? 0.7 : 1,
+                            }}
+                          >
+                            {runningAgent ? 'Running…' : 'Run Agent'}
+                          </button>
+                        )}
+                      </div>
+
+                      {runError && <p style={{ color: 'var(--color-red)', fontSize: 12.5, marginBottom: 10 }}>{runError}</p>}
+
+                      {detail.agent_runs.length === 0 ? (
+                        <p style={{ fontSize: 12.5, color: 'var(--gray-soft)', fontStyle: 'italic' }}>
+                          No runs yet — press Run Agent to have {detail.task.assignee_agent?.name ?? 'the agent'} draft its findings.
+                        </p>
+                      ) : (
+                        <>
+                          {!detail.task.assignee_agent_id && (
+                            <p style={{ fontSize: 11.5, color: 'var(--gray-soft)', marginBottom: 10 }}>
+                              No longer assigned to an agent — findings kept below for reference.
+                            </p>
+                          )}
+                          <AgentRunCard run={detail.agent_runs[0]!} />
+                          {detail.agent_runs.length > 1 && (
+                            <div style={{ marginTop: 10 }}>
+                              <button
+                                onClick={() => setShowRunHistory(s => !s)}
+                                style={{ border: 'none', background: 'none', color: 'var(--gray-soft)', fontSize: 11.5, cursor: 'pointer', padding: 0 }}
+                              >
+                                {showRunHistory ? 'Hide' : 'Show'} {detail.agent_runs.length - 1} earlier run{detail.agent_runs.length - 1 === 1 ? '' : 's'}
+                              </button>
+                              {showRunHistory && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                                  {detail.agent_runs.slice(1).map(run => <AgentRunCard key={run.id} run={run} compact />)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Checklist */}
                   <div style={{ marginBottom: 24 }}>
