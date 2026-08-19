@@ -9,8 +9,8 @@
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
-    "prettier": "^3.7.4",
-    "turbo": "^2.9.10",
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.10",
     "typescript": "5.9.2"
   },
   "engines": {
@@ -22,7 +22,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4",
-    "resend": "^6.12.3"
+    "@supabase/supabase-js": "^2.112.3",
+    "resend": "^6.20.0"
   }
 }
